@@ -29,7 +29,7 @@ export function LiveLimits() {
   return (
     <ul className="grid max-w-[65ch] list-disc gap-1.5 pl-5">
       <li>ไม่ใช้ API key: {perPeriod(l.review_rate_limit, "รีวิว")} ต่อ IP · มี API key: {perPeriod(l.api_key_rate_limit, "รีวิว")} ต่อ key (และโควตารายวันของ key)</li>
-      <li>ค้นงานวิจัย: {perPeriod(l.paper_search_rate_limit, "ครั้ง")}</li>
+      <li>ค้นงานวิจัย: {perPeriod(l.paper_search_rate_limit, "ครั้ง")}{l.sse_max_per_ip != null && ` · สตรีมสดพร้อมกันได้ ${l.sse_max_per_ip} รายการต่อผู้ใช้`}</li>
       <li>จำนวนงานวิจัยที่วิเคราะห์ต่อรีวิว {l.max_papers.min}–{l.max_papers.max} ฉบับ (ค่าเริ่มต้น {l.max_papers.default}) จากผู้สมัคร {l.candidate_limit.min}–{l.candidate_limit.max} ฉบับ (ค่าเริ่มต้น {l.candidate_limit.default})</li>
       <li>ตอนนี้: คิวรอ {status.queue_depth} · กำลังทำ {status.running} · {status.accepting ? "เปิดรับรีวิวใหม่" : "ปิดรับรีวิวใหม่ชั่วคราว"} (คิวรับได้สูงสุด {l.max_queued_reviews})</li>
     </ul>

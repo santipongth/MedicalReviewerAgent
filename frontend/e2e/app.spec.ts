@@ -149,6 +149,9 @@ test("about page renders the deployment's API address in every snippet", async (
   await mockApi(page);
   await page.goto("/about");
   await expect(page.getByText("claude mcp add --transport http medical-reviewer http://api.mock/mcp")).toBeVisible();
+  // limits come from GET /api/v1/status, not hard-coded text
+  await expect(page.getByText(/5 รีวิวต่อชั่วโมง/)).toBeVisible();
+  await expect(page.getByText(/สตรีมสดพร้อมกันได้ 5/)).toBeVisible();
   await noSeriousA11y(page);
   await noHorizontalScroll(page);
 });

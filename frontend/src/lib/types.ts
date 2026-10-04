@@ -198,6 +198,7 @@ export interface ServiceStatus {
     max_papers: { min: number; max: number; default: number };
     candidate_limit: { min: number; max: number; default: number };
     max_queued_reviews: number;
+    sse_max_per_ip?: number;
   };
 }
 

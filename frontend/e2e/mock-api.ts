@@ -17,7 +17,7 @@ export function sse(events: [string, Record<string, unknown>][]): string {
 export const OPEN_STATUS = {
   accepting: true, reason: null, retry_after: null, queue_depth: 0, running: 1, reviews_today: 12, turnstile_site_key: null,
   limits: { review_rate_limit: "5/hour", api_key_rate_limit: "60/hour", paper_search_rate_limit: "30/minute",
-    max_papers: { min: 5, max: 30, default: 30 }, candidate_limit: { min: 20, max: 100, default: 60 }, max_queued_reviews: 50 },
+    max_papers: { min: 5, max: 30, default: 30 }, candidate_limit: { min: 20, max: 100, default: 60 }, max_queued_reviews: 50, sse_max_per_ip: 5 },
 };
 
 export const LIVE_EVENTS: [string, Record<string, unknown>][] = [
