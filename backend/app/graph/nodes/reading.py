@@ -30,6 +30,18 @@ async def _fetch(deps, cand: Candidate) -> tuple[FullText, bool, str | None]:
         return _fallback(cand), False, f"{type(exc).__name__}: {exc}"
 
 
+def _blanked(before: PaperCard, after: PaperCard) -> list[dict[str, Any]]:
+    """Values the verifier blanked, so the UI can show "not verified" instead of "not reported"."""
+    out: list[dict[str, Any]] = []
+    for b, a in zip(before.outcomes, after.outcomes, strict=True):
+        had = any(v is not None for v in (b.effect_value, b.ci_lower, b.ci_upper, b.p_value))
+        if had and all(v is None for v in (a.effect_value, a.ci_lower, a.ci_upper, a.p_value)):
+            out.append({"field": "effect", "outcome": b.outcome})
+    if before.sample_size is not None and after.sample_size is None:
+        out.append({"field": "sample_size", "outcome": None})
+    return out
+
+
 def _ok_value(result: Any) -> PaperCard | None:
     if isinstance(result, HarnessResult) and result.value is not None:
         return result.value
@@ -93,6 +105,7 @@ def make_read_paper(deps):
                                  "screen_reason": paper.get("reason"), "fulltext_source": fulltext.source,
                                  "fulltext_url": fulltext.url, "card": None, "error": None}
         verified = total = 0
+        unverified: list[dict[str, Any]] = []
         if card is None:
             failure = primary if isinstance(primary, BaseException) else None
             message = (f"{type(failure).__name__}: {failure}" if failure else
@@ -101,15 +114,19 @@ def make_read_paper(deps):
             errors.append(f"extraction failed for {paper['ref']}: {message}")
         else:
             if spec.verify_quotes:
+                before = card
                 card, verified, total = null_unverified_numbers(card, text, threshold)
+                unverified = _blanked(before, card)
             entry["card"] = card.model_dump()
         if isinstance(primary, BaseException) and not isinstance(primary, LLMError):
             raise primary
         entry["verification"] = {"numbers_verified": verified, "numbers_total": total, "agreement": agreement,
-                                 "escalated": escalated, "repaired": repaired, "uncertain": uncertain}
+                                 "escalated": escalated, "repaired": repaired, "uncertain": uncertain,
+                                 "unverified": unverified}
         quality = {"stage": "read", "ref": paper["ref"], "source": fulltext.source,
                    "fulltext_seconds": fulltext_seconds, "fulltext_timed_out": timed_out,
-                   **entry["verification"], "seconds": round(time.perf_counter() - started, 3)}
+                   **{k: v for k, v in entry["verification"].items() if k != "unverified"},
+                   "seconds": round(time.perf_counter() - started, 3)}
         writer({"type": "extracted", "ref": paper["ref"], "ok": entry["card"] is not None,
                 "source": fulltext.source, "verified": verified, "uncertain": uncertain})
         return {"papers": [entry], "cost_usd": cost, "errors": errors, "quality": [quality]}

@@ -103,6 +103,19 @@ services:
       - ./backend/config:/app/config:ro  # tune models without rebuilding
     networks: [data, crawl]
 
+  web:
+    build: ./frontend
+    image: mra/web:dev
+    environment:
+      # Address the browser uses to reach the API (read at request time; no rebuild per deployment).
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
   crawl4ai:
     image: unclecode/crawl4ai:0.9.4  # >= 0.9.0 required (CVE-2026-26216 / -53755 / -57572)
     environment:

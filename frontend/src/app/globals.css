@@ -1,0 +1,243 @@
+@import "tailwindcss";
+
+/* Theatre Green — tokens from DESIGN.md. Light "Day theatre" is the default; dark "Night shift" follows the OS
+   unless the viewer picks a theme (data-theme on <html>). */
+:root {
+  --ground: #e9efeb;
+  --surface: #f8faf9;
+  --rail: #dce6e0;
+  --ink: #10241e;
+  --muted: #4a5e57;
+  --rule: #bccac1;
+  --primary: #0e5a47;
+  --on-primary: #ffffff;
+  --highlight: #f2d16b;
+  --highlight-ink: #10241e;
+  --tape: #e6ddb8;
+  --stripe: #10241e;
+  --hatch: #9aa8a0;
+  --sup: #0072b2;
+  --harm: #d55e00;
+  --none: #5f6b73;
+  --mixed: #8e3b7e;
+  --unclear: #5f6b73;
+  --ok: #0e5a47;
+  --warn: #8a5a00;
+  --warn-bg: #f5e7c4;
+  --err: #a33a12;
+  --err-bg: #f6ddd2;
+  --info-bg: #dde9f3;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #14271f;
+    --surface: #1b3029;
+    --rail: #22392f;
+    --ink: #ddeae2;
+    --muted: #9db3a8;
+    --rule: #2f4a3f;
+    --primary: #5fc3a0;
+    --on-primary: #0b1f18;
+    --highlight: #e9c75a;
+    --tape: #3a4a36;
+    --stripe: #ddeae2;
+    --hatch: #4f665b;
+    --sup: #3b98d4;
+    --harm: #db712f;
+    --none: #9aa5ad;
+    --mixed: #b05c9e;
+    --unclear: #9aa5ad;
+    --ok: #5fc3a0;
+    --warn: #e9c75a;
+    --warn-bg: #3a3420;
+    --err: #f08a4b;
+    --err-bg: #3b2a20;
+    --info-bg: #1e3342;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #14271f;
+  --surface: #1b3029;
+  --rail: #22392f;
+  --ink: #ddeae2;
+  --muted: #9db3a8;
+  --rule: #2f4a3f;
+  --primary: #5fc3a0;
+  --on-primary: #0b1f18;
+  --highlight: #e9c75a;
+  --tape: #3a4a36;
+  --stripe: #ddeae2;
+  --hatch: #4f665b;
+  --sup: #3b98d4;
+  --harm: #db712f;
+  --none: #9aa5ad;
+  --mixed: #b05c9e;
+  --unclear: #9aa5ad;
+  --ok: #5fc3a0;
+  --warn: #e9c75a;
+  --warn-bg: #3a3420;
+  --err: #f08a4b;
+  --err-bg: #3b2a20;
+  --info-bg: #1e3342;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-rail: var(--rail);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-highlight: var(--highlight);
+  --color-sup: var(--sup);
+  --color-harm: var(--harm);
+  --color-none: var(--none);
+  --color-mixed: var(--mixed);
+  --color-unclear: var(--unclear);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-err: var(--err);
+  --color-err-bg: var(--err-bg);
+  --color-info-bg: var(--info-bg);
+  --font-display: var(--font-bai-jamjuree), var(--font-anuphan), system-ui, sans-serif;
+  --font-body: var(--font-anuphan), var(--font-bai-jamjuree), system-ui, sans-serif;
+  --font-num: var(--font-martian-mono), ui-monospace, Menlo, monospace;
+  --font-quote: var(--font-source-serif), Georgia, "Times New Roman", serif;
+  --radius-sm: 2px;
+}
+
+* {
+  border-color: var(--rule);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--highlight);
+  color: var(--highlight-ink);
+}
+
+/* Verified numbers: Martian Mono + autoclave-tape underline. Only for values that passed verification. */
+.num-verified {
+  font-family: var(--font-num);
+  font-stretch: 87.5%;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+  position: relative;
+  white-space: nowrap;
+  padding-bottom: 3px;
+}
+.num-verified::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: -2px;
+  height: 4px;
+  background: repeating-linear-gradient(135deg, var(--stripe) 0 2px, var(--tape) 2px 5px);
+  transition: opacity 0.4s ease-out;
+}
+.num-verified[data-pending="true"] {
+  font-family: var(--font-body);
+}
+.num-verified[data-pending="true"]::after {
+  opacity: 0;
+}
+
+.hole {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 0.78rem/1.4 var(--font-display);
+  color: var(--muted);
+  padding: 1px 8px;
+  border: 1px dashed var(--hatch);
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent 0 4px,
+    color-mix(in srgb, var(--hatch) 35%, transparent) 4px 5px
+  );
+}
+
+.tape-mark {
+  background: repeating-linear-gradient(135deg, var(--stripe) 0 3px, var(--tape) 3px 7px);
+}
+
+.label {
+  font: 600 0.75rem/1.3 var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Finding-direction glyphs (DESIGN.md): shape + color, never color alone. */
+.g {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex: none;
+  vertical-align: middle;
+}
+.g-sup {
+  background: var(--sup);
+  border-radius: 50%;
+}
+.g-harm {
+  background: var(--harm);
+  transform: rotate(45deg) scale(0.85);
+}
+.g-none {
+  background: var(--none);
+  height: 4px;
+  width: 14px;
+}
+.g-mixed {
+  border-radius: 50%;
+  border: 2px solid var(--mixed);
+  background: linear-gradient(90deg, var(--mixed) 50%, transparent 50%);
+}
+.g-unclear {
+  border-radius: 50%;
+  border: 2px dashed var(--unclear);
+}

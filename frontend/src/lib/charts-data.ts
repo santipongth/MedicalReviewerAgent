@@ -1,0 +1,153 @@
+// Chart data built only from verified values. Nothing here estimates, converts or recomputes a number from a paper.
+import { asReported, ciLabel, effectLabel, isBlankedEffect, isVerifiedEffect } from "./evidence";
+import type { Lang } from "./i18n";
+import type { Direction, Paper, RiskOfBias, Stats } from "./types";
+
+export interface Filters {
+  minRelevance: number;
+  yearFrom: number | null;
+  yearTo: number | null;
+  risk: RiskOfBias[];
+  designs: string[];
+}
+
+export function emptyFilters(): Filters {
+  return { minRelevance: 0, yearFrom: null, yearTo: null, risk: [], designs: [] };
+}
+
+export function isFiltered(f: Filters): boolean {
+  return f.minRelevance > 0 || f.yearFrom != null || f.yearTo != null || f.risk.length > 0 || f.designs.length > 0;
+}
+
+export function filterPapers(papers: Paper[], f: Filters): Paper[] {
+  return papers.filter((p) => {
+    const card = p.card_en ?? p.card;
+    if ((p.relevance ?? 0) < f.minRelevance) return false;
+    if (f.yearFrom != null && (p.year == null || p.year < f.yearFrom)) return false;
+    if (f.yearTo != null && (p.year == null || p.year > f.yearTo)) return false;
+    if (f.risk.length && (!card || !f.risk.includes(card.risk_of_bias))) return false;
+    if (f.designs.length && (!card || !f.designs.includes(card.study_design))) return false;
+    return true;
+  });
+}
+
+export type Family = "ratio" | "difference" | "correlation";
+const FAMILY: Record<string, Family> = { HR: "ratio", OR: "ratio", RR: "ratio", MD: "difference", SMD: "difference", RD: "difference", r: "correlation" };
+
+export interface ForestRow {
+  ref: string;
+  outcome: string;
+  outcomeKey: string;
+  label: string;
+  measure: string;
+  value: number;
+  lo: number | null;
+  hi: number | null;
+  direction: Direction;
+  valueText: string;
+  ciText: string | null;
+}
+
+export interface ForestGroup {
+  family: Family;
+  measures: string[];
+  rows: ForestRow[];
+}
+
+export interface ForestData {
+  groups: ForestGroup[];
+  unverified: { ref: string; outcome: string }[];
+}
+
+/** One row per verified paper × outcome effect, grouped so each group shares one axis (ratio: log around 1). */
+export function forestData(papers: Paper[], lang: Lang): ForestData {
+  const groups = new Map<Family, ForestGroup>();
+  const unverified: ForestData["unverified"] = [];
+  for (const p of papers) {
+    const en = p.card_en ?? p.card;
+    const shown = (lang === "en" ? p.card_en : p.card) ?? en;
+    if (!en || !shown) continue;
+    en.outcomes.forEach((o, i) => {
+      if (isBlankedEffect(p, o.outcome)) {
+        unverified.push({ ref: p.ref, outcome: shown.outcomes[i]?.outcome ?? o.outcome });
+        return;
+      }
+      const family = FAMILY[o.effect_measure ?? ""];
+      if (!family || !isVerifiedEffect(p, o)) return;
+      const value = o.effect_value as number;
+      if (family === "ratio" && (value <= 0 || (o.ci_lower != null && o.ci_lower <= 0))) return;
+      const g = groups.get(family) ?? { family, measures: [], rows: [] };
+      if (!g.measures.includes(o.effect_measure as string)) g.measures.push(o.effect_measure as string);
+      const outcomeName = shown.outcomes[i]?.outcome ?? o.outcome;
+      g.rows.push({
+        ref: p.ref, outcome: outcomeName, outcomeKey: o.outcome, label: `${p.ref} · ${outcomeName}`,
+        measure: o.effect_measure as string, value, lo: o.ci_lower ?? null, hi: o.ci_upper ?? null, direction: o.direction,
+        valueText: effectLabel(o), ciText: ciLabel(o),
+      });
+      groups.set(family, g);
+    });
+  }
+  const order: Family[] = ["ratio", "difference", "correlation"];
+  return { groups: order.filter((f) => groups.has(f)).map((f) => groups.get(f)!), unverified };
+}
+
+/** Axis bounds that contain every point and interval plus the null value (1 for ratios, 0 otherwise). */
+export function forestAxis(g: ForestGroup): [number, number] {
+  const nullValue = g.family === "ratio" ? 1 : 0;
+  const values = g.rows.flatMap((r) => [r.value, r.lo ?? r.value, r.hi ?? r.value]).concat(nullValue);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (g.family === "ratio") return [min / 1.15, max * 1.15];
+  const pad = (max - min || 1) * 0.1;
+  return [min - pad, max + pad];
+}
+
+export interface Stage {
+  key: keyof Stats;
+  label: string;
+  value: number;
+}
+
+const STAGE_LABEL: Record<string, [string, string]> = {
+  found: ["ค้นเจอ (ก่อนตัดซ้ำ)", "Records found"],
+  unique: ["หลังตัดซ้ำ", "After de-duplication"],
+  screened: ["คัดกรอง", "Screened"],
+  selected: ["เลือกอ่าน", "Selected to read"],
+  with_fulltext: ["ได้ฉบับเต็ม", "Full text obtained"],
+  extracted: ["สกัดข้อมูลได้", "Data extracted"],
+};
+
+export function prismaStages(stats: Stats | undefined, lang: Lang): Stage[] {
+  if (!stats) return [];
+  return (["found", "unique", "screened", "selected", "with_fulltext", "extracted"] as const)
+    .filter((k) => typeof stats[k] === "number")
+    .map((k) => ({ key: k, label: STAGE_LABEL[k][lang === "th" ? 0 : 1], value: stats[k] as number }));
+}
+
+export interface StudyPoint {
+  ref: string;
+  title: string;
+  year: number;
+  n: number;
+  nText: string;
+  direction: Direction;
+  design: string;
+}
+
+/** Studies with a publication year and a verified sample size (a blanked sample size is null and is not plotted). */
+export function studyPoints(papers: Paper[]): { points: StudyPoint[]; missing: number } {
+  const points: StudyPoint[] = [];
+  let missing = 0;
+  for (const p of papers) {
+    const card = p.card_en ?? p.card;
+    if (!card || p.year == null || card.sample_size == null || card.sample_size <= 0) {
+      missing += 1;
+      continue;
+    }
+    points.push({
+      ref: p.ref, title: p.title, year: p.year, n: card.sample_size,
+      nText: asReported(card.sample_size, card.sample_size_quote), direction: card.overall_direction, design: card.study_design,
+    });
+  }
+  return { points, missing };
+}

@@ -50,6 +50,7 @@ class ReviewSummary(BaseModel):
     status: str
     created_at: datetime
     finished_at: datetime | None
+    verification_rate: float | None = None  # share of numbers verified against paper text (done reviews)
 
 
 class ReviewOut(ReviewSummary):

@@ -64,7 +64,7 @@ async def test_verified_dual_extraction_agrees():
     entry = out["papers"][0]
     assert entry["card"]["outcomes"][0]["effect_value"] == 0.8
     assert entry["verification"] == {"numbers_verified": 2, "numbers_total": 2, "agreement": 1.0,
-                                     "escalated": False, "repaired": False, "uncertain": False}
+                                     "escalated": False, "repaired": False, "uncertain": False, "unverified": []}
     assert entry["fulltext_source"] == "europepmc"
     q = out["quality"][0]
     assert q["stage"] == "read" and q["ref"] == "P1" and q["seconds"] >= 0 and q["fulltext_seconds"] >= 0
@@ -96,6 +96,8 @@ async def test_unverifiable_numbers_are_nulled_never_reach_the_plot():
     o = out["papers"][0]["card"]["outcomes"][0]
     assert o["effect_value"] is None and o["ci_lower"] is None and o["effect_measure"] == "none"
     assert out["papers"][0]["verification"]["numbers_verified"] == 1  # sample size still verified
+    # the UI must tell "blanked by the verifier" from "not reported"
+    assert out["papers"][0]["verification"]["unverified"] == [{"field": "effect", "outcome": "CRC incidence"}]
 
 
 async def test_direction_disagreement_escalates():
