@@ -14,6 +14,8 @@ from app.logging import get_logger
 from app.schemas.review import CreateReviewRequest, ReviewCreated, compute_cache_key, hash_ip
 from app.services.api_keys import ApiKeyInfo, reviews_since
 from app.services.ratelimits import RateLimits
+from app.services.urlsafety import is_public_http_url
+from app.services.webhook import callback_url_problem
 
 log = get_logger(__name__)
 
@@ -56,6 +58,10 @@ class Forbidden(ServiceError):
     status_code = 403
 
 
+class Unprocessable(ServiceError):
+    status_code = 422
+
+
 class NotFound(ServiceError):
     status_code = 404
 
@@ -65,7 +71,9 @@ class Conflict(ServiceError):
 
 
 class ReviewService:
-    def __init__(self, session_factory, queue, event_sink, settings: Settings, limits: RateLimits) -> None:
+    def __init__(self, session_factory, queue, event_sink, settings: Settings, limits: RateLimits,
+                 url_check=is_public_http_url) -> None:
+        self.url_check = url_check
         self.session_factory = session_factory
         self.queue = queue
         self.event_sink = event_sink
@@ -87,6 +95,9 @@ class ReviewService:
             return cached
         if req.callback_url and identity.api_key is None:
             raise Forbidden("callback_url requires an API key")
+        if req.callback_url and (problem := await callback_url_problem(
+                str(req.callback_url), allow_http=self.settings.webhook_allow_http, url_check=self.url_check)):
+            raise Unprocessable(problem)
         if identity.api_key is not None:
             async with self.session_factory() as session:
                 used = await reviews_since(session, identity.api_key.id, datetime.now(UTC) - timedelta(days=1))
@@ -140,6 +151,8 @@ class ReviewService:
         if not changed:
             raise Conflict(f"review is already {review.status}")
         await self.event_sink.emit(review_id, "cancelled", {"by": key.name})
+        if review.callback_url and hasattr(self.queue, "enqueue_webhook"):
+            await self.queue.enqueue_webhook(review_id)
         try:
             await self.queue.abort_review(review_id)
         except Exception:  # noqa: BLE001 - status is authoritative; the runner checks it

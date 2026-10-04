@@ -24,10 +24,18 @@ class ReviewRunner:
     so finished nodes are not re-run and add-reducers are not double-counted.
     """
 
-    def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph) -> None:
+    def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph, notify=None) -> None:
         self.session_factory = session_factory
         self.event_sink = event_sink
         self.graph = graph
+        self.notify = notify  # async (review_id) -> None: enqueue the webhook for reviews with a callback_url
+
+    async def _notify(self, review_id: uuid.UUID, has_callback: bool) -> None:
+        if has_callback and self.notify is not None:
+            try:
+                await self.notify(review_id)
+            except Exception:  # noqa: BLE001 - a webhook problem never changes the review outcome
+                log.warning("webhook_enqueue_failed", review_id=str(review_id))
 
     async def _has_checkpoint(self, config: dict) -> bool:
         if getattr(self.graph, "checkpointer", None) is None:
@@ -49,6 +57,7 @@ class ReviewRunner:
                 first_start = first_start.replace(tzinfo=UTC)
             await repo.update(review_id, status="running", started_at=first_start or now, error=None)
             topic, language, options = review.topic, review.language, dict(review.options or {})
+            has_callback = bool(review.callback_url)
         t0 = time.monotonic() - ((now - first_start).total_seconds() if first_start else 0.0)
 
         async def emit(event_type: str, payload: dict) -> None:
@@ -82,6 +91,7 @@ class ReviewRunner:
             if not await self._finish(review_id, "error", error=message):
                 return ReviewStatus.cancelled.value
             await emit("error", {"message": message})
+            await self._notify(review_id, has_callback)
             return "error"
 
         cost = float(values.get("cost_usd", 0.0))
@@ -90,12 +100,14 @@ class ReviewRunner:
             if not await self._finish(review_id, "rejected", error=reason, cost_usd=cost):
                 return ReviewStatus.cancelled.value
             await emit("rejected", {"reason": reason})
+            await self._notify(review_id, has_callback)
             return "rejected"
         result = values.get("result") or {}
         if not await self._finish(review_id, "done", result=result, cost_usd=cost,
                                   prompt_version=result.get("prompt_version"), model_versions=result.get("models")):
             return ReviewStatus.cancelled.value
         await emit("done", {"cost_usd": cost})
+        await self._notify(review_id, has_callback)
         return "done"
 
     async def _set_status(self, review_id: uuid.UUID, status: str) -> bool:

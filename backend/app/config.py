@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     ip_hash_salt: str = "change-me"
     review_rate_limit: str = "5/hour"  # anonymous callers, per IP
     api_key_rate_limit: str = "60/hour"  # callers with an API key, per key
+    public_base_url: str = "http://localhost:8000"  # used in webhook result_url and MCP links
+    webhook_allow_http: bool = False  # local testing only; production webhooks must be https
+    webhook_timeout_seconds: float = 10.0
+    webhook_max_tries: int = 3
     max_topic_length: int = 300
     result_cache_ttl_seconds: int = 86400
     event_stream_ttl_seconds: int = 86400

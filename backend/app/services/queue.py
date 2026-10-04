@@ -27,6 +27,10 @@ class ArqJobQueue:
         )
         return job is not None
 
+    async def enqueue_webhook(self, review_id: uuid.UUID) -> bool:
+        job = await self.pool.enqueue_job("deliver_webhook", str(review_id), _job_id=f"webhook:{review_id}")
+        return job is not None
+
     async def abort_review(self, review_id: uuid.UUID) -> bool:
         """Ask arq to abort the job (a running job gets CancelledError). Results are not kept
         (keep_result=0), so confirmation cannot be awaited; the request itself is what counts."""
