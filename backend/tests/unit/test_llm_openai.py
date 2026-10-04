@@ -106,10 +106,10 @@ def test_build_llms_uses_budget_preset_on_openrouter():
     settings = Settings(_env_file=None, llm_config_path=REPO_CONFIG, openrouter_api_key="sk-or-x")
     llms = build_llms(settings)
     assert isinstance(llms.guard.inner, OpenAICompatibleStructuredLLM)  # every role runs under the shared limit
-    assert llms.guard.model == "google/gemini-2.5-flash"
-    assert llms.synthesizer.model == "google/gemini-2.5-flash" and llms.synthesizer.reasoning_effort == "medium"
+    assert llms.guard.model == "qwen/qwen3.5-flash-02-23"
+    assert llms.synthesizer.model == "qwen/qwen3.5-flash-02-23" and llms.synthesizer.reasoning_effort == "medium"
     assert llms.preset == "budget"
-    assert llms.models["synthesizer"] == "openrouter:google/gemini-2.5-flash"
+    assert llms.models["synthesizer"] == "openrouter:qwen/qwen3.5-flash-02-23"
 
 
 def test_build_llms_catalog_chooses_structured_method():
@@ -143,9 +143,9 @@ def test_build_llms_wires_harness_roles_and_escalation_factory():
 
     settings = Settings(_env_file=None, llm_config_path=REPO_CONFIG, openrouter_api_key="sk-or-x")
     llms = build_llms(settings)
-    assert llms.normalizer.model == llms.localizer.model == llms.extractor_secondary.model == "google/gemini-2.5-flash"
+    assert llms.normalizer.model == llms.localizer.model == llms.extractor_secondary.model == "qwen/qwen3.5-flash-02-23"
     assert llms.synthesizer.schema is SynthesisNarrative and llms.conflict_explainer.schema is ConflictNote
     esc = llms.escalation(PaperCard)
-    assert esc.model == "google/gemini-2.5-flash" and esc.schema is PaperCard
+    assert esc.model == "qwen/qwen3.5-flash-02-23" and esc.schema is PaperCard
     assert llms.escalation(PaperCard) is esc  # cached per schema
     assert llms.harness.dual_extraction is True and llms.harness.max_repairs == 2

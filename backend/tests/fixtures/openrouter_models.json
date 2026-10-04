@@ -430,6 +430,31 @@
     "tools",
     "top_p"
    ]
+  },
+  {
+   "id": "qwen/qwen3.5-flash-02-23",
+   "name": "Qwen: Qwen3.5-Flash",
+   "context_length": 1000000,
+   "pricing": {
+    "prompt": "0.000000065",
+    "completion": "0.00000026"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "max_tokens",
+    "presence_penalty",
+    "reasoning",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ]
   }
  ]
 }

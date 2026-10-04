@@ -45,21 +45,21 @@ providers:
     require_parameters: false
 
 presets:
-  # Every role on Gemini 2.5 Flash (user decision 2026-10-05). One model for all roles: the secondary extractor and
+  # Every role on Qwen3.5 Flash (user decision 2026-10-05, replacing Gemini 2.5 Flash). One model for all roles: the secondary extractor and
   # escalation are the same model, so the dual-model cross-check no longer compares two vendors.
   budget:
-    guard:       {model: google/gemini-2.5-flash, max_tokens: 1024,  temperature: 0, timeout_seconds: 60}
-    planner:     {model: google/gemini-2.5-flash, max_tokens: 4096,  reasoning_effort: low, timeout_seconds: 90}
-    screener:    {model: google/gemini-2.5-flash, max_tokens: 4096,  temperature: 0, timeout_seconds: 90}
-    extractor:   {model: google/gemini-2.5-flash, max_tokens: 8192,  temperature: 0, timeout_seconds: 90}
-    synthesizer: {model: google/gemini-2.5-flash, max_tokens: 16000, reasoning_effort: medium, timeout_seconds: 180}
-    refiner:             {model: google/gemini-2.5-flash, max_tokens: 4096, reasoning_effort: low, timeout_seconds: 90}
-    screener_secondary:  {model: google/gemini-2.5-flash, max_tokens: 4096, temperature: 0, timeout_seconds: 90}
-    extractor_secondary: {model: google/gemini-2.5-flash, max_tokens: 8192, temperature: 0, timeout_seconds: 90}
-    normalizer:          {model: google/gemini-2.5-flash, max_tokens: 4096, temperature: 0, timeout_seconds: 90}
-    conflict_explainer:  {model: google/gemini-2.5-flash, max_tokens: 2048, reasoning_effort: low, timeout_seconds: 90}
-    localizer:           {model: google/gemini-2.5-flash, max_tokens: 8192, temperature: 0, timeout_seconds: 90}
-    escalation:          {model: google/gemini-2.5-flash, max_tokens: 8192, reasoning_effort: medium,
+    guard:       {model: qwen/qwen3.5-flash-02-23, max_tokens: 1024,  temperature: 0, timeout_seconds: 60}
+    planner:     {model: qwen/qwen3.5-flash-02-23, max_tokens: 4096,  reasoning_effort: low, timeout_seconds: 90}
+    screener:    {model: qwen/qwen3.5-flash-02-23, max_tokens: 4096,  temperature: 0, timeout_seconds: 90}
+    extractor:   {model: qwen/qwen3.5-flash-02-23, max_tokens: 8192,  temperature: 0, timeout_seconds: 90}
+    synthesizer: {model: qwen/qwen3.5-flash-02-23, max_tokens: 16000, reasoning_effort: medium, timeout_seconds: 180}
+    refiner:             {model: qwen/qwen3.5-flash-02-23, max_tokens: 4096, reasoning_effort: low, timeout_seconds: 90}
+    screener_secondary:  {model: qwen/qwen3.5-flash-02-23, max_tokens: 4096, temperature: 0, timeout_seconds: 90}
+    extractor_secondary: {model: qwen/qwen3.5-flash-02-23, max_tokens: 8192, temperature: 0, timeout_seconds: 90}
+    normalizer:          {model: qwen/qwen3.5-flash-02-23, max_tokens: 4096, temperature: 0, timeout_seconds: 90}
+    conflict_explainer:  {model: qwen/qwen3.5-flash-02-23, max_tokens: 2048, reasoning_effort: low, timeout_seconds: 90}
+    localizer:           {model: qwen/qwen3.5-flash-02-23, max_tokens: 8192, temperature: 0, timeout_seconds: 90}
+    escalation:          {model: qwen/qwen3.5-flash-02-23, max_tokens: 8192, reasoning_effort: medium,
                           timeout_seconds: 120}
 
   # Higher quality reading and synthesis with Claude, cheap screening with Gemini.

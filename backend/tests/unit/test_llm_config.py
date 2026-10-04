@@ -110,8 +110,8 @@ def test_missing_file_is_a_clear_error(tmp_path):
 def test_repo_config_has_budget_default_and_all_presets_valid():
     cfg = load_llm_config(REPO_CONFIG)
     assert cfg.preset == "budget"
-    # user decision 2026-10-05: every budget role runs on Gemini 2.5 Flash
-    assert {r.spec.model for r in cfg.roles.values()} == {"google/gemini-2.5-flash"}
+    # user decision 2026-10-05: every budget role runs on Qwen3.5 Flash
+    assert {r.spec.model for r in cfg.roles.values()} == {"qwen/qwen3.5-flash-02-23"}
     assert cfg.roles["synthesizer"].spec.reasoning_effort == "medium"
     for name in ("budget", "balanced", "claude", "gemini", "claude_direct"):
         resolved = load_llm_config(REPO_CONFIG, preset=name)
