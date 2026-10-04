@@ -72,6 +72,7 @@ def test_new_settings_defaults():
     assert s.searxng_engines == "pubmed,arxiv,semantic scholar,openalex,crossref"
     assert s.graph_mode == "real"
     assert s.searxng_pages == 1 and s.searxng_timeout_seconds == 8.0
+    assert s.llm_concurrency == 16  # live run at 8: zero 429s, papers queued behind the limit
     assert not any(n.startswith(("crawl", "fulltext", "unpaywall", "max_fulltext", "contact_email"))
                    for n in type(s).model_fields)  # abstract-only: no full-text settings remain
 
