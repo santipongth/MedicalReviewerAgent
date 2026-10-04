@@ -6,15 +6,21 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 
 class ReviewOptions(BaseModel):
-    # 20 candidates → the 8 most relevant are read and analysed (keeps a review to ~1 minute).
-    max_papers: int = Field(8, ge=3, le=10)
-    candidate_limit: int = Field(20, ge=10, le=40)
+    # Abstract-only: up to 60 candidates with abstracts are screened and the 30 most relevant are analysed.
+    max_papers: int = Field(30, ge=5, le=30)
+    candidate_limit: int = Field(60, ge=20, le=100)
     year_from: int | None = Field(None, ge=1950, le=2100)
     study_types: list[str] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def enough_candidates(self) -> ReviewOptions:
+        if self.candidate_limit < self.max_papers:
+            raise ValueError("candidate_limit must be at least max_papers")
+        return self
 
 
 class CreateReviewRequest(BaseModel):

@@ -118,7 +118,7 @@ class FakeSearxng:
 
 async def test_search_interleaves_queries_and_enrich_does_not_rank_by_citations():
     def c(q, i, cited=None):
-        return Candidate(title=f"{q} paper number {i} unique words", doi=f"10.1/{q}{i}", abstract="a",
+        return Candidate(title=f"{q} paper number {i} unique words", doi=f"10.1/{q}{i}", abstract=SOURCE,
                          cited_by=cited)
     sx = FakeSearxng({"q1": [c("q1", 0), c("q1", 1)], "q2": [c("q2", 0), c("q2", 1, cited=5000)]})
     out = await make_search(deps(searxng=sx))({"plan": {"queries": ["q1", "q2"]}})
@@ -129,7 +129,7 @@ async def test_search_interleaves_queries_and_enrich_does_not_rank_by_citations(
             return []
 
     enriched = await make_enrich(deps(europepmc=NoEpmc()))({"candidates": out["candidates"],
-                                                           "options": {"candidate_limit": 10}})
+                                                           "options": {"candidate_limit": 20, "max_papers": 10}})
     assert [x["doi"] for x in enriched["candidates"]] == ["10.1/q10", "10.1/q20", "10.1/q11", "10.1/q21"]
 
 

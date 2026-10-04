@@ -137,11 +137,12 @@ def all_calls(deps):
 
 
 async def run(deps, options=None, language="th", thread="t1"):
+    options = {"max_papers": 8, "candidate_limit": 20} if options is None else options
     graph = build_graph(deps, checkpointer=InMemorySaver())
     config = {"configurable": {"thread_id": thread}}
     events = []
     async for mode, chunk in graph.astream(
-        initial_state(thread, "เมตฟอร์มินกับมะเร็งลำไส้ใหญ่", language, options or {}),
+        initial_state(thread, "เมตฟอร์มินกับมะเร็งลำไส้ใหญ่", language, options),
         config, stream_mode=["custom", "updates"], durability="sync",
     ):
         if mode == "custom":
@@ -158,7 +159,7 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
     assert r["papers"][0]["card"]["population"].startswith("TH ")
     assert r["papers"][0]["card_en"]["population"] == "adults with type 2 diabetes"
     assert r["papers"][0]["verification"]["numbers_verified"] == 2
-    assert r["stats"] == {"found": 20, "unique": 10, "candidates": 10, "screened": 10, "selected": 8,
+    assert r["stats"] == {"found": 20, "unique": 10, "with_abstract": 10, "candidates": 10, "screened": 10, "selected": 8,
                           "extracted": 8}
     assert r["summary"].startswith("TH Metformin") and r["synthesis_en"]["executive_summary"].startswith("Metformin")
     assert r["synthesis"]["comparison"][0]["outcome"] == "TH Colorectal cancer incidence"
@@ -239,15 +240,15 @@ async def test_interrupted_reading_resumes_only_unfinished_paper():
         async for _ in graph.astream(inp, config, stream_mode=["custom", "updates"], durability="sync"):
             pass
 
-    task = asyncio.create_task(consume(initial_state("r1", "topic", "en", {"max_papers": 3})))
+    task = asyncio.create_task(consume(initial_state("r1", "topic", "en", {"max_papers": 5, "candidate_limit": 20})))
     await asyncio.wait_for(entered.wait(), timeout=5)
     await asyncio.sleep(0.2)  # let the other two extractions finish and checkpoint their writes
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert calls["n"] == 3
+    assert calls["n"] == 5
     await consume(None)  # resume
     values = (await graph.aget_state(config)).values
-    assert calls["n"] == 4  # only paper 2 re-extracted
-    assert len(values["result"]["papers"]) == 3
+    assert calls["n"] == 6  # only paper 2 re-extracted
+    assert len(values["result"]["papers"]) == 5
     assert values["cost_usd"] == pytest.approx(0.01 * (all_calls(deps) - 1))  # the hung call never returned

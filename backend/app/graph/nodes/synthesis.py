@@ -445,6 +445,7 @@ def make_finalize(deps):
             "papers": out_papers, "queries": (state.get("plan") or {}).get("queries", []),
             "stats": {
                 "found": stats.get("found", 0), "unique": stats.get("unique", 0),
+                "with_abstract": stats.get("with_abstract", 0),
                 "candidates": len(state.get("candidates") or []),
                 "screened": len({d["key"] for d in state.get("screened") or []}),
                 "selected": len(state.get("selected") or []),

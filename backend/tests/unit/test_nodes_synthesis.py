@@ -268,7 +268,7 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
         synthesis={"executive_summary": "EN"}, synthesis_display={"executive_summary": "TH"},
         localized_cards={"P1": {**card(), "population": "ผู้ใหญ่"}},
         plan={"queries": ["q1"]}, candidates=[{}] * 20, screened=[{"key": str(i)} for i in range(20)],
-        selected=[{}, {}], search_stats={"found": 40, "unique": 25}, errors=["e"],
+        selected=[{}, {}], search_stats={"found": 40, "unique": 25, "with_abstract": 22}, errors=["e"],
         started_at=time.time() - 30, quality=QUALITY)
     d = deps()
     d.llms.preset, d.llms.models = "budget", {"extractor": "openrouter:deepseek/deepseek-v4-pro"}
@@ -279,7 +279,7 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
     assert r["papers"][0]["card"]["population"] == "ผู้ใหญ่"
     assert r["papers"][0]["card_en"]["population"] == "adults with T2D"
     assert r["papers"][0]["verification"]["numbers_total"] == 4
-    assert r["stats"] == {"found": 40, "unique": 25, "candidates": 20, "screened": 20, "selected": 2,
+    assert r["stats"] == {"found": 40, "unique": 25, "with_abstract": 22, "candidates": 20, "screened": 20, "selected": 2,
                           "extracted": 2}
     assert r["question"]["refined_question"] == "คำถาม?" and r["question"]["english"]["refined_question"] == "RQ?"
     assert r["question"]["pico"]["population"] == "adults" and r["question"]["original_topic"] == "เมตฟอร์มิน"

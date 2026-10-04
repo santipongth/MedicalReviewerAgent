@@ -25,8 +25,8 @@ async def test_create_review_enqueues_and_emits_queued(client, queue, session_fa
     got = await client.get(f"/api/v1/reviews/{review_id}")
     assert got.status_code == 200
     assert got.json()["topic"] == "metformin colorectal cancer"
-    assert got.json()["options"]["max_papers"] == 8
-    assert got.json()["options"]["candidate_limit"] == 20
+    assert got.json()["options"]["max_papers"] == 30  # abstract-only: 60 candidates -> up to 30 analysed
+    assert got.json()["options"]["candidate_limit"] == 60
 
     async with session_factory() as s:
         events = await EventRepository(s).list_since(review_id, 0)
@@ -71,7 +71,8 @@ async def test_validation_rejects_blank_long_and_bad_language(client):
             "/api/v1/reviews", json={"topic": "ok topic", "options": {"max_papers": 99}}
         )
     ).status_code == 422
-    for bad in ({"max_papers": 11}, {"max_papers": 2}, {"candidate_limit": 41}, {"candidate_limit": 9}):
+    for bad in ({"max_papers": 31}, {"max_papers": 4}, {"candidate_limit": 101}, {"candidate_limit": 19},
+                {"max_papers": 30, "candidate_limit": 25}):  # fewer candidates than papers to analyse
         resp = await client.post("/api/v1/reviews", json={"topic": "ok topic", "options": bad})
         assert resp.status_code == 422, bad
 

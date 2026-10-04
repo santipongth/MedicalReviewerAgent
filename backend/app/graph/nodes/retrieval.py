@@ -9,6 +9,9 @@ from app.graph.state import ReviewState
 from app.schemas.review import ReviewOptions
 from app.services.dedupe import merge_candidates
 
+# Papers are analysed from their abstracts, so a candidate needs one long enough to hold a result.
+MIN_ABSTRACT_CHARS = 150
+
 
 def make_search(deps):
     async def search(state: ReviewState) -> dict:
@@ -59,11 +62,12 @@ def make_enrich(deps):
         unique = len(enriched)
         if options.year_from:
             enriched = [c for c in enriched if c.year is None or c.year >= options.year_from]
-        enriched.sort(key=lambda c: c.abstract is None)  # stable: search rank order is kept otherwise
-        kept = enriched[: options.candidate_limit]
+        enriched = [c for c in enriched if c.abstract and len(c.abstract.strip()) >= MIN_ABSTRACT_CHARS]
+        kept = enriched[: options.candidate_limit]  # search rank order is kept
         progress_writer()({"type": "enriching", "candidates": len(kept)})
         return {"candidates": [c.model_dump() for c in kept], "errors": errors,
-                "search_stats": {**(state.get("search_stats") or {}), "unique": unique},
+                "search_stats": {**(state.get("search_stats") or {}), "unique": unique,
+                                 "with_abstract": len(enriched)},
                 "quality": [{"stage": "enrich", "seconds": round(time.perf_counter() - started, 3)}]}
 
     return enrich
