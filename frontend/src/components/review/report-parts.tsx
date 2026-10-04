@@ -102,7 +102,7 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
 }) {
   return (
     <div className="overflow-x-auto rounded-sm border border-rule">
-      <table aria-label={L(lang, "ผลแต่ละการศึกษา", "Findings by study")} className="w-full min-w-[620px] border-collapse text-[0.88rem]">
+      <table aria-label={L(lang, "ผลแต่ละการศึกษา", "Findings by study")} className="w-full border-collapse text-[0.88rem] sm:min-w-[620px]">
         <thead>
           <tr className="bg-ground">
             <th scope="col" className="left-0 z-10 min-w-[9rem] bg-ground px-2.5 py-2 text-left label sm:sticky sm:min-w-[190px]">{L(lang, "ผลลัพธ์", "Outcome")}</th>
