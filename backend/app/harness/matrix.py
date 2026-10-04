@@ -8,6 +8,10 @@ from app.graph.schemas import OutcomeCluster, OutcomeClusters, OutcomeMember
 from app.services.text import normalize_title
 
 DIRECTIONS = ("positive", "negative", "null")
+# A row is consensus when at least this share of its studies (and at least 3 of them) report the same direction;
+# the rest are listed as dissent. Below it, two or more directions make a conflict.
+CONSENSUS_SHARE = 0.7
+CONSENSUS_MIN_STUDIES = 3
 
 
 def _ref_num(ref: str) -> int:
@@ -109,10 +113,16 @@ def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters) -> dic
             if cell["direction"] in DIRECTIONS and cell["ref"] not in by_direction[cell["direction"]]:
                 by_direction[cell["direction"]].append(cell["ref"])
         present = [d for d in DIRECTIONS if by_direction.get(d)]
-        if len(present) >= 2:
+        studies = len({r for d in present for r in by_direction[d]})
+        top = max(present, key=lambda d: len(by_direction[d]), default=None)
+        if len(present) == 1 and len(by_direction[top]) >= 2:
+            consensus.append({"outcome": row["outcome"], "direction": top, "refs": by_direction[top], "dissent": {}})
+        elif (len(present) >= 2 and studies >= CONSENSUS_MIN_STUDIES
+              and len(by_direction[top]) / studies >= CONSENSUS_SHARE):
+            consensus.append({"outcome": row["outcome"], "direction": top, "refs": by_direction[top],
+                              "dissent": {d: by_direction[d] for d in present if d != top}})
+        elif len(present) >= 2:
             refs = sorted({r for d in present for r in by_direction[d]}, key=_ref_num)
             conflicts.append({"outcome": row["outcome"], "refs": refs,
                               "directions": {d: by_direction[d] for d in present}})
-        elif len(present) == 1 and len(by_direction[present[0]]) >= 2:
-            consensus.append({"outcome": row["outcome"], "direction": present[0], "refs": by_direction[present[0]]})
     return {"rows": rows, "consensus": consensus, "conflicts": conflicts}

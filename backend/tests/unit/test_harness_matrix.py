@@ -54,7 +54,7 @@ def test_consensus_needs_two_papers_same_direction():
     agreeing = [paper("P1", [("CRC", "positive", 0.8)]), paper("P2", [("CRC", "positive", 0.7)])]
     clusters = fallback_clusters(agreeing)
     m = build_matrix(agreeing, clusters)
-    assert m["consensus"] == [{"outcome": "CRC", "direction": "positive", "refs": ["P1", "P2"]}]
+    assert m["consensus"] == [{"outcome": "CRC", "direction": "positive", "refs": ["P1", "P2"], "dissent": {}}]
     assert m["conflicts"] == []
 
 
@@ -77,3 +77,27 @@ def test_grade_baseline():
             for i in range(1, 4)]
     assert grade_baseline(rcts, build_matrix(rcts, fallback_clusters(rcts)))["level"] == "high"
     assert grade_baseline([], build_matrix([], fallback_clusters([])))["level"] == "very_low"
+
+
+def _row(directions):
+    papers = [paper(f"P{i + 1}", [("CRC", d, 0.8)]) for i, d in enumerate(directions)]
+    return papers, build_matrix(papers, fallback_clusters(papers))
+
+
+def test_a_small_dissenting_minority_does_not_break_consensus():
+    papers, m = _row(["positive"] * 9 + ["null"])
+    assert m["conflicts"] == []
+    assert m["consensus"] == [{"outcome": "CRC", "direction": "positive", "refs": [f"P{i}" for i in range(1, 10)],
+                               "dissent": {"null": ["P10"]}}]
+    g = grade_baseline(papers, m)
+    assert not any(f.startswith("inconsistency") for f in g["factors"])  # not downgraded...
+    assert any(f.startswith("minor inconsistency") for f in g["factors"])  # ...but reported
+
+
+def test_real_splits_are_still_conflicts():
+    assert _row(["positive"] * 3 + ["negative"] * 2)[1]["conflicts"][0]["outcome"] == "CRC"
+    assert _row(["positive", "negative"])[1]["conflicts"] and not _row(["positive", "negative"])[1]["consensus"]
+    two_agree = _row(["positive", "positive"])[1]
+    assert two_agree["consensus"][0]["refs"] == ["P1", "P2"] and two_agree["conflicts"] == []
+    _, three = _row(["positive", "positive", "null"])  # 67 % < 70 %
+    assert three["conflicts"] and not three["consensus"]

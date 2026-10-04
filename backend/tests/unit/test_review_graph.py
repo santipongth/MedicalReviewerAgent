@@ -66,7 +66,8 @@ def card(direction="positive"):
 
 
 def extract(system, user):
-    return card("negative" if "Paper 3 about" in user else "positive")
+    # 3 of 8 studies disagree: a real split (a single dissenter would now be consensus with dissent)
+    return card("negative" if any(f"Paper {i} about" in user for i in (3, 5, 7)) else "positive")
 
 
 QUESTION = ReviewQuestion(

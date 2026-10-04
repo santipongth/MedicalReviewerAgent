@@ -37,6 +37,9 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     if matrix.get("conflicts"):
         level -= 1
         factors.append(f"inconsistency: {len(matrix['conflicts'])} outcome(s) with conflicting directions")
+    dissenting = [c for c in matrix.get("consensus", []) if c.get("dissent")]
+    if dissenting:  # a small minority disagreeing is reported, not downgraded
+        factors.append(f"minor inconsistency: {len(dissenting)} outcome(s) with a dissenting minority")
     total_n = sum(c.get("sample_size") or 0 for c in cards)
     if total_n < 400:
         level -= 1

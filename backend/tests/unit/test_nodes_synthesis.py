@@ -366,3 +366,12 @@ def test_quality_reports_normalization_corrections():
     from app.harness.quality import summarize_quality
     assert summarize_quality([{"stage": "normalize", "corrections": 3, "fallback": False}], None)[
         "normalization_corrections"] == 3
+
+
+def test_consensus_statement_names_the_dissenting_studies():
+    from app.graph.nodes.synthesis import _clusters
+    matrix = {"consensus": [{"outcome": "CRC incidence", "direction": "positive", "refs": ["P1", "P2", "P3"],
+                             "dissent": {"null": ["P4"]}}], "conflicts": []}
+    consensus, conflicts = _clusters(matrix, [])
+    assert consensus[0].refs == ["P1", "P2", "P3"] and conflicts == []
+    assert "3 of 4 studies" in consensus[0].explanation and "[P4]" in consensus[0].explanation

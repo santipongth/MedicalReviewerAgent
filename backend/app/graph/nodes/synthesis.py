@@ -235,10 +235,20 @@ async def _localize_cards(deps, papers: list[dict[str, Any]], language: str) -> 
     return cards, entry, cost
 
 
+def _consensus_explanation(c: dict[str, Any]) -> str:
+    dissent = c.get("dissent") or {}
+    if not dissent:
+        return f"{len(c['refs'])} studies report the same direction for {c['outcome']}."
+    total = len(c["refs"]) + sum(len(refs) for refs in dissent.values())
+    others = "; ".join(f"{', '.join(f'[{r}]' for r in refs)} {DIRECTION_TEXT.get(d, d).replace('findings ', '')}"
+                       for d, refs in dissent.items())
+    return f"{len(c['refs'])} of {total} studies report the same direction for {c['outcome']}; {others}."
+
+
 def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list, list]:
     consensus = [EvidenceCluster(
         statement=f"{c['outcome']}: {DIRECTION_TEXT.get(c['direction'], c['direction'])}",
-        refs=c["refs"], explanation=f"{len(c['refs'])} studies report the same direction for {c['outcome']}.")
+        refs=c["refs"], explanation=_consensus_explanation(c))
         for c in matrix.get("consensus", [])]
     by_outcome = {n["outcome"]: n for n in notes}
     conflicts = []
