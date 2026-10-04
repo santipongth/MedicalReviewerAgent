@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { reviewFixture } from "../src/test/fixtures";
-import { json, LIVE_EVENTS, mockApi, RID, sse } from "./mock-api";
+import { json, LIVE_EVENTS, mockApi, RID, sse, OPEN_STATUS } from "./mock-api";
 
 const shots = (name: string) => `test-results/screens/${name}.png`;
 
@@ -110,6 +110,16 @@ test("phone width: no horizontal scroll, source rail opens as a drawer", async (
   await page.screenshot({ path: shots("report-phone-drawer") });
   await rail.getByRole("button", { name: "ปิด" }).click();
   await expect(rail).toBeHidden();
+});
+
+test("landing: a full service says so and keeps the submit button off", async ({ page }) => {
+  await mockApi(page, {
+    "GET /api/v1/status": (route) => json(route, 200, { ...OPEN_STATUS, accepting: false, reason: "queue_full", retry_after: 60 }),
+  });
+  await page.goto("/");
+  await expect(page.getByRole("status")).toContainText("คิวเต็มชั่วคราว");
+  await expect(page.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ })).toBeDisabled();
+  await noSeriousA11y(page);
 });
 
 test("submit errors: rate limit shows the wait time", async ({ page }) => {

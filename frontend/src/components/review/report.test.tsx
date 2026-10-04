@@ -79,6 +79,15 @@ describe("Report", () => {
     expect(within(list).queryByText("nested case-control")).toBeNull();
   });
 
+  it("offers the review as Markdown, CSV and JSON downloads", () => {
+    render(<Report review={reviewFixture} />);
+    const id = reviewFixture.id;
+    for (const [name, fmt] of [["Markdown", "md"], ["CSV", "csv"], ["JSON", "json"]]) {
+      const href = screen.getByRole("link", { name: new RegExp(name) }).getAttribute("href") ?? "";
+      expect(href.endsWith(`/api/v1/reviews/${id}/export?format=${fmt}`)).toBe(true);
+    }
+  });
+
   it("switches to the English original", async () => {
     render(<Report review={reviewFixture} />);
     await userEvent.click(screen.getByRole("button", { name: "English" }));

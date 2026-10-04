@@ -1,8 +1,27 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, type FormEvent } from "react";
-import { ApiError, createReview } from "@/lib/api";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { ApiError, createReview, getStatus } from "@/lib/api";
+import type { ServiceStatus } from "@/lib/types";
+
+type Turnstile = { render: (el: HTMLElement, opts: Record<string, unknown>) => string; reset: (id?: string) => void };
+declare global {
+  interface Window {
+    turnstile?: Turnstile;
+  }
+}
+const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+/** Why new reviews are not accepted right now (from GET /api/v1/status or a 503 at submit time). */
+export function capacityText(reason: string | null | undefined, retryAfter?: number | null): string {
+  if (reason === "queue_full") return `คิวเต็มชั่วคราวเพราะมีผู้ใช้จำนวนมาก ลองใหม่อีกครั้งในอีก ${waitText(retryAfter ?? 60)}`;
+  if (reason === "daily_reviews" || reason === "daily_budget") {
+    return "วันนี้รับรีวิวใหม่ครบแล้ว เปิดรับอีกครั้งเวลา 07:00 น. (เวลาไทย) ระหว่างนี้ยังเปิดดูรีวิวที่เคยทำได้ตามปกติ";
+  }
+  if (reason === "verification_unavailable") return "ระบบยืนยันว่าเป็นผู้ใช้จริงขัดข้องชั่วคราว ลองใหม่อีกครั้งในไม่กี่วินาที";
+  return "ระบบไม่ว่างชั่วคราว ลองส่งใหม่อีกครั้งในไม่กี่วินาที";
+}
 
 const STUDY_TYPES = ["RCT", "Cohort", "Case-control", "Meta-analysis", "Systematic review"];
 const EXAMPLES = ["เมตฟอร์มินกับมะเร็งลำไส้ใหญ่", "statins and dementia", "SGLT2 inhibitors and heart failure"];
@@ -17,7 +36,8 @@ function errorMessage(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 429) return `ส่งคำถามได้อีกครั้งในอีก ${waitText(e.retryAfter)} (จำกัดจำนวนรีวิวต่อชั่วโมงเพื่อให้บริการฟรีได้)`;
     if (e.status === 422) return `ตรวจหัวข้ออีกครั้ง: ${e.message}`;
-    if (e.status === 503) return "ระบบคิวไม่ว่างชั่วคราว ลองส่งใหม่อีกครั้งในไม่กี่วินาที";
+    if (e.status === 503) return capacityText(e.reason, e.retryAfter);
+    if (e.status === 403) return "ยืนยันว่าเป็นผู้ใช้จริงไม่สำเร็จ โหลดหน้านี้ใหม่แล้วลองอีกครั้ง";
     if (e.status === 0) return "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่";
     return `ส่งไม่สำเร็จ (${e.status}): ${e.message}`;
   }
@@ -35,6 +55,37 @@ export function RequestSlip() {
   const [types, setTypes] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<ServiceStatus | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const widget = useRef<HTMLDivElement>(null);
+  const widgetId = useRef<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getStatus().then((s) => alive && setStatus(s)).catch(() => undefined); // unknown status: let the API decide
+    return () => { alive = false; };
+  }, []);
+
+  const siteKey = status?.turnstile_site_key;
+  useEffect(() => {
+    if (!siteKey || !widget.current) return;
+    const el = widget.current;
+    const mount = () => {
+      if (window.turnstile && widgetId.current === null) {
+        widgetId.current = window.turnstile.render(el, {
+          sitekey: siteKey, callback: (t: string) => setToken(t), "expired-callback": () => setToken(null),
+        });
+      }
+    };
+    if (window.turnstile) return mount();
+    const script = document.createElement("script");
+    script.src = TURNSTILE_SRC;
+    script.async = true;
+    script.onload = mount;
+    document.head.appendChild(script);
+  }, [siteKey]);
+
+  const closed = status !== null && !status.accepting;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -44,11 +95,16 @@ export function RequestSlip() {
       const options: Record<string, unknown> = { max_papers: maxPapers };
       if (yearFrom) options.year_from = Number(yearFrom);
       if (types.length) options.study_types = types;
-      const created = await createReview({ topic: topic.trim(), language, options });
+      const body = { topic: topic.trim(), language, options };
+      const created = token ? await createReview(body, { turnstileToken: token }) : await createReview(body);
       router.push(`/r/${created.review_id}`);
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);
+      if (siteKey && window.turnstile && widgetId.current) { // a token is single-use
+        window.turnstile.reset(widgetId.current);
+        setToken(null);
+      }
     }
   }
 
@@ -103,12 +159,18 @@ export function RequestSlip() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-rule px-4 py-3">
-          <button type="submit" disabled={busy}
+          <button type="submit" disabled={busy || closed || (!!siteKey && !token)}
             className="rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45">
             {busy ? "กำลังส่ง…" : "ส่งให้เอเจนต์ทบทวน"}
           </button>
-          <span className="text-[0.85rem] text-muted">ใช้เวลาประมาณหนึ่งนาที จะเห็นว่าเอเจนต์ตีความคำถามอย่างไรก่อนเริ่มค้น</span>
+          <span className="text-[0.85rem] text-muted">ใช้เวลาประมาณ 1–3 นาที จะเห็นว่าเอเจนต์ตีความคำถามอย่างไรก่อนเริ่มค้น</span>
         </div>
+        {siteKey && <div ref={widget} data-testid="turnstile" className="border-t border-rule px-4 py-3" />}
+        {closed && (
+          <p role="status" className="border-t border-rule bg-warn-bg px-4 py-3 text-[0.92rem] text-ink">
+            {capacityText(status?.reason, status?.retry_after)}
+          </p>
+        )}
         {error && (
           <p role="alert" className="border-t border-rule bg-err-bg px-4 py-3 text-[0.92rem] text-ink">{error}</p>
         )}

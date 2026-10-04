@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { exportUrl } from "@/lib/api";
 import { emptyFilters, filterPapers, type Filters } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
@@ -139,6 +140,15 @@ export function Report({ review }: { review: Review }) {
           )}
 
           <QualityNote quality={result.quality} stats={result.stats} lang={lang} preset={result.llm_preset} />
+          <nav aria-label={L(lang, "ดาวน์โหลดรีวิว", "Download this review")} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[0.9rem]">
+            <span className="label">{L(lang, "ดาวน์โหลด", "Download")}</span>
+            {([["md", "Markdown"], ["csv", "CSV"], ["json", "JSON"]] as const).map(([fmt, name]) => (
+              <a key={fmt} href={exportUrl(review.id, fmt)} download
+                className="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">
+                {name}
+              </a>
+            ))}
+          </nav>
           <p className="text-[0.8rem] text-muted">{L(lang, "การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์", "Automated rapid literature review; not medical advice.")}</p>
         </div>
 
