@@ -95,7 +95,9 @@ class ReviewRunner:
         except Exception as exc:
             log.exception("review_failed", review_id=str(review_id))
             message = f"{type(exc).__name__}: {exc}"
-            if not await self._finish(review_id, "error", error=message):
+            spent = round(budget.spent, 6) if budget is not None else 0.0  # what the failed run already cost
+            await self._note_cost(spent)
+            if not await self._finish(review_id, "error", error=message, cost_usd=spent):
                 return ReviewStatus.cancelled.value
             await emit("error", {"message": message})
             await self._notify(review_id, has_callback)

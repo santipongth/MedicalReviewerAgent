@@ -80,3 +80,11 @@ async def test_concurrent_submissions_cannot_overfill_the_queue(client, app):
                                                                           "language": "en"}) for i in range(10)))
     codes = sorted(a.status_code for a in answers)
     assert codes == [202] * 3 + [503] * 7  # check-then-insert is atomic across concurrent requests
+
+
+async def test_daily_budget_reserves_the_cap_of_every_admitted_review(redis):
+    cap = Capacity(redis, settings(max_usd_per_day=10.0, max_cost_per_review_usd=0.25, max_reviews_per_day=1000))
+    await cap.note_cost(9.0)
+    assert await cap.check(queued=0, running=0) is None            # 9 + 0.25 for the new review fits
+    refused = await cap.check(queued=2, running=2)                 # 9 + 5 x 0.25 = 10.25 > 10
+    assert refused is not None and refused.reason == "daily_budget"

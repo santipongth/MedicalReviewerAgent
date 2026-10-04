@@ -118,8 +118,9 @@ class ReviewService:
                                 cache_key: str) -> uuid.UUID | ReviewCreated:
         if self.capacity is not None:  # after the cache: cache hits are free even when the service is full
             async with self.session_factory() as session:
-                queued = await ReviewRepository(session).count_by_status("queued")
-            if (refusal := await self.capacity.check(queued=queued)) is not None:
+                repo = ReviewRepository(session)
+                queued, running = await repo.count_by_status("queued"), await repo.count_by_status("running")
+            if (refusal := await self.capacity.check(queued=queued, running=running)) is not None:
                 raise Unavailable(refusal.detail, refusal.retry_after, refusal.reason)
         rate = self.settings.api_key_rate_limit if identity.api_key else self.settings.review_rate_limit
         decision = await self.limits.hit("review", identity.rate_key, rate)
@@ -196,7 +197,7 @@ class ReviewService:
         async with self.session_factory() as session:
             repo = ReviewRepository(session)
             queued, running = await repo.count_by_status("queued"), await repo.count_by_status("running")
-        refusal = await self.capacity.check(queued=queued) if self.capacity is not None else None
+        refusal = await self.capacity.check(queued=queued, running=running) if self.capacity is not None else None
         fields = ReviewOptions.model_fields
 
         def bounds(name: str) -> dict:

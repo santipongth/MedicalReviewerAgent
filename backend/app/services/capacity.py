@@ -79,7 +79,7 @@ class Capacity:
     async def usd_today(self) -> float:
         return float(await self.redis.get(self._key("usd")) or 0)
 
-    async def check(self, *, queued: int) -> Refusal | None:
+    async def check(self, *, queued: int, running: int = 0) -> Refusal | None:
         s = self.settings
         if queued >= s.max_queued_reviews:
             return Refusal("queue_full", QUEUE_FULL_RETRY_SECONDS,
@@ -87,7 +87,10 @@ class Capacity:
         if await self.reviews_today() >= s.max_reviews_per_day:
             return Refusal("daily_reviews", seconds_until_utc_midnight(),
                            "today's review capacity is used up; new reviews open at 00:00 UTC")
-        if await self.usd_today() >= s.max_usd_per_day:
+        # Spend is booked when a review ends, so reserve the per-review cap for every review already admitted
+        # (queued or running) plus this one: the daily budget is then a real bound, not a lagging counter.
+        reserved = (queued + running + 1) * s.max_cost_per_review_usd
+        if await self.usd_today() + reserved > s.max_usd_per_day:
             return Refusal("daily_budget", seconds_until_utc_midnight(),
                            "today's review budget is used up; new reviews open at 00:00 UTC")
         return None

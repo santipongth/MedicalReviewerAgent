@@ -147,3 +147,21 @@ async def test_each_review_runs_under_the_configured_cost_cap(session_factory, r
     sink = EventSink(session_factory, redis, 60)
     assert await ReviewRunner(session_factory, sink, _single_node_graph(fin), cost_cap_usd=0.25).run(review.id) == "done"
     assert seen["cap"] == 0.25
+
+
+async def test_an_errored_review_still_counts_what_it_spent(session_factory, redis):
+    from app.services.budget import current_budget
+    from app.services.capacity import Capacity
+
+    async def boom(state: ReviewState) -> dict:
+        current_budget().charge(0.07)  # LLM calls made before the failure
+        raise RuntimeError("provider outage")
+
+    capacity = Capacity(redis, Settings(_env_file=None))
+    review = await _queued_review(session_factory)
+    sink = EventSink(session_factory, redis, 60)
+    runner = ReviewRunner(session_factory, sink, _single_node_graph(boom), capacity=capacity, cost_cap_usd=0.25)
+    assert await runner.run(review.id) == "error"
+    assert round(await capacity.usd_today(), 4) == 0.07
+    async with session_factory() as s:
+        assert float((await ReviewRepository(s).get(review.id)).cost_usd) == 0.07
