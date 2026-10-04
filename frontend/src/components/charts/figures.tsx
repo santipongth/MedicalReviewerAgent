@@ -16,7 +16,7 @@ function Figure({ title, caption, lang, chart, table }: {
 }) {
   const [asTable, setAsTable] = useState(false);
   return (
-    <figure className="grid gap-2">
+    <figure className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <figcaption className="font-display text-base font-semibold">{title}</figcaption>
         <button type="button" onClick={() => setAsTable((t) => !t)} aria-pressed={asTable}
@@ -43,7 +43,7 @@ function forestOption(g: ForestGroup, t: ChartTokens, lang: Lang): EChartsOption
   return {
     animation: !t.reducedMotion,
     animationDuration: 500,
-    aria: { enabled: true, decal: { show: false } },
+    aria: { enabled: false },
     grid: { left: 8, right: 24, top: 12, bottom: 32, containLabel: true },
     tooltip: {
       trigger: "item",
@@ -160,7 +160,7 @@ export function PrismaFigure({ stages, tokens, lang }: { stages: Stage[]; tokens
     animation: !tokens.reducedMotion,
     animationDuration: 600,
     animationDelay: (i: number) => i * 120,
-    aria: { enabled: true, decal: { show: false } },
+    aria: { enabled: false },
     grid: { left: 8, right: 48, top: 8, bottom: 8, containLabel: true },
     xAxis: { type: "value", show: false, max: Math.max(...stages.map((s) => s.value), 1) },
     yAxis: { type: "category", inverse: true, data: stages.map((s) => s.label), axisLine: { show: false }, axisTick: { show: false },
@@ -191,7 +191,7 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
     const years = points.map((p) => p.year);
     return {
       animation: !tokens.reducedMotion,
-      aria: { enabled: true, decal: { show: false } },
+      aria: { enabled: false },
       grid: { left: 8, right: 24, top: 16, bottom: 28, containLabel: true },
       tooltip: {
         trigger: "item", backgroundColor: tokens.surface, borderColor: tokens.rule, textStyle: { color: tokens.ink, fontFamily: tokens.fontDisplay },
@@ -203,7 +203,7 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
       xAxis: { type: "value", min: Math.min(...years) - 1, max: Math.max(...years) + 1, minInterval: 1,
         axisLabel: { color: tokens.muted, fontFamily: tokens.fontNum, fontSize: 11, formatter: (v: number) => String(v) },
         axisLine: { lineStyle: { color: tokens.rule } }, splitLine: { show: false } },
-      yAxis: { type: "log", logBase: 10, name: L(lang, "จำนวนผู้เข้าร่วม", "Participants"), nameTextStyle: { color: tokens.muted, fontFamily: tokens.fontDisplay },
+      yAxis: { type: "log", logBase: 10,
         axisLabel: { color: tokens.muted, fontFamily: tokens.fontNum, fontSize: 11 }, splitLine: { lineStyle: { color: tokens.rule, opacity: 0.6 } } },
       series: [{
         type: "scatter", symbolSize: 14, cursor: "pointer",

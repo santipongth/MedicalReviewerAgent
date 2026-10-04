@@ -18,7 +18,7 @@ export function ReviewScreen({ id }: { id: string }) {
       <section className="grid max-w-[65ch] gap-4 pt-12">
         <h1 className="text-3xl font-bold">ไม่พบรีวิวนี้</h1>
         <p>ลิงก์อาจพิมพ์ผิด หรือรีวิวถูกลบไปแล้ว</p>
-        <Link href="/" className="text-primary">กลับไปหน้าแรก</Link>
+        <Link href="/" className="text-primary underline underline-offset-2">กลับไปหน้าแรก</Link>
       </section>
     );
   }

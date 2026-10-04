@@ -21,7 +21,7 @@ export function Charts({ result, papers, lang, onSelect }: {
   const map = useMemo(() => studyPoints(papers), [papers]);
   if (!tokens) return null;
   return (
-    <section aria-labelledby="h-charts" className="grid gap-8">
+    <section aria-labelledby="h-charts" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-8">
       <div>
         <h2 id="h-charts" className="text-lg font-semibold">{L(lang, "แผนภาพหลักฐาน", "Evidence charts")}</h2>
         <MatrixLegend lang={lang} />

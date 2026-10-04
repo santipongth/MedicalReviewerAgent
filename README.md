@@ -6,7 +6,7 @@ Public literature-review agent: type a disease / drug / topic → the agent inte
 1. `cp .env.example .env` and set `CONTACT_EMAIL`, `SEARXNG_SECRET` and a random `CRAWL4AI_API_TOKEN` (`openssl rand -hex 32`).
 2. `docker compose up -d --build` (first build of SearXNG takes a few minutes; the Crawl4AI image is ~6 GB).
 3. `bash scripts/smoke.sh` — creates a review and tails its progress until `done`.
-4. API docs: http://localhost:8000/api/docs · SearXNG: http://localhost:8080
+4. Web app: http://localhost:3000 · API docs: http://localhost:8000/api/docs · SearXNG: http://localhost:8080
 5. More workers: `docker compose up -d --scale worker=3`
 
 Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE, worker) runs with a placeholder graph.
@@ -53,8 +53,21 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 - Plan 2 (review graph) done: question refinement, search, screening with second votes, evidence-grounded extraction,
   checked synthesis pipeline, Thai/English output, Crawl4AI full text.
 - Plan 3 (integrations) done: MCP server, external MCP tools, API keys, webhooks, cancellation, paper search.
-- Next: web dashboard and interactive report (Plan 4), hardening (Plan 5).
+- Plan 4 (web) done: landing request slip, live run, interactive evidence report (matrix, verbatim source rail, forest plot,
+  PRISMA, study map, filters), /about; design system in `DESIGN.md` ("Theatre Green").
+- Next: hardening (Plan 5): quotas and budget, Turnstile, exports (incl. single-file interactive HTML), Caddy, docs.
   See `docs/superpowers/`.
+
+## Web app (`frontend/`)
+Next.js 16 + React 19 + Tailwind 4 + ECharts 6. The browser calls the API directly; the address is read at request time
+from `PUBLIC_API_URL` (compose default `http://localhost:8000`), so one image serves every deployment.
+```bash
+cd frontend && npm ci
+npm run dev            # http://localhost:3000 (API on :8000)
+npm test               # unit tests (Vitest)
+npm run e2e            # browser tests with a mocked API (Playwright; first: npx playwright install chromium)
+MRA_LIVE_WEB=1 npx playwright test e2e/live.spec.ts   # against the running docker stack
+```
 
 ## Development
 See `CLAUDE.md` for commands. Unit tests need no services; integration tests need

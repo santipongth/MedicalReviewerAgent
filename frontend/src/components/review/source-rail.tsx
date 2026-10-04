@@ -23,7 +23,7 @@ function OutcomeEvidence({ paper, o, en, lang, selected }: {
   const hasEffect = o.effect_value != null && !blanked;
   const ci = hasEffect ? ciLabel({ ...o, evidence_quote: quote }) : null;
   return (
-    <li className={`grid gap-2 border-t border-rule pt-3 ${selected ? "" : "opacity-90"}`} aria-current={selected || undefined}>
+    <li className={`grid gap-2 border-t border-rule pt-3 ${selected ? "-mx-2 rounded-sm bg-surface px-2 pb-2" : ""}`} aria-current={selected || undefined}>
       <div className="flex flex-wrap items-center gap-2">
         <Glyph direction={o.direction} lang={lang} />
         <b className="font-display text-[0.95rem]">{o.outcome}</b>
@@ -83,7 +83,7 @@ function Links({ paper, lang }: { paper: Paper; lang: Lang }) {
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 font-display text-[0.88rem] font-semibold">
       {links.map(([href, label]) => (
-        <li key={href}><a href={href} target="_blank" rel="noreferrer" className="break-all text-primary">{label} ↗</a></li>
+        <li key={href}><a href={href} target="_blank" rel="noreferrer" className="break-all text-primary underline underline-offset-2">{label} ↗</a></li>
       ))}
     </ul>
   );

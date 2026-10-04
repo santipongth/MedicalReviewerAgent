@@ -69,7 +69,7 @@ export function ReceiptPanel() {
             {data.receipt.design}
             {data.receipt.sampleSize ? <> · n = <VerifiedNumber value={data.receipt.sampleSize} /></> : null}
             {" · "}ประโยคนี้พบในบทความต้นฉบับตรงทุกตัวอักษร{" "}
-            {data.receiptId && <Link href={`/r/${data.receiptId}`} className="text-primary">ดูรายงาน</Link>}
+            {data.receiptId && <Link href={`/r/${data.receiptId}`} className="text-primary underline underline-offset-2">ดูรายงาน</Link>}
           </p>
         </>
       ) : (

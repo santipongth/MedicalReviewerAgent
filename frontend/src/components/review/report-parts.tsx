@@ -105,14 +105,14 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
       <table aria-label={L(lang, "ผลแต่ละการศึกษา", "Findings by study")} className="w-full min-w-[620px] border-collapse text-[0.88rem]">
         <thead>
           <tr className="bg-ground">
-            <th scope="col" className="sticky left-0 z-10 min-w-[190px] bg-ground px-2.5 py-2 text-left label">{L(lang, "ผลลัพธ์", "Outcome")}</th>
+            <th scope="col" className="left-0 z-10 min-w-[9rem] bg-ground px-2.5 py-2 text-left label sm:sticky sm:min-w-[190px]">{L(lang, "ผลลัพธ์", "Outcome")}</th>
             {refs.map((r) => <th key={r} scope="col" className="px-2 py-2 text-center label">{r}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.outcome} className="border-t border-rule">
-              <th scope="row" className="sticky left-0 z-10 bg-surface px-2.5 py-2 text-left font-body font-medium break-words">{row.outcome}</th>
+              <th scope="row" className="left-0 z-10 bg-surface px-2.5 py-2 text-left font-body font-medium break-words sm:sticky">{row.outcome}</th>
               {refs.map((ref) => {
                 const cell = row.cells.find((c) => c.ref === ref);
                 if (!cell) return <td key={ref} className="h-9 text-center text-muted">–</td>;

@@ -61,7 +61,7 @@ export default async function AboutPage() {
 
       <section aria-labelledby="h-rest" className="grid gap-4">
         <h2 id="h-rest" className="text-2xl font-bold">REST API</h2>
-        <p className="max-w-[65ch]">เอกสาร OpenAPI ฉบับเต็มอยู่ที่ <a className="text-primary" href={`${api}/api/docs`}>{api}/api/docs</a></p>
+        <p className="max-w-[65ch]">เอกสาร OpenAPI ฉบับเต็มอยู่ที่ <a className="text-primary underline underline-offset-2" href={`${api}/api/docs`}>{api}/api/docs</a></p>
         <CodeBlock label="REST" code={s.rest} />
         <CodeBlock label="ค้นงานวิจัยและอ่านฉบับเต็ม" code={s.papers} />
       </section>

@@ -52,7 +52,7 @@ export function Report({ review }: { review: Review }) {
 
   const hasPapers = papers.length > 0;
   return (
-    <div className="grid gap-6 pt-8">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 pt-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="label break-words">{review.topic}</span>
         {original === "th" && result.synthesis_en && (
@@ -67,8 +67,8 @@ export function Report({ review }: { review: Review }) {
         )}
       </div>
 
-      <div className={`grid rounded-sm border border-rule bg-surface ${hasPapers ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : ""}`}>
-        <div className={`grid min-w-0 content-start gap-8 p-5 sm:p-8 ${hasPapers ? "lg:border-r lg:border-rule" : ""}`}>
+      <div className={`grid grid-cols-[minmax(0,1fr)] rounded-sm border border-rule bg-surface ${hasPapers ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : ""}`}>
+        <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8 p-5 sm:p-8 ${hasPapers ? "lg:border-r lg:border-rule" : ""}`}>
           <QuestionHeader question={result.question} topic={review.topic} lang={lang} />
           <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} />
           <section aria-labelledby="h-summary" className="grid gap-2">
