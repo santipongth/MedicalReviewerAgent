@@ -14,6 +14,7 @@ from app.logging import get_logger
 from app.schemas.review import CreateReviewRequest, ReviewCreated, compute_cache_key, hash_ip
 from app.services.api_keys import ApiKeyInfo, reviews_since
 from app.services.ratelimits import RateLimits
+from app.services.turnstile import TurnstileUnavailable, verify_turnstile
 from app.services.urlsafety import is_public_http_url
 from app.services.webhook import callback_url_problem
 
@@ -99,13 +100,29 @@ class ReviewService:
             return None
         return ReviewCreated(review_id=existing.id, status=existing.status, cached=True)
 
-    async def create(self, req: CreateReviewRequest, *, identity: Identity) -> ReviewCreated:
+    async def _check_human(self, token: str | None, identity: Identity) -> None:
+        """Anonymous web submissions prove they come from a person (Turnstile) when a secret is configured."""
+        if not self.settings.turnstile_secret or identity.api_key is not None:
+            return
+        try:
+            ok = await verify_turnstile(self.settings.turnstile_secret, token, identity.ip)
+        except TurnstileUnavailable as exc:
+            raise Unavailable("human verification is unavailable right now; please try again shortly", 30,
+                              "verification_unavailable") from exc
+        if not ok:
+            raise Forbidden("human verification failed; reload the page and try again")
+
+    async def create(self, req: CreateReviewRequest, *, identity: Identity, human_token: str | None = None,
+                     human_check: bool = True) -> ReviewCreated:
+        """human_check=False for MCP: agents cannot solve a browser challenge (they are rate-limited instead)."""
         options = req.options.model_dump()
         cache_key = compute_cache_key(req.topic, req.language, options, self.settings.prompt_version)
         if req.callback_url and identity.api_key is None:
             raise Forbidden("callback_url requires an API key")
         if (cached := await self._reuse(cache_key)) is not None:  # cache hits are free; no webhook for them
             return cached
+        if human_check:
+            await self._check_human(human_token, identity)
         if req.callback_url and (problem := await callback_url_problem(
                 str(req.callback_url), allow_http=self.settings.webhook_allow_http, url_check=self.url_check)):
             raise Unprocessable(problem)
@@ -176,6 +193,7 @@ class ReviewService:
             "retry_after": refusal.retry_after if refusal else None,
             "queue_depth": queued, "running": running,
             "reviews_today": await self.capacity.reviews_today() if self.capacity is not None else None,
+            "turnstile_site_key": s.turnstile_site_key or None,
             "limits": {"review_rate_limit": s.review_rate_limit, "api_key_rate_limit": s.api_key_rate_limit,
                        "paper_search_rate_limit": s.paper_search_rate_limit,
                        "max_papers": bounds("max_papers"), "candidate_limit": bounds("candidate_limit"),

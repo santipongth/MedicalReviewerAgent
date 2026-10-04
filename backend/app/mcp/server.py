@@ -102,7 +102,7 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
         try:
             req = CreateReviewRequest(topic=topic, language=language,
                                       options=ReviewOptions.clamped({"max_papers": max_papers}))
-            created = await get_deps().service.create(req, identity=await identity(ctx))
+            created = await get_deps().service.create(req, identity=await identity(ctx), human_check=False)
         except (ServiceError, ValueError) as exc:
             raise _error(exc) from exc
         rid = str(created.review_id)
