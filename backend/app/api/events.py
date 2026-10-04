@@ -29,13 +29,20 @@ def parse_since(value: str | None) -> int:
         return 0
 
 
-@router.get("/reviews/{review_id}/events")
+@router.get("/reviews/{review_id}/events", summary="Live progress (Server-Sent Events)",
+            responses={200: {"content": {"text/event-stream": {}},
+                             "description": "id: <seq>, event: <type>, data: <JSON>; closes after done, error, "
+                                            "rejected or cancelled"},
+                       404: {"description": "unknown review"},
+                       429: {"description": "too many open streams from this client (Retry-After: 30)"}})
 async def review_events(
     review_id: uuid.UUID,
     request: Request,
     deps: AppDeps = Depends(get_deps),
     settings: Settings = Depends(get_settings_dep),
 ) -> EventSourceResponse:
+    """Replays past events, then streams new ones. Resume with the Last-Event-ID header or ?since=<seq>. A client
+    may keep a limited number of streams open at once (see /status)."""
     after_seq = parse_since(
         request.headers.get("last-event-id") or request.query_params.get("since")
     )

@@ -214,7 +214,7 @@ class ReviewService:
             "limits": {"review_rate_limit": s.review_rate_limit, "api_key_rate_limit": s.api_key_rate_limit,
                        "paper_search_rate_limit": s.paper_search_rate_limit,
                        "max_papers": bounds("max_papers"), "candidate_limit": bounds("candidate_limit"),
-                       "max_queued_reviews": s.max_queued_reviews},
+                       "max_queued_reviews": s.max_queued_reviews, "sse_max_per_ip": s.sse_max_per_ip},
         }
 
     def sse_key(self, ip: str) -> str:

@@ -10,23 +10,30 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 
+from app import __version__
 from app.api.auth import identity_from
 from app.api.ratelimit import ip_from
 from app.config import Settings
 from app.runtime import AppDeps
 from app.schemas.review import CreateReviewRequest, ReviewOptions
 from app.services.report import render_markdown
-from app.services.review_service import Identity, RateLimited, ServiceError
+from app.services.review_service import Identity, RateLimited, ServiceError, Unavailable
 
-INSTRUCTIONS = """Medical literature review agent. Typical flow: start_review(topic) → poll get_review_status every
-~10 seconds until status is done (usually 1-3 minutes) → get_review_result (or read review://{id}/report.md).
-search_papers answers quick literature questions without starting a review. Results are a
-rapid, automated review of published papers, not medical advice."""
+INSTRUCTIONS = """Medical literature review agent. It refines the question, screens about 60 candidate papers that have
+abstracts and analyses the abstracts of the best 5-30 (default 30); every number shown is checked against the abstract.
+Typical flow: start_review(topic) → poll get_review_status every ~10 seconds until the status is terminal: done, error,
+rejected or cancelled (done usually takes 1-3 minutes) → on done call get_review_result (or read
+review://{id}/report.md); on error/rejected/cancelled read the error field. search_papers answers quick literature
+questions without starting a review. When the service is busy, start_review fails with a reason (queue_full,
+daily_reviews, daily_budget) and how many seconds to wait. Results are a rapid, automated review of published
+papers, not medical advice."""
 
 
 def _error(exc: Exception) -> ToolError:
     if isinstance(exc, RateLimited):
         return ToolError(f"{exc.detail}; retry after {exc.retry_after} seconds")
+    if isinstance(exc, Unavailable):
+        return ToolError(f"{exc.detail} ({exc.reason}); retry after {exc.retry_after} seconds")
     if isinstance(exc, ServiceError):
         return ToolError(exc.detail)
     if isinstance(exc, HTTPException):
@@ -57,7 +64,7 @@ def transport_security(settings: Settings) -> TransportSecuritySettings:
 
 def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
     mcp = MCPServer("medical-reviewer-agent", title="Medical Reviewer Agent", instructions=INSTRUCTIONS,
-                    version="0.3.0", website_url=settings.public_base_url)
+                    version=__version__, website_url=settings.public_base_url)
 
     async def identity(ctx: Context) -> Identity:
         request = getattr(ctx.request_context, "request", None)
@@ -84,7 +91,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
     @mcp.tool()
     async def search_papers(query: str, ctx: Context, limit: int = 10) -> dict[str, Any]:
         """Search published biomedical papers (PubMed, arXiv, Semantic Scholar, OpenAlex, CrossRef; Europe PMC
-        metadata). Returns title, authors, year, journal, DOI/PMID/PMCID, open-access flag and abstract."""
+        metadata). Returns title, up to 6 authors, year, journal, DOI/PMID/PMCID, open-access flag and the abstract
+        (first 600 characters). `limit` is clamped into 1-25; shares the paper-search rate limit with REST."""
         await papers_limit(await identity(ctx))
         try:
             found = await get_deps().papers.search(query, max(1, min(limit, 25)))
@@ -97,8 +105,9 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
                            max_papers: int = 30) -> dict[str, Any]:
         """Start a literature review of a disease, drug or chemical (e.g. "metformin and colorectal cancer").
         The agent refines the question, screens ~60 papers that have abstracts, analyses the abstracts of the best
-        `max_papers` (5-30) and compares their findings. Returns review_id; identical recent topics return the
-        cached review."""
+        `max_papers` (clamped into 5-30, default 30) and compares their findings. Returns review_id, status, cached
+        and status_url. The same topic, language and options within 24 hours (or still running) return that review
+        (cached=true). Fails with a reason and a wait time when the service is busy."""
         try:
             req = CreateReviewRequest(topic=topic, language=language,
                                       options=ReviewOptions.clamped({"max_papers": max_papers}))
@@ -144,7 +153,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
         """Run an evidence review of a medical topic with this server's tools."""
         return (f"Review the published evidence on: {topic}\n"
                 "1. Call start_review with this topic (language 'en' unless the user wants Thai).\n"
-                "2. Poll get_review_status until the status is done (usually about a minute).\n"
+                "2. Poll get_review_status every ~10 seconds until the status is done, error, rejected or "
+                "cancelled (done usually takes 1-3 minutes); on anything but done, report the error field.\n"
                 "3. Call get_review_result and present the refined question, the summary, the comparison of "
                 "findings (agreements and conflicts with their likely reasons), the evidence strength and the "
                 "papers with links. Mention papers flagged uncertain. This is not medical advice.")

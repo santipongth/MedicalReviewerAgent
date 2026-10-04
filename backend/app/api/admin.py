@@ -11,7 +11,9 @@ from app.services.review_service import Identity
 router = APIRouter()
 
 
-@router.post("/admin/mcp/reload")
+@router.post("/admin/mcp/reload", summary="Validate the external MCP server config",
+             responses={401: {"description": "API key required"}, 403: {"description": "admin API key required"},
+                        422: {"description": "invalid mcp_servers.json"}})
 async def reload_mcp_servers(deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)):
     """Validate config/mcp_servers.json. Workers re-read the file automatically when it changes, so a valid
     file is live for the next review."""

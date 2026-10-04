@@ -43,10 +43,10 @@ class Settings(BaseSettings):
     max_queued_reviews: int = 50
     max_reviews_per_day: int = 500
     max_usd_per_day: float = 10.0
-    max_cost_per_review_usd: float = 0.25
+    max_cost_per_review_usd: float = 0.25  # LLM steps beyond this are skipped; the review finishes with what it has
     # Cloudflare Turnstile for anonymous web submissions (empty secret = off; API keys and MCP never need it).
     turnstile_secret: str = ""
-    turnstile_site_key: str = ""  # LLM steps beyond this are skipped; the review finishes with what it has
+    turnstile_site_key: str = ""
     stale_running_minutes: int = 30
 
     graph_mode: str = "real"  # "stub" = Plan 1 placeholder graph (plumbing tests without Claude)

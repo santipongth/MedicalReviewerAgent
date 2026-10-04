@@ -35,13 +35,22 @@ def service_error_response(exc: ServiceError) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
 
 
-@router.post("/reviews", response_model=ReviewCreated, status_code=202,
-             responses={429: {"description": "rate limit exceeded (Retry-After header)"},
-                        401: {"description": "invalid or revoked API key"},
-                        403: {"description": "callback_url requires an API key"},
-                        503: {"description": "queue unavailable"}})
+@router.post("/reviews", response_model=ReviewCreated, status_code=202, summary="Start a review",
+             responses={
+                 401: {"description": "invalid or revoked API key"},
+                 403: {"description": "callback_url without an API key, or the Turnstile check failed "
+                                      "(anonymous web submissions when the deployment enables Turnstile)"},
+                 422: {"description": "invalid body, or callback_url is not https on a public host"},
+                 429: {"description": "hourly rate limit, or the API key daily quota (Retry-After header)"},
+                 503: {"description": "not accepting reviews right now: body {detail, reason} with reason "
+                                      "queue_full | daily_reviews | daily_budget | verification_unavailable and a "
+                                      "Retry-After header; or {detail, review_id} when the job could not be queued"}})
 async def create_review(body: CreateReviewRequest, request: Request, deps: AppDeps = Depends(get_deps),
                         identity: Identity = Depends(get_identity)):
+    """Queue a literature review. The same topic, language and options within 24 hours (or still running) return
+    that review with cached=true, free of every limit. Order of checks: body, callback_url needs a key, cache,
+    Turnstile (anonymous only, when enabled; header cf-turnstile-response), callback_url safety, key quota,
+    capacity, hourly rate. Follow progress with GET /reviews/{id}/events."""
     try:
         return await deps.service.create(body, identity=identity,
                                          human_token=request.headers.get("cf-turnstile-response"))
@@ -49,17 +58,21 @@ async def create_review(body: CreateReviewRequest, request: Request, deps: AppDe
         return service_error_response(exc)
 
 
-@router.get("/reviews", response_model=list[ReviewSummary])
+@router.get("/reviews", response_model=list[ReviewSummary], summary="Recent finished reviews")
 async def list_recent_reviews(
     recent: int = Query(20, ge=1, le=50), deps: AppDeps = Depends(get_deps)
 ) -> list[ReviewSummary]:
+    """The most recently finished public reviews (newest first)."""
     return [ReviewSummary.model_validate(r).model_copy(update={
         "verification_rate": ((r.result or {}).get("quality") or {}).get("verification_rate")})
         for r in await deps.service.list_recent(recent)]
 
 
-@router.get("/reviews/{review_id}", response_model=ReviewOut)
+@router.get("/reviews/{review_id}", response_model=ReviewOut, summary="Review status and result",
+            responses={404: {"description": "unknown review"}})
 async def get_review(review_id: uuid.UUID, deps: AppDeps = Depends(get_deps)) -> ReviewOut:
+    """Status (queued, running, done, error, rejected, cancelled), the result once done, the error otherwise, and
+    queue_position while queued (1 = next to start)."""
     review = await deps.service.get(review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="review not found")
@@ -96,12 +109,14 @@ async def export_review(review_id: uuid.UUID, format: Literal["md", "csv", "json
                     headers={"Content-Disposition": f'attachment; filename="review-{str(review.id)[:8]}.{format}"'})
 
 
-@router.delete("/reviews/{review_id}", responses={401: {"description": "API key required"},
-                                                  403: {"description": "not the owner key"},
-                                                  404: {"description": "unknown review"},
-                                                  409: {"description": "already finished"}})
+@router.delete("/reviews/{review_id}", summary="Cancel a queued or running review",
+               responses={401: {"description": "API key required"},
+                          403: {"description": "not the key that created it, and not an admin key"},
+                          404: {"description": "unknown review"},
+                          409: {"description": "already finished"}})
 async def cancel_review(review_id: uuid.UUID, deps: AppDeps = Depends(get_deps),
                         identity: Identity = Depends(require_key)):
+    """Only the API key that created the review (or an admin key) can cancel it. Returns {review_id, status}."""
     try:
         status = await deps.service.cancel(review_id, identity=identity)
     except ServiceError as exc:

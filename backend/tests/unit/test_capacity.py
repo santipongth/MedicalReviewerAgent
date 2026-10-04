@@ -58,6 +58,7 @@ async def test_status_reports_limits_and_queue(client, app):
     assert s["accepting"] is True and s["queue_depth"] == 1 and s["reviews_today"] == 1
     assert s["limits"]["max_papers"] == {"min": 5, "max": 30, "default": 30}
     assert s["limits"]["review_rate_limit"] == "5/hour" and "max_usd_per_day" not in str(s)
+    assert s["limits"]["sse_max_per_ip"] == 5
 
 
 async def test_queue_position(client, session_factory):

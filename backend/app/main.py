@@ -8,6 +8,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from app import __version__
 from app.api import admin, events, health, papers, reviews, status
 from app.api.ratelimit import limiter
 from app.config import Settings, get_settings
@@ -28,6 +29,21 @@ class McpPathMiddleware:
         if scope["type"] == "http" and scope["path"] == "/mcp":
             scope = {**scope, "path": "/mcp/", "raw_path": b"/mcp/"}
         await self.app(scope, receive, send)
+
+
+API_DESCRIPTION = """Automated rapid literature reviews of published medical research.
+
+Submit a topic (POST /api/v1/reviews), follow it live (GET /api/v1/reviews/{id}/events, Server-Sent Events) and read
+or download the result. The agent refines the question, screens about 60 candidate papers that have abstracts,
+analyses the abstracts of up to 30 (no full-text fetching) and checks every number against the abstract; numbers it
+cannot verify are left empty, never estimated.
+
+Limits and capacity are published at GET /api/v1/status. Refusals always say why and when to retry: 429 (rate limit,
+key quota, too many event streams) and 503 (queue full, daily capacity, verification unavailable) carry a
+Retry-After header; 503 bodies also carry a reason. API keys (X-API-Key or Authorization: Bearer) raise limits and
+unlock webhooks and cancellation. The same service is available to AI agents over MCP at /mcp.
+
+Full reference: docs/api.md in the repository. Results are an automated review, not medical advice."""
 
 
 def create_app(settings: Settings | None = None, deps: AppDeps | None = None) -> FastAPI:
@@ -63,7 +79,8 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
 
     app = FastAPI(
         title="Medical Reviewer Agent API",
-        version="0.1.0",
+        version=__version__,
+        description=API_DESCRIPTION,
         lifespan=lifespan,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",

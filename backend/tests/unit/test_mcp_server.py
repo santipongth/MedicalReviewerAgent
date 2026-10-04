@@ -97,3 +97,21 @@ async def test_start_review_uses_the_abstract_only_paper_range(mcp, client):
             rid = data(await c.call_tool("start_review", args))["review_id"]
             asked[n] = (await client.get(f"/api/v1/reviews/{rid}")).json()["options"]["max_papers"]
     assert asked == {3: 5, 30: 30, None: 30}  # clamped into 5-30, default 30
+
+
+async def test_instructions_and_prompt_describe_the_current_service(mcp):
+    from app.mcp.server import INSTRUCTIONS
+    for text in (INSTRUCTIONS,):
+        assert all(s in text for s in ("done", "error", "rejected", "cancelled"))  # every terminal status
+        assert "5-30" in text and "abstract" in text and "1-3 minutes" in text
+    async with Client(mcp) as c:
+        prompt = await c.get_prompt("literature_review", {"topic": "statins"})
+    body = prompt.messages[0].content.text
+    assert "1-3 minutes" in body and "rejected" in body and "about a minute" not in body
+
+
+def test_capacity_errors_keep_reason_and_retry_time():
+    from app.mcp.server import _error
+    from app.services.review_service import Unavailable
+    msg = str(_error(Unavailable("the review queue is full", 60, "queue_full")))
+    assert "queue_full" in msg and "retry after 60 seconds" in msg

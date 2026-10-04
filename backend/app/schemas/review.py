@@ -77,7 +77,7 @@ class ReviewSummary(BaseModel):
 
 class ReviewOut(ReviewSummary):
     options: dict[str, Any]
-    progress: dict[str, Any] | None
+    progress: dict[str, Any] | None = Field(None, description="reserved; progress is reported by the events stream")
     result: dict[str, Any] | None
     error: str | None
     cost_usd: float
