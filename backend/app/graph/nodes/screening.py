@@ -39,7 +39,8 @@ def _decisions(batch: ScreenBatch | None, refs: list[str]) -> dict[str, dict[str
     out: dict[str, dict[str, Any]] = {}
     for d in (batch.decisions if batch else []):
         if d.ref in refs and d.ref not in out:
-            out[d.ref] = {"relevance": max(0, min(100, d.relevance)), "include": d.include, "reason": d.reason}
+            out[d.ref] = {"relevance": max(0, min(100, d.relevance)), "include": d.include, "reason": d.reason,
+                          "design": d.design_guess}
     return out
 
 
@@ -117,6 +118,9 @@ def make_screen_batch(deps):
     return screen_batch
 
 
+MIN_PRIMARY_FOR_NO_REVIEWS = 3
+
+
 def make_select_top(deps):
     async def select_top(state: ReviewState) -> dict:
         options = ReviewOptions.clamped(state.get("options"))
@@ -125,13 +129,17 @@ def make_select_top(deps):
             if d["key"] not in best or d["relevance"] > best[d["key"]]["relevance"]:
                 best[d["key"]] = d
         by_key = {c["key"]: c for c in state.get("candidates") or []}
-        chosen = sorted((d for d in best.values() if d["include"] and d["key"] in by_key),
-                        key=lambda d: -d["relevance"])[: options.max_papers]
+        included = [d for d in best.values() if d["include"] and d["key"] in by_key]
+        primary = [d for d in included if d.get("design") != "narrative_review"]
+        # Narrative reviews restate other studies: leave them out when enough original or pooled evidence exists.
+        narrative_excluded = len(included) - len(primary) if len(primary) >= MIN_PRIMARY_FOR_NO_REVIEWS else 0
+        pool = primary if narrative_excluded else included
+        chosen = sorted(pool, key=lambda d: -d["relevance"])[: options.max_papers]
         selected = [{"ref": f"P{i + 1}", "relevance": d["relevance"], "reason": d["reason"],
                      "uncertain": d.get("uncertain", False), "candidate": by_key[d["key"]]}
                     for i, d in enumerate(chosen)]
         progress_writer()({"type": "screened", "kept": len(selected), "total": len(best)})
-        return {"selected": selected}
+        return {"selected": selected, "quality": [{"stage": "select", "narrative_excluded": narrative_excluded}]}
 
     return select_top
 

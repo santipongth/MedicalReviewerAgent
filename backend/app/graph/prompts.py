@@ -74,6 +74,8 @@ PLAN_SYSTEM = """You design the search strategy for a rapid systematic-style lit
 queries: 2-4 short keyword queries for academic search engines (PubMed / Semantic Scholar / arXiv style): 3-8 words
 each, no boolean operators, no quotes. Cover the main question and every sub-question, and use the listed synonyms
 and MeSH terms so that different wordings of the same concept are found.
+At least one query must name the study design that answers the question best (e.g. "randomized controlled trial"
+for treatment or prevention, "cohort study" for harm or causes), so original studies are found, not only reviews.
 Also give explicit inclusion and exclusion criteria (study types, population, outcomes). Write all fields in English."""
 
 
@@ -98,7 +100,8 @@ def plan_user(*, topic: str, english_topic: str, options: dict[str, Any],
 
 SCREEN_SYSTEM = """You screen titles and abstracts for a literature review.
 For every candidate give relevance (0-100) to the review question and include=true only if it meets the inclusion criteria and none of the exclusion criteria. Prefer primary human studies (RCTs, cohort, case-control, cross-sectional) and systematic reviews/meta-analyses that report outcomes for the question; exclude off-topic papers, editorials, protocols without results, narrative (non-systematic) reviews unless nothing else addresses the question, and papers with no relevant outcome.
-Return exactly one decision per candidate, using the candidate's ref label exactly as given (e.g. "C3"). reason: one short English sentence."""
+Return exactly one decision per candidate, using the candidate's ref label exactly as given (e.g. "C3"). reason: one short English sentence.
+design_guess: the study design judged from the title and abstract, one of rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review (a review without systematic methods, including commentaries that summarise trials), other."""
 
 
 def screen_user(*, english_topic: str, plan: dict[str, Any], items: list[tuple[str, dict[str, Any]]]) -> str:

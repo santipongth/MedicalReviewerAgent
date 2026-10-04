@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -134,6 +135,22 @@ def make_refine_question(deps):
     return refine_question
 
 
+DESIGN_TERMS = re.compile(r"randomi[sz]ed|\btrials?\b|\brct\b|cohort|case-?control|meta-?analys|systematic review",
+                          re.IGNORECASE)
+DESIGN_FOR_QUESTION = {"harm_etiology": "cohort study", "prognosis": "cohort study", "prevalence": "cross-sectional study",
+                       "diagnosis": "diagnostic accuracy study"}
+
+
+def ensure_design_query(queries: list[str], question: dict[str, Any] | None) -> list[str]:
+    """Search engines rank reviews highly; one query naming the right primary design makes sure original studies
+    are found too. Added in code (replacing the last query when the cap is reached) if the planner left it out."""
+    if not question or any(DESIGN_TERMS.search(q) for q in queries):
+        return queries
+    design = DESIGN_FOR_QUESTION.get(question.get("question_type") or "", "randomized controlled trial")
+    query = " ".join(f"{question['intervention_or_exposure']} {question['population']} {design}".split())
+    return [*queries[: MAX_QUERIES - 1], query] if len(queries) >= MAX_QUERIES else [*queries, query]
+
+
 def make_plan_queries(deps):
     async def plan_queries(state: ReviewState) -> dict:
         started = time.perf_counter()
@@ -164,7 +181,7 @@ def make_plan_queries(deps):
             q = " ".join(q.split())
             if q and q.lower() not in seen:
                 seen[q.lower()] = q
-        plan["queries"] = list(seen.values())[:MAX_QUERIES]
+        plan["queries"] = ensure_design_query(list(seen.values())[:MAX_QUERIES], question)
         if question:  # PICO comes from the refined question so every stage judges against the same criteria
             for key in ("population", "intervention_or_exposure", "comparator", "outcomes"):
                 plan[key] = question[key]

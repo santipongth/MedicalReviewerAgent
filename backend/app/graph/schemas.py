@@ -110,11 +110,18 @@ class QueryPlan(BaseModel):
     exclusion_criteria: list[str]
 
 
+def _require_design_guess(schema: dict) -> None:
+    schema.setdefault("required", []).append("design_guess")
+
+
 class ScreenDecision(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_require_design_guess)
+
     ref: str
     relevance: int
     include: bool
     reason: str
+    design_guess: DesignCategory | None = None  # from title/abstract; lets select_top keep narrative reviews out
 
 
 class ScreenBatch(BaseModel):
