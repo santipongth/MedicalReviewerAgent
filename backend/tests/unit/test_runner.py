@@ -133,3 +133,17 @@ async def test_finished_review_cost_counts_toward_the_daily_budget(session_facto
     sink = EventSink(session_factory, redis, 60)
     assert await ReviewRunner(session_factory, sink, _single_node_graph(fin), capacity=capacity).run(review.id) == "done"
     assert round(await capacity.usd_today(), 4) == 0.04
+
+
+async def test_each_review_runs_under_the_configured_cost_cap(session_factory, redis):
+    from app.services.budget import current_budget
+    seen = {}
+
+    async def fin(state: ReviewState) -> dict:
+        seen["cap"] = current_budget().cap_usd if current_budget() else None
+        return {"result": {"summary": "s"}}
+
+    review = await _queued_review(session_factory)
+    sink = EventSink(session_factory, redis, 60)
+    assert await ReviewRunner(session_factory, sink, _single_node_graph(fin), cost_cap_usd=0.25).run(review.id) == "done"
+    assert seen["cap"] == 0.25

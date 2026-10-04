@@ -1,0 +1,42 @@
+import asyncio
+
+import pytest
+
+from app.graph.schemas import TopicVerdict
+from app.services.budget import ReviewBudget, use_budget
+from app.services.llm import BudgetExceeded, LimitedLLM
+from tests.fakes import FakeStructuredLLM
+
+
+def verdict(s, u):
+    return TopicVerdict(allowed=True, reason="ok", english_topic="x")
+
+
+async def test_calls_beyond_the_cap_are_refused_without_reaching_the_model():
+    inner = FakeStructuredLLM("m", verdict, cost=0.01)
+    llm = LimitedLLM(inner, asyncio.Semaphore(4))
+    budget = ReviewBudget(cap_usd=0.015)
+    with use_budget(budget):
+        await llm.ainvoke("s", "u")
+        await llm.ainvoke("s", "u")  # spent 0.01 < cap when it started
+        with pytest.raises(BudgetExceeded, match="cost cap"):
+            await llm.ainvoke("s", "u")
+    assert len(inner.calls) == 2 and round(budget.spent, 3) == 0.02
+    await llm.ainvoke("s", "u")  # outside a review budget: no cap
+
+
+async def test_each_run_has_its_own_budget():
+    inner = FakeStructuredLLM("m", verdict, cost=0.01)
+    llm = LimitedLLM(inner, asyncio.Semaphore(4))
+
+    async def run(cap):
+        b = ReviewBudget(cap_usd=cap)
+        with use_budget(b):
+            for _ in range(3):
+                try:
+                    await llm.ainvoke("s", "u")
+                except BudgetExceeded:
+                    pass
+        return round(b.spent, 3)
+
+    assert await asyncio.gather(run(0.005), run(1.0)) == [0.01, 0.03]

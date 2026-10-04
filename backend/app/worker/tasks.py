@@ -5,6 +5,7 @@ import uuid
 import orjson
 from arq import Retry
 
+from app.config import get_settings
 from app.db.models import ApiKey
 from app.db.repositories import ReviewRepository
 from app.logging import get_logger
@@ -19,7 +20,7 @@ def _runner(ctx: dict) -> ReviewRunner:
     queue = ctx.get("queue")
     notify = queue.enqueue_webhook if queue is not None else None
     return ReviewRunner(ctx["session_factory"], ctx["event_sink"], ctx["graph"], notify=notify,
-                        capacity=ctx.get("capacity"))
+                        capacity=ctx.get("capacity"), cost_cap_usd=(ctx.get("settings") or get_settings()).max_cost_per_review_usd)
 
 
 async def run_review(ctx: dict, review_id: str) -> dict:
