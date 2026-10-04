@@ -11,7 +11,7 @@
 |---|---|
 | LLM | **OpenRouter** (ค่าเริ่มต้น, preset `budget`) ตั้งค่าใน `backend/config/llm.yaml` — เลือก/ปรับ model ต่อ role ได้เอง; Claude API โดยตรง (`claude_direct`) และ OpenAI-compatible (Ollama/LM Studio) เป็นทางเลือก; ผู้ใช้ public เลือก model ไม่ได้ (revision 2026-10-04) |
 | Deploy | Docker Compose บนเครื่องเดียว (Windows/VPS) |
-| ความลึก | Abstract + Full text เมื่อเป็น Open Access |
+| ความลึก | ~~Abstract + Full text เมื่อเป็น Open Access~~ → Abstract เท่านั้น (revision 2026-10-05) |
 | ภาษาผลลัพธ์ | ผู้ใช้เลือก ไทย/อังกฤษ (ค่าเริ่มต้นไทย) |
 | Runtime | FastAPI + Worker แยก (arq บน Redis) + Postgres checkpointer |
 | Frontend | Next.js 16 + React 19 + Tailwind v4 + shadcn/ui |
@@ -112,11 +112,11 @@ Send targets มี private input schema (`ScreenBatchInput`, `PaperInput`) เ�
 |---|---|---|---|
 | 0 | `topic_guard` | Haiku 4.5 | ปฏิเสธ topic ที่ไม่ใช่การแพทย์/ชีววิทยา หรือ abusive → status `rejected` (ประหยัดเงิน + กันหน้า public) |
 | 1 | `plan_queries` | Sonnet 5.5 | topic (ไทย/อังกฤษ) → 3-6 query (PICO, MeSH/synonym) + `Criteria` (inclusion/exclusion, outcomes ที่สนใจ) |
-| 2 | `search` | SearXNG `/search?q&format=json&engines=pubmed,arxiv,semantic%20scholar,openalex,crossref&pageno=` (+ NCBI esearch ถ้ามี key) | `asyncio.gather` ทุก query (≤4 query, 1 page, timeout 8s) → candidate 20 |
+| 2 | `search` | SearXNG `/search?q&format=json&engines=pubmed,arxiv,semantic%20scholar,openalex,crossref&pageno=` (+ NCBI esearch ถ้ามี key) | `asyncio.gather` ทุก query (≤4 query, 1 page, timeout 8s) → candidate ~60 ที่มี abstract (revision 2026-10-05; เดิม 20) |
 | 3 | `enrich_dedupe` | Europe PMC batch (`query=PMID:.. OR DOI:..`), arXiv API | abstract เต็ม, pmcid/doi, ปี, journal, OA flag, cited_by; รวมซ้ำ DOI → PMID → title fuzzy (`rapidfuzz`); upsert `papers` |
 | 4 | `screen_batch` (Send, 10 ฉบับ/batch) | Haiku 4.5 | relevance 0-100 + เหตุผล เทียบ `Criteria` |
 | 4b | `select_top` (join) | — | sort/cut `max_papers`, dedupe |
-| 5 | `fetch_fulltext` (รวมกับ extract เป็น `read_paper` ต่อ paper) | cache → Europe PMC JATS API → Crawl4AI (arXiv PDF / Unpaywall OA landing+PDF) → abstract | เก็บเฉพาะ Abstract/Methods/Results/Discussion/Conclusions, cap 60k ตัวอักษร/paper; บันทึก `fulltext_source` (`europepmc`, `crawl_html`, `crawl_pdf`, `abstract`, `title_only`) — ดู §4.1 |
+| 5 | `read_paper` (revision 2026-10-05: ~~`fetch_fulltext`~~ ถูกลบ) | title + abstract เท่านั้น | extraction ตาม harness เดิม ตรวจตัวเลขกับ abstract |
 | 6 | `extract` (Send ต่อ paper) | Sonnet 5.5 → `PaperCard` | design, population(n), intervention, comparator, outcomes + effect size/CI/p, findings, limitations, funding/COI, risk-of-bias ย่อ, `direction: positive/negative/null/mixed` (ไม่มี free-form instruction field; paper text อยู่ใน user turn ภายใน delimiter) |
 | 6b | `collect_cards` (join) | — | dedupe, upsert `review_papers.extraction` |
 | 6c | `external_enrich` (optional, ข้ามเมื่อ `mcp_servers.json` ว่าง) | Sonnet 5.5 ReAct ≤3 tool calls | เรียก tools จาก MCP ภายนอก (เช่น ฐานข้อมูลสถาบัน) เพิ่ม context ให้ cards |
@@ -161,7 +161,7 @@ Send targets มี private input schema (`ScreenBatchInput`, `PaperInput`) เ�
 - **Webhook:** POST `{review_id, status, result_url}` + `X-Signature: sha256=HMAC(body, key_secret)`; retry 3 ครั้ง (arq task); HTTPS public host เท่านั้น (SSRF guard: reject private/loopback)
 
 ### MCP server (`/mcp`, streamable HTTP, stateless)
-Tools: `search_papers(query, limit)`, `start_review(topic, language, max_papers)`, `get_review_status(review_id)`, `get_review_result(review_id)`, `get_fulltext(pmcid)`
+Tools: `search_papers(query, limit)`, `start_review(topic, language, max_papers)`, `get_review_status(review_id)`, `get_review_result(review_id)`; ~~`get_fulltext(pmcid)`~~ *(removed 2026-10-05: abstract-only, see Revision at the end)*
 Resources: `review://{id}`, `review://{id}/report.md` — Prompt: `literature_review(topic)`
 Tools เรียก service layer เดียวกับ REST (ไม่แตะ graph ตรง)
 
@@ -174,7 +174,7 @@ Tools เรียก service layer เดียวกับ REST (ไม่แ�
 
 ## 6. Data model (Postgres)
 - `reviews(id uuid, topic, cache_key, language, options jsonb, status enum[queued,running,done,error,rejected,cancelled], progress jsonb, result jsonb, error, ip_hash, api_key_id?, callback_url?, cost_usd, model_versions jsonb, prompt_version, is_listed bool, created_at, started_at, finished_at)`
-- `papers(id uuid, doi, pmid, pmcid, arxiv_id, title, authors jsonb, year, journal, abstract, oa_url, fulltext_source, metadata jsonb, updated_at)` — unique partial index บน doi/pmid/pmcid/arxiv_id
+- `papers(id uuid, doi, pmid, pmcid, arxiv_id, title, authors jsonb, year, journal, abstract, oa_url, metadata jsonb, updated_at)` (คอลัมน์ `fulltext_source` ถูกลบ 2026-10-05)` — unique partial index บน doi/pmid/pmcid/arxiv_id
 - `review_papers(review_id, paper_id, rank, relevance_score, screen_reason, included, extraction jsonb)` PK `(review_id, paper_id)`
 - `review_events(id, review_id, seq, type, payload jsonb, created_at)` `UNIQUE(review_id, seq)`
 - `api_keys(...)`; LangGraph `checkpoints*` จาก `AsyncPostgresSaver.setup()`
@@ -187,7 +187,7 @@ Tools เรียก service layer เดียวกับ REST (ไม่แ�
 - `topic_guard` node (Haiku) + จำกัดความยาว topic; Cloudflare Turnstile เปิดเป็นค่าเริ่มต้นใน production compose (`TURNSTILE_SECRET` ว่าง = ปิดสำหรับ dev)
 - เก็บเฉพาะ hash IP; SearXNG ไม่ expose ออกนอก network
 - Prompt-injection: paper text ไม่เข้า system prompt; schema ไม่มี free-form instruction fields
-- Crawler: Crawl4AI ≥ 0.9.0 + token + hooks ปิด + ไม่ส่ง proxy/extra_args + SSRF check + network isolation (§4.1)
+- ~~Crawler: Crawl4AI ≥ 0.9.0 + token + hooks ปิด + ไม่ส่ง proxy/extra_args + SSRF check + network isolation (§4.1)~~ *(removed 2026-10-05: abstract-only, see Revision at the end)*
 
 ---
 
@@ -244,8 +244,8 @@ D:\MedicalReviewerAgent\
 
 ## 11. ข้อสมมติ / ตัดออกใน v1
 - ไม่มี login; ไม่มี human-in-the-loop แก้รายการ paper (โครงรองรับ `interrupt` ภายหลัง); ไม่ทำ A2A (job contract start/status/result/events ออกแบบให้ wrap ได้ภายหลัง)
-- Full text เฉพาะ Open Access ตามกฎหมาย ผ่าน Europe PMC API หรือ Crawl4AI ที่เคารพ robots.txt; paper ปิด/ถูกปฏิเสธใช้ abstract
-- env ที่ต้องมี: `ANTHROPIC_API_KEY`, `CONTACT_EMAIL` (Unpaywall/NCBI); optional `NCBI_API_KEY`, `TURNSTILE_SECRET`, `LANGSMITH_API_KEY`
+- ~~Full text เฉพาะ Open Access ตามกฎหมาย ผ่าน Europe PMC API หรือ Crawl4AI ที่เคารพ robots.txt~~ *(removed 2026-10-05: abstract-only, see Revision at the end)*; อ่านเฉพาะ abstract (snippet จากเครื่องมือค้นหานับเป็น abstract ได้เมื่อยาว ≥ 600 ตัวอักษรและไม่ถูกตัด)
+- env ที่ต้องมี: `OPENROUTER_API_KEY` (revision 2026-10-04; `CONTACT_EMAIL` ถูกลบ 2026-10-05 เพราะใช้กับ Unpaywall เท่านั้น); optional `NCBI_API_KEY`, `TURNSTILE_SECRET`, `LANGSMITH_API_KEY`
 - Google Scholar/OpenAlex/Crossref ไม่ใช่แหล่งหลักใน v1 (captcha / ต้องการ key / ซ้ำซ้อนกับ Europe PMC)
 
 ## Revision 2026-10-05: abstract-only

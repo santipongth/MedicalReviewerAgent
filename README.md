@@ -19,13 +19,13 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 2. `docker compose up -d --build`
 3. `bash scripts/smoke.sh "metformin and colorectal cancer risk"`. Progress events:
    checking_topic → refining → question_refined → planning → searching → enriching → screening → screened →
-   reading/extracted ×8 → synthesizing → localizing → finalizing → done. Every event carries `elapsed_s`.
+   reading/extracted ×(up to 30) → synthesizing → localizing → finalizing → done. Every event carries `elapsed_s`.
 4. The result's `quality` block reports number verification, model agreement, escalations and per-stage timings.
 5. Live LLM check: `cd backend && OPENROUTER_API_KEY=... uv run pytest -m live`
 
 ## Integrations: REST, MCP, API keys, webhooks
 - **REST:** OpenAPI at `/api/docs`. Anonymous use works without a key (5 reviews/hour per IP).
-  `GET /api/v1/papers/search?q=` and `GET /api/v1/papers/fulltext/{pmcid}` answer quick literature questions.
+  `GET /api/v1/papers/search?q=` answers quick literature questions (titles, abstracts, identifiers).
 - **API keys** unlock a higher rate, a daily quota, `callback_url`, `DELETE /api/v1/reviews/{id}` and admin routes:
   ```bash
   docker compose exec api python -m app.cli.keys mint --name "partner lab" --quota 100   # prints the key once
@@ -39,7 +39,7 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
   A response with `"cached": true` reuses an existing review and has `"callback_scheduled": false`:
   poll `GET /api/v1/reviews/{id}` in that case.
 - **MCP server** at `/mcp` (streamable HTTP). Tools: `search_papers`, `start_review`, `get_review_status`,
-  `get_review_result`, `get_fulltext`; resources `review://{id}` and `review://{id}/report.md`; prompt
+  `get_review_result`; resources `review://{id}` and `review://{id}/report.md`; prompt
   `literature_review`. Connect from Claude Code: `claude mcp add --transport http medical-reviewer http://localhost:8000/mcp/`
   or from any MCP client with `{"mcpServers": {"medical-reviewer": {"url": "http://localhost:8000/mcp/"}}}`.
   Behind a domain, add it to `MCP_ALLOWED_HOSTS`.
