@@ -29,7 +29,7 @@ async def test_tools_resources_and_prompt_are_listed(mcp):
         names = {t.name for t in await c.list_tools()}
         templates = {t.uri_template for t in await c.list_resource_templates()}
         prompt = await c.get_prompt("literature_review", {"topic": "metformin"})
-    assert names == {"search_papers", "start_review", "get_review_status", "get_review_result", "get_fulltext"}
+    assert names == {"search_papers", "start_review", "get_review_status", "get_review_result"}
     assert templates == {"review://{review_id}", "review://{review_id}/report.md"}
     assert "start_review" in prompt.messages[0].content.text
 
@@ -63,8 +63,6 @@ async def test_bad_ids_and_search_tools(mcp):
             await c.call_tool("get_review_result", {"review_id": "nope"})
         papers = data(await c.call_tool("search_papers", {"query": "metformin", "limit": 2}))["papers"]
         assert papers[0]["doi"] == "10.1/a" and papers[0]["pmcid"] == "PMC123"
-        ft = data(await c.call_tool("get_fulltext", {"pmcid": "PMC123"}))
-        assert "## Results" in ft["text"]
 
 
 async def rpc(h, method, params, headers=None, rid=1):

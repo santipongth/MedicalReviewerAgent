@@ -42,8 +42,8 @@ def card(outcome="CRC incidence", direction="positive", design="cohort", n=1000,
 
 def paper(ref, c=None, error=None):
     cand = Candidate(title=f"Paper {ref}", doi=f"10.1/{ref}", year=2020).model_dump()
-    return {"ref": ref, "candidate": cand, "relevance": 90, "screen_reason": "ok", "fulltext_source": "europepmc",
-            "fulltext_url": None, "card": c, "error": error,
+    return {"ref": ref, "candidate": cand, "relevance": 90, "screen_reason": "ok",
+            "card": c, "error": error,
             "verification": {"numbers_verified": 4, "numbers_total": 4, "agreement": 1.0, "escalated": False,
                              "repaired": False, "uncertain": False}}
 
@@ -246,9 +246,9 @@ QUALITY = [
     {"stage": "screen", "seconds": 4.0, "borderline": 2, "disagreements": 1, "escalated": 1},
     {"stage": "screen", "seconds": 5.0, "borderline": 0, "disagreements": 0, "escalated": 0},
     {"stage": "read", "ref": "P1", "seconds": 10.0, "numbers_verified": 3, "numbers_total": 4, "agreement": 1.0,
-     "escalated": False, "repaired": True, "uncertain": False, "fulltext_timed_out": False},
+     "escalated": False, "repaired": True, "uncertain": False},
     {"stage": "read", "ref": "P2", "seconds": 20.0, "numbers_verified": 1, "numbers_total": 0, "agreement": 0.5,
-     "escalated": True, "repaired": False, "uncertain": True, "fulltext_timed_out": True},
+     "escalated": True, "repaired": False, "uncertain": True},
     {"stage": "normalize", "seconds": 1.0, "fallback": False},
     {"stage": "narrative", "seconds": 6.0, "citation_fixes": 1},
     {"stage": "localize", "seconds": 2.0, "kept_english": 1},
@@ -280,14 +280,14 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
     assert r["papers"][0]["card_en"]["population"] == "adults with T2D"
     assert r["papers"][0]["verification"]["numbers_total"] == 4
     assert r["stats"] == {"found": 40, "unique": 25, "candidates": 20, "screened": 20, "selected": 2,
-                          "with_fulltext": 2, "extracted": 2}
+                          "extracted": 2}
     assert r["question"]["refined_question"] == "คำถาม?" and r["question"]["english"]["refined_question"] == "RQ?"
     assert r["question"]["pico"]["population"] == "adults" and r["question"]["original_topic"] == "เมตฟอร์มิน"
     assert r["question"]["ambiguities"] == ["b"] and r["question"]["refined"] is True
     qa = r["quality"]
     assert qa["numbers_verified"] == 4 and qa["numbers_total"] == 4 and qa["verification_rate"] == 1.0
     assert qa["papers_uncertain"] == 1 and qa["extraction_escalations"] == 1 and qa["agreement_mean"] == 0.75
-    assert qa["screen_disagreements"] == 1 and qa["fulltext_timeouts"] == 1 and qa["citation_fixes"] == 1
+    assert qa["screen_disagreements"] == 1 and "fulltext_timeouts" not in qa and qa["citation_fixes"] == 1
     assert qa["localization_kept_english"] == 1 and qa["question_critique_applied"] is True
     t = qa["timings"]
     assert t["refine"] == 2.0 and t["screen"] == 5.0 and t["read_max"] == 20.0 and t["read_mean"] == 15.0

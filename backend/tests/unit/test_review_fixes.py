@@ -11,10 +11,8 @@ from app.graph.schemas import Candidate, OutcomeResult, PaperCard, QueryPlan, To
 from app.harness.grade import grade_baseline
 from app.harness.runner import HarnessRunner
 from app.harness.verify import card_problems, null_unverified_numbers
-from app.services.fulltext import FullText
 from app.services.llm import LLMError, LLMOutputError, LLMRefusal, LLMs
 from app.services.llm_config import HarnessSpec
-from app.services.sections import assemble_sections
 from tests.fakes import FakeStructuredLLM
 
 SOURCE = ("We enrolled 1,234 adults with type 2 diabetes. Metformin use was associated with a lower risk of "
@@ -42,7 +40,7 @@ def deps(**roles):
     u = unexpected()
     base = {"guard": u, "planner": u, "screener": u, "extractor": u, "synthesizer": u,
             "harness": HarnessSpec(max_repairs=1)}
-    extra = {k: roles.pop(k) for k in ("fulltext", "searxng", "europepmc") if k in roles}
+    extra = {k: roles.pop(k) for k in ("searxng", "europepmc") if k in roles}
     return GraphDeps(settings=Settings(_env_file=None), llms=LLMs(**{**base, **roles}), **extra)
 
 
@@ -98,35 +96,15 @@ async def test_escalation_refusal_becomes_a_failed_result():
 async def test_reading_marks_uncertain_when_escalation_refuses():
     d = deps(extractor=FakeStructuredLLM("a", lambda s, u: card()),
              extractor_secondary=FakeStructuredLLM("b", lambda s, u: card(direction="negative")),
-             escalation=lambda schema: FakeStructuredLLM("big", lambda s, u: LLMRefusal("no")),
-             fulltext=FakeFullText())
+             escalation=lambda schema: FakeStructuredLLM("big", lambda s, u: LLMRefusal("no")))
     out = await make_read_paper(d)(payload())
     assert out["papers"][0]["verification"]["uncertain"] is True and out["papers"][0]["card"] is not None
 
 
-# ---- Important 4: any full-text failure falls back to the abstract -------------------------------
-class FakeFullText:
-    def __init__(self, error=None):
-        self.error = error
-
-    async def fetch(self, c):
-        if self.error:
-            raise self.error
-        return FullText("europepmc", SOURCE, None)
-
-
 def payload():
-    c = Candidate(title="Metformin and CRC", doi="10.1/a", abstract="Abstract text.")
+    c = Candidate(title="Metformin and CRC", doi="10.1/a", abstract=SOURCE)
     return {"paper": {"ref": "P1", "relevance": 90, "reason": "r", "uncertain": False, "candidate": c.model_dump()},
             "plan": {}, "question": "Q?", "question_detail": {"outcomes": ["CRC"]}, "language": "en"}
-
-
-async def test_fulltext_exception_falls_back_to_abstract():
-    d = deps(extractor=FakeStructuredLLM("a", lambda s, u: card(effect=None)),
-             fulltext=FakeFullText(RuntimeError("redis down")), harness=HarnessSpec(dual_extraction=False))
-    out = await make_read_paper(d)(payload())
-    assert out["papers"][0]["fulltext_source"] == "abstract"
-    assert any("full text failed for P1" in e for e in out["errors"])
 
 
 # ---- Important 5: candidate cut keeps search ranking, not citation counts ------------------------
@@ -153,22 +131,6 @@ async def test_search_interleaves_queries_and_enrich_does_not_rank_by_citations(
     enriched = await make_enrich(deps(europepmc=NoEpmc()))({"candidates": out["candidates"],
                                                            "options": {"candidate_limit": 10}})
     assert [x["doi"] for x in enriched["candidates"]] == ["10.1/q10", "10.1/q20", "10.1/q11", "10.1/q21"]
-
-
-# ---- Important 6: Results get the largest share; all sections survive the budget -----------------
-def test_sections_are_weighted_toward_results_and_all_kept():
-    parts = [(name, name[0] * 20_000) for name in ("Abstract", "Methods", "Results", "Discussion", "Conclusions")]
-    text = assemble_sections(parts, 30_000)
-    assert len(text) <= 30_000
-    assert all(f"## {n}" in text for n, _ in parts)
-    assert text.count("R") > text.count("M") > text.count("D") and text.count("R") >= 10_000
-
-
-def test_factory_assembles_full_text_at_the_extraction_budget(redis):
-    from app.graph.factory import build_graph_deps
-    from app.services.http import HttpClient
-    d = build_graph_deps(Settings(_env_file=None), HttpClient(), redis)
-    assert d.fulltext.max_chars == d.llms.harness.extraction_chars
 
 
 # ---- Important 7: pipeline failures are not reported as "no studies found" -----------------------

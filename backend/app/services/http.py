@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 RETRY_STATUSES = {429, 500, 502, 503, 504}
-DEFAULT_MIN_INTERVAL = {"www.ebi.ac.uk": 0.2, "api.unpaywall.org": 0.1}
+DEFAULT_MIN_INTERVAL = {"www.ebi.ac.uk": 0.2}
 
 
 class HttpClient:

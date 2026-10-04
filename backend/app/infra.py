@@ -29,7 +29,7 @@ async def build_runtime_deps(settings: Settings) -> AppDeps:
     http = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)
     deps.papers = PaperSearch(
         SearxngClient(http, settings.searxng_url, settings.searxng_engines, timeout=settings.searxng_timeout_seconds),
-        EuropePmcClient(http, settings.europepmc_url), max_fulltext_chars=settings.max_fulltext_chars)
+        EuropePmcClient(http, settings.europepmc_url))
     deps.engine = engine  # type: ignore[attr-defined]
     deps.arq_pool = arq_pool  # type: ignore[attr-defined]
     deps.http = http  # type: ignore[attr-defined]

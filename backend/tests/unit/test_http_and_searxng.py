@@ -60,7 +60,7 @@ async def test_per_host_throttle_spaces_requests():
     await client.get("https://fast.example.org/a")
     await client.get("https://slow.example.org/2")
     await client.aclose()
-    assert len(sleep.calls) == 1 and 0.0 < sleep.calls[0] <= 0.2
+    assert len(sleep.calls) == 1 and 0.0 < sleep.calls[0] <= 0.2 + 1e-6  # clock granularity
 
 
 def test_parse_searxng_fixture_maps_identifiers():

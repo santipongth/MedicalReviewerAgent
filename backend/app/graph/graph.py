@@ -19,7 +19,6 @@ class GraphDeps:
     llms: Any = None  # app.services.llm.LLMs; None -> Plan 1 stub graph
     searxng: Any = None
     europepmc: Any = None
-    fulltext: Any = None
     mcp: Any = None  # app.services.mcp_client.McpRegistry (external MCP tools); None → never consulted
 
 

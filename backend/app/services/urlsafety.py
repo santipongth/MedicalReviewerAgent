@@ -18,11 +18,10 @@ async def _system_resolve(host: str) -> list[str]:
 async def is_public_http_url(url: str, resolver: Resolver | None = None) -> bool:
     """True only for http(s) URLs whose host resolves exclusively to public addresses.
 
-    Defence in depth: Crawl4AI has its own SSRF guard, but URLs from third-party metadata are
-    checked here before they leave the worker."""
+    Guards outbound calls to user-supplied URLs (webhook callbacks) against SSRF."""
     try:
         parsed = httpx.URL(url)
-    except Exception:  # noqa: BLE001 - degrade to the next source
+    except Exception:  # noqa: BLE001 - an unparsable URL is simply not public
         return False
     if parsed.scheme not in ("http", "https") or not parsed.host:
         return False

@@ -20,7 +20,7 @@ from app.services.review_service import Identity, RateLimited, ServiceError
 
 INSTRUCTIONS = """Medical literature review agent. Typical flow: start_review(topic) → poll get_review_status every
 ~10 seconds until status is done (about 1 minute) → get_review_result (or read review://{id}/report.md).
-search_papers and get_fulltext answer quick literature questions without starting a review. Results are a
+search_papers answers quick literature questions without starting a review. Results are a
 rapid, automated review of published papers, not medical advice."""
 
 
@@ -127,15 +127,6 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
             return {"review_id": review_id, "status": r.status, "result": None, "message": message,
                     "error": r.error}
         return {"review_id": review_id, "status": r.status, "result": r.result}
-
-    @mcp.tool()
-    async def get_fulltext(pmcid: str, ctx: Context) -> dict[str, Any]:
-        """Open-access full text (Methods, Results, Discussion, Conclusions) of a paper in Europe PMC."""
-        await papers_limit(await identity(ctx))
-        try:
-            return await get_deps().papers.fulltext(pmcid)
-        except ServiceError as exc:
-            raise _error(exc) from exc
 
     @mcp.resource("review://{review_id}", mime_type="application/json", description="Review status and result")
     async def review_resource(review_id: str) -> dict[str, Any]:

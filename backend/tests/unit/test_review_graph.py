@@ -26,14 +26,13 @@ from app.graph.schemas import (
     TranslationBatch,
     TranslationItem,
 )
-from app.services.fulltext import FullText
 from app.services.llm import LLMOutputError, LLMs
 from app.services.llm_config import HarnessSpec
 from tests.fakes import FakeStructuredLLM
 
-PAPER_TEXT = (
-    "## Methods\nWe enrolled 1,234 adults with type 2 diabetes in a population-based cohort. "
-    "## Results\nMetformin use was associated with a lower risk of colorectal cancer "
+ABSTRACT = (
+    "Methods: We enrolled 1,234 adults with type 2 diabetes in a population-based cohort. "
+    "Results: Metformin use was associated with a lower risk of colorectal cancer "
     "(HR 0.80, 95% CI 0.71-0.90; p = 0.003)."
 )
 QUOTE = "lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90; p = 0.003)"
@@ -52,11 +51,6 @@ class FakeEpmc:
     async def lookup(self, *, dois, pmids):
         return [Candidate(title="Paper 0 about metformin and colorectal cancer", doi="10.1/0", pmcid="PMC0",
                           is_open_access=True, abstract="enriched abstract", engines=["europepmc"])]
-
-
-class FakeFullText:
-    async def fetch(self, c):
-        return FullText("europepmc" if c.pmcid else "crawl_html", PAPER_TEXT, "https://example.org/x")
 
 
 def card(direction="positive"):
@@ -111,7 +105,7 @@ def thai(system, user):
 def make_deps(*, allowed=True, results=None, extractor=None):
     if results is None:
         results = [Candidate(title=f"Paper {i} about metformin and colorectal cancer", doi=f"10.1/{i}",
-                             abstract=f"abstract {i}", engines=["pubmed"]) for i in range(10)]
+                             abstract=f"Paper {i}. {ABSTRACT}", engines=["pubmed"]) for i in range(10)]
     llms = LLMs(
         guard=FakeStructuredLLM("g", lambda s, u: TopicVerdict(
             allowed=allowed, reason="ok" if allowed else "not a medical topic", english_topic="metformin and CRC")),
@@ -132,7 +126,7 @@ def make_deps(*, allowed=True, results=None, extractor=None):
         preset="test", models={"extractor": "openrouter:ext"},
     )
     return GraphDeps(settings=Settings(_env_file=None, searxng_pages=1), llms=llms,
-                     searxng=FakeSearxng(results), europepmc=FakeEpmc(), fulltext=FakeFullText())
+                     searxng=FakeSearxng(results), europepmc=FakeEpmc())
 
 
 def all_calls(deps):
@@ -160,12 +154,12 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
     values, events = await run(deps)
     r = values["result"]
     assert [p["ref"] for p in r["papers"]] == [f"P{i}" for i in range(1, 9)]
-    assert r["papers"][0]["doi"] == "10.1/0" and r["papers"][0]["fulltext_source"] == "europepmc"
+    assert r["papers"][0]["doi"] == "10.1/0" and "fulltext_source" not in r["papers"][0]
     assert r["papers"][0]["card"]["population"].startswith("TH ")
     assert r["papers"][0]["card_en"]["population"] == "adults with type 2 diabetes"
     assert r["papers"][0]["verification"]["numbers_verified"] == 2
     assert r["stats"] == {"found": 20, "unique": 10, "candidates": 10, "screened": 10, "selected": 8,
-                          "with_fulltext": 8, "extracted": 8}
+                          "extracted": 8}
     assert r["summary"].startswith("TH Metformin") and r["synthesis_en"]["executive_summary"].startswith("Metformin")
     assert r["synthesis"]["comparison"][0]["outcome"] == "TH Colorectal cancer incidence"
     assert r["synthesis"]["conflicts"][0]["refs"] == [f"P{i}" for i in range(1, 9)]

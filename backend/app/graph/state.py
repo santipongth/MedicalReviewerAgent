@@ -21,7 +21,7 @@ class ReviewState(TypedDict, total=False):
     screened: Annotated[list[dict[str, Any]], operator.add]  # {key, relevance, include, reason}
     selected: list[dict[str, Any]]  # {ref, relevance, reason, candidate}
     external_context: Annotated[list[dict[str, Any]], operator.add]  # results of external MCP tool calls
-    papers: Annotated[list[dict[str, Any]], operator.add]  # {ref, candidate, relevance, fulltext_source, card, error}
+    papers: Annotated[list[dict[str, Any]], operator.add]  # {ref, candidate, relevance, card, error}
     started_at: float  # epoch seconds when the review started (total time in quality.timings)
     matrix: dict[str, Any] | None  # {rows, consensus, conflicts, grade} built by code from the cards
     conflict_notes: Annotated[list[dict[str, Any]], operator.add]  # ConflictNote per conflicting outcome

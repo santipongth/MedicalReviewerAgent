@@ -28,7 +28,6 @@ from app.harness.localize import localize_strings
 from app.harness.matrix import build_matrix, fallback_clusters, outcome_pairs, validate_clusters
 from app.harness.quality import summarize_quality
 from app.harness.verify import check_citations, strip_unknown_citations
-from app.services.fulltext import FULLTEXT_SOURCES
 from app.services.llm import LLMError
 
 NO_PAPERS = {
@@ -79,7 +78,7 @@ def _brief(p: dict[str, Any]) -> dict[str, Any]:
         o.pop("evidence_quote", None)
     c = p.get("candidate") or {}
     return {"ref": p["ref"], "title": c.get("title"), "year": c.get("year"),
-            "text_source": p.get("fulltext_source"), "card": card}
+            "text_source": "abstract", "card": card}
 
 
 def _empty_synthesis(summary: str) -> dict[str, Any]:
@@ -431,7 +430,6 @@ def make_finalize(deps):
                 "ref": p["ref"], "title": c["title"], "authors": c.get("authors") or [], "year": c.get("year"),
                 "journal": c.get("journal"), "doi": c.get("doi"), "pmid": c.get("pmid"), "pmcid": c.get("pmcid"),
                 "url": c.get("url"), "relevance": p.get("relevance"), "screen_reason": p.get("screen_reason"),
-                "fulltext_source": p.get("fulltext_source"), "fulltext_url": p.get("fulltext_url"),
                 "card": localized.get(p["ref"]) or p.get("card"), "card_en": p.get("card"),
                 "verification": p.get("verification"), "error": p.get("error"),
             })
@@ -450,7 +448,6 @@ def make_finalize(deps):
                 "candidates": len(state.get("candidates") or []),
                 "screened": len({d["key"] for d in state.get("screened") or []}),
                 "selected": len(state.get("selected") or []),
-                "with_fulltext": sum(1 for p in papers if p.get("fulltext_source") in FULLTEXT_SOURCES),
                 "extracted": sum(1 for p in papers if p.get("card")),
             },
             "quality": summarize_quality(state.get("quality") or [], state.get("started_at")),

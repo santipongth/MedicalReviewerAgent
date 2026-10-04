@@ -1,6 +1,5 @@
 from functools import lru_cache
 
-from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,7 +15,6 @@ class Settings(BaseSettings):
     searxng_url: str = "http://localhost:8080"
 
     anthropic_api_key: str = ""
-    contact_email: str = ""
 
     trust_proxy: bool = False
     ip_hash_salt: str = "change-me"
@@ -47,25 +45,8 @@ class Settings(BaseSettings):
     searxng_pages: int = 1
     searxng_timeout_seconds: float = 8.0
     europepmc_url: str = "https://www.ebi.ac.uk/europepmc/webservices/rest"
-    unpaywall_url: str = "https://api.unpaywall.org/v2"
     http_timeout_seconds: float = 30.0
-    max_fulltext_chars: int = 60_000
-    fulltext_timeout_seconds: float = 20.0  # per paper; beyond this the abstract is used
     screen_batch_size: int = 10
-
-    crawl_enabled: bool = True
-    crawl4ai_url: str = "http://crawl4ai:11235"
-    # Reads CRAWL4AI_API_TOKEN (same variable the crawl4ai container uses); empty -> crawling disabled.
-    crawl4ai_token: str = Field(
-        "", validation_alias=AliasChoices("crawl4ai_token", "CRAWL4AI_TOKEN", "CRAWL4AI_API_TOKEN")
-    )
-    crawl_stealth: bool = True
-    crawl_concurrency: int = 4
-    crawl_timeout_seconds: float = 120.0
-    crawl_domain_interval: float = 2.0
-    crawl_cooldown_minutes: int = 15
-    fulltext_cache_days: int = 30
-    max_crawl_urls_per_paper: int = 3
 
     # LLM models, presets and tuning live in config/llm.yaml; these hold only the path and keys.
     llm_config_path: str = "config/llm.yaml"

@@ -4,11 +4,6 @@ import pytest
 from app.graph.schemas import Candidate
 from app.services.paper_search import PaperSearch, SearchUnavailable
 from app.services.report import render_markdown
-from app.services.review_service import NotFound, Unprocessable
-
-JATS = """<article><front><article-meta><abstract><p>Short abstract.</p></abstract></article-meta></front>
-<body><sec><title>Methods</title><p>We enrolled 1,234 adults.</p></sec>
-<sec><title>Results</title><p>HR 0.80 (95% CI 0.71-0.90).</p></sec></body></article>"""
 
 
 class Searx:
@@ -32,9 +27,6 @@ class Epmc:
         return [Candidate(title="Metformin and colorectal cancer: cohort", doi="10.1/a", pmcid="PMC123",
                           is_open_access=True, abstract="enriched", engines=["europepmc"])]
 
-    async def fulltext_xml(self, pmcid):
-        return JATS if pmcid == "PMC123" else None
-
 
 def hits():
     return [Candidate(title="Metformin and colorectal cancer cohort", doi="10.1/a", engines=["pubmed"]),
@@ -49,16 +41,10 @@ async def test_search_dedupes_enriches_and_caps():
     assert [c.doi for c in survives] == ["10.1/a", "10.1/b"]
 
 
-async def test_search_unavailable_and_fulltext_validation():
+async def test_search_unavailable():
     with pytest.raises(SearchUnavailable):
         await PaperSearch(Searx(fail=True), Epmc()).search("x", limit=5)
-    ps = PaperSearch(Searx(), Epmc())
-    ft = await ps.fulltext("PMC123")
-    assert ft["source"] == "europepmc" and "## Results" in ft["text"] and "0.80" in ft["text"]
-    with pytest.raises(Unprocessable):
-        await ps.fulltext("../etc/passwd")
-    with pytest.raises(NotFound):
-        await ps.fulltext("PMC999")
+    assert not hasattr(PaperSearch(Searx(), Epmc()), "fulltext")
 
 
 async def test_rest_paper_endpoints(client, app):
@@ -66,8 +52,7 @@ async def test_rest_paper_endpoints(client, app):
     r = await client.get("/api/v1/papers/search", params={"q": "metformin", "limit": 5})
     assert r.status_code == 200 and r.json()[0]["doi"] == "10.1/a"
     assert (await client.get("/api/v1/papers/search", params={"q": ""})).status_code == 422
-    assert (await client.get("/api/v1/papers/fulltext/PMC123")).json()["pmcid"] == "PMC123"
-    assert (await client.get("/api/v1/papers/fulltext/PMC999")).status_code == 404
+    assert (await client.get("/api/v1/papers/fulltext/PMC123")).status_code == 404  # abstract-only: no full text
     app.state.deps.papers = PaperSearch(Searx(fail=True), Epmc())
     assert (await client.get("/api/v1/papers/search", params={"q": "statins"})).status_code == 502
 

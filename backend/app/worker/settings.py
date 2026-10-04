@@ -57,8 +57,7 @@ async def startup(ctx: dict) -> None:
     ctx["queue"] = ArqJobQueue(ctx["redis"])  # arq's own pool: enqueue webhook deliveries
     ctx["webhook_http"] = httpx.AsyncClient(timeout=settings.webhook_timeout_seconds, follow_redirects=False)
     log.info("worker_started", max_jobs=settings.max_concurrent_reviews_per_worker, graph_mode=settings.graph_mode,
-             llm_preset=getattr(ctx["graph_deps"].llms, "preset", None),
-             crawling=getattr(ctx["graph_deps"].fulltext, "crawler", None) is not None)
+             llm_preset=getattr(ctx["graph_deps"].llms, "preset", None))
 
 
 async def shutdown(ctx: dict) -> None:
