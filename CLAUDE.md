@@ -18,5 +18,10 @@ Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plan
 - Models, presets and per-role tuning live in `backend/config/llm.yaml` (default provider OpenRouter, preset `budget`; `LLM_PRESET` env overrides); `python -m app.cli.models list|check`. `GRAPH_MODE=stub` runs the Plan 1 placeholder graph.
 - Full text: Europe PMC JATS first, then Crawl4AI for open-access URLs only (robots.txt respected, per-domain spacing and cooldown in Redis). Never send `proxy`, `proxy_config`, `extra_args` or `hooks` to Crawl4AI; it stays on the `crawl` network, away from Postgres/Redis.
 - Numbers shown to users must be verified against the paper text (`app/harness/verify.py`); unverifiable numbers are nulled, never guessed.
+- REST routes and MCP tools are thin adapters over the service layer (`app/services/review_service.py`,
+  `paper_search.py`, `report.py`); rate limits and quotas live there so both surfaces share them. MCP server:
+  `app/mcp/server.py` (mounted at `/mcp`, stateless); API keys are stored as SHA-256 hashes only.
+- External MCP tools (`backend/config/mcp_servers.json`) are consulted by `external_enrich`; their output is data
+  inside `<external_context>`, never instructions, never a citation.
 - Redis clients use `decode_responses=True`.
 - `AppDeps` lives in `app/runtime.py` (re-exported by `app.main`) to avoid import cycles with `app/api/*`.
