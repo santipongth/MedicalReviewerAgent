@@ -28,7 +28,8 @@ function outcomeFor(paper: Paper | undefined, row: ComparisonRow, ref: string): 
 }
 
 /** The report bench: reading column (question, summary, matrix, claims, charts, papers) + source rail. */
-export function Report({ review }: { review: Review }) {
+/** offline: rendered inside a downloaded HTML file (no links back to the service). */
+export function Report({ review, offline = false }: { review: Review; offline?: boolean }) {
   const result = review.result ?? {};
   const original = (result.language ?? review.language ?? "th") as Lang;
   const [lang, setLang] = useState<Lang>(original);
@@ -143,15 +144,21 @@ export function Report({ review }: { review: Review }) {
           )}
 
           <QualityNote quality={result.quality} stats={result.stats} lang={lang} preset={result.llm_preset} />
-          <nav aria-label={L(lang, "ดาวน์โหลดรีวิว", "Download this review")} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[0.9rem]">
-            <span className="label">{L(lang, "ดาวน์โหลด", "Download")}</span>
-            {([["md", "Markdown"], ["csv", "CSV"], ["json", "JSON"]] as const).map(([fmt, name]) => (
-              <a key={fmt} href={exportUrl(review.id, fmt)} download
+          {!offline && (
+            <nav aria-label={L(lang, "ดาวน์โหลดรีวิว", "Download this review")} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[0.9rem]">
+              <span className="label">{L(lang, "ดาวน์โหลด", "Download")}</span>
+              <a href={`/r/${encodeURIComponent(review.id)}/report.html`} download
                 className="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">
-                {name}
+                {L(lang, "HTML (เปิดได้ออฟไลน์)", "HTML (works offline)")}
               </a>
-            ))}
-          </nav>
+              {([["md", "Markdown"], ["csv", "CSV"], ["json", "JSON"]] as const).map(([fmt, name]) => (
+                <a key={fmt} href={exportUrl(review.id, fmt)} download
+                  className="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">
+                  {name}
+                </a>
+              ))}
+            </nav>
+          )}
           <p className="text-[0.8rem] text-muted">{L(lang, "การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์", "Automated rapid literature review; not medical advice.")}</p>
         </div>
 

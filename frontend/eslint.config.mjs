@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Built single-file report bundle (npm run build:standalone).
+    "standalone-dist/**",
   ]),
 ]);
 

@@ -19,6 +19,8 @@ RUN addgroup -S app && adduser -S app -G app
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
+# the single-file report bundle read by GET /r/[id]/report.html
+COPY --from=build /app/standalone-dist ./standalone-dist
 USER app
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --retries=10 CMD wget -qO- http://127.0.0.1:3000/about >/dev/null || exit 1
