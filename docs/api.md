@@ -252,7 +252,7 @@ uv run --project backend python scripts/loadtest.py --base http://localhost:8088
 ```
 
 **Production checklist:**
-- Publish only Caddy, with `SITE_ADDRESS=your.domain` for automatic HTTPS.
-- Set `PUBLIC_API_URL=/` and `TRUST_PROXY=true`. Without `TRUST_PROXY`, every visitor shares the proxy's rate-limit bucket.
+- Run `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`. The overlay publishes only Caddy (80/443; set `SITE_ADDRESS=your.domain` for automatic HTTPS) and sets `PUBLIC_API_URL=/` and `TRUST_PROXY=true`.
+- Never enable `TRUST_PROXY` while the API port is reachable directly: a client could forge `X-Forwarded-For` and get a fresh rate-limit bucket per request. Without it behind Caddy, every visitor shares the proxy's bucket.
 - Set the `TURNSTILE_*` keys.
 - Size `WORKER_REPLICAS` and `MAX_CONCURRENT_REVIEWS_PER_WORKER` for the traffic you expect, and set `MAX_USD_PER_DAY` to your budget.

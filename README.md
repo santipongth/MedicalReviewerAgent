@@ -11,7 +11,8 @@ deployment: `GET /api/v1/status`; interactive OpenAPI at `/api/docs`).
 3. `bash scripts/smoke.sh` — creates a review and tails its progress until `done`.
 4. One origin for everything (Caddy): http://localhost:8088 (web app, `/api/...`, `/mcp`). Direct ports for
    development: web http://localhost:3000 · API docs http://localhost:8000/api/docs · SearXNG http://localhost:8080
-5. Scale: `API_WORKERS` (uvicorn processes), `WORKER_REPLICAS` × `MAX_CONCURRENT_REVIEWS_PER_WORKER` (concurrent
+5. Production: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` (only Caddy is
+   published; set `SITE_ADDRESS`, `TURNSTILE_*`). Scale: `API_WORKERS` (uvicorn processes), `WORKER_REPLICAS` × `MAX_CONCURRENT_REVIEWS_PER_WORKER` (concurrent
    reviews). Capacity guards: `MAX_QUEUED_REVIEWS`, `MAX_REVIEWS_PER_DAY`, `MAX_USD_PER_DAY`, `MAX_COST_PER_REVIEW_USD`
    (see `.env.example` and the capacity section of `docs/api.md`, incl. load-test numbers).
 

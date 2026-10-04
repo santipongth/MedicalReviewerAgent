@@ -123,9 +123,9 @@ services:
     restart: unless-stopped
     networks: [edge]
 
-  # Single public origin for the web app, REST/SSE and MCP (see infra/caddy/Caddyfile). In production publish only
-  # this service, set PUBLIC_API_URL=/ and TRUST_PROXY=true (the API then rate-limits real client addresses), and
-  # SITE_ADDRESS=your.domain for automatic HTTPS.
+  # Single public origin for the web app, REST/SSE and MCP (see infra/caddy/Caddyfile). Production: add the
+  # docker-compose.prod.yml overlay, which publishes only this service and turns on TRUST_PROXY and PUBLIC_API_URL=/
+  # (TRUST_PROXY is unsafe while api:8000 is published). SITE_ADDRESS=your.domain gives automatic HTTPS.
   caddy:
     image: caddy:2-alpine
     environment:

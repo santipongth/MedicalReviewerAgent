@@ -1,0 +1,22 @@
+# Production overlay: only the Caddy front is published, so the API's X-Forwarded-For handling can be trusted.
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Set SITE_ADDRESS=your.domain (automatic HTTPS) and the TURNSTILE_* keys in .env.
+services:
+  api:
+    ports: !reset []
+    environment:
+      TRUST_PROXY: "true"   # safe only because nothing but Caddy can reach the API
+  web:
+    ports: !reset []
+    environment:
+      PUBLIC_API_URL: "/"   # the browser calls the API on its own origin, through Caddy
+  postgres:
+    ports: !reset []
+  searxng:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  caddy:
+    ports: !override
+      - "80:80"
+      - "443:443"
