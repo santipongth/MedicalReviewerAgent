@@ -3767,3 +3767,32 @@ Expected: unit all pass, live skipped; integration (searxng json, worker postgre
 - **Spec §4 coverage:** topic_guard (0), plan_queries (1), search (2), enrich_dedupe (3), screen_batch + select_top (4/4b), fetch_fulltext + extract (5/6 — combined into one `read_paper` Send node per paper; resume granularity per paper is unchanged), collect_cards (6b — the `papers` reducer + `unique_papers`), synthesize (7), finalize (8). Deferred: `external_enrich` (6c, needs MCP client → Plan 3); per-review cost cap and daily budget (spec §7 → Plan 5); DB `papers`/`review_papers` persistence (result JSON already carries everything; Plan 5 adds cross-review cache); `server-side fallbacks` (cannot verify without a key; refusals surface as `LLMRefusal`).
 - **Type consistency:** state dict shapes (`screened`, `selected`, `papers`) are produced/consumed with the same keys across Tasks 9-10; `FullText(source, text)` used by fetcher, fakes and reading node; `LLMResult.cost_usd` summed via the `cost_usd` reducer; `route_to_screening(state, batch_size)` bound with `partial`.
 - **Review Focus → tests:** (1) `test_no_search_results_finishes_with_explicit_empty_synthesis`; (2) `test_one_failed_extraction_is_reported_not_fatal`; (3) `test_interrupted_reading_resumes_only_unfinished_paper`; (4) `test_rejected_topic_stops_before_search` + `test_rejected_graph_result_sets_rejected_status`; (5) `test_fetch_never_requests_private_urls` + `test_is_public_http_url`.
+
+---
+
+## Execution revisions (approved during execution, 2026-10-04)
+
+These tasks were added or rewritten after the user's later requirements. The exact code is in the commits;
+every ruling is in the ledger (`.superpowers/sdd/2026-10-04-plan-2-data-sources-graph/progress.md`).
+
+- **Task 8b — harness core** (`192fd55`): `app/harness/` runner (validate → repair → escalate), verify
+  (evidence quotes, numbers, citations, number-preserving translation), matrix, GRADE-lite, localize;
+  `llm.yaml` gains harness roles and a `harness:` section; escalation only to large open models.
+- **Task 8c — 20 → 8** (`9fd6a50`): `candidate_limit` 20 (10–40), `max_papers` 8 (3–10); one SearXNG page,
+  at most 4 queries, 8 s per request; `crawl_concurrency` 4. Quality first: the 30 s goal is not enforced.
+- **Task 7c — question refinement** (`24f5106`): `refine_question` between `topic_guard` and `plan_queries`
+  (ReviewQuestion with PICO, sub-questions, key terms; validator; one self-critique; localized display;
+  fallback to the English topic). Event `question_refined` precedes `planning`.
+- **Task 9 — screening, rewritten** (`059d0e8`): coverage-validated batches, second vote from another model
+  family only for borderline relevance, escalation on disagreement, unresolved disagreements kept and flagged.
+- **Task 10a — reading, rewritten** (`e8839d2`): per-paper full-text budget (`fulltext_timeout_seconds`,
+  abstract fallback), English sandwich prompt with checklist and one example, quote and number verification
+  with repair, parallel secondary extraction, escalation on direction disagreement, unverifiable numbers nulled.
+- **Task 10b — synthesis pipeline and graph** (`c7d2558`): `normalize_outcomes` (validated clusters → code-built
+  matrix, consensus, conflicts, GRADE-lite) → `explain_conflict` fan-out → `write_synthesis` (citation check,
+  grade clamped to baseline ±1, cards localized in parallel) → `localize` → `finalize`. The result adds
+  `question`, `quality` (verification, agreement, escalations, per-stage timings), `synthesis_en` and
+  `papers[].card_en` / `verification`; `synthesis` and `papers[].card` are in the user's language.
+- **Task 11** (`38c0f7d`): as written above, plus `elapsed_s` on every event, catalog loading only in real mode,
+  and the SearXNG timeout passed through the factory.
+
