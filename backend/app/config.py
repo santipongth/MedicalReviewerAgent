@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     ip_hash_salt: str = "change-me"
     review_rate_limit: str = "5/hour"  # anonymous callers, per IP
     api_key_rate_limit: str = "60/hour"  # callers with an API key, per key
+    paper_search_rate_limit: str = "30/minute"  # /papers/* and the MCP search/full-text tools
     public_base_url: str = "http://localhost:8000"  # used in webhook result_url and MCP links
     webhook_allow_http: bool = False  # local testing only; production webhooks must be https
     webhook_timeout_seconds: float = 10.0

@@ -8,7 +8,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.api import events, health, reviews
+from app.api import events, health, papers, reviews
 from app.api.ratelimit import limiter
 from app.config import Settings, get_settings
 from app.logging import configure_logging
@@ -67,6 +67,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     app.include_router(health.router, prefix="/api/v1", tags=["system"])
     app.include_router(events.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(reviews.router, prefix="/api/v1", tags=["reviews"])
+    app.include_router(papers.router, prefix="/api/v1", tags=["papers"])
     return app
 
 
