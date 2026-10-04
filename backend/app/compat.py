@@ -10,16 +10,14 @@ import asyncio
 import selectors
 import sys
 from collections.abc import Coroutine
-from typing import Any, TypeVar
-
-T = TypeVar("T")
+from typing import Any
 
 
 def selector_loop_factory() -> asyncio.AbstractEventLoop:
     return asyncio.SelectorEventLoop(selectors.SelectSelector())
 
 
-def run_async(coro: Coroutine[Any, Any, T]) -> T:
+def run_async[T](coro: Coroutine[Any, Any, T]) -> T:
     if sys.platform == "win32":
         return asyncio.run(coro, loop_factory=selector_loop_factory)
     return asyncio.run(coro)

@@ -16,7 +16,7 @@ async def test_stub_graph_streams_progress_and_produces_result():
         (custom if mode == "custom" else updates).append(chunk)
 
     assert [c["type"] for c in custom] == ["planning", "synthesizing"]
-    assert [list(u.keys())[0] for u in updates] == ["plan_queries", "finalize"]
+    assert [next(iter(u)) for u in updates] == ["plan_queries", "finalize"]
 
     final = await graph.aget_state(config)
     assert final.values["result"]["summary"].startswith("Stub review")

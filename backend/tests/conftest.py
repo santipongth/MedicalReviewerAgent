@@ -1,6 +1,12 @@
+import asyncio
 import os
+import sys
 
 import pytest
+
+if sys.platform == "win32":
+    # psycopg async (integration tests, LangGraph Postgres checkpointer) refuses the Proactor loop.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 def pytest_collection_modifyitems(config, items):
@@ -12,10 +18,10 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
-from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.db.models import Base  # noqa: E402
-from app.db.session import make_session_factory  # noqa: E402
+from app.db.models import Base
+from app.db.session import make_session_factory
 
 
 @pytest.fixture
@@ -27,7 +33,7 @@ async def session_factory(tmp_path):
     await engine.dispose()
 
 
-import fakeredis.aioredis  # noqa: E402
+import fakeredis.aioredis
 
 
 @pytest.fixture
@@ -37,11 +43,11 @@ async def redis():
     await client.aclose()
 
 
-import httpx  # noqa: E402
+import httpx
 
-from app.config import Settings  # noqa: E402
-from app.main import AppDeps, create_app  # noqa: E402
-from app.services.events import EventSink  # noqa: E402
+from app.config import Settings
+from app.main import AppDeps, create_app
+from app.services.events import EventSink
 
 
 class FakeJobQueue:
