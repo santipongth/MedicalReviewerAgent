@@ -332,3 +332,37 @@ async def test_narrative_reviews_stay_listed_but_out_of_the_evidence():
     m = out["matrix"]
     assert [c["ref"] for c in m["rows"][0]["cells"]] == ["P1", "P2"]  # the review adds no cell...
     assert m["conflicts"] == []  # ...and no conflict
+
+
+def test_repair_clusters_fixes_a_near_miss_instead_of_discarding_it():
+    from app.harness.matrix import repair_clusters, validate_clusters
+    papers = [paper("P1", card("CRC incidence")), paper("P2", card("incident colorectal cancer")),
+              paper("P3", card("crc incidence")), paper("P4", card("CRC mortality"))]
+    near_miss = OutcomeClusters(clusters=[
+        OutcomeCluster(canonical="Colorectal cancer incidence", members=[
+            OutcomeMember(ref="P1", outcome="CRC incidence"), OutcomeMember(ref="P2", outcome="incident colorectal cancer"),
+            OutcomeMember(ref="P2", outcome="incident colorectal cancer"),  # duplicate
+            OutcomeMember(ref="P9", outcome="made up")]),                     # unknown
+        OutcomeCluster(canonical=" ", members=[OutcomeMember(ref="P4", outcome="CRC mortality")])])  # empty name
+    fixed, repairs, kept = repair_clusters(near_miss, papers)                 # P3 "crc incidence" is missing
+    assert validate_clusters(fixed, papers) == [] and kept == 3 and repairs == 4
+    names = {c.canonical: sorted(m.ref for m in c.members) for c in fixed.clusters}
+    assert names == {"Colorectal cancer incidence": ["P1", "P2", "P3"], "CRC mortality": ["P4"]}
+
+
+async def test_normalize_keeps_a_repaired_llm_clustering():
+    papers = [paper("P1", card("CRC incidence")), paper("P2", card("incident colorectal cancer")),
+              paper("P3", card("crc incidence"))]
+    partial = OutcomeClusters(clusters=[OutcomeCluster(canonical="Colorectal cancer incidence", members=[
+        OutcomeMember(ref="P1", outcome="CRC incidence"), OutcomeMember(ref="P2", outcome="incident colorectal cancer")])])
+    norm = FakeStructuredLLM("qwen", lambda s, u: partial)  # P3 always missing → validation never passes
+    out = await make_normalize_outcomes(deps(normalizer=norm))(state(papers))
+    q = out["quality"][0]
+    assert q["fallback"] is False and q["corrections"] == 1
+    assert [len(r["cells"]) for r in out["matrix"]["rows"]] == [3]
+
+
+def test_quality_reports_normalization_corrections():
+    from app.harness.quality import summarize_quality
+    assert summarize_quality([{"stage": "normalize", "corrections": 3, "fallback": False}], None)[
+        "normalization_corrections"] == 3

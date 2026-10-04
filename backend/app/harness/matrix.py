@@ -30,6 +30,50 @@ def validate_clusters(clusters: OutcomeClusters, papers: list[dict[str, Any]]) -
     return problems
 
 
+def repair_clusters(clusters: OutcomeClusters, papers: list[dict[str, Any]]) -> tuple[OutcomeClusters, int, int]:
+    """Deterministically fix a near-miss clustering instead of discarding it: drop unknown members, keep the first
+    of duplicate assignments, name unnamed clusters after their first member, and put missing outcomes into the
+    cluster whose name (or a member) matches their normalized name, else into their own cluster.
+    Returns (clusters, corrections, members kept from the model)."""
+    expected = outcome_pairs(papers)
+    valid = set(expected)
+    seen: set[tuple[str, str]] = set()
+    fixed: list[OutcomeCluster] = []
+    corrections = kept = 0
+    for cluster in clusters.clusters:
+        members = []
+        for m in cluster.members:
+            pair = (m.ref, m.outcome)
+            if pair in valid and pair not in seen:
+                seen.add(pair)
+                members.append(OutcomeMember(ref=m.ref, outcome=m.outcome))
+            else:
+                corrections += 1
+        if not members:
+            continue
+        canonical = cluster.canonical.strip()
+        if not canonical:
+            canonical, corrections = members[0].outcome, corrections + 1
+        kept += len(members)
+        fixed.append(OutcomeCluster(canonical=canonical, members=members))
+
+    def key(text: str) -> str:
+        return normalize_title(text) or text.lower()
+
+    for ref, outcome in expected:
+        if (ref, outcome) in seen:
+            continue
+        corrections += 1
+        seen.add((ref, outcome))
+        k = key(outcome)
+        home = next((c for c in fixed if key(c.canonical) == k or any(key(m.outcome) == k for m in c.members)), None)
+        if home is None:
+            home = OutcomeCluster(canonical=outcome, members=[])
+            fixed.append(home)
+        home.members.append(OutcomeMember(ref=ref, outcome=outcome))
+    return OutcomeClusters(clusters=fixed), corrections, kept
+
+
 def fallback_clusters(papers: list[dict[str, Any]]) -> OutcomeClusters:
     groups: dict[str, OutcomeCluster] = {}
     for ref, outcome in outcome_pairs(papers):

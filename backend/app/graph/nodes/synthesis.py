@@ -25,7 +25,13 @@ from app.graph.schemas import (
 from app.graph.state import ReviewState
 from app.harness.grade import LEVELS, clamp_to_baseline, grade_baseline
 from app.harness.localize import localize_strings
-from app.harness.matrix import build_matrix, fallback_clusters, outcome_pairs, validate_clusters
+from app.harness.matrix import (
+    build_matrix,
+    fallback_clusters,
+    outcome_pairs,
+    repair_clusters,
+    validate_clusters,
+)
 from app.harness.quality import summarize_quality
 from app.harness.verify import check_citations, strip_unknown_citations
 from app.services.llm import LLMError
@@ -113,7 +119,10 @@ def make_normalize_outcomes(deps):
                     schema=OutcomeClusters, validate=lambda c: validate_clusters(c, papers), trigger="normalize")
                 cost += res.cost
                 entry["repaired"] = res.repaired
-                clusters = res.value if res.ok else None
+                if res.value is not None:  # a near miss is corrected in code, not thrown away
+                    fixed, corrections, kept = repair_clusters(res.value, papers)
+                    entry["corrections"] = corrections
+                    clusters = fixed if kept else None
             except LLMError as exc:
                 errors.append(f"outcome normalization failed: {type(exc).__name__}")
             entry["fallback"] = clusters is None
