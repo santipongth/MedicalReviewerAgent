@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     stale_running_minutes: int = 30
 
     graph_mode: str = "real"  # "stub" = Plan 1 placeholder graph (plumbing tests without Claude)
+    stub_delay_seconds: float = 0.0  # stub graph only: simulated review duration for load tests
     prompt_version: str = "2026-10-05.2"
 
     searxng_engines: str = "pubmed,arxiv,semantic scholar,openalex,crossref"

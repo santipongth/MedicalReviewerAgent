@@ -37,12 +37,17 @@ def initial_state(
     )
 
 
-def build_stub_graph(checkpointer: BaseCheckpointSaver | None = None):
+def build_stub_graph(checkpointer: BaseCheckpointSaver | None = None, delay_seconds: float = 0.0):
     builder = StateGraph(ReviewState)
     builder.add_node("plan_queries", stubs.plan_queries)
     builder.add_node("finalize", stubs.finalize)
     builder.add_edge(START, "plan_queries")
-    builder.add_edge("plan_queries", "finalize")
+    if delay_seconds > 0:  # load tests: a stub review that lasts about as long as a real one
+        builder.add_node("wait", stubs.make_wait(delay_seconds))
+        builder.add_edge("plan_queries", "wait")
+        builder.add_edge("wait", "finalize")
+    else:
+        builder.add_edge("plan_queries", "finalize")
     builder.add_edge("finalize", END)
     return builder.compile(checkpointer=checkpointer)
 
@@ -52,7 +57,7 @@ def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None
     → read_paper* → normalize_outcomes → explain_conflict* → write_synthesis → localize → finalize
     (* = Send fan-out, run in parallel)."""
     if deps.llms is None:
-        return build_stub_graph(checkpointer)
+        return build_stub_graph(checkpointer, deps.settings.stub_delay_seconds)
     b = StateGraph(ReviewState)
     b.add_node("topic_guard", intake.make_topic_guard(deps))
     b.add_node("refine_question", intake.make_refine_question(deps))
