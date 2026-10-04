@@ -88,3 +88,12 @@ async def test_daily_budget_reserves_the_cap_of_every_admitted_review(redis):
     assert await cap.check(queued=0, running=0) is None            # 9 + 0.25 for the new review fits
     refused = await cap.check(queued=2, running=2)                 # 9 + 5 x 0.25 = 10.25 > 10
     assert refused is not None and refused.reason == "daily_budget"
+
+
+async def test_a_held_admission_lock_is_a_short_honest_503(client, redis, monkeypatch):
+    from app.services import capacity
+    monkeypatch.setattr(capacity, "ADMISSION_WAIT_SECONDS", 0.05)
+    await redis.set(capacity.ADMISSION_KEY, "another-process", px=10_000)  # someone else is admitting
+    r = await client.post("/api/v1/reviews", json={"topic": "held lock topic statins", "language": "en"})
+    assert r.status_code == 503 and r.json()["reason"] == "busy" and r.headers["retry-after"] == "5"
+    assert await redis.get(capacity.ADMISSION_KEY) == "another-process"  # never released a lock it did not hold

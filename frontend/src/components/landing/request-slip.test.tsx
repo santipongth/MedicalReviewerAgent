@@ -75,6 +75,24 @@ describe("RequestSlip", () => {
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({ language: "th" }), { turnstileToken: "tok-1" });
   });
 
+  it("explains why it cannot submit when the Turnstile script is blocked", async () => {
+    getStatus.mockResolvedValue({ ...OPEN, turnstile_site_key: "site-key" });
+    render(<RequestSlip />);
+    await screen.findByTestId("turnstile");
+    const script = document.head.querySelector<HTMLScriptElement>('script[src*="challenges.cloudflare.com"]');
+    expect(script).not.toBeNull();
+    script!.dispatchEvent(new Event("error"));
+    expect(await screen.findByText(/โหลดระบบยืนยันว่าเป็นผู้ใช้จริงไม่ได้/)).toBeInTheDocument();
+    script!.remove();
+  });
+
+  it("names a momentary admission backlog honestly", async () => {
+    createReview.mockRejectedValue(new ApiError(503, "too many submissions", 5, undefined, "busy"));
+    render(<RequestSlip />);
+    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("มีผู้ส่งพร้อมกันจำนวนมาก");
+  });
+
   it("explains a rate limit with the wait time", async () => {
     createReview.mockRejectedValue(new ApiError(429, "rate limit exceeded", 1800));
     render(<RequestSlip />);

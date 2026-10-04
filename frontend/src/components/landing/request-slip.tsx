@@ -20,6 +20,7 @@ export function capacityText(reason: string | null | undefined, retryAfter?: num
     return "วันนี้รับรีวิวใหม่ครบแล้ว เปิดรับอีกครั้งเวลา 07:00 น. (เวลาไทย) ระหว่างนี้ยังเปิดดูรีวิวที่เคยทำได้ตามปกติ";
   }
   if (reason === "verification_unavailable") return "ระบบยืนยันว่าเป็นผู้ใช้จริงขัดข้องชั่วคราว ลองใหม่อีกครั้งในไม่กี่วินาที";
+  if (reason === "busy") return "ตอนนี้มีผู้ส่งพร้อมกันจำนวนมาก ลองกดส่งอีกครั้งในไม่กี่วินาที";
   return "ระบบไม่ว่างชั่วคราว ลองส่งใหม่อีกครั้งในไม่กี่วินาที";
 }
 
@@ -57,6 +58,7 @@ export function RequestSlip() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [widgetFailed, setWidgetFailed] = useState(false);
   const widget = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
 
@@ -73,7 +75,8 @@ export function RequestSlip() {
     const mount = () => {
       if (window.turnstile && widgetId.current === null) {
         widgetId.current = window.turnstile.render(el, {
-          sitekey: siteKey, callback: (t: string) => setToken(t), "expired-callback": () => setToken(null),
+          sitekey: siteKey, callback: (t: string) => { setToken(t); setWidgetFailed(false); },
+          "expired-callback": () => setToken(null), "error-callback": () => setWidgetFailed(true),
         });
       }
     };
@@ -82,6 +85,7 @@ export function RequestSlip() {
     script.src = TURNSTILE_SRC;
     script.async = true;
     script.onload = mount;
+    script.onerror = () => setWidgetFailed(true); // blocked by an ad blocker or the network: say so
     document.head.appendChild(script);
   }, [siteKey]);
 
@@ -166,6 +170,12 @@ export function RequestSlip() {
           <span className="text-[0.85rem] text-muted">ใช้เวลาประมาณ 1–3 นาที จะเห็นว่าเอเจนต์ตีความคำถามอย่างไรก่อนเริ่มค้น</span>
         </div>
         {siteKey && <div ref={widget} data-testid="turnstile" className="border-t border-rule px-4 py-3" />}
+        {siteKey && widgetFailed && (
+          <p role="status" className="border-t border-rule bg-warn-bg px-4 py-3 text-[0.92rem] text-ink">
+            โหลดระบบยืนยันว่าเป็นผู้ใช้จริงไม่ได้ (อาจถูกตัวบล็อกโฆษณาหรือเครือข่ายปิดกั้น challenges.cloudflare.com)
+            ลองปิดตัวบล็อกแล้วโหลดหน้าใหม่ หรือใช้ API หรือ MCP ด้วย API key แทน
+          </p>
+        )}
         {closed && (
           <p role="status" className="border-t border-rule bg-warn-bg px-4 py-3 text-[0.92rem] text-ink">
             {capacityText(status?.reason, status?.retry_after)}

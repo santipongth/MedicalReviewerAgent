@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
+from starlette.background import BackgroundTask
 
 from app.api.deps import get_deps, get_settings_dep
 from app.api.ratelimit import client_ip
@@ -62,6 +63,8 @@ async def review_events(
                             content={"detail": f"too many open event streams (max {settings.sse_max_per_ip} "
                                                "per client); close one or poll GET /reviews/{id}"})
 
+    lease = slots.lease(client)
+
     async def generate() -> AsyncIterator[dict]:
         try:
             last = after_seq
@@ -86,6 +89,6 @@ async def review_events(
                 if ev["type"] in TERMINAL_EVENT_TYPES:
                     return
         finally:
-            await slots.release(client)
+            await lease.release()
 
-    return EventSourceResponse(generate(), ping=settings.sse_ping_seconds)
+    return EventSourceResponse(generate(), ping=settings.sse_ping_seconds, background=BackgroundTask(lease.release))

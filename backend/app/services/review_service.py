@@ -168,7 +168,7 @@ class ReviewService:
                 outcome = await self._admit_and_insert(req, identity, options, cache_key)
         except AdmissionBusy as exc:
             raise Unavailable("too many submissions at this moment; please try again in a few seconds", 5,
-                              "queue_full") from exc
+                              "busy") from exc
         if isinstance(outcome, ReviewCreated):
             return outcome
         review_id = outcome
