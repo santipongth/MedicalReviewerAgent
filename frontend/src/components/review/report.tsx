@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { emptyFilters, filterPapers, type Filters } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
@@ -70,17 +71,30 @@ export function Report({ review }: { review: Review }) {
       <div className={`grid grid-cols-[minmax(0,1fr)] rounded-sm border border-rule bg-surface ${hasPapers ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : ""}`}>
         <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8 p-5 sm:p-8 ${hasPapers ? "lg:border-r lg:border-rule" : ""}`}>
           <QuestionHeader question={result.question} topic={review.topic} lang={lang} />
-          <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} />
+          {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} />}
           <section aria-labelledby="h-summary" className="grid gap-2">
             <h2 id="h-summary" className="text-lg font-semibold">{L(lang, "สรุป", "Summary")}</h2>
             <p className="max-w-[65ch] text-[1.02rem] leading-[1.75]">
               <CitedText text={synthesis.executive_summary || result.summary || ""} onSelect={select} refs={refs} />
             </p>
-            <p className="text-[0.8rem] text-muted">
+            {hasPapers && <p className="text-[0.8rem] text-muted">
               {L(lang, "สรุปเขียนโดยโมเดลจากข้อมูลที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับได้แสดงด้วยเส้นใต้ลายเทปในตารางและแถบต้นฉบับ",
                 "The summary is written by a model from verified data; numbers checked against the papers carry a striped underline in the table and source rail.")}
-            </p>
+            </p>}
           </section>
+
+          {!hasPapers && (
+            <section aria-labelledby="h-next" className="grid gap-3">
+              <h2 id="h-next" className="text-lg font-semibold">{L(lang, "ลองแบบนี้", "Try this")}</h2>
+              <ul className="grid list-disc gap-1.5 pl-5 text-[0.95rem]">
+                <li>{L(lang, "ใช้ชื่อยาหรือโรคเป็นภาษาอังกฤษ เช่น metformin, colorectal cancer", "Use the English drug or disease name, e.g. metformin, colorectal cancer")}</li>
+                <li>{L(lang, "ถามให้กว้างขึ้น หรือเอาเงื่อนไขปีและชนิดงานวิจัยออก", "Ask a broader question, or remove the year and study-type filters")}</li>
+              </ul>
+              <Link href="/" className="w-fit rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary no-underline hover:brightness-110">
+                {L(lang, "ถามคำถามใหม่", "Ask a new question")}
+              </Link>
+            </section>
+          )}
 
           {papers.length > 1 && (
             <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} />

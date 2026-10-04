@@ -76,5 +76,10 @@ describe("Report", () => {
     render(<Report review={emptyReviewFixture} />);
     expect(screen.getByText(/ไม่พบงานวิจัยที่ตรงกับหัวข้อนี้/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    // empty state: a next step instead of a rating for nothing (design review FINDING-003)
+    expect(screen.getByRole("link", { name: "ถามคำถามใหม่" })).toHaveAttribute("href", "/");
+    expect(screen.queryByText(/ความแข็งแรงของหลักฐาน/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/สรุปเขียนโดยโมเดล/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/·s*$/)).not.toBeInTheDocument();
   });
 });
