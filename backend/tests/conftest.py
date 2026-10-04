@@ -97,5 +97,5 @@ def fake_anthropic():
 
 
 def pytest_runtest_setup(item):
-    if "live" in item.keywords and not os.environ.get("ANTHROPIC_API_KEY"):
-        pytest.skip("live test: set ANTHROPIC_API_KEY")
+    if "live" in item.keywords and not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
+        pytest.skip("live test: set OPENROUTER_API_KEY (or ANTHROPIC_API_KEY)")

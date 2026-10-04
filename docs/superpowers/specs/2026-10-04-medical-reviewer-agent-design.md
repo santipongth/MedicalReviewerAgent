@@ -9,7 +9,7 @@
 **การตัดสินใจที่ยืนยันกับผู้ใช้แล้ว**
 | หัวข้อ | เลือก |
 |---|---|
-| LLM | Claude API (Anthropic SDK ผ่าน `langchain-anthropic`) |
+| LLM | **OpenRouter** (ค่าเริ่มต้น, preset `budget`) ตั้งค่าใน `backend/config/llm.yaml` — เลือก/ปรับ model ต่อ role ได้เอง; Claude API โดยตรง (`claude_direct`) และ OpenAI-compatible (Ollama/LM Studio) เป็นทางเลือก; ผู้ใช้ public เลือก model ไม่ได้ (revision 2026-10-04) |
 | Deploy | Docker Compose บนเครื่องเดียว (Windows/VPS) |
 | ความลึก | Abstract + Full text เมื่อเป็น Open Access |
 | ภาษาผลลัพธ์ | ผู้ใช้เลือก ไทย/อังกฤษ (ค่าเริ่มต้นไทย) |
@@ -62,7 +62,7 @@
 |---|---|
 | Web | FastAPI + uvicorn (`--loop uvloop`), `sse-starlette`, `slowapi` (อ่าน IP จาก header ของ Caddy เท่านั้น) |
 | Agent | **LangGraph 1.x** StateGraph + `Send` fan-out; `langgraph-checkpoint-postgres` (`AsyncPostgresSaver` บน `AsyncConnectionPool` ต่อ worker process, `autocommit=True, row_factory=dict_row, prepare_threshold=0`; `setup()` รันครั้งเดียวผ่าน migration step) |
-| LLM | `langchain-anthropic` (pin เวอร์ชัน) — `with_structured_output(T, method="json_schema", include_raw=True)` **ห้ามใช้ default function_calling** (forced tool_choice คืน 400 บน Opus 5.5/Sonnet 5.5). Models: `claude-opus-5-5` synthesize (`output_config.effort="high"` ตั้งชัดเจน เพราะ default = medium), `claude-sonnet-5-5` plan/extract, `claude-haiku-4-5` screening/topic-guard (ไม่ส่ง adaptive thinking). ทุก node รับ `StructuredLLM[T]` Protocol (inject ได้ → test ด้วย fake) |
+| LLM | `config/llm.yaml`: provider (openrouter / anthropic / openai_compatible), presets (budget [default]: `google/gemini-2.5-flash-lite` guard/screener + `deepseek/deepseek-v4-pro` planner/extractor/synthesizer; balanced; claude; gemini; claude_direct), overrides ต่อ role (model, max_tokens, temperature, top_p, reasoning_effort, structured_output auto/json_schema/tool_calling/json_mode, fallback_models, extra_body). OpenRouter ผ่าน `langchain-openai` (`response_format` strict json_schema, `provider.require_parameters`, `reasoning.effort`, cost จาก `usage.cost`); Anthropic ผ่าน `langchain-anthropic` (`method="json_schema"`). OpenRouter `/models` catalog ใช้ validate config + เลือก structured method อัตโนมัติ + cost สำรอง; CLI `python -m app.cli.models list|check`. ทุก node รับ `StructuredLLM` Protocol (inject ได้ → test ด้วย fake) |
 | Queue | `arq` 0.28: `job_timeout=1800, max_tries=2, retry_jobs=False, max_jobs=MAX_CONCURRENT_REVIEWS_PER_WORKER (2-3), allow_abort_jobs=True`; resume ผ่าน checkpoint ไม่ใช่ retry |
 | DB | Postgres 17, SQLAlchemy 2 async + Alembic |
 | Cache/Streams | Redis 7 (arq, Redis Streams สำหรับ events, quota/budget counters, cache ผลค้นหา) |

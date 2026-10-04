@@ -53,15 +53,11 @@ class Settings(BaseSettings):
     fulltext_cache_days: int = 30
     max_crawl_urls_per_paper: int = 3
 
-    anthropic_base_url: str | None = None
-    guard_model: str = "claude-haiku-4-5"
-    planner_model: str = "claude-sonnet-5-5"
-    planner_effort: str = "medium"
-    screen_model: str = "claude-haiku-4-5"
-    extract_model: str = "claude-sonnet-5-5"
-    extract_effort: str = "medium"
-    synthesize_model: str = "claude-opus-5-5"
-    synthesize_effort: str = "high"
+    # LLM models, presets and tuning live in config/llm.yaml; these hold only the path and keys.
+    llm_config_path: str = "config/llm.yaml"
+    llm_preset: str | None = None  # overrides active_preset in llm.yaml
+    openrouter_api_key: str = ""
+    openai_compatible_api_key: str = ""
 
     @property
     def checkpoint_conninfo(self) -> str:

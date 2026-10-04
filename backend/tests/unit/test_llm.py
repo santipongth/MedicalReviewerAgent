@@ -2,7 +2,6 @@ import json
 
 import pytest
 
-from app.config import Settings
 from app.graph.schemas import TopicVerdict
 from app.services.llm import (
     AnthropicStructuredLLM,
@@ -10,7 +9,6 @@ from app.services.llm import (
     LLMOutputError,
     LLMRefusal,
     MissingKeyLLM,
-    build_llms,
     estimate_cost,
 )
 from tests.fake_anthropic import message_body
@@ -61,13 +59,3 @@ async def test_refusal_and_bad_json_raise_typed_errors(fake_anthropic):
 async def test_missing_key_llm_raises_clear_error():
     with pytest.raises(LLMError, match="ANTHROPIC_API_KEY"):
         await MissingKeyLLM("claude-haiku-4-5").ainvoke("s", "u")
-
-
-def test_build_llms_assigns_models_and_efforts():
-    llms = build_llms(Settings(_env_file=None, anthropic_api_key="sk-test"))
-    assert llms.guard.model == "claude-haiku-4-5" and llms.guard.effort is None
-    assert llms.planner.model == "claude-sonnet-5-5" and llms.planner.effort == "medium"
-    assert llms.synthesizer.model == "claude-opus-5-5" and llms.synthesizer.effort == "high"
-    assert llms.synthesizer.max_tokens == 20000
-    no_key = build_llms(Settings(_env_file=None, anthropic_api_key=""))
-    assert isinstance(no_key.guard, MissingKeyLLM)

@@ -1,0 +1,83 @@
+# LLM configuration for the Medical Reviewer Agent.
+#
+# Pick a preset with `active_preset` (or env LLM_PRESET=...), or tweak any role below.
+# Roles: guard (topic filter), planner (search queries), screener (title/abstract screening),
+#        extractor (per-paper evidence card), synthesizer (comparison table & conclusions).
+#
+# Per-role fields (all optional except model):
+#   model              provider model id (OpenRouter ids look like "vendor/model")
+#   provider           openrouter | anthropic | openai_compatible   (default: default_provider)
+#   max_tokens         output token cap
+#   temperature, top_p sampling (ignored for Anthropic models that do not accept them)
+#   reasoning_effort   none | minimal | low | medium | high | xhigh | max   (only for reasoning models)
+#   structured_output  auto | json_schema | tool_calling | json_mode       (auto = from OpenRouter catalog)
+#   timeout_seconds    per request
+#   fallback_models    OpenRouter fallback chain if the primary model is unavailable
+#   extra_body         raw fields merged into the provider request
+#
+# Browse models with prices:   uv run python -m app.cli.models list --search gemini --structured
+# Validate this file:          uv run python -m app.cli.models check
+# (inside docker: docker compose run --rm worker python -m app.cli.models check)
+
+active_preset: budget
+default_provider: openrouter
+
+providers:
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    app_name: Medical Reviewer Agent
+    app_url: http://localhost
+    require_parameters: true      # only route to providers that support structured outputs/reasoning
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+  openai_compatible:              # Ollama / LM Studio / vLLM (local, OpenAI-compatible API)
+    base_url: http://host.docker.internal:11434/v1
+    api_key_env: OPENAI_COMPATIBLE_API_KEY
+    require_parameters: false
+
+presets:
+  # Cheapest: ~$0.02-0.05 per review.
+  budget:
+    guard:       {model: google/gemini-2.5-flash-lite, max_tokens: 1024,  temperature: 0}
+    planner:     {model: deepseek/deepseek-v4-pro,     max_tokens: 4096,  temperature: 0.2}
+    screener:    {model: google/gemini-2.5-flash-lite, max_tokens: 4096,  temperature: 0}
+    extractor:   {model: deepseek/deepseek-v4-pro,     max_tokens: 8192,  temperature: 0}
+    synthesizer: {model: deepseek/deepseek-v4-pro,     max_tokens: 16000, temperature: 0.3, reasoning_effort: high,
+                  timeout_seconds: 600}
+
+  # Higher quality reading and synthesis with Claude, cheap screening with Gemini.
+  balanced:
+    guard:       {model: google/gemini-3.1-flash-lite, max_tokens: 1024, temperature: 0}
+    planner:     {model: anthropic/claude-sonnet-5.5,  max_tokens: 4096, reasoning_effort: medium}
+    screener:    {model: google/gemini-3.1-flash-lite, max_tokens: 4096, temperature: 0}
+    extractor:   {model: anthropic/claude-sonnet-5.5,  max_tokens: 8192, reasoning_effort: medium}
+    synthesizer: {model: anthropic/claude-opus-5.5,    max_tokens: 20000, reasoning_effort: high, timeout_seconds: 600}
+
+  # The original all-Claude design, routed through OpenRouter.
+  claude:
+    guard:       {model: anthropic/claude-haiku-4.5,  max_tokens: 1024}
+    planner:     {model: anthropic/claude-sonnet-5.5, max_tokens: 4096, reasoning_effort: medium}
+    screener:    {model: anthropic/claude-haiku-4.5,  max_tokens: 4096}
+    extractor:   {model: anthropic/claude-sonnet-5.5, max_tokens: 8192, reasoning_effort: medium}
+    synthesizer: {model: anthropic/claude-opus-5.5,   max_tokens: 20000, reasoning_effort: high, timeout_seconds: 600}
+
+  gemini:
+    guard:       {model: google/gemini-3.1-flash-lite,   max_tokens: 1024, temperature: 0}
+    planner:     {model: google/gemini-3.5-flash,        max_tokens: 4096, reasoning_effort: low}
+    screener:    {model: google/gemini-3.1-flash-lite,   max_tokens: 4096, temperature: 0}
+    extractor:   {model: google/gemini-3.5-flash,        max_tokens: 8192, reasoning_effort: medium}
+    synthesizer: {model: google/gemini-3.1-pro-preview,  max_tokens: 20000, reasoning_effort: high, timeout_seconds: 600}
+
+  # Direct Anthropic API (needs ANTHROPIC_API_KEY instead of OPENROUTER_API_KEY).
+  claude_direct:
+    guard:       {model: claude-haiku-4-5,  provider: anthropic, max_tokens: 1024}
+    planner:     {model: claude-sonnet-5-5, provider: anthropic, max_tokens: 4096,  reasoning_effort: medium}
+    screener:    {model: claude-haiku-4-5,  provider: anthropic, max_tokens: 4096}
+    extractor:   {model: claude-sonnet-5-5, provider: anthropic, max_tokens: 8192,  reasoning_effort: medium}
+    synthesizer: {model: claude-opus-5-5,   provider: anthropic, max_tokens: 20000, reasoning_effort: high,
+                  timeout_seconds: 600}
+
+# Per-role tweaks applied on top of whichever preset is active, e.g.
+#   synthesizer: {model: anthropic/claude-opus-5.5, reasoning_effort: high}
+overrides: {}

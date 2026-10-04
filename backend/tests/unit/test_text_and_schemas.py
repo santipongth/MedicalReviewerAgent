@@ -67,8 +67,8 @@ def test_paper_card_schema_has_no_optional_keys_for_structured_output():
 
 def test_new_settings_defaults():
     s = Settings(_env_file=None)
-    assert s.synthesize_model == "claude-opus-5-5" and s.synthesize_effort == "high"
-    assert s.guard_model == s.screen_model == "claude-haiku-4-5"
+    assert s.llm_config_path == "config/llm.yaml" and s.llm_preset is None
+    assert s.openrouter_api_key == "" and not hasattr(s, "synthesize_model")  # models live in llm.yaml
     assert s.searxng_engines == "pubmed,arxiv,semantic scholar,openalex,crossref"
     assert s.graph_mode == "real"
     assert s.crawl4ai_url == "http://crawl4ai:11235" and s.crawl_concurrency == 3
