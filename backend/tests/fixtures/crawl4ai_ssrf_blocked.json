@@ -1,0 +1,1 @@
+{"http_status": 400, "body": {"detail": "URL blocked (SSRF protection): URL blocked"}}

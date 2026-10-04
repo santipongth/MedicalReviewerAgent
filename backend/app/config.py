@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +27,41 @@ class Settings(BaseSettings):
     sse_ping_seconds: int = 15
     max_concurrent_reviews_per_worker: int = 2
     stale_running_minutes: int = 30
+
+    graph_mode: str = "real"  # "stub" = Plan 1 placeholder graph (plumbing tests without Claude)
+    prompt_version: str = "2026-10-04.1"
+
+    searxng_engines: str = "pubmed,arxiv,semantic scholar,openalex,crossref"
+    searxng_pages: int = 2
+    europepmc_url: str = "https://www.ebi.ac.uk/europepmc/webservices/rest"
+    unpaywall_url: str = "https://api.unpaywall.org/v2"
+    http_timeout_seconds: float = 30.0
+    max_fulltext_chars: int = 60_000
+    screen_batch_size: int = 10
+
+    crawl_enabled: bool = True
+    crawl4ai_url: str = "http://crawl4ai:11235"
+    # Reads CRAWL4AI_API_TOKEN (same variable the crawl4ai container uses); empty -> crawling disabled.
+    crawl4ai_token: str = Field(
+        "", validation_alias=AliasChoices("crawl4ai_token", "CRAWL4AI_TOKEN", "CRAWL4AI_API_TOKEN")
+    )
+    crawl_stealth: bool = True
+    crawl_concurrency: int = 3
+    crawl_timeout_seconds: float = 120.0
+    crawl_domain_interval: float = 2.0
+    crawl_cooldown_minutes: int = 15
+    fulltext_cache_days: int = 30
+    max_crawl_urls_per_paper: int = 3
+
+    anthropic_base_url: str | None = None
+    guard_model: str = "claude-haiku-4-5"
+    planner_model: str = "claude-sonnet-5-5"
+    planner_effort: str = "medium"
+    screen_model: str = "claude-haiku-4-5"
+    extract_model: str = "claude-sonnet-5-5"
+    extract_effort: str = "medium"
+    synthesize_model: str = "claude-opus-5-5"
+    synthesize_effort: str = "high"
 
     @property
     def checkpoint_conninfo(self) -> str:
