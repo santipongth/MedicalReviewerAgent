@@ -32,8 +32,57 @@ def assemble_sections(parts: list[tuple[str, str]], max_chars: int) -> str | Non
     return "\n\n".join(f"## {name}\n{truncate(text, share)}" for name, text in parts)[:max_chars]
 
 
+# PDF text from Crawl4AI is often run-on ("... manuscript. REFERENCES 1. Siegel RL ..."), so also
+# accept a references heading that is immediately followed by the first numbered entry.
+_REFERENCES_INLINE = re.compile(
+    r"\b(references|bibliography|literature cited)\b\s*:?\s+(?=\[?1[\].)]\s)", re.IGNORECASE
+)
+
+
 def drop_references(text: str) -> str:
-    matches = list(_REFERENCES.finditer(text))
-    if matches and matches[-1].start() > len(text) * 0.4:
-        return text[: matches[-1].start()]
+    starts = [m.start() for m in _REFERENCES.finditer(text)]
+    starts += [m.start() for m in _REFERENCES_INLINE.finditer(text)]
+    if starts and max(starts) > len(text) * 0.4:
+        return text[: max(starts)]
     return text
+
+
+_HEADING = re.compile(r"^(#{1,4})\s+(.+?)\s*$", re.MULTILINE)
+_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_NUMBERING = re.compile(r"^[\d.\s]+")
+
+
+def clean_markdown(md: str) -> str:
+    return " ".join(_LINK.sub(r"\1", _IMAGE.sub("", md)).split())
+
+
+def extract_markdown_sections(md: str, *, max_chars: int) -> str | None:
+    """Abstract + Methods/Results/Discussion/Conclusions from a rendered article page.
+
+    A matched heading owns everything up to the next heading of the same or higher level, so
+    numbered subsections (2.1, 2.3.1, ...) stay inside their parent section."""
+    heads = list(_HEADING.finditer(md))
+    abstract: str | None = None
+    buckets: dict[str, list[str]] = {}
+    owned_until = -1
+    for i, h in enumerate(heads):
+        if h.start() < owned_until:
+            continue
+        level = len(h.group(1))
+        end = next((x.start() for x in heads[i + 1 :] if len(x.group(1)) <= level), len(md))
+        label = _NUMBERING.sub("", h.group(2)).lower()
+        if label.startswith("abstract") and abstract is None:
+            abstract, owned_until = md[h.end() : end], end
+        elif name := classify_heading(label):
+            buckets.setdefault(name, []).append(md[h.end() : end])
+            owned_until = end
+    if not buckets:
+        return None
+    parts = [("Abstract", clean_markdown(abstract))] if abstract else []
+    parts += [(name, clean_markdown(" ".join(buckets[name]))) for name, _ in SECTION_RULES if name in buckets]
+    return assemble_sections(parts, max_chars)
+
+
+def pdf_markdown_text(md: str, *, max_chars: int) -> str:
+    return truncate(" ".join(drop_references(md).split()), max_chars)
