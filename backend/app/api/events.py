@@ -5,14 +5,17 @@ import uuid
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from app.api.deps import get_deps, get_settings_dep
+from app.api.ratelimit import client_ip
 from app.config import Settings
 from app.db.models import TERMINAL_STATUSES
 from app.db.repositories import EventRepository, ReviewRepository
 from app.runtime import AppDeps
 from app.services.events import TERMINAL_EVENT_TYPES, read_live
+from app.services.sse_slots import SseSlots
 
 router = APIRouter()
 
@@ -44,26 +47,38 @@ async def review_events(
         replay = await EventRepository(session).list_since(review_id, after_seq)
     review_status = review.status
 
+    # Each client may hold a bounded number of open streams (shared across API processes through Redis).
+    slots = SseSlots(deps.redis, limit=settings.sse_max_per_ip)
+    client = deps.service.sse_key(client_ip(request))
+    if not await slots.acquire(client):
+        return JSONResponse(status_code=429, headers={"Retry-After": "30"},
+                            content={"detail": f"too many open event streams (max {settings.sse_max_per_ip} "
+                                               "per client); close one or poll GET /reviews/{id}"})
+
     async def generate() -> AsyncIterator[dict]:
-        last = after_seq
-        for ev in replay:
-            last = ev.seq
-            yield {"id": str(ev.seq), "event": ev.type, "data": json.dumps(ev.payload, default=str)}
-            if ev.type in TERMINAL_EVENT_TYPES:
+        try:
+            last = after_seq
+            for ev in replay:
+                last = ev.seq
+                yield {"id": str(ev.seq), "event": ev.type, "data": json.dumps(ev.payload, default=str)}
+                if ev.type in TERMINAL_EVENT_TYPES:
+                    return
+            if review_status in TERMINAL_STATUSES:
                 return
-        if review_status in TERMINAL_STATUSES:
-            return
-        async for ev in read_live(deps.redis, review_id, after_seq=last, block_ms=5000):
-            if await request.is_disconnected():
-                return
-            if ev is None:
-                continue
-            yield {
-                "id": str(ev["seq"]),
-                "event": ev["type"],
-                "data": json.dumps(ev["payload"], default=str),
-            }
-            if ev["type"] in TERMINAL_EVENT_TYPES:
-                return
+            async for ev in read_live(deps.redis, review_id, after_seq=last, block_ms=5000):
+                if await request.is_disconnected():
+                    return
+                await slots.refresh(client)
+                if ev is None:
+                    continue
+                yield {
+                    "id": str(ev["seq"]),
+                    "event": ev["type"],
+                    "data": json.dumps(ev["payload"], default=str),
+                }
+                if ev["type"] in TERMINAL_EVENT_TYPES:
+                    return
+        finally:
+            await slots.release(client)
 
     return EventSourceResponse(generate(), ping=settings.sse_ping_seconds)

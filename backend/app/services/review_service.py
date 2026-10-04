@@ -182,6 +182,9 @@ class ReviewService:
                        "max_queued_reviews": s.max_queued_reviews},
         }
 
+    def sse_key(self, ip: str) -> str:
+        return hash_ip(ip, self.settings.ip_hash_salt)  # raw addresses never reach Redis
+
     async def queue_position(self, review) -> int | None:
         async with self.session_factory() as session:
             return await ReviewRepository(session).queue_position(review)

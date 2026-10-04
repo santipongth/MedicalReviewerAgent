@@ -30,7 +30,8 @@ async def startup(ctx: dict) -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
     ctx["settings"] = settings
-    engine = make_engine(settings.database_url)
+    engine = make_engine(settings.database_url, pool_size=settings.db_pool_size,
+                         max_overflow=settings.db_max_overflow)
     ctx["engine"] = engine
     ctx["session_factory"] = make_session_factory(engine)
     ctx["events_redis"] = Redis.from_url(settings.redis_url, decode_responses=True)
