@@ -114,23 +114,42 @@ def screen_user(*, english_topic: str, plan: dict[str, Any], items: list[tuple[s
             + "\n\n".join(lines) + "\n</candidates>")
 
 
-def extract_system(language: str) -> str:
-    return f"""You extract structured evidence from one research paper for a comparison table in a literature review.
-Report only what the paper states. When something is not reported write "not reported" (null for numbers).
-outcomes: each outcome relevant to the review question, with the result as reported, the effect size with 95% CI / p-value when reported, and the direction relative to the review question's hypothesised effect: positive (supports it / benefit), negative (opposite effect or harm), null (no significant association), mixed, unclear.
-For each outcome also fill the numeric fields used for forest plots: effect_measure (HR, OR, RR, RD, MD, SMD, r, other, none), effect_value, ci_lower, ci_upper and p_value - copy numbers exactly as reported; use null (and effect_measure "none") when the paper does not report them. Never compute or guess numbers.
-risk_of_bias: a brief judgement from design, sample size, confounding control and reporting. overall_direction: the paper's net direction for the review question.
-Use the full text when provided; if only the abstract is available, extract what it supports and reflect the uncertainty.
-{language_instruction(language)}"""
+EXTRACT_SYSTEM = """You extract structured evidence from ONE research paper for a comparison table in a medical literature
+review. Work in English (translation happens later). Report only what the paper states.
+- For every outcome relevant to the review question, copy into evidence_quote the exact sentence(s) from the paper
+  text that state the result and its numbers - verbatim, character for character, no paraphrase.
+- Numeric fields (effect_value, ci_lower, ci_upper, p_value) must be copied from that quote. If the paper does not
+  report a number, use null and effect_measure "none". Never compute, round or guess numbers.
+- sample_size must come from sample_size_quote (verbatim); use null for both if not reported.
+- direction is relative to the review question's hypothesised effect: positive (supports it / benefit), negative
+  (opposite effect or harm), null (no significant association), mixed, unclear.
+- risk_of_bias: brief judgement from design, sample size, confounding control and reporting.
+- If only the abstract is available, extract what it supports and reflect that uncertainty in limitations."""
+
+EXTRACT_EXAMPLE = """Format example for one outcome (illustrative, not from this paper):
+{"outcome": "colorectal cancer incidence", "result": "Lower incidence with metformin than with sulfonylureas",
+ "evidence_quote": "Metformin use was associated with a lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90; p = 0.003).",
+ "effect_size": "HR 0.80 (95% CI 0.71-0.90)", "effect_measure": "HR", "effect_value": 0.80,
+ "ci_lower": 0.71, "ci_upper": 0.90, "p_value": 0.003, "direction": "positive"}"""
+
+EXTRACT_CHECKLIST = """Checklist before answering:
+- every evidence_quote and sample_size_quote is copied verbatim from the paper text above
+- every number in a numeric field appears in its quote; ci_lower <= effect_value <= ci_upper
+- unreported numbers are null (never estimated); all text fields are in English"""
 
 
-def extract_user(*, english_topic: str, plan: dict[str, Any], candidate: dict[str, Any],
-                 source: str, text: str) -> str:
+def extract_system(language: str = "en") -> str:  # language kept for compatibility; extraction is English
+    return EXTRACT_SYSTEM
+
+
+def extract_user(*, question: str, outcomes: list[str], candidate: dict[str, Any], source: str, text: str) -> str:
     header = json.dumps({"title": candidate["title"], "year": candidate.get("year"),
                          "journal": candidate.get("journal"), "publication_types": candidate.get("pub_types"),
                          "text_source": source}, ensure_ascii=False)
-    return (f"Review question: {english_topic}\nOutcomes of interest: {', '.join(plan.get('outcomes') or [])}\n"
-            f"Paper metadata: {header}\n{DATA_NOTICE}\n<paper>\n{text}\n</paper>")
+    # Sandwich layout: the document first, the task and checklist last (smaller models follow the end best).
+    return (f"{DATA_NOTICE}\n<paper>\nMetadata: {header}\n\n{text}\n</paper>\n\n"
+            f"Review question: {question}\nOutcomes of interest: {', '.join(outcomes) or 'as reported'}\n\n"
+            f"{EXTRACT_EXAMPLE}\n\n{EXTRACT_CHECKLIST}")
 
 
 def synthesize_system(language: str) -> str:

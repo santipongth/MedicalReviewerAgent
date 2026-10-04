@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     unpaywall_url: str = "https://api.unpaywall.org/v2"
     http_timeout_seconds: float = 30.0
     max_fulltext_chars: int = 60_000
+    fulltext_timeout_seconds: float = 20.0  # per paper; beyond this the abstract is used
     screen_batch_size: int = 10
 
     crawl_enabled: bool = True
