@@ -9,8 +9,12 @@ RANDOMIZED = ("randomi", "rct", "controlled trial", "meta-analysis of randomized
 NOT_RANDOMIZED = re.compile(r"non[- ]?randomi|quasi|observational|uncontrolled|single[- ]arm", re.IGNORECASE)
 
 
-def is_randomized(design: str | None) -> bool:
-    design = (design or "").lower()
+def is_randomized(card: dict[str, Any]) -> bool:
+    """By the fixed design category when the card has one; older cards fall back to their free-text design."""
+    category = card.get("design_category")
+    if category:
+        return category in ("rct", "sr_ma_rct")
+    design = (card.get("study_design") or "").lower()
     return not NOT_RANDOMIZED.search(design) and any(k in design for k in RANDOMIZED)
 
 
@@ -19,7 +23,7 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     if not cards:
         return {"level": "very_low", "factors": ["no extracted studies"]}
     factors: list[str] = []
-    randomized = sum(1 for c in cards if is_randomized(c.get("study_design")))
+    randomized = sum(1 for c in cards if is_randomized(c))
     if randomized / len(cards) > 0.5:
         level = LEVELS.index("high")
         factors.append(f"start high: {randomized}/{len(cards)} randomized studies")

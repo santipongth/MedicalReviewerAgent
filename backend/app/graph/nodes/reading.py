@@ -9,6 +9,7 @@ from app.graph import prompts
 from app.graph.nodes.intake import harness_runner, harness_spec
 from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate, PaperCard
+from app.harness.design import design_problems, settle_design_category
 from app.harness.runner import HarnessResult
 from app.harness.verify import card_problems, compare_cards, null_unverified_numbers
 from app.services.llm import LLMError
@@ -63,8 +64,11 @@ def make_read_paper(deps):
                                     source="abstract", text=text)
         threshold = spec.quote_match_threshold
 
+        pub_types = cand.pub_types
+
         def validate(card: PaperCard) -> list[str]:
-            return card_problems(card, text, threshold) if spec.verify_quotes else []
+            problems = card_problems(card, text, threshold) if spec.verify_quotes else []
+            return problems + design_problems(card, pub_types)
 
         calls = [runner.call(deps.llms.extractor, system, user, schema=PaperCard, validate=validate,
                              trigger="verification_failed")]
@@ -108,7 +112,7 @@ def make_read_paper(deps):
                 before = card
                 card, verified, total = null_unverified_numbers(card, text, threshold)
                 unverified = _blanked(before, card)
-            entry["card"] = card.model_dump()
+            entry["card"] = settle_design_category(card, pub_types).model_dump()
         if isinstance(primary, BaseException) and not isinstance(primary, LLMError):
             raise primary
         entry["verification"] = {"numbers_verified": verified, "numbers_total": total, "agreement": agreement,

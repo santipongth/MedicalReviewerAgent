@@ -124,6 +124,10 @@ the abstract states.
 - sample_size must come from sample_size_quote (verbatim); use null for both if not reported.
 - direction is relative to the review question's hypothesised effect: positive (supports it / benefit), negative
   (opposite effect or harm), null (no significant association), mixed, unclear.
+- design_category: exactly one of rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series,
+  mendelian_randomization, sr_ma_rct (systematic review/meta-analysis of RCTs), sr_ma_observational (of observational
+  studies), sr_ma_mixed (of both, or unclear), narrative_review (a review without systematic methods), other.
+  study_design keeps the paper's own short description (e.g. "retrospective cohort, propensity-matched").
 - risk_of_bias: brief judgement from design, sample size, confounding control and reporting.
 - Extract only what the abstract supports; note in limitations that details beyond the abstract were not available
   when that matters (e.g. adjustment for confounders or follow-up is not described)."""
