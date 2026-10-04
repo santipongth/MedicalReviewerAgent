@@ -1,7 +1,7 @@
 ---
 # gstack: design-md-format=spec
 name: Medical Reviewer Agent
-description: Theatre Green: a calm operating-theatre instrument where every verified number carries its receipt.
+description: "Theatre Green: a calm operating-theatre instrument where every verified number carries its receipt."
 colors:
   ground: "#E9EFEB"
   surface: "#F8FAF9"
