@@ -213,7 +213,7 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
         emphasis: { scale: 1.3 },
       }],
     };
-  }, [points, tokens, lang]);
+  }, [points, tokens]);
   if (!points.length) return null;
   return (
     <Figure lang={lang} title={L(lang, "แผนที่งานวิจัย: ปี × ขนาดตัวอย่าง × ทิศทางผล", "Study map: year × sample size × direction")}
