@@ -25,6 +25,8 @@ dependencies = [
   "langchain-openai>=1.0",
   "pyyaml>=6.0",
   "rapidfuzz>=3.9",
+  "mcp>=2.3",
+  "langchain[mcp]>=1.4",
 ]
 
 [dependency-groups]
