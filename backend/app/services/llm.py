@@ -302,6 +302,10 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
     if not key and role.provider == "openrouter":
         return MissingKeyLLM(spec.model, ps.api_key_env)
     info = (catalog or {}).get(spec.model) if role.provider == "openrouter" else None
+    if spec.reasoning_effort == "none" and role.provider == "openrouter" and (info is None or info.supports("reasoning")):
+        # Some models reason by default (Qwen3.5 Flash on Alibaba) and then break structured output; an explicit
+        # "none" turns that off. Never sent to models without reasoning support (require_parameters would 404).
+        effort = "none"
     headers = {}
     if role.provider == "openrouter":
         headers = {k: v for k, v in (("HTTP-Referer", ps.app_url), ("X-Title", ps.app_name)) if v}

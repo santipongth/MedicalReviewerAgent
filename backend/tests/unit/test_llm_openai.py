@@ -108,7 +108,7 @@ def test_build_llms_uses_budget_preset_on_openrouter():
     llms = build_llms(settings)
     assert isinstance(llms.guard.inner, OpenAICompatibleStructuredLLM)  # every role runs under the shared limit
     assert llms.guard.model == "qwen/qwen3.5-flash-02-23"
-    assert llms.synthesizer.model == "qwen/qwen3.5-flash-02-23" and llms.synthesizer.reasoning_effort == "medium"
+    assert llms.synthesizer.model == "qwen/qwen3.5-flash-02-23" and llms.synthesizer.reasoning_effort == "none"
     assert llms.preset == "budget"
     assert llms.models["synthesizer"] == "openrouter:qwen/qwen3.5-flash-02-23"
 
@@ -157,3 +157,23 @@ async def test_prompt_that_already_mentions_json_is_left_alone(fake_openai):
     llm = make(fake_openai, method="json_schema")
     await llm.ainvoke("Answer in JSON.", "<topic>x</topic>")
     assert fake_openai.requests[0]["messages"][0]["content"] == "Answer in JSON."
+
+
+def test_reasoning_effort_none_is_sent_to_models_that_reason_by_default():
+    # Qwen3.5 Flash on Alibaba reasons by default and then returns garbage for structured output;
+    # only an explicit reasoning.effort "none" keeps it to valid JSON.
+    from app.services.llm import build_role_llm
+    from app.services.llm_config import load_llm_config
+    catalog = parse_models(json.loads((FIX / "openrouter_models.json").read_text(encoding="utf-8")))
+    settings = Settings(_env_file=None, llm_config_path=REPO_CONFIG, openrouter_api_key="sk-or-x")
+    guard = load_llm_config(REPO_CONFIG).roles["guard"]
+    assert guard.spec.reasoning_effort == "none"
+    assert build_role_llm(guard, settings, catalog).reasoning_effort == "none"
+    no_reasoning_model = guard.with_spec(model="meta-llama/llama-4-scout")
+    assert build_role_llm(no_reasoning_model, settings, catalog).reasoning_effort is None  # never sent there
+
+
+async def test_effort_none_reaches_the_request_body(fake_openai):
+    fake_openai.replies.append(completion_body(OK, cost=0.0001))
+    await make(fake_openai, method="json_schema", reasoning_effort="none").ainvoke("Answer in JSON.", "x")
+    assert fake_openai.requests[0]["reasoning"] == {"effort": "none"}
