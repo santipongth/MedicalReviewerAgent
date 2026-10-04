@@ -3,7 +3,7 @@
 ## 1. Context
 
 **ปัญหา:** นักวิจัย/แพทย์ตามอ่าน paper ใหม่ไม่ทัน
-**สิ่งที่สร้าง:** Web app สาธารณะ (ไม่ต้อง login) + REST API + MCP server ที่ผู้ใช้พิมพ์ชื่อโรค/สาร → Agent ค้น PubMed/arXiv/Semantic Scholar ฯลฯ ผ่าน **searxng-LDR-academic** → ดึง 20 candidate → คัดเหลือ 8 ฉบับที่ตรงที่สุด (revision 2026-10-04; เป้าเวลา ~45–60 วินาที/คำถาม, เลือกคุณภาพก่อน ไม่บังคับ 30 วินาที) → อ่าน methodology/results (abstract + full text ถ้า Open Access) → สรุปเป็น **ตารางเปรียบเทียบ** ว่า paper ไหนให้ผลสอดคล้อง/ขัดแย้งกัน
+**สิ่งที่สร้าง:** Web app สาธารณะ (ไม่ต้อง login) + REST API + MCP server ที่ผู้ใช้พิมพ์ชื่อโรค/สาร → Agent ค้น PubMed/arXiv/Semantic Scholar ฯลฯ ผ่าน **searxng-LDR-academic** → คัดกรอง ~60 candidate ที่มี abstract → วิเคราะห์ abstract ของสูงสุด 30 ฉบับที่ตรงที่สุด (revision 2026-10-05: ไม่ดึง full text อีกต่อไป; เดิม 20 → 8 พร้อม full text) → อ่าน methodology/results จาก abstract → สรุปเป็น **ตารางเปรียบเทียบ** ว่า paper ไหนให้ผลสอดคล้อง/ขัดแย้งกัน
 **จุดขาย:** ใช้ Claude ประมวล "Fat Context" (หลาย paper พร้อมกัน) และย่นเวลาการทำ literature review
 
 **การตัดสินใจที่ยืนยันกับผู้ใช้แล้ว**
@@ -123,7 +123,9 @@ Send targets มี private input schema (`ScreenBatchInput`, `PaperInput`) เ�
 | 7 | `synthesize` | **Opus 5.5** effort high, streaming | รับเฉพาะ `PaperCard`s (ไม่ใช่ full text → ต้นทุนคาดการณ์ได้) → `Synthesis`: executive summary, comparison matrix (outcome × paper), consensus/conflict clusters + เหตุผล (population/dose/design), evidence strength, gaps; ภาษาตามเลือก; อ้าง `[P3]` |
 | 8 | `finalize` | DB | result JSON, `status=done`, `cost_usd`, `model_versions`, `prompt_version` |
 
-### 4.1 Full-text acquisition (Crawl4AI) — revision 2026-10-04
+### 4.1 Full-text acquisition (Crawl4AI) — revision 2026-10-04 — **REMOVED 2026-10-05**
+
+> ยกเลิกทั้งหมดตามการตัดสินใจของผู้ใช้ 2026-10-05 (ดู "Revision 2026-10-05: abstract-only" ท้ายเอกสาร). ข้อความด้านล่างเก็บไว้เป็นประวัติเท่านั้น
 
 ผลทดสอบจริง: MDPI และ Wiley ตอบ 403 กับ HTTP client ธรรมดา แต่ Crawl4AI 0.9.4 (Chromium) ดึงบทความ MDPI ได้ครบใน 3 วินาที, PDF ผ่าน `PDFContentScrapingStrategy`, เคารพ robots.txt (BMC `/track/pdf` ถูกปฏิเสธ) และมี SSRF guard ในตัว
 
@@ -245,3 +247,40 @@ D:\MedicalReviewerAgent\
 - Full text เฉพาะ Open Access ตามกฎหมาย ผ่าน Europe PMC API หรือ Crawl4AI ที่เคารพ robots.txt; paper ปิด/ถูกปฏิเสธใช้ abstract
 - env ที่ต้องมี: `ANTHROPIC_API_KEY`, `CONTACT_EMAIL` (Unpaywall/NCBI); optional `NCBI_API_KEY`, `TURNSTILE_SECRET`, `LANGSMITH_API_KEY`
 - Google Scholar/OpenAlex/Crossref ไม่ใช่แหล่งหลักใน v1 (captcha / ต้องการ key / ซ้ำซ้อนกับ Europe PMC)
+
+## Revision 2026-10-05: abstract-only
+
+ผู้ใช้ตัดสินใจเปลี่ยนแนวทาง: วิเคราะห์จาก abstract อย่างเดียว 30 ฉบับ และไม่ดึง full text อีกต่อไป
+
+**เหตุผลจากการรันจริงครั้งแรก (OpenRouter, preset budget, ดีไซน์ full text):**
+- review จบ `done` ใช้ $0.068 ตัวเลขตรวจผ่าน 87.5%
+- ใช้เวลารวม 1,451 วินาที โดยขั้นอ่าน paper ใช้นานสุด 454 วินาที
+- คำแปลไทยตกเป็นภาษาอังกฤษทั้งหมด เพราะ batch 60 ข้อความทำให้ output เกิน `max_tokens`
+
+**สิ่งที่เปลี่ยน**
+- **Pipeline:**
+  - `enrich` เก็บเฉพาะ candidate ที่มี abstract อย่างน้อย 150 ตัวอักษร
+  - ค่าเริ่มต้นคือ `candidate_limit` 60 (ช่วง 20–100) และ `max_papers` 30 (ช่วง 5–30) โดยต้องได้ `candidate_limit >= max_papers`
+  - `read_paper` สกัดจาก title + abstract และตรวจตัวเลขกับ abstract
+- **ลบออก:**
+  - Crawl4AI service และ network `crawl` (SearXNG ย้ายไปอยู่ network `search` ที่ยังแยกจาก Postgres/Redis)
+  - Europe PMC JATS, Unpaywall และ cache full text
+  - `GET /papers/fulltext/{pmcid}` และ MCP tool `get_fulltext`
+  - คอลัมน์ `papers.fulltext_source`
+- **ความเร็ว:**
+  - ทุก role ใช้ semaphore เดียวกันต่อ process (`LLM_CONCURRENCY`, ค่าเริ่มต้น 16)
+  - localization แบ่ง chunk ละ 15 ข้อความและรันขนาน ถ้า chunk ไหนล้มจะคงอังกฤษเฉพาะ chunk นั้น
+  - preset budget ปรับตามผลวัดจริง:
+
+    | Role | Model |
+    |---|---|
+    | extractor, localizer, normalizer | gemini-3.1-flash-lite |
+    | extractor/screener secondary | deepseek-v4-flash (ต่างตระกูลกับตัวหลัก) |
+    | planner, refiner, conflict, synthesizer | gemini-3.5-flash |
+    | escalation | qwen3.8-max (open model ตัวใหญ่ตามกฎเดิม) |
+- **UI:**
+  - ถาดหลุมมี 60 หลุม และปิดฝาได้สูงสุด 30
+  - PRISMA เพิ่มขั้น "มีบทคัดย่อ"
+  - แหล่งข้อความของทุก paper คือ "บทคัดย่อ"
+  - ผลเก่าที่มี `fulltext_*` ยังแสดงได้
+- **ข้อจำกัดที่ต้องบอกผู้ใช้:** รายละเอียดที่มีเฉพาะในฉบับเต็ม เช่น การปรับ confounder หรือ subgroup อาจไม่ปรากฏใน abstract จึงอาจทำให้ "ไม่ได้รายงาน" บ่อยขึ้น

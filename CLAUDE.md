@@ -4,7 +4,7 @@ Monorepo: `backend/` (Python 3.12, FastAPI + LangGraph + arq), `frontend/` (Next
 Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plans: `docs/superpowers/plans/`.
 
 ## Commands
-- Backend tests: `cd backend && uv run pytest` (unit). Integration: `MRA_INTEGRATION=1 uv run pytest -m integration` with `docker compose up -d postgres redis searxng crawl4ai` and `CRAWL4AI_API_TOKEN` exported. Run tests from `backend/` (config paths are relative to it).
+- Backend tests: `cd backend && uv run pytest` (unit). Integration: `MRA_INTEGRATION=1 uv run pytest -m integration` with `docker compose up -d postgres redis searxng`. Run tests from `backend/` (config paths are relative to it).
 - Lint: `cd backend && uv run ruff check .`
 - API dev server: `cd backend && uv run uvicorn app.main:app --reload --port 8000` (Windows host: add `--loop app.compat:selector_loop_factory`; psycopg async cannot use the Proactor loop)
 - Worker: `cd backend && uv run arq app.worker.settings.WorkerSettings`
@@ -16,7 +16,8 @@ Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plan
 - Repositories never commit; callers use `async with session.begin()`.
 - Structured LLM calls go through `app/services/llm.py` and the harness runner (`app/harness/runner.py`: validate → repair → escalate), never raw provider clients in nodes. Prompts are English; translation happens last (`app/harness/localize.py`, numbers must survive unchanged).
 - Models, presets and per-role tuning live in `backend/config/llm.yaml` (default provider OpenRouter, preset `budget`; `LLM_PRESET` env overrides); `python -m app.cli.models list|check`. `GRAPH_MODE=stub` runs the Plan 1 placeholder graph.
-- Full text: Europe PMC JATS first, then Crawl4AI for open-access URLs only (robots.txt respected, per-domain spacing and cooldown in Redis). Never send `proxy`, `proxy_config`, `extra_args` or `hooks` to Crawl4AI; it stays on the `crawl` network, away from Postgres/Redis.
+- Abstract only (2026-10-05): no full-text fetching or crawling of any kind; papers are read from title + abstract (candidates need ≥ 150 abstract chars) and numbers are verified against the abstract. ~60 candidates are screened, up to 30 analysed.
+- Every role's LLM calls share one per-process semaphore (`LimitedLLM`, `LLM_CONCURRENCY`); localization runs in parallel 15-item chunks (bigger batches overflow `max_tokens` in Thai).
 - Numbers shown to users must be verified against the paper text (`app/harness/verify.py`); unverifiable numbers are nulled, never guessed.
 - REST routes and MCP tools are thin adapters over the service layer (`app/services/review_service.py`,
   `paper_search.py`, `report.py`); rate limits and quotas live there so both surfaces share them. MCP server:

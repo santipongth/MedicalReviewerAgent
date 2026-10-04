@@ -51,7 +51,7 @@ services:
       timeout: 6s
       retries: 30
       start_period: 20s
-    networks: [crawl]
+    networks: [search]  # not on "data": the metasearch container cannot reach Postgres or Redis
 
   migrate:
     build: ./backend
@@ -83,7 +83,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend/config:/app/config:ro  # tune models without rebuilding
-    networks: [data, crawl]
+    networks: [data, search]
 
   worker:
     image: mra/backend:dev
@@ -96,12 +96,10 @@ services:
         condition: service_healthy
       searxng:
         condition: service_healthy
-      crawl4ai:
-        condition: service_healthy
     restart: unless-stopped
     volumes:
       - ./backend/config:/app/config:ro  # tune models without rebuilding
-    networks: [data, crawl]
+    networks: [data, search]
 
   web:
     build: ./frontend
@@ -116,25 +114,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  crawl4ai:
-    image: unclecode/crawl4ai:0.9.4  # >= 0.9.0 required (CVE-2026-26216 / -53755 / -57572)
-    environment:
-      CRAWL4AI_API_TOKEN: ${CRAWL4AI_API_TOKEN:?set CRAWL4AI_API_TOKEN in .env}
-      CRAWL4AI_HOOKS_ENABLED: "false"
-    shm_size: "1g"
-    mem_limit: 3g
-    # Dev only: loopback port so host-side integration tests can reach it; never published publicly.
-    ports:
-      - "127.0.0.1:11235:11235"
-    networks: [crawl]  # not on "data": the crawler cannot reach Postgres or Redis
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:11235/health', timeout=5).status == 200 else 1)\""]
-      interval: 15s
-      timeout: 6s
-      retries: 20
-      start_period: 30s
-    restart: unless-stopped
-
 volumes:
   pgdata:
   redisdata:
@@ -142,4 +121,4 @@ volumes:
 
 networks:
   data: {}
-  crawl: {}
+  search: {}
