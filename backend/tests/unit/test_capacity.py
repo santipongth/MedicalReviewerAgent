@@ -69,3 +69,13 @@ async def test_queue_position(client, session_factory):
         await ReviewRepository(s).update(uuid.UUID(ids[0]), status="running", started_at=datetime.now(UTC))
     assert (await client.get(f"/api/v1/reviews/{ids[0]}")).json()["queue_position"] is None
     assert (await client.get(f"/api/v1/reviews/{ids[2]}")).json()["queue_position"] == 2
+
+
+async def test_concurrent_submissions_cannot_overfill_the_queue(client, app):
+    import asyncio
+    app.state.deps.service.settings.max_queued_reviews = 3
+    app.state.deps.service.settings.review_rate_limit = "1000/hour"
+    answers = await asyncio.gather(*(client.post("/api/v1/reviews", json={"topic": f"burst topic {i} statins",
+                                                                          "language": "en"}) for i in range(10)))
+    codes = sorted(a.status_code for a in answers)
+    assert codes == [202] * 3 + [503] * 7  # check-then-insert is atomic across concurrent requests

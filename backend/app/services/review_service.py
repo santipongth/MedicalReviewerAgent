@@ -1,6 +1,7 @@
 """Review use cases shared by the REST API and the MCP server."""
 from __future__ import annotations
 
+import contextlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -13,6 +14,7 @@ from app.db.repositories import ReviewRepository
 from app.logging import get_logger
 from app.schemas.review import CreateReviewRequest, ReviewCreated, compute_cache_key, hash_ip
 from app.services.api_keys import ApiKeyInfo, reviews_since
+from app.services.capacity import AdmissionBusy
 from app.services.ratelimits import RateLimits
 from app.services.turnstile import TurnstileUnavailable, verify_turnstile
 from app.services.urlsafety import is_public_http_url
@@ -112,25 +114,8 @@ class ReviewService:
         if not ok:
             raise Forbidden("human verification failed; reload the page and try again")
 
-    async def create(self, req: CreateReviewRequest, *, identity: Identity, human_token: str | None = None,
-                     human_check: bool = True) -> ReviewCreated:
-        """human_check=False for MCP: agents cannot solve a browser challenge (they are rate-limited instead)."""
-        options = req.options.model_dump()
-        cache_key = compute_cache_key(req.topic, req.language, options, self.settings.prompt_version)
-        if req.callback_url and identity.api_key is None:
-            raise Forbidden("callback_url requires an API key")
-        if (cached := await self._reuse(cache_key)) is not None:  # cache hits are free; no webhook for them
-            return cached
-        if human_check:
-            await self._check_human(human_token, identity)
-        if req.callback_url and (problem := await callback_url_problem(
-                str(req.callback_url), allow_http=self.settings.webhook_allow_http, url_check=self.url_check)):
-            raise Unprocessable(problem)
-        if identity.api_key is not None:
-            async with self.session_factory() as session:
-                used = await reviews_since(session, identity.api_key.id, datetime.now(UTC) - timedelta(days=1))
-            if used >= identity.api_key.daily_quota:
-                raise RateLimited(3600, f"daily quota of {identity.api_key.daily_quota} reviews exhausted")
+    async def _admit_and_insert(self, req: CreateReviewRequest, identity: Identity, options: dict,
+                                cache_key: str) -> uuid.UUID | ReviewCreated:
         if self.capacity is not None:  # after the cache: cache hits are free even when the service is full
             async with self.session_factory() as session:
                 queued = await ReviewRepository(session).count_by_status("queued")
@@ -154,6 +139,38 @@ class ReviewService:
             if (cached := await self._reuse(cache_key)) is not None:
                 return cached
             raise
+        return review_id
+
+    async def create(self, req: CreateReviewRequest, *, identity: Identity, human_token: str | None = None,
+                     human_check: bool = True) -> ReviewCreated:
+        """human_check=False for MCP: agents cannot solve a browser challenge (they are rate-limited instead)."""
+        options = req.options.model_dump()
+        cache_key = compute_cache_key(req.topic, req.language, options, self.settings.prompt_version)
+        if req.callback_url and identity.api_key is None:
+            raise Forbidden("callback_url requires an API key")
+        if (cached := await self._reuse(cache_key)) is not None:  # cache hits are free; no webhook for them
+            return cached
+        if human_check:
+            await self._check_human(human_token, identity)
+        if req.callback_url and (problem := await callback_url_problem(
+                str(req.callback_url), allow_http=self.settings.webhook_allow_http, url_check=self.url_check)):
+            raise Unprocessable(problem)
+        if identity.api_key is not None:
+            async with self.session_factory() as session:
+                used = await reviews_since(session, identity.api_key.id, datetime.now(UTC) - timedelta(days=1))
+            if used >= identity.api_key.daily_quota:
+                raise RateLimited(3600, f"daily quota of {identity.api_key.daily_quota} reviews exhausted")
+        # Check-then-insert must be atomic across concurrent requests and API processes, or a burst of
+        # submissions all read "queue not full" before any of them is inserted (measured: 100 at once, cap 50).
+        try:
+            async with (self.capacity.admission() if self.capacity is not None else contextlib.nullcontext()):
+                outcome = await self._admit_and_insert(req, identity, options, cache_key)
+        except AdmissionBusy as exc:
+            raise Unavailable("too many submissions at this moment; please try again in a few seconds", 5,
+                              "queue_full") from exc
+        if isinstance(outcome, ReviewCreated):
+            return outcome
+        review_id = outcome
         try:
             await self.event_sink.emit(review_id, "queued", {"topic": req.topic})
             await self.queue.enqueue_review(review_id)

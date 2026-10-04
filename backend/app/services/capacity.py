@@ -2,6 +2,11 @@
 and a daily spend. Counters are per UTC day and expire after two days."""
 from __future__ import annotations
 
+import asyncio
+import time
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -9,6 +14,9 @@ from app.config import Settings
 
 KEY_TTL_SECONDS = 48 * 3600
 QUEUE_FULL_RETRY_SECONDS = 60
+ADMISSION_WAIT_SECONDS = 8
+ADMISSION_KEY = "mra:capacity:admission"
+ADMISSION_TTL_MS = 10_000
 
 
 def seconds_until_utc_midnight(now: datetime | None = None) -> int:
@@ -24,6 +32,10 @@ class Refusal:
     detail: str
 
 
+class AdmissionBusy(Exception):
+    """The admission lock could not be taken in time (a very large burst): ask the caller to retry shortly."""
+
+
 class Capacity:
     def __init__(self, redis, settings: Settings) -> None:
         self.redis = redis
@@ -36,6 +48,23 @@ class Capacity:
         key = self._key(name)
         await self.redis.incrbyfloat(key, amount)
         await self.redis.expire(key, KEY_TTL_SECONDS)
+
+    @asynccontextmanager
+    async def admission(self) -> AsyncIterator[None]:
+        """Serialises check-then-insert across every API process (Redis lock), so a burst of concurrent
+        submissions cannot all read "not full" before any of them is counted. Held for a few milliseconds."""
+        token = uuid.uuid4().hex
+        deadline = time.monotonic() + ADMISSION_WAIT_SECONDS
+        # SET NX PX: no Lua needed; the TTL frees the lock if a process dies while holding it.
+        while not await self.redis.set(ADMISSION_KEY, token, nx=True, px=ADMISSION_TTL_MS):
+            if time.monotonic() > deadline:
+                raise AdmissionBusy
+            await asyncio.sleep(0.005)
+        try:
+            yield
+        finally:
+            if await self.redis.get(ADMISSION_KEY) == token:  # never release a lock another holder took after expiry
+                await self.redis.delete(ADMISSION_KEY)
 
     async def note_review(self) -> None:
         await self._bump("reviews", 1)
