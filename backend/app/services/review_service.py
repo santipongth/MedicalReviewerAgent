@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
-from app.db.models import Review
+from app.db.models import TERMINAL_STATUSES, Review
 from app.db.repositories import ReviewRepository
 from app.logging import get_logger
 from app.schemas.review import CreateReviewRequest, ReviewCreated, compute_cache_key, hash_ip
@@ -54,6 +54,14 @@ class QueueUnavailable(ServiceError):
 
 class Forbidden(ServiceError):
     status_code = 403
+
+
+class NotFound(ServiceError):
+    status_code = 404
+
+
+class Conflict(ServiceError):
+    status_code = 409
 
 
 class ReviewService:
@@ -114,6 +122,29 @@ class ReviewService:
                                                        finished_at=datetime.now(UTC))
             raise QueueUnavailable(review_id) from exc
         return ReviewCreated(review_id=review_id, status="queued", cached=False)
+
+    async def cancel(self, review_id: uuid.UUID, *, identity: Identity) -> str:
+        """Owner key (or an admin key) cancels a queued/running review; the worker job is aborted."""
+        key = identity.api_key
+        if key is None:
+            raise Forbidden("an API key is required")
+        review = await self.get(review_id)
+        if review is None:
+            raise NotFound("review not found")
+        if not key.is_admin and review.api_key_id != key.id:
+            raise Forbidden("only the API key that created this review (or an admin key) can cancel it")
+        async with self.session_factory() as session, session.begin():
+            changed = await ReviewRepository(session).update_unless(
+                review_id, TERMINAL_STATUSES, status="cancelled", finished_at=datetime.now(UTC),
+                error=f"cancelled by API key '{key.name}'")
+        if not changed:
+            raise Conflict(f"review is already {review.status}")
+        await self.event_sink.emit(review_id, "cancelled", {"by": key.name})
+        try:
+            await self.queue.abort_review(review_id)
+        except Exception:  # noqa: BLE001 - status is authoritative; the runner checks it
+            log.warning("abort_failed", review_id=str(review_id))
+        return "cancelled"
 
     async def get(self, review_id: uuid.UUID) -> Review | None:
         async with self.session_factory() as session:

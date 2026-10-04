@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import TERMINAL_STATUSES
+from app.db.models import TERMINAL_STATUSES, ReviewStatus
 from app.db.repositories import ReviewRepository
 from app.graph.graph import initial_state
 from app.logging import get_logger
@@ -70,36 +70,41 @@ class ReviewRunner:
             snapshot = await self.graph.aget_state(config)
             values = snapshot.values
         except asyncio.CancelledError:
-            # Worker shutdown / restart: not a user decision. Hand the review back to the queue
-            # (arq re-runs the job with retry_jobs=True; the stale sweep is the backstop).
-            await self._set_status(review_id, "queued")
-            await emit("interrupted", {"will_resume": True})
+            # Cancelled by the user (DELETE → arq abort): the API already recorded it; do nothing more.
+            # Otherwise worker shutdown / restart: hand the review back to the queue (arq re-runs the job
+            # with retry_jobs=True; the stale sweep is the backstop).
+            if await self._set_status(review_id, "queued"):
+                await emit("interrupted", {"will_resume": True})
             raise
         except Exception as exc:
             log.exception("review_failed", review_id=str(review_id))
             message = f"{type(exc).__name__}: {exc}"
-            await self._finish(review_id, "error", error=message)
+            if not await self._finish(review_id, "error", error=message):
+                return ReviewStatus.cancelled.value
             await emit("error", {"message": message})
             return "error"
 
         cost = float(values.get("cost_usd", 0.0))
         if values.get("rejected"):
             reason = str(values["rejected"])
-            await self._finish(review_id, "rejected", error=reason, cost_usd=cost)
+            if not await self._finish(review_id, "rejected", error=reason, cost_usd=cost):
+                return ReviewStatus.cancelled.value
             await emit("rejected", {"reason": reason})
             return "rejected"
         result = values.get("result") or {}
-        await self._finish(review_id, "done", result=result, cost_usd=cost,
-                           prompt_version=result.get("prompt_version"), model_versions=result.get("models"))
+        if not await self._finish(review_id, "done", result=result, cost_usd=cost,
+                                  prompt_version=result.get("prompt_version"), model_versions=result.get("models")):
+            return ReviewStatus.cancelled.value
         await emit("done", {"cost_usd": cost})
         return "done"
 
-    async def _set_status(self, review_id: uuid.UUID, status: str) -> None:
+    async def _set_status(self, review_id: uuid.UUID, status: str) -> bool:
         async with self.session_factory() as session, session.begin():
-            await ReviewRepository(session).update(review_id, status=status)
+            return await ReviewRepository(session).update_unless(review_id, {ReviewStatus.cancelled.value},
+                                                                 status=status)
 
-    async def _finish(self, review_id: uuid.UUID, status: str, **fields) -> None:
+    async def _finish(self, review_id: uuid.UUID, status: str, **fields) -> bool:
+        """False when the review was cancelled meanwhile: a cancellation is never overwritten."""
         async with self.session_factory() as session, session.begin():
-            await ReviewRepository(session).update(
-                review_id, status=status, finished_at=datetime.now(UTC), **fields
-            )
+            return await ReviewRepository(session).update_unless(
+                review_id, {ReviewStatus.cancelled.value}, status=status, finished_at=datetime.now(UTC), **fields)

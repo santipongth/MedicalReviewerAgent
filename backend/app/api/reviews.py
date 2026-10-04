@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from app.api.auth import get_identity
+from app.api.auth import get_identity, require_key
 from app.api.deps import get_deps
 from app.runtime import AppDeps
 from app.schemas.review import CreateReviewRequest, ReviewCreated, ReviewOut, ReviewSummary
@@ -50,3 +50,16 @@ async def get_review(review_id: uuid.UUID, deps: AppDeps = Depends(get_deps)) ->
     if review is None:
         raise HTTPException(status_code=404, detail="review not found")
     return ReviewOut.model_validate(review)
+
+
+@router.delete("/reviews/{review_id}", responses={401: {"description": "API key required"},
+                                                  403: {"description": "not the owner key"},
+                                                  404: {"description": "unknown review"},
+                                                  409: {"description": "already finished"}})
+async def cancel_review(review_id: uuid.UUID, deps: AppDeps = Depends(get_deps),
+                        identity: Identity = Depends(require_key)):
+    try:
+        status = await deps.service.cancel(review_id, identity=identity)
+    except ServiceError as exc:
+        return service_error_response(exc)
+    return {"review_id": str(review_id), "status": status}

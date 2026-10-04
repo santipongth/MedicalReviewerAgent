@@ -53,9 +53,14 @@ from app.services.events import EventSink
 class FakeJobQueue:
     def __init__(self) -> None:
         self.enqueued: list[str] = []
+        self.aborted: list[str] = []
 
     async def enqueue_review(self, review_id) -> bool:
         self.enqueued.append(str(review_id))
+        return True
+
+    async def abort_review(self, review_id) -> bool:
+        self.aborted.append(str(review_id))
         return True
 
 

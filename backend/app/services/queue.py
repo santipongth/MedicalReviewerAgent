@@ -4,6 +4,7 @@ import uuid
 from typing import Protocol
 
 from arq.connections import ArqRedis
+from arq.jobs import Job
 
 
 def review_job_id(review_id: uuid.UUID | str) -> str:
@@ -12,6 +13,8 @@ def review_job_id(review_id: uuid.UUID | str) -> str:
 
 class JobQueue(Protocol):
     async def enqueue_review(self, review_id: uuid.UUID) -> bool: ...
+
+    async def abort_review(self, review_id: uuid.UUID) -> bool: ...
 
 
 class ArqJobQueue:
@@ -23,3 +26,11 @@ class ArqJobQueue:
             "run_review", str(review_id), _job_id=review_job_id(review_id)
         )
         return job is not None
+
+    async def abort_review(self, review_id: uuid.UUID) -> bool:
+        """Ask arq to abort the job (a running job gets CancelledError). Results are not kept
+        (keep_result=0), so confirmation cannot be awaited; the request itself is what counts."""
+        try:
+            return await Job(review_job_id(review_id), self.pool).abort(timeout=0.5, poll_delay=0.1)
+        except TimeoutError:
+            return True
