@@ -128,7 +128,7 @@ harness:
   quote_match_threshold: 90       # rapidfuzz partial_ratio for "quote found in source"
   escalate_on: [repair_failed, verification_failed, disagreement]
   localize: true                  # reason in English; translate user-facing text last (numbers checked)
-  extraction_chars: 30000         # paper text budget per extraction call (Results weighted first)
+  extraction_chars: 30000         # paper text budget per extraction call (sections weighted: Results 40%, Methods 23%, ...)
 
 # Per-role tweaks applied on top of whichever preset is active, e.g.
 #   synthesizer: {model: anthropic/claude-opus-5.5, reasoning_effort: high}

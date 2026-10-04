@@ -35,6 +35,17 @@ NO_PAPERS = {
     "th": "ไม่พบงานวิจัยที่ตรงกับหัวข้อนี้เพียงพอสำหรับการสรุปเปรียบเทียบ ลองใช้คำค้นที่กว้างขึ้นหรือระบุชื่อสาร/โรคเป็นภาษาอังกฤษ",
     "en": "No sufficiently relevant studies were found for this topic. Try a broader topic or English drug/disease names.",
 }
+EXTRACTION_FAILED = {
+    "th": "พบงานวิจัยที่เกี่ยวข้อง แต่ระบบไม่สามารถสกัดข้อมูลจากงานวิจัยเหล่านั้นได้ (ปัญหาชั่วคราวของโมเดลหรือบริการ) "
+          "กรุณาลองใหม่อีกครั้ง",
+    "en": "Relevant papers were found, but the agent could not extract data from any of them (a temporary model or "
+          "service problem). Please try again later.",
+}
+SCREENING_FAILED = {
+    "th": "พบงานวิจัยที่อาจเกี่ยวข้อง แต่ระบบไม่สามารถคัดกรองได้ (ปัญหาชั่วคราวของโมเดลหรือบริการ) กรุณาลองใหม่อีกครั้ง",
+    "en": "Candidate papers were found but could not be screened (a temporary model or service problem). "
+          "Please try again later.",
+}
 SYNTH_FAILED = ("The narrative synthesis step failed; the comparison table, consensus and conflicts below were "
                 "computed from the per-paper extractions.")
 DIRECTION_TEXT = {"positive": "findings support the hypothesised effect",
@@ -230,8 +241,15 @@ def make_write_synthesis(deps):
         language = state.get("language", "th")
         papers = _with_cards(state)
         if not papers:
-            english = _empty_synthesis(NO_PAPERS["en"])
-            display = _empty_synthesis(NO_PAPERS.get(language, NO_PAPERS["en"]))
+            if state.get("selected"):
+                messages = EXTRACTION_FAILED
+            elif state.get("candidates") and any(e.startswith("screening batch failed")
+                                                 for e in state.get("errors") or []):
+                messages = SCREENING_FAILED
+            else:
+                messages = NO_PAPERS
+            english = _empty_synthesis(messages["en"])
+            display = _empty_synthesis(messages.get(language, messages["en"]))
             return {"synthesis": english, "synthesis_display": display, "localized_cards": None,
                     "quality": [{"stage": "narrative", "skipped": True, "seconds": 0.0}]}
         matrix = state.get("matrix") or {}

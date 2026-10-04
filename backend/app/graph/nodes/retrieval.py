@@ -17,13 +17,18 @@ def make_search(deps):
         jobs = [(q, page) for q in queries for page in range(1, deps.settings.searxng_pages + 1)]
         results = await asyncio.gather(*(deps.searxng.search(q, pageno=p) for q, p in jobs),
                                        return_exceptions=True)
-        found: list[Candidate] = []
+        per_query: dict[str, list[Candidate]] = {q: [] for q in queries}
         errors: list[str] = []
         for (q, page), res in zip(jobs, results, strict=True):
             if isinstance(res, BaseException):
                 errors.append(f"search failed for '{q}' page {page}: {type(res).__name__}")
             else:
-                found.extend(res)
+                per_query[q].extend(res)
+        # Round-robin by rank across queries: the candidate cut keeps each query's best hits instead of
+        # favouring the first query or highly cited (older) papers.
+        found: list[Candidate] = []
+        for rank in range(max((len(v) for v in per_query.values()), default=0)):
+            found.extend(v[rank] for v in per_query.values() if rank < len(v))
         progress_writer()({"type": "searching", "found": len(found), "queries": len(queries),
                              "failed": len(errors)})
         return {"candidates": [c.model_dump() for c in found], "errors": errors,
@@ -54,7 +59,7 @@ def make_enrich(deps):
         unique = len(enriched)
         if options.year_from:
             enriched = [c for c in enriched if c.year is None or c.year >= options.year_from]
-        enriched.sort(key=lambda c: (c.abstract is None, -(c.cited_by or 0)))
+        enriched.sort(key=lambda c: c.abstract is None)  # stable: search rank order is kept otherwise
         kept = enriched[: options.candidate_limit]
         progress_writer()({"type": "enriching", "candidates": len(kept)})
         return {"candidates": [c.model_dump() for c in kept], "errors": errors,

@@ -88,18 +88,45 @@ def _sample_size_problems(card: PaperCard, source: str, threshold: int) -> list[
     return []
 
 
+def _unverified(text: str | None, source_numbers: list[float]) -> list[float]:
+    return [n for n in numbers_in(text) if not _contains(source_numbers, n)]
+
+
+def free_text_problems(card: PaperCard, source: str) -> list[str]:
+    """Numbers in user-facing free text (result, key_findings) must appear somewhere in the paper text."""
+    src = numbers_in(source)
+    problems = [f"{o.outcome}: result mentions {', '.join(f'{n:g}' for n in bad)} which does not appear in the "
+                "paper text; copy numbers exactly as reported" for o in card.outcomes
+                if (bad := _unverified(o.result, src))]
+    problems += [f"key_findings item {i + 1} mentions {', '.join(f'{n:g}' for n in bad)} which does not appear in "
+                 "the paper text" for i, f in enumerate(card.key_findings) if (bad := _unverified(f, src))]
+    return problems
+
+
 def card_problems(card: PaperCard, source: str, threshold: int) -> list[str]:
     problems = _sample_size_problems(card, source, threshold)
     for o in card.outcomes:
         problems += outcome_problems(o, source, threshold)
-    return problems
+    return problems + free_text_problems(card, source)
+
+
+def _mask_unverified(text: str, source_numbers: list[float]) -> str:
+    def repl(m: re.Match) -> str:
+        value = float(m.group(2).replace(",", ""))
+        value = -value if m.group(1) else value
+        return m.group(0) if _contains(source_numbers, value) else "[unverified]"
+    return _NUM.sub(repl, text.translate(_DASHES))
 
 
 def null_unverified_numbers(card: PaperCard, source: str, threshold: int) -> tuple[PaperCard, int, int]:
-    """Blank every number that failed verification so it can never reach a forest plot."""
+    """Blank every number that failed verification so it can never reach a forest plot or the table."""
     verified = total = 0
     outcomes = []
+    src = numbers_in(source)
     for o in card.outcomes:
+        if _unverified(o.result, src):  # free text: use the verified verbatim quote, else mask the numbers
+            o = o.model_copy(update={"result": o.evidence_quote if quote_found(o.evidence_quote, source, threshold)
+                                     else _mask_unverified(o.result, src)})
         has_numbers = any(v is not None for v in (o.effect_value, o.ci_lower, o.ci_upper, o.p_value))
         if not has_numbers:
             outcomes.append(o)
@@ -111,7 +138,7 @@ def null_unverified_numbers(card: PaperCard, source: str, threshold: int) -> tup
         else:
             verified += 1
             outcomes.append(o)
-    update: dict = {"outcomes": outcomes}
+    update: dict = {"outcomes": outcomes, "key_findings": [f for f in card.key_findings if not _unverified(f, src)]}
     if card.sample_size is not None:
         total += 1
         if _sample_size_problems(card, source, threshold):

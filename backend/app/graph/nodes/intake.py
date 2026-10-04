@@ -7,12 +7,12 @@ from langgraph.graph import END
 
 from app.graph import prompts
 from app.graph.progress import progress_writer
-from app.graph.schemas import QuestionCritique, ReviewQuestion
+from app.graph.schemas import QueryPlan, QuestionCritique, ReviewQuestion
 from app.graph.state import ReviewState
 from app.harness.localize import localize_strings
 from app.harness.question import question_problems
 from app.harness.runner import HarnessRunner
-from app.services.llm import LLMRefusal
+from app.services.llm import LLMError, LLMRefusal
 from app.services.llm_config import HarnessSpec
 
 MAX_QUERIES = 4
@@ -59,7 +59,11 @@ async def _localized_display(deps, runner: HarnessRunner, q: ReviewQuestion, lan
     strings |= {f"assumptions.{i}": s for i, s in enumerate(q.assumptions)}
     cost = 0.0
     if harness_spec(deps).localize:
-        strings, _, cost = await localize_strings(getattr(deps.llms, "localizer", None), runner, strings, language)
+        try:
+            strings, _, cost = await localize_strings(getattr(deps.llms, "localizer", None), runner, strings,
+                                                      language)
+        except LLMError:  # display stays in English; the review itself is unaffected
+            cost = 0.0
     display: dict[str, Any] = {
         "interpretation": strings["interpretation"], "refined_question": strings["refined_question"],
         "sub_questions": [strings[f"sub_questions.{i}"] for i in range(len(q.sub_questions))],
@@ -79,11 +83,18 @@ def make_refine_question(deps):
         spec, runner = harness_spec(deps), harness_runner(deps)
         options = state.get("options") or {}
         english_topic = state.get("english_topic") or state["topic"]
-        res = await runner.call(
-            refiner, prompts.REFINE_SYSTEM,
-            prompts.refine_user(topic=state["topic"], english_topic=english_topic, options=options),
-            schema=ReviewQuestion, validate=lambda q: question_problems(q, options),
-        )
+        errors: list[str] = []
+        try:
+            res = await runner.call(
+                refiner, prompts.REFINE_SYSTEM,
+                prompts.refine_user(topic=state["topic"], english_topic=english_topic, options=options),
+                schema=ReviewQuestion, validate=lambda q: question_problems(q, options),
+            )
+        except LLMError as exc:  # provider error or refusal: review the English topic as-is
+            errors.append(f"question refinement failed: {type(exc).__name__}")
+            return {"question": None, "errors": errors,
+                    "quality": [{"stage": "refine", "fallback": True, "critique_applied": False,
+                                 "seconds": round(time.perf_counter() - started, 3)}]}
         cost = res.cost
         question = res.value if res.ok else None
         entry: dict[str, Any] = {"stage": "refine", "attempts": res.attempts, "repaired": res.repaired,
@@ -91,26 +102,30 @@ def make_refine_question(deps):
                                  "fallback": question is None, "problems": res.problems}
         critic = getattr(deps.llms, "refiner_critic", None)
         if question is not None and spec.refine_critique and critic is not None:
-            crit = await runner.call(
-                critic, prompts.CRITIQUE_SYSTEM,
-                prompts.critique_user(topic=state["topic"], question=question.model_dump(), options=options),
-                schema=QuestionCritique, validate=lambda c: question_problems(c.revised, options),
-                trigger="critique",
-            )
-            cost += crit.cost
-            if crit.ok:
-                question = crit.value.revised
-                entry["critique_applied"] = True
-                entry["critique_issues"] = crit.value.issues
+            try:
+                crit = await runner.call(
+                    critic, prompts.CRITIQUE_SYSTEM,
+                    prompts.critique_user(topic=state["topic"], question=question.model_dump(), options=options),
+                    schema=QuestionCritique, validate=lambda c: question_problems(c.revised, options),
+                    trigger="critique",
+                )
+            except LLMError as exc:  # keep the validated draft
+                errors.append(f"question critique failed: {type(exc).__name__}")
+            else:
+                cost += crit.cost
+                if crit.ok:
+                    question = crit.value.revised
+                    entry["critique_applied"] = True
+                    entry["critique_issues"] = crit.value.issues
         if question is None:
             entry["seconds"] = round(time.perf_counter() - started, 3)
-            return {"question": None, "cost_usd": cost, "quality": [entry]}
+            return {"question": None, "cost_usd": cost, "errors": errors, "quality": [entry]}
         display, localize_cost = await _localized_display(deps, runner, question, state.get("language", "th"))
         cost += localize_cost
         writer({"type": "question_refined", **display})
         entry["seconds"] = round(time.perf_counter() - started, 3)
         return {"question": question.model_dump(), "question_display": display, "cost_usd": cost,
-                "quality": [entry]}
+                "errors": errors, "quality": [entry]}
 
     return refine_question
 
@@ -119,11 +134,26 @@ def make_plan_queries(deps):
     async def plan_queries(state: ReviewState) -> dict:
         started = time.perf_counter()
         question = state.get("question")
-        res = await deps.llms.planner.ainvoke(
-            prompts.PLAN_SYSTEM,
-            prompts.plan_user(topic=state["topic"], english_topic=state.get("english_topic") or state["topic"],
-                              options=state.get("options") or {}, question=question),
-        )
+
+        def validate(p: QueryPlan) -> list[str]:
+            return [] if any(q.strip() for q in p.queries) else ["queries must contain at least one search query"]
+
+        try:
+            res = await harness_runner(deps).call(
+                deps.llms.planner, prompts.PLAN_SYSTEM,
+                prompts.plan_user(topic=state["topic"], english_topic=state.get("english_topic") or state["topic"],
+                                  options=state.get("options") or {}, question=question),
+                schema=QueryPlan, validate=validate, trigger="plan")
+        except LLMError as exc:
+            res = None
+            error = f"query planning failed: {type(exc).__name__}"
+        else:
+            error = None if res.ok else "query planning failed: " + "; ".join(res.problems)
+        if res is None or not res.ok:  # search falls back to the (refined) English topic
+            progress_writer()({"type": "planning", "queries": []})
+            return {"plan": None, "cost_usd": res.cost if res else 0.0, "errors": [error],
+                    "quality": [{"stage": "plan", "fallback": True,
+                                 "seconds": round(time.perf_counter() - started, 3)}]}
         plan = res.value.model_dump()
         seen: dict[str, str] = {}
         for q in plan["queries"]:
@@ -135,7 +165,7 @@ def make_plan_queries(deps):
             for key in ("population", "intervention_or_exposure", "comparator", "outcomes"):
                 plan[key] = question[key]
         progress_writer()({"type": "planning", "queries": plan["queries"]})
-        return {"plan": plan, "cost_usd": res.cost_usd,
+        return {"plan": plan, "cost_usd": res.cost,
                 "quality": [{"stage": "plan", "seconds": round(time.perf_counter() - started, 3)}]}
 
     return plan_queries

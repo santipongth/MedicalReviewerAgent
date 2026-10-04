@@ -1,10 +1,17 @@
 """GRADE-lite baseline computed from the evidence cards; the LLM may only move it by one level."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 LEVELS = ("very_low", "low", "moderate", "high")
 RANDOMIZED = ("randomi", "rct", "controlled trial", "meta-analysis of randomized")
+NOT_RANDOMIZED = re.compile(r"non[- ]?randomi|quasi|observational|uncontrolled|single[- ]arm", re.IGNORECASE)
+
+
+def is_randomized(design: str | None) -> bool:
+    design = (design or "").lower()
+    return not NOT_RANDOMIZED.search(design) and any(k in design for k in RANDOMIZED)
 
 
 def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict[str, Any]:
@@ -12,7 +19,7 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     if not cards:
         return {"level": "very_low", "factors": ["no extracted studies"]}
     factors: list[str] = []
-    randomized = sum(1 for c in cards if any(k in (c.get("study_design") or "").lower() for k in RANDOMIZED))
+    randomized = sum(1 for c in cards if is_randomized(c.get("study_design")))
     if randomized / len(cards) > 0.5:
         level = LEVELS.index("high")
         factors.append(f"start high: {randomized}/{len(cards)} randomized studies")

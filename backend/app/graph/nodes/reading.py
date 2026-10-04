@@ -15,13 +15,19 @@ from app.services.fulltext import FullText
 from app.services.llm import LLMError
 
 
-async def _fetch(deps, cand: Candidate) -> tuple[FullText, bool]:
+def _fallback(cand: Candidate) -> FullText:
+    return FullText("abstract", cand.abstract) if cand.abstract else FullText("title_only", cand.title)
+
+
+async def _fetch(deps, cand: Candidate) -> tuple[FullText, bool, str | None]:
+    """(text, timed_out, error). Full text is optional: every failure falls back to the abstract."""
     try:
-        return await asyncio.wait_for(deps.fulltext.fetch(cand), timeout=deps.settings.fulltext_timeout_seconds), False
+        ft = await asyncio.wait_for(deps.fulltext.fetch(cand), timeout=deps.settings.fulltext_timeout_seconds)
+        return ft, False, None
     except TimeoutError:
-        if cand.abstract:
-            return FullText("abstract", cand.abstract), True
-        return FullText("title_only", cand.title), True
+        return _fallback(cand), True, None
+    except Exception as exc:  # noqa: BLE001 - cache/policy/crawler faults must not fail the review
+        return _fallback(cand), False, f"{type(exc).__name__}: {exc}"
 
 
 def _ok_value(result: Any) -> PaperCard | None:
@@ -40,7 +46,7 @@ def make_read_paper(deps):
         spec, runner = harness_spec(deps), harness_runner(deps)
 
         fetch_started = time.perf_counter()
-        fulltext, timed_out = await _fetch(deps, cand)
+        fulltext, timed_out, fetch_error = await _fetch(deps, cand)
         fulltext_seconds = round(time.perf_counter() - fetch_started, 3)
 
         text = fulltext.text[: spec.extraction_chars]
@@ -64,7 +70,7 @@ def make_read_paper(deps):
         primary, secondary = results[0], (results[1] if len(results) > 1 else None)
 
         cost = sum(r.cost for r in results if isinstance(r, HarnessResult))
-        errors: list[str] = []
+        errors: list[str] = [f"full text failed for {paper['ref']}: {fetch_error}"] if fetch_error else []
         p_card, s_card = _ok_value(primary), _ok_value(secondary)
         card = p_card or s_card
         repaired = isinstance(primary, HarnessResult) and primary.repaired

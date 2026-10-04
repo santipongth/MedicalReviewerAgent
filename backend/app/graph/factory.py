@@ -27,9 +27,10 @@ def build_graph_deps(settings: Settings, http: HttpClient, redis=None, catalog=N
                if crawl_on else None)
     policy = (DomainPolicy(redis, min_interval=settings.crawl_domain_interval,
                            cooldown_minutes=settings.crawl_cooldown_minutes) if crawl_on else None)
+    llms = build_llms(settings, catalog=catalog)
     return GraphDeps(
         settings=settings,
-        llms=build_llms(settings, catalog=catalog),
+        llms=llms,
         searxng=SearxngClient(http, settings.searxng_url, settings.searxng_engines,
                               timeout=settings.searxng_timeout_seconds),
         europepmc=europepmc,
@@ -39,7 +40,8 @@ def build_graph_deps(settings: Settings, http: HttpClient, redis=None, catalog=N
             crawler=crawler,
             policy=policy,
             cache=FullTextCache(redis, ttl_days=settings.fulltext_cache_days) if redis is not None else None,
-            max_chars=settings.max_fulltext_chars,
+            # assemble sections at the extraction budget so nothing is head-cut later
+            max_chars=min(settings.max_fulltext_chars, llms.harness.extraction_chars),
             max_urls=settings.max_crawl_urls_per_paper,
             concurrency=settings.crawl_concurrency,
         ),

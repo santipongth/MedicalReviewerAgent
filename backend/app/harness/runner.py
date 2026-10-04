@@ -88,9 +88,8 @@ class HarnessRunner:
                               validate: Validator | None) -> HarnessResult:
         try:
             res = await esc.ainvoke(system, user)
-        except LLMRefusal:
-            raise
-        except LLMError as exc:
-            return HarnessResult(None, 0.0, 1, False, True, [f"escalation failed: {exc}"], False)
+        except LLMError as exc:  # incl. refusal: the caller keeps its own answer and flags it
+            return HarnessResult(None, 0.0, 1, False, True, [f"escalation failed: {type(exc).__name__}: {exc}"],
+                                 False)
         problems = validate(res.value) if validate else []
         return HarnessResult(res.value, res.cost_usd, 1, False, True, problems, not problems)

@@ -23,13 +23,38 @@ def classify_heading(label: str) -> str | None:
     return None
 
 
+# Share of the text budget per section: Results carry the numbers the extractor needs.
+SECTION_WEIGHTS = {"Abstract": 0.12, "Methods": 0.23, "Results": 0.40, "Discussion": 0.15, "Conclusions": 0.10}
+
+
+def _allocate(lengths: list[int], weights: list[float], budget: int) -> list[int]:
+    """Weighted shares; a section shorter than its share gives the rest to the others."""
+    alloc = [0] * len(lengths)
+    active = set(range(len(lengths)))
+    remaining = budget
+    while active:
+        total_w = sum(weights[i] for i in active)
+        fits = [i for i in active if lengths[i] <= remaining * weights[i] / total_w]
+        if not fits:
+            for i in active:
+                alloc[i] = max(500, int(remaining * weights[i] / total_w))
+            break
+        for i in fits:
+            alloc[i] = lengths[i]
+            remaining -= lengths[i]
+            active.discard(i)
+    return alloc
+
+
 def assemble_sections(parts: list[tuple[str, str]], max_chars: int) -> str | None:
     parts = [(n, t) for n, t in parts if t]
     if not parts:
         return None
     overhead = sum(len(f"## {n}\n\n\n") for n, _ in parts)
-    share = max(500, (max_chars - overhead) // len(parts))
-    return "\n\n".join(f"## {name}\n{truncate(text, share)}" for name, text in parts)[:max_chars]
+    shares = _allocate([len(t) for _, t in parts], [SECTION_WEIGHTS.get(n, 0.1) for n, _ in parts],
+                       max(0, max_chars - overhead))
+    return "\n\n".join(f"## {name}\n{truncate(text, share)}"
+                         for (name, text), share in zip(parts, shares, strict=True))[:max_chars]
 
 
 # PDF text from Crawl4AI is often run-on ("... manuscript. REFERENCES 1. Siegel RL ..."), so also
