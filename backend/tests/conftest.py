@@ -35,3 +35,43 @@ async def redis():
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     yield client
     await client.aclose()
+
+
+import httpx  # noqa: E402
+
+from app.config import Settings  # noqa: E402
+from app.main import AppDeps, create_app  # noqa: E402
+from app.services.events import EventSink  # noqa: E402
+
+
+class FakeJobQueue:
+    def __init__(self) -> None:
+        self.enqueued: list[str] = []
+
+    async def enqueue_review(self, review_id) -> bool:
+        self.enqueued.append(str(review_id))
+        return True
+
+
+@pytest.fixture
+def queue():
+    return FakeJobQueue()
+
+
+@pytest.fixture
+def test_settings():
+    return Settings(_env_file=None, ratelimit_storage_uri="memory://")
+
+
+@pytest.fixture
+async def app(session_factory, redis, queue, test_settings):
+    sink = EventSink(session_factory, redis, ttl_seconds=60)
+    deps = AppDeps(session_factory=session_factory, redis=redis, queue=queue, event_sink=sink)
+    return create_app(test_settings, deps=deps)
+
+
+@pytest.fixture
+async def client(app):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c

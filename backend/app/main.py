@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health
+from app.api import events, health
 from app.config import Settings, get_settings
 from app.logging import configure_logging
 from app.runtime import AppDeps
@@ -50,6 +50,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
         expose_headers=["Mcp-Session-Id"],
     )
     app.include_router(health.router, prefix="/api/v1", tags=["system"])
+    app.include_router(events.router, prefix="/api/v1", tags=["reviews"])
     return app
 
 
