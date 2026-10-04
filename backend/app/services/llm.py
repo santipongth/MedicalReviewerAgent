@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, Protocol
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -9,8 +9,6 @@ from pydantic import BaseModel
 
 from app.config import Settings
 from app.graph.schemas import PaperCard, QueryPlan, ScreenBatch, Synthesis, TopicVerdict
-
-T = TypeVar("T", bound=BaseModel)
 
 # USD per million tokens (input, output). Source: claude-api skill model table, 2026-09.
 PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
@@ -39,7 +37,7 @@ class LLMOutputError(LLMError):
 
 
 @dataclass
-class LLMResult(Generic[T]):
+class LLMResult[T: BaseModel]:
     value: T
     cost_usd: float
     model: str
@@ -53,7 +51,7 @@ class StructuredLLM(Protocol):
     async def ainvoke(self, system: str, user: str) -> LLMResult: ...
 
 
-class AnthropicStructuredLLM(Generic[T]):
+class AnthropicStructuredLLM[T: BaseModel]:
     def __init__(
         self,
         schema: type[T],
