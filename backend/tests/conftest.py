@@ -65,6 +65,9 @@ def test_settings():
 
 @pytest.fixture
 async def app(session_factory, redis, queue, test_settings):
+    import app.api.ratelimit as rl
+
+    rl.limiter.reset()
     sink = EventSink(session_factory, redis, ttl_seconds=60)
     deps = AppDeps(session_factory=session_factory, redis=redis, queue=queue, event_sink=sink)
     return create_app(test_settings, deps=deps)

@@ -4,8 +4,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
-from app.api import events, health
+from app.api import events, health, reviews
+from app.api.ratelimit import limiter
 from app.config import Settings, get_settings
 from app.logging import configure_logging
 from app.runtime import AppDeps
@@ -40,6 +44,9 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
         openapi_url="/api/openapi.json",
     )
     app.state.settings = settings
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
     if deps is not None:
         app.state.deps = deps
     app.add_middleware(
@@ -51,6 +58,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     )
     app.include_router(health.router, prefix="/api/v1", tags=["system"])
     app.include_router(events.router, prefix="/api/v1", tags=["reviews"])
+    app.include_router(reviews.router, prefix="/api/v1", tags=["reviews"])
     return app
 
 

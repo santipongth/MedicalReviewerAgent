@@ -6,7 +6,7 @@ Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plan
 ## Commands
 - Backend tests: `cd backend && uv run pytest` (unit). Integration: `MRA_INTEGRATION=1 uv run pytest -m integration` with `docker compose up -d postgres redis searxng`.
 - Lint: `cd backend && uv run ruff check .`
-- API dev server: `cd backend && uv run uvicorn app.main:app --reload --port 8000`
+- API dev server: `cd backend && uv run uvicorn app.main:app --reload --port 8000` (Windows host: add `--loop app.compat:selector_loop_factory`; psycopg async cannot use the Proactor loop)
 - Worker: `cd backend && uv run arq app.worker.settings.WorkerSettings`
 - Migrations: `cd backend && uv run alembic upgrade head`; new: `uv run alembic revision --autogenerate -m "..."`
 - Full stack: `docker compose up -d --build`
