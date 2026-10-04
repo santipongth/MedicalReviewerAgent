@@ -41,7 +41,9 @@ async def create_review(body: CreateReviewRequest, deps: AppDeps = Depends(get_d
 async def list_recent_reviews(
     recent: int = Query(20, ge=1, le=50), deps: AppDeps = Depends(get_deps)
 ) -> list[ReviewSummary]:
-    return [ReviewSummary.model_validate(r) for r in await deps.service.list_recent(recent)]
+    return [ReviewSummary.model_validate(r).model_copy(update={
+        "verification_rate": ((r.result or {}).get("quality") or {}).get("verification_rate")})
+        for r in await deps.service.list_recent(recent)]
 
 
 @router.get("/reviews/{review_id}", response_model=ReviewOut)

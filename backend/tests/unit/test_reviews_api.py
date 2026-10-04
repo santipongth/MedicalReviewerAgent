@@ -91,11 +91,12 @@ async def test_list_recent_returns_done_only(client, session_factory):
     assert (await client.get("/api/v1/reviews?recent=5")).json() == []
     async with session_factory() as s, s.begin():
         await ReviewRepository(s).update(
-            uuid.UUID(created["review_id"]), status="done", finished_at=datetime.now(UTC)
+            uuid.UUID(created["review_id"]), status="done", finished_at=datetime.now(UTC),
+            result={"quality": {"verification_rate": 0.96}},
         )
     listed = (await client.get("/api/v1/reviews?recent=5")).json()
     assert [r["id"] for r in listed] == [created["review_id"]]
-    assert "result" not in listed[0]
+    assert "result" not in listed[0] and listed[0]["verification_rate"] == 0.96
 
 
 async def test_rate_limit_returns_429(session_factory, redis, queue, monkeypatch):
