@@ -116,7 +116,7 @@ export function RequestSlip() {
       <div className="mt-4 flex flex-wrap items-baseline gap-x-5 gap-y-1.5 text-[0.92rem]">
         <span className="label">ลองหัวข้อ</span>
         {EXAMPLES.map((ex) => (
-          <button key={ex} type="button" onClick={() => setTopic(ex)} className="text-primary underline-offset-2 hover:underline">
+          <button key={ex} type="button" onClick={() => setTopic(ex)} className="inline-flex min-h-11 items-center text-primary underline underline-offset-2 hover:decoration-2 md:min-h-0">
             {ex}
           </button>
         ))}
