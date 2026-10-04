@@ -50,13 +50,17 @@ class HttpClient:
             self._last[host] = time.monotonic()
 
     async def get(
-        self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None
+        self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> httpx.Response:
         host = httpx.URL(url).host
         for attempt in range(self.retries + 1):
             await self._throttle(host)
             try:
-                resp = await self._client.get(url, params=params, headers=headers)
+                kwargs: dict[str, Any] = {"params": params, "headers": headers}
+                if timeout is not None:
+                    kwargs["timeout"] = timeout
+                resp = await self._client.get(url, **kwargs)
             except httpx.TransportError:
                 if attempt == self.retries:
                     raise

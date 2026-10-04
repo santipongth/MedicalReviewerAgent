@@ -60,7 +60,7 @@ async def test_plan_queries_dedupes_caps_and_passes_options():
     state = {"topic": "เมตฟอร์มิน", "english_topic": "metformin and CRC", "language": "th",
              "options": {"year_from": 2015, "study_types": ["RCT", "cohort"]}}
     out = await make_plan_queries(_deps(_llms(planner=planner)))(state)
-    assert out["plan"]["queries"] == ["metformin colorectal cancer", "metformin CRC risk cohort", "q3", "q4", "q5", "q6"]
+    assert out["plan"]["queries"] == ["metformin colorectal cancer", "metformin CRC risk cohort", "q3", "q4"]
     assert out["cost_usd"] == 0.01
     user = planner.calls[0][1]
     assert "2015" in user and "RCT" in user and "metformin and CRC" in user

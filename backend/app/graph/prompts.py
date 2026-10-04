@@ -27,7 +27,7 @@ def guard_user(topic: str) -> str:
 
 
 PLAN_SYSTEM = """You design the search strategy for a rapid systematic-style literature review.
-queries: 3-6 short keyword queries for academic search engines (PubMed / Semantic Scholar / arXiv style): 3-8 words each, no boolean operators, no quotes. Together they must cover the main synonyms of the intervention or exposure, the condition, and the key outcomes.
+queries: 2-4 short keyword queries for academic search engines (PubMed / Semantic Scholar / arXiv style): 3-8 words each, no boolean operators, no quotes. Together they must cover the main synonyms of the intervention or exposure, the condition, and the key outcomes.
 Also define the PICO elements and explicit inclusion and exclusion criteria (study types, population, outcomes). Write all fields in English."""
 
 

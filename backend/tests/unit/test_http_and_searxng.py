@@ -102,3 +102,17 @@ async def test_searxng_http_error_raises():
     with pytest.raises(httpx.HTTPStatusError):
         await SearxngClient(http, "http://searxng:8080", "pubmed").search("x")
     await http.aclose()
+
+
+async def test_searxng_client_passes_per_request_timeout():
+    class RecordingHttp:
+        def __init__(self):
+            self.kwargs = None
+
+        async def get(self, url, **kwargs):
+            self.kwargs = kwargs
+            return httpx.Response(200, json={"results": []}, request=httpx.Request("GET", url))
+
+    http = RecordingHttp()
+    await SearxngClient(http, "http://searxng:8080", "pubmed", timeout=8.0).search("q")
+    assert http.kwargs["timeout"] == 8.0

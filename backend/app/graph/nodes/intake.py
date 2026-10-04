@@ -7,7 +7,7 @@ from app.graph.progress import progress_writer
 from app.graph.state import ReviewState
 from app.services.llm import LLMRefusal
 
-MAX_QUERIES = 6
+MAX_QUERIES = 4
 
 
 def route_after_guard(state: ReviewState) -> str:

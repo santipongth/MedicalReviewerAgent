@@ -71,7 +71,8 @@ def test_new_settings_defaults():
     assert s.openrouter_api_key == "" and not hasattr(s, "synthesize_model")  # models live in llm.yaml
     assert s.searxng_engines == "pubmed,arxiv,semantic scholar,openalex,crossref"
     assert s.graph_mode == "real"
-    assert s.crawl4ai_url == "http://crawl4ai:11235" and s.crawl_concurrency == 3
+    assert s.crawl4ai_url == "http://crawl4ai:11235" and s.crawl_concurrency == 4
+    assert s.searxng_pages == 1 and s.searxng_timeout_seconds == 8.0
     assert s.crawl_domain_interval == 2.0 and s.crawl_cooldown_minutes == 15 and s.fulltext_cache_days == 30
 
 

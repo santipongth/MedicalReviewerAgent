@@ -10,8 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 
 class ReviewOptions(BaseModel):
-    max_papers: int = Field(10, ge=3, le=20)
-    candidate_limit: int = Field(100, ge=20, le=200)
+    # 20 candidates → the 8 most relevant are read and analysed (keeps a review to ~1 minute).
+    max_papers: int = Field(8, ge=3, le=10)
+    candidate_limit: int = Field(20, ge=10, le=40)
     year_from: int | None = Field(None, ge=1950, le=2100)
     study_types: list[str] = Field(default_factory=list, max_length=10)
 

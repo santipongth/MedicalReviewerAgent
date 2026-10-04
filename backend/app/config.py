@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     prompt_version: str = "2026-10-04.1"
 
     searxng_engines: str = "pubmed,arxiv,semantic scholar,openalex,crossref"
-    searxng_pages: int = 2
+    searxng_pages: int = 1
+    searxng_timeout_seconds: float = 8.0
     europepmc_url: str = "https://www.ebi.ac.uk/europepmc/webservices/rest"
     unpaywall_url: str = "https://api.unpaywall.org/v2"
     http_timeout_seconds: float = 30.0
@@ -46,7 +47,7 @@ class Settings(BaseSettings):
         "", validation_alias=AliasChoices("crawl4ai_token", "CRAWL4AI_TOKEN", "CRAWL4AI_API_TOKEN")
     )
     crawl_stealth: bool = True
-    crawl_concurrency: int = 3
+    crawl_concurrency: int = 4
     crawl_timeout_seconds: float = 120.0
     crawl_domain_interval: float = 2.0
     crawl_cooldown_minutes: int = 15

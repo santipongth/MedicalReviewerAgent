@@ -3,7 +3,7 @@
 ## 1. Context
 
 **ปัญหา:** นักวิจัย/แพทย์ตามอ่าน paper ใหม่ไม่ทัน
-**สิ่งที่สร้าง:** Web app สาธารณะ (ไม่ต้อง login) + REST API + MCP server ที่ผู้ใช้พิมพ์ชื่อโรค/สาร → Agent ค้น PubMed/arXiv/Semantic Scholar ฯลฯ ผ่าน **searxng-LDR-academic** → คัดกรอง ~100 → 10 ฉบับ → อ่าน methodology/results (abstract + full text ถ้า Open Access) → สรุปเป็น **ตารางเปรียบเทียบ** ว่า paper ไหนให้ผลสอดคล้อง/ขัดแย้งกัน
+**สิ่งที่สร้าง:** Web app สาธารณะ (ไม่ต้อง login) + REST API + MCP server ที่ผู้ใช้พิมพ์ชื่อโรค/สาร → Agent ค้น PubMed/arXiv/Semantic Scholar ฯลฯ ผ่าน **searxng-LDR-academic** → ดึง 20 candidate → คัดเหลือ 8 ฉบับที่ตรงที่สุด (revision 2026-10-04; เป้าเวลา ~45–60 วินาที/คำถาม, เลือกคุณภาพก่อน ไม่บังคับ 30 วินาที) → อ่าน methodology/results (abstract + full text ถ้า Open Access) → สรุปเป็น **ตารางเปรียบเทียบ** ว่า paper ไหนให้ผลสอดคล้อง/ขัดแย้งกัน
 **จุดขาย:** ใช้ Claude ประมวล "Fat Context" (หลาย paper พร้อมกัน) และย่นเวลาการทำ literature review
 
 **การตัดสินใจที่ยืนยันกับผู้ใช้แล้ว**
@@ -112,7 +112,7 @@ Send targets มี private input schema (`ScreenBatchInput`, `PaperInput`) เ�
 |---|---|---|---|
 | 0 | `topic_guard` | Haiku 4.5 | ปฏิเสธ topic ที่ไม่ใช่การแพทย์/ชีววิทยา หรือ abusive → status `rejected` (ประหยัดเงิน + กันหน้า public) |
 | 1 | `plan_queries` | Sonnet 5.5 | topic (ไทย/อังกฤษ) → 3-6 query (PICO, MeSH/synonym) + `Criteria` (inclusion/exclusion, outcomes ที่สนใจ) |
-| 2 | `search` | SearXNG `/search?q&format=json&engines=pubmed,arxiv,semantic%20scholar,openalex,crossref&pageno=` (+ NCBI esearch ถ้ามี key) | `asyncio.gather` ทุก query → candidate ~100 |
+| 2 | `search` | SearXNG `/search?q&format=json&engines=pubmed,arxiv,semantic%20scholar,openalex,crossref&pageno=` (+ NCBI esearch ถ้ามี key) | `asyncio.gather` ทุก query (≤4 query, 1 page, timeout 8s) → candidate 20 |
 | 3 | `enrich_dedupe` | Europe PMC batch (`query=PMID:.. OR DOI:..`), arXiv API | abstract เต็ม, pmcid/doi, ปี, journal, OA flag, cited_by; รวมซ้ำ DOI → PMID → title fuzzy (`rapidfuzz`); upsert `papers` |
 | 4 | `screen_batch` (Send, 10 ฉบับ/batch) | Haiku 4.5 | relevance 0-100 + เหตุผล เทียบ `Criteria` |
 | 4b | `select_top` (join) | — | sort/cut `max_papers`, dedupe |

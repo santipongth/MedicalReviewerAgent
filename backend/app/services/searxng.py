@@ -33,16 +33,18 @@ def parse_searxng_result(r: dict[str, Any]) -> Candidate | None:
 
 
 class SearxngClient:
-    def __init__(self, http: HttpClient, base_url: str, engines: str) -> None:
+    def __init__(self, http: HttpClient, base_url: str, engines: str, timeout: float | None = None) -> None:
         self.http = http
         self.base_url = base_url.rstrip("/")
         self.engines = engines
+        self.timeout = timeout
 
     async def search(self, query: str, pageno: int = 1) -> list[Candidate]:
         # engines= only: passing categories= as well would union in non-academic engines.
         resp = await self.http.get(
             f"{self.base_url}/search",
             params={"q": query, "format": "json", "engines": self.engines, "pageno": pageno},
+            timeout=self.timeout,
         )
         resp.raise_for_status()
         return [c for r in resp.json().get("results", []) if (c := parse_searxng_result(r))]
