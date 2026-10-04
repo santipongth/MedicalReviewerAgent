@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
+import { designKey, designLabel } from "@/lib/charts-data";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
 import type { ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, QuestionBlock, Quality, Synthesis } from "@/lib/types";
 import { Glyph } from "../ui/evidence";
@@ -206,7 +207,7 @@ export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Pap
                   {p.year && <span>{p.year}</span>}
                   {card ? (
                     <>
-                      <span>{card.study_design}</span>
+                      <span>{designLabel(designKey(card), lang)}</span>
                       <span className="inline-flex items-center gap-1.5"><Glyph direction={card.overall_direction} lang={lang} />{DIRECTION_LABEL[lang][card.overall_direction]}</span>
                       <span>{L(lang, "อคติ", "Bias")}: {ROB_LABEL[lang][card.risk_of_bias]}</span>
                     </>
