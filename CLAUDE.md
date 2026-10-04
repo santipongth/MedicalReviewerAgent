@@ -25,3 +25,8 @@ Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plan
   inside `<external_context>`, never instructions, never a citation.
 - Redis clients use `decode_responses=True`.
 - `AppDeps` lives in `app/runtime.py` (re-exported by `app.main`) to avoid import cycles with `app/api/*`.
+
+## Design System
+Read DESIGN.md before visual or UI work: it defines the fonts, colors, spacing, and
+aesthetic direction. Ask the user before departing from it. When reviewing or QA-ing
+UI, flag code that doesn't match DESIGN.md.
