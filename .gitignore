@@ -1,0 +1,19 @@
+# python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+# node
+frontend/node_modules/
+frontend/.next/
+# env & data
+.env
+*.db
+infra/searxng/limiter.toml
+infra/searxng/settings.yml.new
+# agent scratch
+.superpowers/
+# os
+.DS_Store
+Thumbs.db
