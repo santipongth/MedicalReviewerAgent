@@ -1,0 +1,20 @@
+# Overrides merged on top of the fork's bundled searx/settings.yml (academic engines pre-enabled).
+# Mounted read-write at /etc/searxng (the entrypoint chowns the dir). No secret here: the
+# entrypoint sed's any literal default secret in place, so the secret comes only from SEARXNG_SECRET.
+use_default_settings: true
+
+general:
+  instance_name: "MRA academic search"
+  debug: false
+
+search:
+  safe_search: 2
+  default_lang: "en-US"
+  formats:
+    - html
+    - json
+
+server:
+  limiter: false
+  public_instance: false
+  image_proxy: false
