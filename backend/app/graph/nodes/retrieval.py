@@ -45,7 +45,7 @@ def make_search(deps):
 def make_enrich(deps):
     async def enrich(state: ReviewState) -> dict:
         started = time.perf_counter()
-        options = ReviewOptions.model_validate(state.get("options") or {})
+        options = ReviewOptions.clamped(state.get("options"))
         merged = merge_candidates(Candidate.model_validate(c) for c in state.get("candidates") or [])
         errors: list[str] = []
         dois = [c.doi for c in merged if c.doi]

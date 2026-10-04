@@ -145,3 +145,12 @@ def test_route_to_reading_passes_question():
     assert sends[0].node == "read_paper" and sends[0].arg["question"] == "Q?"
     assert sends[0].arg["question_detail"]["outcomes"] == ["CRC"]
     assert route_to_reading({"selected": []}) == "normalize_outcomes"
+
+
+async def test_select_top_tolerates_options_stored_under_the_old_ranges():
+    candidates = cands(12)
+    screened = [{"key": c["key"], "relevance": 50 + i, "include": True, "reason": "r", "uncertain": False}
+                for i, c in enumerate(candidates)]
+    out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": screened, "options": {"max_papers": 3, "candidate_limit": 10}})
+    assert len(out["selected"]) == 5  # old max_papers 3 → clamped to 5

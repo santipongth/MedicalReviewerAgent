@@ -119,7 +119,7 @@ def make_screen_batch(deps):
 
 def make_select_top(deps):
     async def select_top(state: ReviewState) -> dict:
-        options = ReviewOptions.model_validate(state.get("options") or {})
+        options = ReviewOptions.clamped(state.get("options"))
         best: dict[str, dict[str, Any]] = {}
         for d in state.get("screened") or []:
             if d["key"] not in best or d["relevance"] > best[d["key"]]["relevance"]:

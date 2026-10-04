@@ -22,6 +22,22 @@ class ReviewOptions(BaseModel):
             raise ValueError("candidate_limit must be at least max_papers")
         return self
 
+    @classmethod
+    def clamped(cls, raw: dict[str, Any] | None) -> ReviewOptions:
+        """Options pulled into the current ranges instead of rejected: for MCP arguments and for graph state
+        stored under older ranges (e.g. max_papers 3, candidate_limit 10), which must not crash a resumed review."""
+        data = dict(raw or {})
+        bounds = {name: (f.metadata) for name, f in cls.model_fields.items()}
+        for name in ("max_papers", "candidate_limit"):
+            if isinstance(data.get(name), int):
+                lo = next(m.ge for m in bounds[name] if getattr(m, "ge", None) is not None)
+                hi = next(m.le for m in bounds[name] if getattr(m, "le", None) is not None)
+                data[name] = max(lo, min(data[name], hi))
+        max_papers = data.get("max_papers", cls.model_fields["max_papers"].default)
+        if isinstance(data.get("candidate_limit"), int):
+            data["candidate_limit"] = max(data["candidate_limit"], max_papers)
+        return cls.model_validate(data)
+
 
 class CreateReviewRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=300)

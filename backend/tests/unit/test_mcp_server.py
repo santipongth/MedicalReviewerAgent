@@ -86,3 +86,14 @@ async def test_http_transport_shares_rate_limits_and_rejects_bad_keys(app, monke
             bad = await rpc(h, "tools/call", {"name": "start_review", "arguments": {"topic": "another topic"}},
                             headers={"x-api-key": "mra_invalid"})
             assert bad["result"]["isError"] and "API key" in bad["result"]["content"][0]["text"]
+
+
+async def test_start_review_uses_the_abstract_only_paper_range(mcp, client):
+    async with Client(mcp) as c:
+        asked = {}
+        for topic, n in (("statins and dementia risk", 3), ("aspirin and colorectal adenoma", 30),
+                         ("sglt2 inhibitors and heart failure", None)):
+            args = {"topic": topic, "language": "en"} | ({"max_papers": n} if n is not None else {})
+            rid = data(await c.call_tool("start_review", args))["review_id"]
+            asked[n] = (await client.get(f"/api/v1/reviews/{rid}")).json()["options"]["max_papers"]
+    assert asked == {3: 5, 30: 30, None: 30}  # clamped into 5-30, default 30

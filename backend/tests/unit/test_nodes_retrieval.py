@@ -80,3 +80,11 @@ async def test_enrich_drops_missing_and_short_abstracts():
     out = await make_enrich(_deps(europepmc=FakeEpmc([])))({"candidates": raw, "options": {}})
     assert [c["doi"] for c in out["candidates"]] == ["10.1/long"]
     assert out["search_stats"]["with_abstract"] == 1 and MIN_ABSTRACT_CHARS == 150
+
+
+async def test_enrich_tolerates_options_stored_under_the_old_ranges():
+    raw = [Candidate(title=f"Paper {i} on metformin outcomes", doi=f"10.1/{i}", abstract=ABSTRACT).model_dump()
+           for i in range(30)]
+    out = await make_enrich(_deps(europepmc=FakeEpmc([])))(
+        {"candidates": raw, "options": {"max_papers": 3, "candidate_limit": 10}})  # legal before Plan 5
+    assert len(out["candidates"]) == 20  # clamped to the new minimum instead of crashing a resumed review
