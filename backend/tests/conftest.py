@@ -25,3 +25,13 @@ async def session_factory(tmp_path):
         await conn.run_sync(Base.metadata.create_all)
     yield make_session_factory(engine)
     await engine.dispose()
+
+
+import fakeredis.aioredis  # noqa: E402
+
+
+@pytest.fixture
+async def redis():
+    client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    yield client
+    await client.aclose()
