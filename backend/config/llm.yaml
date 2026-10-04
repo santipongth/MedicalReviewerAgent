@@ -7,8 +7,9 @@
 #        screener_secondary (2nd vote on borderline papers), extractor_secondary (independent 2nd
 #        extraction for cross-checking), normalizer (groups outcome names across papers),
 #        conflict_explainer (explains why papers disagree), localizer (English → Thai, numbers checked),
-#        escalation (bigger model used only when checks fail or models disagree).
-#        normalizer/conflict_explainer/localizer fall back to planner/extractor/planner if omitted;
+#        escalation (bigger model used only when checks fail or models disagree),
+#        refiner (interprets and rewrites the user's question into an answerable research question).
+#        normalizer/conflict_explainer/localizer/refiner fall back to planner/extractor/planner/planner if omitted;
 #        screener_secondary/extractor_secondary/escalation are disabled if omitted.
 #
 # Per-role fields (all optional except model):
@@ -52,6 +53,7 @@ presets:
     extractor:   {model: deepseek/deepseek-v4-pro,     max_tokens: 8192,  temperature: 0}
     synthesizer: {model: deepseek/deepseek-v4-pro,     max_tokens: 16000, temperature: 0.3, reasoning_effort: high,
                   timeout_seconds: 600}
+    refiner:             {model: deepseek/deepseek-v4-pro, max_tokens: 4096, reasoning_effort: medium}
     screener_secondary:  {model: qwen/qwen3.8-flash,     max_tokens: 4096, temperature: 0}
     extractor_secondary: {model: qwen/qwen3.8-flash,     max_tokens: 8192, temperature: 0}
     normalizer:          {model: qwen/qwen3.8-flash,     max_tokens: 4096, temperature: 0}
@@ -119,6 +121,7 @@ presets:
 # Quality harness for open/smaller models (see docs/superpowers/specs, harness section).
 harness:
   max_repairs: 2                  # validate → repair rounds with the exact problems fed back
+  refine_critique: true           # interpret the user's question, then one self-critique/revise round
   screen_borderline: [35, 70]     # relevance band that gets a second vote (screener_secondary)
   dual_extraction: true           # extractor_secondary extracts independently; fields are cross-checked
   verify_quotes: true             # every number must sit in a verbatim quote found in the paper text

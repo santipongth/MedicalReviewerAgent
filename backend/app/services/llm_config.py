@@ -11,12 +11,15 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 Role = Literal[
     "guard", "planner", "screener", "extractor", "synthesizer",
     "normalizer", "conflict_explainer", "localizer", "screener_secondary", "extractor_secondary", "escalation",
+    "refiner",
 ]
 # Every preset must define these.
 ROLES: tuple[str, ...] = ("guard", "planner", "screener", "extractor", "synthesizer")
 # Harness roles: the first three fall back to another role's settings when omitted; the last three are
 # simply disabled when omitted (no second vote / no dual extraction / no escalation).
-FALLBACK_ROLES: dict[str, str] = {"normalizer": "planner", "conflict_explainer": "extractor", "localizer": "planner"}
+FALLBACK_ROLES: dict[str, str] = {
+    "normalizer": "planner", "conflict_explainer": "extractor", "localizer": "planner", "refiner": "planner",
+}
 OPTIONAL_ROLES: tuple[str, ...] = (*FALLBACK_ROLES, "screener_secondary", "extractor_secondary", "escalation")
 EscalationTrigger = Literal["repair_failed", "verification_failed", "disagreement"]
 ProviderName = Literal["openrouter", "anthropic", "openai_compatible"]
@@ -59,6 +62,7 @@ class HarnessSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_repairs: int = Field(2, ge=0, le=5)
+    refine_critique: bool = True  # one self-critique/revise round on the interpreted question
     screen_borderline: tuple[int, int] = (35, 70)
     dual_extraction: bool = True
     verify_quotes: bool = True

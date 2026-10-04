@@ -51,8 +51,8 @@ async def test_guard_rejects_and_refusal_counts_as_rejection():
 
 def test_route_after_guard():
     assert route_after_guard({"rejected": "no"}) == END
-    assert route_after_guard({"rejected": None}) == "plan_queries"
-    assert route_after_guard({}) == "plan_queries"
+    assert route_after_guard({"rejected": None}) == "refine_question"
+    assert route_after_guard({}) == "refine_question"
 
 
 async def test_plan_queries_dedupes_caps_and_passes_options():

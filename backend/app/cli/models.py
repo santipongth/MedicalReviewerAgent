@@ -24,6 +24,7 @@ from app.services.model_catalog import (
 # Rough token budget of one review (20 candidates → 8 papers), used for the cost estimate in `check`.
 TYPICAL_CALLS: dict[str, tuple[int, int, int]] = {  # role: (calls, input tokens, output tokens) per call
     "guard": (1, 400, 100),
+    "refiner": (2, 1500, 1200),                 # draft + one self-critique round
     "planner": (1, 900, 700),
     "screener": (2, 6000, 900),                 # 20 candidates in 2 parallel batches
     "extractor": (8, 9000, 1500),               # 8 selected papers
@@ -89,7 +90,7 @@ def _check(args, catalog: dict[str, ModelInfo], out: TextIO) -> int:
         out.write(f"  {name:<12} {role.provider}:{role.spec.model:<40} method={method:<16} effort={effort:<7} "
                   f"~${cost:.4f}\n")
         problems += validate_role(role, catalog)
-    out.write(f"Estimated cost per review (20 candidates → 8 papers, OpenRouter roles): ~${total:.3f}\n")
+    out.write(f"Estimated cost per review (20 candidates -> 8 papers, OpenRouter roles): ~${total:.3f}\n")
     out.writelines(f"PROBLEM {p}\n" for p in problems)
     return 1 if problems else 0
 

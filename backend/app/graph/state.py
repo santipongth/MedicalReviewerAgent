@@ -10,6 +10,9 @@ class ReviewState(TypedDict, total=False):
     language: str
     options: dict[str, Any]
     english_topic: str
+    question: dict[str, Any] | None  # ReviewQuestion (English) after interpretation/refinement
+    question_display: dict[str, Any] | None  # same fields in the user's language
+    quality: Annotated[list[dict[str, Any]], operator.add]  # harness telemetry per stage (incl. seconds)
     rejected: str | None
     plan: dict[str, Any] | None  # QueryPlan
     candidates: list[dict[str, Any]]  # Candidate

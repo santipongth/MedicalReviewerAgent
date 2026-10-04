@@ -24,6 +24,8 @@ from app.graph.schemas import (
     OutcomeClusters,
     PaperCard,
     QueryPlan,
+    QuestionCritique,
+    ReviewQuestion,
     ScreenBatch,
     SynthesisNarrative,
     TopicVerdict,
@@ -43,6 +45,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "guard": TopicVerdict, "planner": QueryPlan, "screener": ScreenBatch, "extractor": PaperCard,
     "synthesizer": SynthesisNarrative, "normalizer": OutcomeClusters, "conflict_explainer": ConflictNote,
     "localizer": TranslationBatch, "screener_secondary": ScreenBatch, "extractor_secondary": PaperCard,
+    "refiner": ReviewQuestion,
 }
 
 
@@ -249,6 +252,8 @@ class LLMs:
     localizer: StructuredLLM | None = None
     screener_secondary: StructuredLLM | None = None
     extractor_secondary: StructuredLLM | None = None
+    refiner: StructuredLLM | None = None
+    refiner_critic: StructuredLLM | None = None  # same model as refiner, QuestionCritique schema, effort ≤ low
     # escalation(schema) → a bigger model bound to that output schema, or None when not configured
     escalation: Callable[[type[BaseModel]], StructuredLLM | None] | None = None
     harness: HarnessSpec = field(default_factory=HarnessSpec)
@@ -290,6 +295,11 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None) 
     config = load_llm_config(settings.llm_config_path, settings.llm_preset)
     built = {role: build_role_llm(r, settings, catalog) for role, r in config.roles.items()
              if role in SCHEMAS}
+    if "refiner" in config.roles:
+        refiner_role = config.roles["refiner"]
+        if refiner_role.spec.reasoning_effort not in (None, "none", "minimal", "low"):
+            refiner_role = refiner_role.with_spec(reasoning_effort="low")
+        built["refiner_critic"] = build_role_llm(refiner_role, settings, catalog, schema=QuestionCritique)
     escalation = None
     if "escalation" in config.roles:
         esc_role = config.roles["escalation"]

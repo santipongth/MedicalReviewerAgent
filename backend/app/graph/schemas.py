@@ -59,6 +59,40 @@ class TopicVerdict(BaseModel):
     english_topic: str
 
 
+QuestionType = Literal[
+    "therapy", "prevention", "harm_etiology", "diagnosis", "prognosis", "prevalence", "mechanism", "other"
+]
+
+
+class KeyTerm(BaseModel):
+    term: str
+    synonyms: list[str]
+    mesh: str | None
+
+
+class ReviewQuestion(BaseModel):
+    """The user's topic interpreted and rewritten as an answerable research question (English)."""
+
+    question_type: QuestionType
+    interpretation: str
+    refined_question: str
+    population: str
+    intervention_or_exposure: str
+    comparator: str
+    outcomes: list[str]
+    study_designs: list[str]
+    timeframe: str | None
+    sub_questions: list[str]
+    key_terms: list[KeyTerm]
+    assumptions: list[str]
+    ambiguities: list[str]
+
+
+class QuestionCritique(BaseModel):
+    issues: list[str]
+    revised: ReviewQuestion
+
+
 class QueryPlan(BaseModel):
     queries: list[str]
     population: str

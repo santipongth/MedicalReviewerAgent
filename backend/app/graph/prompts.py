@@ -26,19 +26,74 @@ def guard_user(topic: str) -> str:
     return f"{DATA_NOTICE}\n<topic>{topic}</topic>"
 
 
-PLAN_SYSTEM = """You design the search strategy for a rapid systematic-style literature review.
-queries: 2-4 short keyword queries for academic search engines (PubMed / Semantic Scholar / arXiv style): 3-8 words each, no boolean operators, no quotes. Together they must cover the main synonyms of the intervention or exposure, the condition, and the key outcomes.
-Also define the PICO elements and explicit inclusion and exclusion criteria (study types, population, outcomes). Write all fields in English."""
+REFINE_SYSTEM = """You are a senior clinical research librarian. Before any searching, you interpret the user's topic and
+rewrite it as ONE precise, answerable research question for a rapid literature review.
+Work in English. Decide the question type, write a 1-2 sentence interpretation of what the user wants to know, then
+the refined question with PICO elements (population, intervention/exposure, comparator, outcomes - primary outcome
+first, at most 6), suitable study designs and a timeframe when the user restricted dates.
+Expand the topic so it is complete and comprehensive but stay concise: add 1-4 sub-questions that together cover
+benefit, harm/safety and important subgroups. List key search terms with synonyms and the MeSH heading.
+When the topic is ambiguous, choose the most common clinically meaningful interpretation, record that choice in
+assumptions and the alternatives in ambiguities. Do not invent facts about the evidence."""
+
+REFINE_CHECKLIST = """Checklist before answering:
+- refined_question is one question ending with "?" (40-400 characters)
+- population, intervention_or_exposure and outcomes are specific and measurable; comparator stated for therapy/prevention
+- 1-4 sub_questions; key_terms include the intervention/exposure with synonyms and MeSH
+- every field is in English; user constraints (dates, study types) are respected"""
 
 
-def plan_user(*, topic: str, english_topic: str, options: dict[str, Any]) -> str:
-    constraints = []
+def _constraints(options: dict[str, Any]) -> str:
+    lines = []
     if options.get("year_from"):
-        constraints.append(f"Only papers published in {options['year_from']} or later.")
+        lines.append(f"- only studies published in {options['year_from']} or later (state this in timeframe)")
     if options.get("study_types"):
-        constraints.append("Preferred study types: " + ", ".join(options["study_types"]) + ".")
-    return (f"Review topic (English): {english_topic}\n"
-            f"{chr(10).join(constraints)}\n{DATA_NOTICE}\n<original_topic>{topic}</original_topic>")
+        lines.append("- study designs requested by the user: " + ", ".join(options["study_types"]))
+    return "User constraints:\n" + ("\n".join(lines) if lines else "- none")
+
+
+def refine_user(*, topic: str, english_topic: str, options: dict[str, Any]) -> str:
+    return (f"{DATA_NOTICE}\n<user_topic>{topic}</user_topic>\n<english_gloss>{english_topic}</english_gloss>\n"
+            f"{_constraints(options)}\n\n{REFINE_CHECKLIST}")
+
+
+CRITIQUE_SYSTEM = """You review a draft research question written for a rapid medical literature review and improve it.
+Check: is it answerable from published studies? Is the population specific enough? Are outcomes measurable and
+clinically important? Is the comparator clinically meaningful? Is it broad enough that relevant papers exist?
+Does it cover safety/harm? Is it concise? List the concrete issues you found (empty list if none) and return the
+revised question (unchanged if it is already good). Keep everything in English and keep the user's constraints."""
+
+
+def critique_user(*, topic: str, question: dict[str, Any], options: dict[str, Any]) -> str:
+    return (f"{DATA_NOTICE}\n<user_topic>{topic}</user_topic>\n"
+            f"<draft_question>\n{json.dumps(question, ensure_ascii=False)}\n</draft_question>\n"
+            f"{_constraints(options)}\n\n{REFINE_CHECKLIST}")
+
+
+PLAN_SYSTEM = """You design the search strategy for a rapid systematic-style literature review.
+queries: 2-4 short keyword queries for academic search engines (PubMed / Semantic Scholar / arXiv style): 3-8 words
+each, no boolean operators, no quotes. Cover the main question and every sub-question, and use the listed synonyms
+and MeSH terms so that different wordings of the same concept are found.
+Also give explicit inclusion and exclusion criteria (study types, population, outcomes). Write all fields in English."""
+
+
+def plan_user(*, topic: str, english_topic: str, options: dict[str, Any],
+              question: dict[str, Any] | None = None) -> str:
+    if question:
+        terms = "; ".join(
+            f"{t['term']} (synonyms: {', '.join(t.get('synonyms') or []) or '-'}; MeSH: {t.get('mesh') or '-'})"
+            for t in question.get("key_terms") or [])
+        body = (f"Research question: {question['refined_question']}\n"
+                f"Sub-questions: {' | '.join(question.get('sub_questions') or [])}\n"
+                f"Population: {question['population']}\n"
+                f"Intervention/exposure: {question['intervention_or_exposure']}\n"
+                f"Comparator: {question['comparator']}\n"
+                f"Outcomes: {', '.join(question.get('outcomes') or [])}\n"
+                f"Study designs: {', '.join(question.get('study_designs') or [])}\n"
+                f"Key terms: {terms}")
+    else:
+        body = f"Review topic (English): {english_topic}"
+    return f"{body}\n{_constraints(options)}\n{DATA_NOTICE}\n<original_topic>{topic}</original_topic>"
 
 
 SCREEN_SYSTEM = """You screen titles and abstracts for a literature review.
