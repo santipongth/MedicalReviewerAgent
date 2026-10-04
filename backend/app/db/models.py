@@ -58,8 +58,10 @@ class ApiKey(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     key_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    key_prefix: Mapped[str | None] = mapped_column(String(12), nullable=True)
     name: Mapped[str] = mapped_column(String(100))
     daily_quota: Mapped[int] = mapped_column(Integer, default=100)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -76,6 +78,7 @@ class Review(Base):
             postgresql_where=text("status IN ('queued', 'running')"),
             sqlite_where=text("status IN ('queued', 'running')"),
         ),
+        Index("ix_reviews_api_key_id_created_at", "api_key_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

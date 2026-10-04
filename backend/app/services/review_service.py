@@ -12,7 +12,7 @@ from app.db.models import Review
 from app.db.repositories import ReviewRepository
 from app.logging import get_logger
 from app.schemas.review import CreateReviewRequest, ReviewCreated, compute_cache_key, hash_ip
-from app.services.api_keys import ApiKeyInfo
+from app.services.api_keys import ApiKeyInfo, reviews_since
 from app.services.ratelimits import RateLimits
 
 log = get_logger(__name__)
@@ -77,6 +77,13 @@ class ReviewService:
         cache_key = compute_cache_key(req.topic, req.language, options)
         if (cached := await self._reuse(cache_key)) is not None:  # cache hits are free
             return cached
+        if req.callback_url and identity.api_key is None:
+            raise Forbidden("callback_url requires an API key")
+        if identity.api_key is not None:
+            async with self.session_factory() as session:
+                used = await reviews_since(session, identity.api_key.id, datetime.now(UTC) - timedelta(days=1))
+            if used >= identity.api_key.daily_quota:
+                raise RateLimited(3600, f"daily quota of {identity.api_key.daily_quota} reviews exhausted")
         rate = self.settings.api_key_rate_limit if identity.api_key else self.settings.review_rate_limit
         decision = await self.limits.hit("review", identity.rate_key, rate)
         if not decision.allowed:
