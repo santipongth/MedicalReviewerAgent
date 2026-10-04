@@ -71,4 +71,4 @@ async def test_catalog_loads_from_openrouter():
     http = HttpClient(retries=0)
     models = await OpenRouterCatalog(http).load()
     await http.aclose()
-    assert "deepseek/deepseek-v4-pro" in models and len(models) == 13
+    assert "deepseek/deepseek-v4-pro" in models and len(models) == 14

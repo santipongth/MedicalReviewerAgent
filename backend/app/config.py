@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     # LLM models, presets and tuning live in config/llm.yaml; these hold only the path and keys.
     llm_config_path: str = "config/llm.yaml"
     llm_preset: str | None = None  # overrides active_preset in llm.yaml
+    llm_concurrency: int = 8  # max LLM requests in flight per worker process (all roles share it)
     openrouter_api_key: str = ""
     openai_compatible_api_key: str = ""
 

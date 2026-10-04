@@ -45,21 +45,27 @@ providers:
     require_parameters: false
 
 presets:
-  # Cheapest: ~$0.02-0.05 per review.
+  # Cheapest and fastest: ~$0.10-0.20 per review (60 candidates -> 30 abstracts). Retuned 2026-10-05 from live
+  # measurements: extraction 9.6 s (gemini-3.1-flash-lite) vs 86 s (deepseek-v4-pro) on the same paper; Thai
+  # localization 9 s vs 74 s (qwen3.8-flash). The secondary extractor is another vendor so the cross-check stays
+  # independent; escalation stays on a large open model.
   budget:
-    guard:       {model: google/gemini-2.5-flash-lite, max_tokens: 1024,  temperature: 0}
-    planner:     {model: deepseek/deepseek-v4-pro,     max_tokens: 4096,  temperature: 0.2}
-    screener:    {model: google/gemini-2.5-flash-lite, max_tokens: 4096,  temperature: 0}
-    extractor:   {model: deepseek/deepseek-v4-pro,     max_tokens: 8192,  temperature: 0}
-    synthesizer: {model: deepseek/deepseek-v4-pro,     max_tokens: 16000, temperature: 0.3, reasoning_effort: high,
-                  timeout_seconds: 600}
-    refiner:             {model: deepseek/deepseek-v4-pro, max_tokens: 4096, reasoning_effort: medium}
-    screener_secondary:  {model: qwen/qwen3.8-flash,     max_tokens: 4096, temperature: 0}
-    extractor_secondary: {model: qwen/qwen3.8-flash,     max_tokens: 8192, temperature: 0}
-    normalizer:          {model: qwen/qwen3.8-flash,     max_tokens: 4096, temperature: 0}
-    conflict_explainer:  {model: deepseek/deepseek-v4-pro, max_tokens: 2048, temperature: 0.2}
-    localizer:           {model: qwen/qwen3.8-flash,     max_tokens: 8192, temperature: 0}
-    escalation:          {model: qwen/qwen3.8-max-0902,  max_tokens: 8192, reasoning_effort: medium, timeout_seconds: 600}
+    guard:       {model: google/gemini-2.5-flash-lite,  max_tokens: 1024,  temperature: 0, timeout_seconds: 60}
+    planner:     {model: google/gemini-3.5-flash,       max_tokens: 4096,  reasoning_effort: low, timeout_seconds: 90}
+    screener:    {model: google/gemini-2.5-flash-lite,  max_tokens: 4096,  temperature: 0, timeout_seconds: 90}
+    extractor:   {model: google/gemini-3.1-flash-lite,  max_tokens: 8192,  temperature: 0, timeout_seconds: 90}
+    synthesizer: {model: google/gemini-3.5-flash,       max_tokens: 16000, reasoning_effort: medium,
+                  timeout_seconds: 180}
+    refiner:             {model: google/gemini-3.5-flash,      max_tokens: 4096, reasoning_effort: low,
+                          timeout_seconds: 90}
+    screener_secondary:  {model: deepseek/deepseek-v4-flash,   max_tokens: 4096, temperature: 0, timeout_seconds: 90}
+    extractor_secondary: {model: deepseek/deepseek-v4-flash,   max_tokens: 8192, temperature: 0, timeout_seconds: 90}
+    normalizer:          {model: google/gemini-3.1-flash-lite, max_tokens: 4096, temperature: 0, timeout_seconds: 90}
+    conflict_explainer:  {model: google/gemini-3.5-flash,      max_tokens: 2048, reasoning_effort: low,
+                          timeout_seconds: 90}
+    localizer:           {model: google/gemini-3.1-flash-lite, max_tokens: 8192, temperature: 0, timeout_seconds: 90}
+    escalation:          {model: qwen/qwen3.8-max-0902,        max_tokens: 8192, reasoning_effort: medium,
+                          timeout_seconds: 120}
 
   # Higher quality reading and synthesis with Claude, cheap screening with Gemini.
   balanced:

@@ -105,11 +105,11 @@ async def test_tool_calling_and_json_mode_paths(fake_openai):
 def test_build_llms_uses_budget_preset_on_openrouter():
     settings = Settings(_env_file=None, llm_config_path=REPO_CONFIG, openrouter_api_key="sk-or-x")
     llms = build_llms(settings)
-    assert isinstance(llms.guard, OpenAICompatibleStructuredLLM)
+    assert isinstance(llms.guard.inner, OpenAICompatibleStructuredLLM)  # every role runs under the shared limit
     assert llms.guard.model == "google/gemini-2.5-flash-lite"
-    assert llms.synthesizer.model == "deepseek/deepseek-v4-pro" and llms.synthesizer.reasoning_effort == "high"
+    assert llms.synthesizer.model == "google/gemini-3.5-flash" and llms.synthesizer.reasoning_effort == "medium"
     assert llms.preset == "budget"
-    assert llms.models["synthesizer"] == "openrouter:deepseek/deepseek-v4-pro"
+    assert llms.models["synthesizer"] == "openrouter:google/gemini-3.5-flash"
 
 
 def test_build_llms_catalog_chooses_structured_method():
@@ -121,14 +121,14 @@ def test_build_llms_catalog_chooses_structured_method():
 
 def test_build_llms_missing_key_names_the_env_var():
     llms = build_llms(Settings(_env_file=None, llm_config_path=REPO_CONFIG, openrouter_api_key=""))
-    assert isinstance(llms.guard, MissingKeyLLM) and llms.guard.env_name == "OPENROUTER_API_KEY"
+    assert isinstance(llms.guard.inner, MissingKeyLLM) and llms.guard.env_name == "OPENROUTER_API_KEY"
 
 
 def test_build_llms_claude_direct_preset():
     settings = Settings(_env_file=None, llm_config_path=REPO_CONFIG, llm_preset="claude_direct",
                         anthropic_api_key="sk-ant-x")
     llms = build_llms(settings)
-    assert isinstance(llms.synthesizer, AnthropicStructuredLLM)
+    assert isinstance(llms.synthesizer.inner, AnthropicStructuredLLM)
     assert llms.synthesizer.model == "claude-opus-5-5" and llms.synthesizer.effort == "high"
     assert llms.guard.effort is None
 
@@ -143,8 +143,9 @@ def test_build_llms_wires_harness_roles_and_escalation_factory():
 
     settings = Settings(_env_file=None, llm_config_path=REPO_CONFIG, openrouter_api_key="sk-or-x")
     llms = build_llms(settings)
-    assert llms.normalizer.model == "qwen/qwen3.8-flash" and llms.localizer.model == "qwen/qwen3.8-flash"
-    assert llms.extractor_secondary.model == "qwen/qwen3.8-flash"
+    assert llms.normalizer.model == "google/gemini-3.1-flash-lite"
+    assert llms.localizer.model == "google/gemini-3.1-flash-lite"
+    assert llms.extractor_secondary.model == "deepseek/deepseek-v4-flash"
     assert llms.synthesizer.schema is SynthesisNarrative and llms.conflict_explainer.schema is ConflictNote
     esc = llms.escalation(PaperCard)
     assert esc.model == "qwen/qwen3.8-max-0902" and esc.schema is PaperCard
