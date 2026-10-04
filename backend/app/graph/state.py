@@ -9,7 +9,16 @@ class ReviewState(TypedDict, total=False):
     topic: str
     language: str
     options: dict[str, Any]
-    # Parallel branches (Send fan-out, added in Plan 2) append to these; reducers merge them.
+    english_topic: str
+    rejected: str | None
+    plan: dict[str, Any] | None  # QueryPlan
+    candidates: list[dict[str, Any]]  # Candidate
+    search_stats: dict[str, int]  # {"found": raw hits, "unique": after dedupe} for the PRISMA diagram
+    # Send fan-out branches append to these; reducers merge them.
+    screened: Annotated[list[dict[str, Any]], operator.add]  # {key, relevance, include, reason}
+    selected: list[dict[str, Any]]  # {ref, relevance, reason, candidate}
+    papers: Annotated[list[dict[str, Any]], operator.add]  # {ref, candidate, relevance, fulltext_source, card, error}
+    synthesis: dict[str, Any] | None
     errors: Annotated[list[str], operator.add]
     cost_usd: Annotated[float, operator.add]
     result: dict[str, Any] | None

@@ -14,6 +14,10 @@ from app.graph.state import ReviewState
 @dataclass
 class GraphDeps:
     settings: Settings
+    llms: Any = None  # app.services.llm.LLMs; None -> Plan 1 stub graph
+    searxng: Any = None
+    europepmc: Any = None
+    fulltext: Any = None
 
 
 def initial_state(
