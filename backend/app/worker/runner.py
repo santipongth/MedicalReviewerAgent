@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -42,12 +43,21 @@ class ReviewRunner:
                 return "missing"
             if review.status in TERMINAL_STATUSES:
                 return review.status
-            await repo.update(review_id, status="running", started_at=datetime.now(UTC), error=None)
+            now = datetime.now(UTC)
+            first_start = review.started_at  # kept across resumes so elapsed_s counts from the first start
+            if first_start is not None and first_start.tzinfo is None:
+                first_start = first_start.replace(tzinfo=UTC)
+            await repo.update(review_id, status="running", started_at=first_start or now, error=None)
             topic, language, options = review.topic, review.language, dict(review.options or {})
+        t0 = time.monotonic() - ((now - first_start).total_seconds() if first_start else 0.0)
+
+        async def emit(event_type: str, payload: dict) -> None:
+            await self.event_sink.emit(review_id, event_type,
+                                       {**payload, "elapsed_s": round(time.monotonic() - t0, 2)})
 
         config = {"configurable": {"thread_id": str(review_id)}}
         resume = await self._has_checkpoint(config)
-        await self.event_sink.emit(review_id, "started", {"resume": resume})
+        await emit("started", {"resume": resume})
         state_input = None if resume else initial_state(str(review_id), topic, language, options)
 
         try:
@@ -56,27 +66,32 @@ class ReviewRunner:
             ):
                 if mode == "custom" and isinstance(chunk, dict):
                     payload = {k: v for k, v in chunk.items() if k != "type"}
-                    await self.event_sink.emit(
-                        review_id, str(chunk.get("type", "progress")), payload
-                    )
+                    await emit(str(chunk.get("type", "progress")), payload)
             snapshot = await self.graph.aget_state(config)
             values = snapshot.values
         except asyncio.CancelledError:
             # Worker shutdown / restart: not a user decision. Hand the review back to the queue
             # (arq re-runs the job with retry_jobs=True; the stale sweep is the backstop).
             await self._set_status(review_id, "queued")
-            await self.event_sink.emit(review_id, "interrupted", {"will_resume": True})
+            await emit("interrupted", {"will_resume": True})
             raise
         except Exception as exc:
             log.exception("review_failed", review_id=str(review_id))
             message = f"{type(exc).__name__}: {exc}"
             await self._finish(review_id, "error", error=message)
-            await self.event_sink.emit(review_id, "error", {"message": message})
+            await emit("error", {"message": message})
             return "error"
 
         cost = float(values.get("cost_usd", 0.0))
-        await self._finish(review_id, "done", result=values.get("result"), cost_usd=cost)
-        await self.event_sink.emit(review_id, "done", {"cost_usd": cost})
+        if values.get("rejected"):
+            reason = str(values["rejected"])
+            await self._finish(review_id, "rejected", error=reason, cost_usd=cost)
+            await emit("rejected", {"reason": reason})
+            return "rejected"
+        result = values.get("result") or {}
+        await self._finish(review_id, "done", result=result, cost_usd=cost,
+                           prompt_version=result.get("prompt_version"), model_versions=result.get("models"))
+        await emit("done", {"cost_usd": cost})
         return "done"
 
     async def _set_status(self, review_id: uuid.UUID, status: str) -> None:

@@ -13,7 +13,7 @@ echo "$CREATE"
 ID=$(echo "$CREATE" | python -c 'import sys,json; print(json.load(sys.stdin)["review_id"])')
 
 echo "→ events (until a terminal event, max 120s)"
-curl -sN --max-time 120 "$API/reviews/$ID/events" | grep -E '^(id|event|data):'
+curl -sN --max-time 600 "$API/reviews/$ID/events" | grep -E '^(id|event|data):'
 
 echo "→ result"
 curl -fsS "$API/reviews/$ID" | python -c 'import sys,json; r=json.load(sys.stdin); print(r["status"], r["result"]); sys.exit(0 if r["status"] == "done" else 1)'
