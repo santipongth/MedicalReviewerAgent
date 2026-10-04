@@ -7,6 +7,7 @@ import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
 import { Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { L } from "./text";
 
+// Results stored before abstract-only reading name the full text they read; new results are always the abstract.
 const SOURCE_LABEL: Record<string, [string, string]> = {
   europepmc: ["ฉบับเต็ม (Europe PMC)", "Full text (Europe PMC)"],
   crawl_html: ["ฉบับเต็ม (เว็บสำนักพิมพ์ OA)", "Full text (open-access web page)"],
@@ -74,7 +75,7 @@ function Facts({ paper, card, cardEn, lang }: { paper: Paper; card: PaperCard; c
       <dt className="text-muted">{L(lang, "ประชากร", "Population")}</dt><dd className="break-words">{card.population}</dd>
       <dt className="text-muted">{L(lang, "ความเสี่ยงอคติ", "Risk of bias")}</dt><dd>{ROB_LABEL[lang][card.risk_of_bias] ?? card.risk_of_bias}</dd>
       <dt className="text-muted">{L(lang, "ที่มาของข้อความ", "Text read")}</dt>
-      <dd>{(SOURCE_LABEL[paper.fulltext_source ?? ""] ?? ["–", "–"])[lang === "th" ? 0 : 1]}</dd>
+      <dd>{(paper.fulltext_source ? SOURCE_LABEL[paper.fulltext_source] ?? ["–", "–"] : ["บทคัดย่อ", "Abstract"])[lang === "th" ? 0 : 1]}</dd>
     </dl>
   );
 }

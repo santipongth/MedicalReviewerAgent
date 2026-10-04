@@ -112,14 +112,15 @@ const STAGE_LABEL: Record<string, [string, string]> = {
   found: ["ค้นเจอ (ก่อนตัดซ้ำ)", "Records found"],
   unique: ["หลังตัดซ้ำ", "After de-duplication"],
   screened: ["คัดกรอง", "Screened"],
-  selected: ["เลือกอ่าน", "Selected to read"],
-  with_fulltext: ["ได้ฉบับเต็ม", "Full text obtained"],
+  with_abstract: ["มีบทคัดย่อ", "With an abstract"],
+  selected: ["เลือกวิเคราะห์", "Selected for analysis"],
+  with_fulltext: ["ได้ฉบับเต็ม", "Full text obtained"], // legacy results only
   extracted: ["สกัดข้อมูลได้", "Data extracted"],
 };
 
 export function prismaStages(stats: Stats | undefined, lang: Lang): Stage[] {
   if (!stats) return [];
-  return (["found", "unique", "screened", "selected", "with_fulltext", "extracted"] as const)
+  return (["found", "unique", "with_abstract", "screened", "selected", "with_fulltext", "extracted"] as const)
     .filter((k) => typeof stats[k] === "number")
     .map((k) => ({ key: k, label: STAGE_LABEL[k][lang === "th" ? 0 : 1], value: stats[k] as number }));
 }

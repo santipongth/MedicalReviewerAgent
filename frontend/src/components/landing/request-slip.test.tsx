@@ -26,9 +26,16 @@ describe("RequestSlip", () => {
     await userEvent.click(screen.getByLabelText("RCT"));
     await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith({
-      topic: "statins and dementia", language: "en", options: { max_papers: 8, study_types: ["RCT"] },
+      topic: "statins and dementia", language: "en", options: { max_papers: 30, study_types: ["RCT"] },
     });
     expect(push).toHaveBeenCalledWith("/r/r-1");
+  });
+
+  it("analyses up to 30 abstracts by default", () => {
+    render(<RequestSlip />);
+    const slider = screen.getByLabelText(/จำนวนงานวิจัยที่วิเคราะห์/);
+    expect(slider).toHaveAttribute("max", "30");
+    expect(slider).toHaveValue("30");
   });
 
   it("explains a rate limit with the wait time", async () => {

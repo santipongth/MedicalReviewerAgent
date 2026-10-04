@@ -13,8 +13,8 @@ const live = [
   ["started", { resume: false }], ["checking_topic", {}], ["refining", {}],
   ["question_refined", { refined_question: reviewFixture.result.question.refined_question,
     interpretation: reviewFixture.result.question.interpretation, sub_questions: reviewFixture.result.question.sub_questions, assumptions: ["เฉพาะผู้ใหญ่"] }],
-  ["planning", { queries: ["metformin colorectal cancer"] }], ["searching", { found: 41 }], ["enriching", { candidates: 20 }],
-  ["screening", { batch: 10 }], ["screened", { kept: 8, total: 20 }],
+  ["planning", { queries: ["metformin colorectal cancer"] }], ["searching", { found: 41 }], ["enriching", { candidates: 60 }],
+  ["screening", { batch: 10 }], ["screened", { kept: 30, total: 60 }],
   ...reviewFixture.result.papers.slice(0, 4).flatMap((p) => [["reading", { ref: p.ref, title: p.title }],
     ["extracted", { ref: p.ref, ok: true, verified: 2, uncertain: p.ref === "P4" }]]),
 ];

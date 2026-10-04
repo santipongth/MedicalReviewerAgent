@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resultFixture } from "@/test/fixtures";
+import { resultFixture, legacyReviewFixture } from "@/test/fixtures";
 import { emptyFilters, filterPapers, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
 
 const papers = resultFixture.papers!;
@@ -43,8 +43,11 @@ describe("forestData", () => {
 describe("prismaStages and studyPoints", () => {
   it("lists the PRISMA stages that exist, in order", () => {
     expect(prismaStages(resultFixture.stats, "en").map((s) => [s.key, s.value])).toEqual([
-      ["found", 41], ["unique", 26], ["screened", 20], ["selected", 5], ["with_fulltext", 3], ["extracted", 4],
+      ["found", 41], ["unique", 26], ["with_abstract", 22], ["screened", 20], ["selected", 5], ["extracted", 4],
     ]);
+    // results stored before abstract-only reading still show their full-text stage
+    expect(prismaStages(legacyReviewFixture.result!.stats, "en").map((s) => s.key)).toEqual(
+      ["found", "unique", "screened", "selected", "with_fulltext", "extracted"]);
     expect(prismaStages(undefined, "en")).toEqual([]);
   });
 

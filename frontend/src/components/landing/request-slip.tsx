@@ -30,7 +30,7 @@ export function RequestSlip() {
   const id = useId();
   const [topic, setTopic] = useState(EXAMPLES[0]);
   const [language, setLanguage] = useState<"th" | "en">("th");
-  const [maxPapers, setMaxPapers] = useState(8);
+  const [maxPapers, setMaxPapers] = useState(30);
   const [yearFrom, setYearFrom] = useState("");
   const [types, setTypes] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -90,8 +90,8 @@ export function RequestSlip() {
           </fieldset>
           <div className="flex flex-wrap gap-6">
             <div className="grid gap-1.5">
-              <label className="label" htmlFor={`${id}-papers`}>จำนวนงานวิจัยที่อ่าน: <span className="text-ink">{maxPapers}</span></label>
-              <input id={`${id}-papers`} type="range" min={3} max={10} value={maxPapers}
+              <label className="label" htmlFor={`${id}-papers`}>จำนวนงานวิจัยที่วิเคราะห์: <span className="text-ink">{maxPapers}</span></label>
+              <input id={`${id}-papers`} type="range" min={5} max={30} value={maxPapers}
                 onChange={(e) => setMaxPapers(Number(e.target.value))} className="w-48 accent-primary" />
             </div>
             <div className="grid gap-1.5">

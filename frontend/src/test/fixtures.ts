@@ -90,23 +90,23 @@ export const resultFixture: ReviewResult = {
   },
   papers: [
     { ref: "P1", title: "Metformin and incident colorectal cancer in a national diabetes cohort", year: 2019,
-      journal: "Diabetes Care", doi: "10.1000/p1", pmcid: "PMC100001", relevance: 95, fulltext_source: "europepmc",
+      journal: "Diabetes Care", doi: "10.1000/p1", pmcid: "PMC100001", relevance: 95,
       card: { ...p1card, population: "ผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2" }, card_en: p1card, verification: verification() },
     { ref: "P2", title: "Biguanide exposure and colorectal neoplasia: a nested case–control study", year: 2017,
-      journal: "Gut", doi: "10.1000/p2", relevance: 88, fulltext_source: "abstract", card: p2card, card_en: p2card,
+      journal: "Gut", doi: "10.1000/p2", relevance: 88, card: p2card, card_en: p2card,
       verification: verification({ numbers_verified: 0, numbers_total: 1, unverified: [{ field: "effect", outcome: "CRC incidence" }] }) },
     { ref: "P3", title: "Metformin use and colorectal cancer risk among adults with type 2 diabetes", year: 2021,
-      journal: "BMJ Open", doi: "10.1000/p3", pmid: "3000003", pmcid: "PMC300003", relevance: 93, fulltext_source: "crawl_html",
-      fulltext_url: "https://example.org/p3", card: p3card, card_en: p3card, verification: verification() },
+      journal: "BMJ Open", doi: "10.1000/p3", pmid: "3000003", pmcid: "PMC300003", relevance: 93,
+      card: p3card, card_en: p3card, verification: verification() },
     { ref: "P4", title: "Short-term metformin initiation and gastrointestinal cancer detection", year: 2020,
-      journal: "Cancer Epidemiology", doi: "10.1000/p4", relevance: 81, fulltext_source: "crawl_pdf", card: p4card,
+      journal: "Cancer Epidemiology", doi: "10.1000/p4", relevance: 81, card: p4card,
       card_en: p4card, verification: verification({ agreement: 0.5, uncertain: true }) },
     { ref: "P5", title: "Antidiabetic drugs and adenoma: cross-sectional analysis", year: 2018, relevance: 70,
-      fulltext_source: "title_only", card: null, card_en: null, verification: null,
+      card: null, card_en: null, verification: null,
       error: "extraction failed: LLMOutputError" },
   ],
   queries: ["metformin colorectal cancer", "metformin CRC cohort"],
-  stats: { found: 41, unique: 26, candidates: 20, screened: 20, selected: 5, with_fulltext: 3, extracted: 4 },
+  stats: { found: 41, unique: 26, with_abstract: 22, candidates: 20, screened: 20, selected: 5, extracted: 4 },
   quality: { numbers_verified: 6, numbers_total: 7, verification_rate: 0.857, papers_uncertain: 1,
     timings: { total: 58.4, read_max: 21.2 } },
   errors: ["extraction failed for P5: LLMOutputError"],
@@ -127,6 +127,19 @@ export const emptyReviewFixture: Review = {
     language: "th", summary: "ไม่พบงานวิจัยที่ตรงกับหัวข้อนี้เพียงพอสำหรับการสรุปเปรียบเทียบ",
     synthesis: { executive_summary: "ไม่พบงานวิจัยที่ตรงกับหัวข้อนี้เพียงพอสำหรับการสรุปเปรียบเทียบ", comparison: [],
       consensus: [], conflicts: [], evidence_strength: "very_low", evidence_rationale: "", research_gaps: [] },
-    papers: [], stats: { found: 0, unique: 0, candidates: 0, screened: 0, selected: 0, with_fulltext: 0, extracted: 0 },
+    papers: [], stats: { found: 0, unique: 0, with_abstract: 0, candidates: 0, screened: 0, selected: 0, extracted: 0 },
+  },
+};
+
+/** A result stored before abstract-only reading (full-text era): must still render. */
+export const legacyReviewFixture: Review = {
+  ...reviewFixture,
+  result: {
+    ...resultFixture,
+    papers: resultFixture.papers!.map((p, i) => ({
+      ...p, fulltext_source: ["europepmc", "abstract", "crawl_html", "crawl_pdf", "title_only"][i],
+      fulltext_url: p.ref === "P3" ? "https://example.org/p3" : null,
+    })),
+    stats: { found: 41, unique: 26, candidates: 20, screened: 20, selected: 5, with_fulltext: 3, extracted: 4 },
   },
 };

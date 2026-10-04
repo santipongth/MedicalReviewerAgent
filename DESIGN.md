@@ -174,7 +174,7 @@ Flat. Depth comes from surface order (ground → surface → rail) and 1px rules
   - Ends with a link out to PMC, PubMed or the DOI.
 - **Comparison matrix:** outcome × paper. Each cell is a glyph button with an aria-label naming the direction. The selected cell gets a `rail` fill and an `ink` border.
 - **Forest plot:** log scale, with the null line drawn in `text` and dashed ticks drawn in `rule`. Markers use the direction glyph shapes. Unverified values are omitted and labelled, never estimated.
-- **Specimen tray (live run):** 20 wells. A well fills when its candidate is found, empties when it is screened out, and is capped in `primary` for the 8 selected papers.
+- **Specimen tray (live run):** 60 wells (10 × 6, 20 px each so it fits a 390 px phone). A well fills when its candidate (one with an abstract) is found, empties when it is screened out, and is capped in `primary` for the up to 30 papers selected for analysis.
 - **Buttons:** primary is solid `primary` (hover brightens, disabled at 45% opacity). Ghost has a 1px `rule` border that turns `text` on hover. Focus-visible is a 2px `primary` outline at 2px offset.
 - **Status blocks:** a background tint plus a bold label. Success uses a `success` tint, warning `warning-bg`, error `error-bg`, info `info-bg`. Never a colored left border.
 

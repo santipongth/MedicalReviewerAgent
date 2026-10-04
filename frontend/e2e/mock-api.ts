@@ -20,7 +20,7 @@ export const LIVE_EVENTS: [string, Record<string, unknown>][] = [
   ["question_refined", { refined_question: "ในผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2 เมตฟอร์มินลดอุบัติการณ์มะเร็งลำไส้ใหญ่หรือไม่",
     interpretation: "คุณอยากรู้ว่าเมตฟอร์มินลดความเสี่ยงหรือไม่", sub_questions: ["ผลขึ้นกับระยะเวลาการใช้ยาหรือไม่"], assumptions: [], elapsed_s: 4 }],
   ["planning", { queries: ["metformin colorectal cancer"], elapsed_s: 6 }], ["searching", { found: 41, elapsed_s: 9 }],
-  ["enriching", { candidates: 20, elapsed_s: 11 }], ["screening", { batch: 10, elapsed_s: 12 }], ["screened", { kept: 5, total: 20, elapsed_s: 16 }],
+  ["enriching", { candidates: 60, elapsed_s: 11 }], ["screening", { batch: 10, elapsed_s: 12 }], ["screened", { kept: 30, total: 60, elapsed_s: 16 }],
   ["reading", { ref: "P1", title: "Metformin and incident colorectal cancer in a national diabetes cohort", elapsed_s: 17 }],
   ["extracted", { ref: "P1", ok: true, verified: 2, uncertain: false, elapsed_s: 30 }],
 ];

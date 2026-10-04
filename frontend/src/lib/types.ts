@@ -60,6 +60,7 @@ export interface Paper {
   url?: string | null;
   relevance?: number | null;
   screen_reason?: string | null;
+  // Legacy (results stored before abstract-only reading, 2026-10-05); new results read abstracts only.
   fulltext_source?: string | null;
   fulltext_url?: string | null;
   card?: PaperCard | null;
@@ -134,7 +135,7 @@ export interface Quality {
   papers_uncertain?: number;
   agreement_mean?: number | null;
   extraction_escalations?: number;
-  fulltext_timeouts?: number;
+  fulltext_timeouts?: number; // legacy
   screen_disagreements?: number;
   citation_fixes?: number;
   timings?: Record<string, number | null>;
@@ -143,10 +144,11 @@ export interface Quality {
 export interface Stats {
   found?: number;
   unique?: number;
+  with_abstract?: number;
   candidates?: number;
   screened?: number;
   selected?: number;
-  with_fulltext?: number;
+  with_fulltext?: number; // legacy
   extracted?: number;
 }
 

@@ -27,9 +27,17 @@ describe("reduceRun", () => {
     expect(s.wells).toHaveLength(WELL_COUNT);
     expect(s.wells.filter((w) => w === "cap")).toHaveLength(8);
     expect(s.wells.filter((w) => w === "out")).toHaveLength(12);
+    expect(s.wells.filter((w) => w === "empty")).toHaveLength(WELL_COUNT - 20);
     expect(s.reading.map((r) => [r.ref, r.state])).toEqual([["P1", "ok"], ["P2", "failed"]]);
     expect(s.elapsed).toBe(41.5);
     expect(s.lastSeq).toBe(15);
+  });
+
+  it("fits 60 candidates and caps the 30 analysed", () => {
+    const s = run([["enriching", { candidates: 60 }], ["screened", { kept: 30, total: 60 }]]);
+    expect(WELL_COUNT).toBe(60);
+    expect(s.wells.filter((w) => w === "cap")).toHaveLength(30);
+    expect(s.wells.filter((w) => w === "out")).toHaveLength(30);
   });
 
   it("records terminal states with their reasons", () => {
