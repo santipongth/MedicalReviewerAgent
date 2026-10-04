@@ -66,7 +66,7 @@
 | Queue | `arq` 0.28: `job_timeout=1800, max_tries=2, retry_jobs=False, max_jobs=MAX_CONCURRENT_REVIEWS_PER_WORKER (2-3), allow_abort_jobs=True`; resume ผ่าน checkpoint ไม่ใช่ retry |
 | DB | Postgres 17, SQLAlchemy 2 async + Alembic |
 | Cache/Streams | Redis 7 (arq, Redis Streams สำหรับ events, quota/budget counters, cache ผลค้นหา) |
-| Sources | `httpx` async + per-host token bucket (`services/http.py`): SearXNG JSON; **Europe PMC REST** (`resultType=core` → abstract, pmcid, doi, isOpenAccess, fullTextUrlList; `/{PMCID}/fullTextXML` → JATS; ไม่ต้องใช้ key); arXiv API (Atom); Unpaywall (`CONTACT_EMAIL`) เฉพาะ DOI ที่ไม่มี PMC; NCBI `esearch` optional (`NCBI_API_KEY`); `pymupdf` ใน `asyncio.to_thread` + page cap |
+| Sources | `httpx` async + per-host token bucket (`services/http.py`): SearXNG JSON; **Europe PMC REST** (`resultType=core` → abstract, pmcid, doi, isOpenAccess, fullTextUrlList; `/{PMCID}/fullTextXML` → JATS; ไม่ต้องใช้ key); arXiv API (Atom); Unpaywall (`CONTACT_EMAIL`) หาสำเนา OA ที่ถูกกฎหมาย; NCBI `esearch` optional (`NCBI_API_KEY`); **Crawl4AI 0.9.4** (Docker service แยก) สำหรับดึง full text ของ OA paper — ดู §4.1 |
 | MCP server | `mcp` SDK **v2** (`mcp.server.mcpserver.MCPServer`), `streamable_http_app(stateless_http=True, json_response=True, streamable_http_path="/")` mount ที่ `/mcp`; FastAPI lifespan ต้อง `async with mcp.session_manager.run()`; CORS `allow_headers` รวม `Mcp-Protocol-Version, Mcp-Session-Id`, `expose_headers=["Mcp-Session-Id"]` |
 | MCP client | `langchain[mcp]` (`langchain.mcp.MCPAdapter`) — **ไม่ใช้ `langchain-mcp-adapters` (archived)**; config `mcp_servers.json` รูปแบบ `{"mcpServers": {...}}`; hot reload ผ่าน endpoint admin |
 | Config/Logs | `pydantic-settings`, `structlog`; LangSmith optional |
@@ -84,7 +84,7 @@
 | E2E | Playwright (mock SSE ด้วย `route()`), `msw` สำหรับ REST |
 
 ### Infra
-`docker-compose.yml`: `caddy` (`/mcp` และ `/events` ตั้ง `flush_interval -1`), `web`, `api`, `worker`, `redis`, `postgres`, `searxng` (`build.context: https://github.com/porespellar/searxng-LDR-academic.git#<commit-sha>`; mount `infra/searxng/settings.yml` = `use_default_settings: true` + `search.formats: [html, json]` + `server.secret_key` → `/etc/searxng/settings.yml:ro`; healthcheck curl `?format=json`); `.env.example`; `justfile`
+`docker-compose.yml`: `crawl4ai` (0.9.4, internal, token, เครือข่าย `crawl` แยกจาก `data`), `caddy` (`/mcp` และ `/events` ตั้ง `flush_interval -1`), `web`, `api`, `worker`, `redis`, `postgres`, `searxng` (`build.context: https://github.com/porespellar/searxng-LDR-academic.git#<commit-sha>`; mount `infra/searxng/settings.yml` = `use_default_settings: true` + `search.formats: [html, json]` + `server.secret_key` → `/etc/searxng/settings.yml:ro`; healthcheck curl `?format=json`); `.env.example`; `justfile`
 
 ---
 
@@ -116,12 +116,22 @@ Send targets มี private input schema (`ScreenBatchInput`, `PaperInput`) เ�
 | 3 | `enrich_dedupe` | Europe PMC batch (`query=PMID:.. OR DOI:..`), arXiv API | abstract เต็ม, pmcid/doi, ปี, journal, OA flag, cited_by; รวมซ้ำ DOI → PMID → title fuzzy (`rapidfuzz`); upsert `papers` |
 | 4 | `screen_batch` (Send, 10 ฉบับ/batch) | Haiku 4.5 | relevance 0-100 + เหตุผล เทียบ `Criteria` |
 | 4b | `select_top` (join) | — | sort/cut `max_papers`, dedupe |
-| 5 | `fetch_fulltext` (Send ต่อ paper) | Europe PMC JATS → arXiv PDF → Unpaywall PDF → `pymupdf` | parse JATS เก็บเฉพาะ Abstract/Methods/Results/Discussion, cap ~15k tokens/paper; fallback abstract; บันทึก `fulltext_source` |
+| 5 | `fetch_fulltext` (รวมกับ extract เป็น `read_paper` ต่อ paper) | cache → Europe PMC JATS API → Crawl4AI (arXiv PDF / Unpaywall OA landing+PDF) → abstract | เก็บเฉพาะ Abstract/Methods/Results/Discussion/Conclusions, cap 60k ตัวอักษร/paper; บันทึก `fulltext_source` (`europepmc`, `crawl_html`, `crawl_pdf`, `abstract`, `title_only`) — ดู §4.1 |
 | 6 | `extract` (Send ต่อ paper) | Sonnet 5.5 → `PaperCard` | design, population(n), intervention, comparator, outcomes + effect size/CI/p, findings, limitations, funding/COI, risk-of-bias ย่อ, `direction: positive/negative/null/mixed` (ไม่มี free-form instruction field; paper text อยู่ใน user turn ภายใน delimiter) |
 | 6b | `collect_cards` (join) | — | dedupe, upsert `review_papers.extraction` |
 | 6c | `external_enrich` (optional, ข้ามเมื่อ `mcp_servers.json` ว่าง) | Sonnet 5.5 ReAct ≤3 tool calls | เรียก tools จาก MCP ภายนอก (เช่น ฐานข้อมูลสถาบัน) เพิ่ม context ให้ cards |
 | 7 | `synthesize` | **Opus 5.5** effort high, streaming | รับเฉพาะ `PaperCard`s (ไม่ใช่ full text → ต้นทุนคาดการณ์ได้) → `Synthesis`: executive summary, comparison matrix (outcome × paper), consensus/conflict clusters + เหตุผล (population/dose/design), evidence strength, gaps; ภาษาตามเลือก; อ้าง `[P3]` |
 | 8 | `finalize` | DB | result JSON, `status=done`, `cost_usd`, `model_versions`, `prompt_version` |
+
+### 4.1 Full-text acquisition (Crawl4AI) — revision 2026-10-04
+
+ผลทดสอบจริง: MDPI และ Wiley ตอบ 403 กับ HTTP client ธรรมดา แต่ Crawl4AI 0.9.4 (Chromium) ดึงบทความ MDPI ได้ครบใน 3 วินาที, PDF ผ่าน `PDFContentScrapingStrategy`, เคารพ robots.txt (BMC `/track/pdf` ถูกปฏิเสธ) และมี SSRF guard ในตัว
+
+- **ลำดับ**: Redis cache (30 วัน, miss 24 ชม.) → Europe PMC JATS (API ทางการ) → Crawl4AI กับ URL ที่เป็น OA เท่านั้น (arXiv, Unpaywall `is_oa` landing/PDF, PDF ที่ Europe PMC ระบุว่า OA; สูงสุด 3 URL/paper) → abstract
+- **สุภาพ ไม่หลบเลี่ยง**: `check_robots_txt=true`, stealth เบา ๆ (`CRAWL_STEALTH`), ≥ 2 วินาที/host และ cooldown 15 นาทีหลัง 403/429/503 (เก็บใน Redis ใช้ร่วมทุก worker), ≤ 3 crawl พร้อมกัน/worker; ไม่แก้ CAPTCHA ไม่ใช้ proxy หมุน IP ไม่ข้าม paywall
+- **Quality gate**: ≥ 3k ตัวอักษร (PDF 5k), มีคำหัวข้อ section ≥ 2 แบบ, คำในชื่อเรื่องปรากฏ ≥ 50% — กันหน้า cookie consent / login (เช่น Wiley)
+- **ความปลอดภัย**: pin ≥ 0.9.0 (CVE-2026-26216 RCE ผ่าน hooks, CVE-2026-53755 SSRF ผ่าน proxy, CVE-2026-57572 RCE ผ่าน extra_args); บังคับ `CRAWL4AI_API_TOKEN`, `CRAWL4AI_HOOKS_ENABLED=false`; client ไม่ส่ง `proxy`/`proxy_config`/`extra_args`/`hooks`; ตรวจ `is_public_http_url` ก่อนส่ง; container อยู่เครือข่าย `crawl` แยกจาก Postgres/Redis (`data`), `mem_limit 3g`, `shm_size 1g`
+- **ล้มเหลวแบบปลอดภัย**: crawler ล่ม/ไม่มี token → ใช้ abstract, review ยังจบ `done`
 
 ### Streaming / resume / errors
 - Node เรียก `writer = get_stream_writer(); writer({"type": "screening", "kept": n, "total": m})` (no-op ใน unit test); arq task รัน `graph.astream(input, config, stream_mode=["custom","updates"], durability="sync")` → `EventSink` เขียน `review_events(seq)` แล้ว `XADD review:{id}` — ที่เดียวที่แตะ infra
@@ -155,7 +165,7 @@ Tools เรียก service layer เดียวกับ REST (ไม่แ�
 
 ### Web (Next.js)
 - `/` — hero + ช่องค้นหา + ตัวเลือก (ภาษา, จำนวน paper, ช่วงปี, ชนิดงานวิจัย) + ตัวอย่าง topic + review สาธารณะล่าสุด + banner เมื่อ quota หมด
-- `/r/[id]` — timeline live → dashboard: summary cards, **comparison matrix** (sticky header, badge ทิศทางผล), consensus/conflict panel, paper cards (abstract/extraction, DOI/PMC links), charts, export/share
+- `/r/[id]` — **interactive report** (กราฟ, animation, slider, interactive diagram; ECharts + motion): PRISMA flow แบบ animate (found → unique → screened → included → full text → extracted), forest plot จากค่า effect size/CI ที่สกัดได้, evidence matrix heatmap, bubble/timeline (ปี × sample size × direction), consensus/conflict network, slider กรอง relevance/ปี/risk of bias/study design; ดาวน์โหลดเป็นไฟล์ interactive HTML เดี่ยวได้; ออกแบบ Landing/Dashboard ด้วย design skills (`design-consultation` → `design-shotgun` → `design-html` → `dataviz` → `design-review`). เดิม: timeline live → dashboard: summary cards, **comparison matrix** (sticky header, badge ทิศทางผล), consensus/conflict panel, paper cards (abstract/extraction, DOI/PMC links), charts, export/share
 - `/about` — วิธีต่อ API/MCP (คัดลอก config ได้)
 
 ---
@@ -175,6 +185,7 @@ Tools เรียก service layer เดียวกับ REST (ไม่แ�
 - `topic_guard` node (Haiku) + จำกัดความยาว topic; Cloudflare Turnstile เปิดเป็นค่าเริ่มต้นใน production compose (`TURNSTILE_SECRET` ว่าง = ปิดสำหรับ dev)
 - เก็บเฉพาะ hash IP; SearXNG ไม่ expose ออกนอก network
 - Prompt-injection: paper text ไม่เข้า system prompt; schema ไม่มี free-form instruction fields
+- Crawler: Crawl4AI ≥ 0.9.0 + token + hooks ปิด + ไม่ส่ง proxy/extra_args + SSRF check + network isolation (§4.1)
 
 ---
 
@@ -231,6 +242,6 @@ D:\MedicalReviewerAgent\
 
 ## 11. ข้อสมมติ / ตัดออกใน v1
 - ไม่มี login; ไม่มี human-in-the-loop แก้รายการ paper (โครงรองรับ `interrupt` ภายหลัง); ไม่ทำ A2A (job contract start/status/result/events ออกแบบให้ wrap ได้ภายหลัง)
-- Full text เฉพาะ Open Access; paper ปิดใช้ abstract
+- Full text เฉพาะ Open Access ตามกฎหมาย ผ่าน Europe PMC API หรือ Crawl4AI ที่เคารพ robots.txt; paper ปิด/ถูกปฏิเสธใช้ abstract
 - env ที่ต้องมี: `ANTHROPIC_API_KEY`, `CONTACT_EMAIL` (Unpaywall/NCBI); optional `NCBI_API_KEY`, `TURNSTILE_SECRET`, `LANGSMITH_API_KEY`
 - Google Scholar/OpenAlex/Crossref ไม่ใช่แหล่งหลักใน v1 (captcha / ต้องการ key / ซ้ำซ้อนกับ Europe PMC)
