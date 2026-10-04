@@ -88,7 +88,8 @@ EXPORT_TYPES = {"md": "text/markdown; charset=utf-8", "csv": "text/csv; charset=
             responses={200: {"content": {t.split(";")[0]: {} for t in EXPORT_TYPES.values()},
                              "description": "Markdown report, CSV (one row per paper × outcome) or the full JSON"},
                        404: {"description": "unknown review"}, 409: {"description": "review not finished"}})
-async def export_review(review_id: uuid.UUID, format: Literal["md", "csv", "json"] = "md",
+async def export_review(review_id: uuid.UUID,
+                        fmt: Literal["md", "csv", "json"] = Query("md", alias="format"),
                         deps: AppDeps = Depends(get_deps)) -> Response:
     """Markdown report, CSV of every extracted outcome (verified numbers only; blanked values stay empty) or the
     complete JSON result, as a file download."""
@@ -97,16 +98,16 @@ async def export_review(review_id: uuid.UUID, format: Literal["md", "csv", "json
         raise HTTPException(status_code=404, detail="review not found")
     if review.status != "done":
         raise HTTPException(status_code=409, detail=f"review is {review.status}; exports are available once done")
-    if format == "md":
+    if fmt == "md":
         body = render_markdown(review)
-    elif format == "csv":
+    elif fmt == "csv":
         body = render_csv(review.result)
     else:
         body = json.dumps({"review_id": str(review.id), "topic": review.topic, "language": review.language,
                            "created_at": review.created_at, "finished_at": review.finished_at,
                            "result": review.result}, ensure_ascii=False, default=str, indent=1)
-    return Response(content=body, media_type=EXPORT_TYPES[format],
-                    headers={"Content-Disposition": f'attachment; filename="review-{str(review.id)[:8]}.{format}"'})
+    return Response(content=body, media_type=EXPORT_TYPES[fmt],
+                    headers={"Content-Disposition": f'attachment; filename="review-{str(review.id)[:8]}.{fmt}"'})
 
 
 @router.delete("/reviews/{review_id}", summary="Cancel a queued or running review",

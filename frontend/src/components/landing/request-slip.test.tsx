@@ -55,6 +55,13 @@ describe("RequestSlip", () => {
     expect(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ })).toBeDisabled();
   });
 
+  it("tells the reopening time from the service, in the viewer's own clock", async () => {
+    const { capacityText } = await import("./request-slip");
+    const reopen = new Date(Date.now() + 5400 * 1000).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+    expect(capacityText("daily_budget", 5400)).toContain(reopen);
+    expect(capacityText("daily_budget", 5400)).not.toContain("07:00");
+  });
+
   it("explains a full queue returned at submit time", async () => {
     createReview.mockRejectedValue(new ApiError(503, "the review queue is full", 60, undefined, "queue_full"));
     render(<RequestSlip />);

@@ -3,12 +3,15 @@ and a daily spend. Counters are per UTC day and expire after two days."""
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+
+from redis.exceptions import WatchError
 
 from app.config import Settings
 
@@ -56,15 +59,31 @@ class Capacity:
         token = uuid.uuid4().hex
         deadline = time.monotonic() + ADMISSION_WAIT_SECONDS
         # SET NX PX: no Lua needed; the TTL frees the lock if a process dies while holding it.
+        wait = 0.002
         while not await self.redis.set(ADMISSION_KEY, token, nx=True, px=ADMISSION_TTL_MS):
             if time.monotonic() > deadline:
                 raise AdmissionBusy
-            await asyncio.sleep(0.005)
+            await asyncio.sleep(wait * (0.5 + random.random()))  # jittered backoff: a burst does not spin Redis
+            wait = min(wait * 2, 0.05)
         try:
             yield
         finally:
-            if await self.redis.get(ADMISSION_KEY) == token:  # never release a lock another holder took after expiry
-                await self.redis.delete(ADMISSION_KEY)
+            await self._release(token)
+
+    async def _release(self, token: str) -> None:
+        """Compare-and-delete in one transaction (WATCH/MULTI, no Lua): never removes a lock another holder took
+        after ours expired, even if it changes hands between the read and the delete."""
+        async with self.redis.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(ADMISSION_KEY)
+                if await pipe.get(ADMISSION_KEY) != token:
+                    await pipe.unwatch()
+                    return
+                pipe.multi()
+                pipe.delete(ADMISSION_KEY)
+                await pipe.execute()
+            except WatchError:  # changed hands meanwhile: it is not ours any more
+                return
 
     async def note_review(self) -> None:
         await self._bump("reviews", 1)

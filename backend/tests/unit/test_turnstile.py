@@ -39,7 +39,7 @@ async def test_cloudflare_outage_is_a_clear_503(client, app):
     assert r.status_code == 503 and r.json()["reason"] == "verification_unavailable" and "retry-after" in r.headers
 
 
-async def test_api_keys_and_mcp_never_need_a_token(client, app, session_factory):
+async def test_api_keys_never_need_a_token(client, app, session_factory):
     from app.services.api_keys import mint_key
     secret_on(app)
     async with session_factory() as s, s.begin():

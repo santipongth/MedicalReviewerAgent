@@ -59,9 +59,9 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 | `POST /reviews` | 202 `{review_id, status, cached, callback_scheduled}` | 401, 403, 422, 429, 503 |
 | `GET /reviews?recent=20` (1–50) | 200 recent finished reviews: `[{id, topic, language, status, created_at, finished_at, verification_rate}]` | 422 |
 | `GET /reviews/{id}` | 200 `ReviewOut` | 404, 422 |
-| `GET /reviews/{id}/events` | 200 `text/event-stream` | 404, 429 |
+| `GET /reviews/{id}/events` | 200 `text/event-stream` | 404, 422 (malformed id), 429 |
 | `GET /reviews/{id}/export?format=md\|csv\|json` | 200 file download | 404, 409 (not done), 422 |
-| `DELETE /reviews/{id}` (owner key or admin key) | 200 `{review_id, status: "cancelled"}` | 401, 403, 404, 409 |
+| `DELETE /reviews/{id}` (owner key or admin key) | 200 `{review_id, status: "cancelled"}` | 401, 403, 404, 409, 422 (malformed id) |
 | `GET /papers/search?q=&limit=10` (q 2–300 chars, limit 1–25) | 200 `[Candidate]` | 401, 422, 429, 502 |
 | `GET /status` | 200 status and limits | none |
 | `GET /healthz` | 200 `{status: "ok", db, redis}` | 503 `{status: "degraded", …}` |
@@ -113,6 +113,8 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 **Synthesis.** `synthesis.consensus` explanations name any dissenting minority. Consensus needs at least 70 % of at least 3 studies to agree. `synthesis.conflicts` lists real splits, each with its likely reasons.
 
 ### Exports
+
+The web app also serves the whole interactive report as one HTML file that works offline: `GET <origin>/r/{id}/report.html` (attachment `review-<id8>.html`, about 1 MB; 409 until done).
 
 `GET /reviews/{id}/export?format=…` returns an attachment named `review-<first 8 chars of id>.<format>`. It is only available once the review is `done`; before that it returns 409.
 
@@ -207,7 +209,7 @@ The server also exposes these resources and one prompt:
 | Resource | `review://{id}/report.md` | the Markdown report |
 | Prompt | `literature_review(topic)` | |
 
-Tool errors come back as MCP tool errors, for example "review … not found" or "the review queue is full (queue_full); retry after 60 seconds".
+Tool errors come back as MCP tool errors, for example "review … not found" or "the review queue is full; please try again in a minute (queue_full); retry after 60 seconds".
 
 Connect from Claude Code:
 

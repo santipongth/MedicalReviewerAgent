@@ -74,6 +74,17 @@ CSV_FIELDS = ["ref", "title", "year", "journal", "doi", "pmid", "design_category
               "evidence_quote", "error"]
 
 
+FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _cell_value(value: Any) -> Any:
+    """Text that a spreadsheet would run as a formula (titles and quotes come from third-party metadata) gets a
+    leading apostrophe; numbers are left as numbers."""
+    if isinstance(value, str) and value.startswith(FORMULA_START):
+        return "'" + value
+    return value
+
+
 def render_csv(result: dict[str, Any] | None) -> str:
     """One row per paper × outcome, from the English cards. Values the verifier blanked are already null and stay
     empty here: nothing is estimated. A paper without a card gets one row carrying its error."""
@@ -85,11 +96,12 @@ def render_csv(result: dict[str, Any] | None) -> str:
         base = {"ref": p.get("ref"), "title": p.get("title"), "year": p.get("year"), "journal": p.get("journal"),
                 "doi": p.get("doi"), "pmid": p.get("pmid"), "error": p.get("error")}
         if not card:
-            writer.writerow(base)
+            writer.writerow({k: _cell_value(v) for k, v in base.items()})
             continue
         base |= {"design_category": card.get("design_category"), "study_design": card.get("study_design"),
                  "sample_size": card.get("sample_size")}
         for o in card.get("outcomes") or [{}]:
-            writer.writerow(base | {k: o.get(k) for k in ("outcome", "direction", "effect_measure", "effect_value",
-                                                          "ci_lower", "ci_upper", "p_value", "evidence_quote")})
+            row = base | {k: o.get(k) for k in ("outcome", "direction", "effect_measure", "effect_value",
+                                                "ci_lower", "ci_upper", "p_value", "evidence_quote")}
+            writer.writerow({k: _cell_value(v) for k, v in row.items()})
     return "\ufeff" + out.getvalue()  # BOM: spreadsheet apps then read Thai/unicode titles correctly
