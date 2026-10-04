@@ -12,6 +12,7 @@ from app.api import events, health, papers, reviews
 from app.api.ratelimit import limiter
 from app.config import Settings, get_settings
 from app.logging import configure_logging
+from app.mcp.server import build_mcp, transport_security
 from app.runtime import AppDeps
 
 __all__ = ["AppDeps", "app", "create_app"]
@@ -31,18 +32,19 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        if deps is not None:
-            app.state.deps = complete(deps)
-            yield
-            return
-        from app.infra import build_runtime_deps, close_runtime_deps
+        async with app.state.mcp.session_manager.run():
+            if deps is not None:
+                app.state.deps = complete(deps)
+                yield
+                return
+            from app.infra import build_runtime_deps, close_runtime_deps
 
-        runtime = complete(await build_runtime_deps(settings))
-        app.state.deps = runtime
-        try:
-            yield
-        finally:
-            await close_runtime_deps(runtime)
+            runtime = complete(await build_runtime_deps(settings))
+            app.state.deps = runtime
+            try:
+                yield
+            finally:
+                await close_runtime_deps(runtime)
 
     app = FastAPI(
         title="Medical Reviewer Agent API",
@@ -61,13 +63,17 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
         CORSMiddleware,
         allow_origins=["*"],
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
-        expose_headers=["Mcp-Session-Id"],
+        allow_headers=["*", "Mcp-Protocol-Version", "Mcp-Session-Id", "Authorization", "X-API-Key"],
+        expose_headers=["Mcp-Session-Id", "Retry-After"],
     )
     app.include_router(health.router, prefix="/api/v1", tags=["system"])
     app.include_router(events.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(reviews.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(papers.router, prefix="/api/v1", tags=["papers"])
+    mcp = build_mcp(lambda: app.state.deps, settings)
+    app.state.mcp = mcp
+    app.mount("/mcp", mcp.streamable_http_app(stateless_http=True, json_response=True, streamable_http_path="/",
+                                              transport_security=transport_security(settings)))
     return app
 
 

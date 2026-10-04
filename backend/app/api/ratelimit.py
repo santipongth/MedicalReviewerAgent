@@ -4,6 +4,14 @@ from slowapi import Limiter
 from app.config import get_settings
 
 
+def ip_from(forwarded: str | None, peer: str, trust_proxy: bool) -> str:
+    if forwarded and trust_proxy:
+        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+        if hops:
+            return hops[-1]
+    return peer
+
+
 def client_ip(request: Request) -> str:
     """Rate-limit / ip_hash key.
 
@@ -12,12 +20,8 @@ def client_ip(request: Request) -> str:
     hop is ours; anything to its left was supplied by the client and can be forged.
     """
     settings = getattr(request.app.state, "settings", None)
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded and settings is not None and settings.trust_proxy:
-        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
-        if hops:
-            return hops[-1]
-    return request.client.host if request.client else "unknown"
+    peer = request.client.host if request.client else "unknown"
+    return ip_from(request.headers.get("x-forwarded-for"), peer, bool(settings and settings.trust_proxy))
 
 
 limiter = Limiter(
