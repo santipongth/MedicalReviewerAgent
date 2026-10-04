@@ -84,9 +84,11 @@ class ReviewOut(ReviewSummary):
     started_at: datetime | None
 
 
-def compute_cache_key(topic: str, language: str, options: dict[str, Any]) -> str:
+def compute_cache_key(topic: str, language: str, options: dict[str, Any], version: str = "") -> str:
+    """version = the pipeline/prompt version: after a change a repeated topic runs again instead of reusing
+    a result produced by the old pipeline."""
     normalized = " ".join(topic.lower().split())
-    material = json.dumps({"t": normalized, "l": language, "o": options}, sort_keys=True)
+    material = json.dumps({"t": normalized, "l": language, "o": options, "v": version}, sort_keys=True)
     return hashlib.sha256(material.encode()).hexdigest()
 
 

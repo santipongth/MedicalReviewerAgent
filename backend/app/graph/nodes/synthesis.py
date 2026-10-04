@@ -25,7 +25,13 @@ from app.graph.schemas import (
 from app.graph.state import ReviewState
 from app.harness.grade import LEVELS, clamp_to_baseline, grade_baseline
 from app.harness.localize import localize_strings
-from app.harness.matrix import build_matrix, fallback_clusters, outcome_pairs, validate_clusters
+from app.harness.matrix import (
+    build_matrix,
+    fallback_clusters,
+    outcome_pairs,
+    repair_clusters,
+    validate_clusters,
+)
 from app.harness.quality import summarize_quality
 from app.harness.verify import check_citations, strip_unknown_citations
 from app.services.llm import LLMError
@@ -70,6 +76,12 @@ def _with_cards(state: ReviewState) -> list[dict[str, Any]]:
     return [p for p in unique_papers(state) if p.get("card")]
 
 
+def _evidence(state: ReviewState) -> list[dict[str, Any]]:
+    """Papers that count as evidence: narrative reviews stay in the paper list but add no matrix cells, conflicts
+    or grade (they restate other studies)."""
+    return [p for p in _with_cards(state) if p["card"].get("design_category") != "narrative_review"]
+
+
 def _brief(p: dict[str, Any]) -> dict[str, Any]:
     """Compact paper card for multi-paper prompts (quotes dropped: they were verified already)."""
     card = copy.deepcopy(p["card"])
@@ -91,7 +103,7 @@ def _empty_synthesis(summary: str) -> dict[str, Any]:
 def make_normalize_outcomes(deps):
     async def normalize_outcomes(state: ReviewState) -> dict:
         started = time.perf_counter()
-        papers = _with_cards(state)
+        papers = _evidence(state)
         entry: dict[str, Any] = {"stage": "normalize", "fallback": False, "repaired": False}
         cost, errors = 0.0, []
         clusters: OutcomeClusters | None = None
@@ -107,7 +119,10 @@ def make_normalize_outcomes(deps):
                     schema=OutcomeClusters, validate=lambda c: validate_clusters(c, papers), trigger="normalize")
                 cost += res.cost
                 entry["repaired"] = res.repaired
-                clusters = res.value if res.ok else None
+                if res.value is not None:  # a near miss is corrected in code, not thrown away
+                    fixed, corrections, kept = repair_clusters(res.value, papers)
+                    entry["corrections"] = corrections
+                    clusters = fixed if kept else None
             except LLMError as exc:
                 errors.append(f"outcome normalization failed: {type(exc).__name__}")
             entry["fallback"] = clusters is None
@@ -125,7 +140,7 @@ def route_conflicts(state: ReviewState) -> list[Send] | str:
     conflicts = (state.get("matrix") or {}).get("conflicts") or []
     if not conflicts:
         return "write_synthesis"
-    by_ref = {p["ref"]: p for p in _with_cards(state)}
+    by_ref = {p["ref"]: p for p in _evidence(state)}
     question = review_question(state)
     return [Send("explain_conflict", {"conflict": c, "question": question,
                                       "papers": [_brief(by_ref[r]) for r in c["refs"] if r in by_ref]})
@@ -220,10 +235,23 @@ async def _localize_cards(deps, papers: list[dict[str, Any]], language: str) -> 
     return cards, entry, cost
 
 
+def _consensus_explanation(c: dict[str, Any]) -> str:
+    dissent = c.get("dissent") or {}
+    if not dissent:
+        return f"{len(c['refs'])} studies report the same direction for {c['outcome']}."
+    total = len(c["refs"]) + sum(len(refs) for refs in dissent.values())
+    def finding(d: str, n: int) -> str:
+        text = DIRECTION_TEXT.get(d, d).replace("findings ", "")
+        return text.replace("show ", "shows ", 1) if n == 1 else text
+
+    others = "; ".join(f"{', '.join(f'[{r}]' for r in refs)} {finding(d, len(refs))}" for d, refs in dissent.items())
+    return f"{len(c['refs'])} of {total} studies report the same direction for {c['outcome']}; {others}."
+
+
 def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list, list]:
     consensus = [EvidenceCluster(
         statement=f"{c['outcome']}: {DIRECTION_TEXT.get(c['direction'], c['direction'])}",
-        refs=c["refs"], explanation=f"{len(c['refs'])} studies report the same direction for {c['outcome']}.")
+        refs=c["refs"], explanation=_consensus_explanation(c))
         for c in matrix.get("consensus", [])]
     by_outcome = {n["outcome"]: n for n in notes}
     conflicts = []
@@ -238,7 +266,7 @@ def make_write_synthesis(deps):
     async def write_synthesis(state: ReviewState) -> dict:
         started = time.perf_counter()
         language = state.get("language", "th")
-        papers = _with_cards(state)
+        papers = _evidence(state)
         if not papers:
             if state.get("selected"):
                 messages = EXTRACTION_FAILED

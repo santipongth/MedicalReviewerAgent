@@ -323,3 +323,76 @@ def test_quality_reports_snippet_only_candidates_excluded():
     q = summarize_quality([{"stage": "enrich", "snippet_only": 4, "seconds": 1.0}], None)
     assert q["snippet_only_excluded"] == 4
     assert summarize_quality([], None)["snippet_only_excluded"] == 0
+
+
+async def test_narrative_reviews_stay_listed_but_out_of_the_evidence():
+    review = {**card("CRC incidence", "negative"), "design_category": "narrative_review"}
+    papers = [paper("P1", card("CRC incidence")), paper("P2", card("CRC incidence")), paper("P3", review)]
+    out = await make_normalize_outcomes(deps())(state(papers))  # no normalizer: deterministic grouping
+    m = out["matrix"]
+    assert [c["ref"] for c in m["rows"][0]["cells"]] == ["P1", "P2"]  # the review adds no cell...
+    assert m["conflicts"] == []  # ...and no conflict
+    r = (await make_finalize(deps())(state(papers, synthesis={"executive_summary": "EN"})))["result"]
+    listed = {p["ref"]: p for p in r["papers"]}
+    assert listed["P3"]["card"]["design_category"] == "narrative_review"  # still listed, labelled as a review
+
+
+def test_repair_clusters_fixes_a_near_miss_instead_of_discarding_it():
+    from app.harness.matrix import repair_clusters, validate_clusters
+    papers = [paper("P1", card("CRC incidence")), paper("P2", card("incident colorectal cancer")),
+              paper("P3", card("crc incidence")), paper("P4", card("CRC mortality"))]
+    near_miss = OutcomeClusters(clusters=[
+        OutcomeCluster(canonical="Colorectal cancer incidence", members=[
+            OutcomeMember(ref="P1", outcome="CRC incidence"), OutcomeMember(ref="P2", outcome="incident colorectal cancer"),
+            OutcomeMember(ref="P2", outcome="incident colorectal cancer"),  # duplicate
+            OutcomeMember(ref="P9", outcome="made up")]),                     # unknown
+        OutcomeCluster(canonical=" ", members=[OutcomeMember(ref="P4", outcome="CRC mortality")])])  # empty name
+    fixed, repairs, kept = repair_clusters(near_miss, papers)                 # P3 "crc incidence" is missing
+    assert validate_clusters(fixed, papers) == [] and kept == 3 and repairs == 4
+    names = {c.canonical: sorted(m.ref for m in c.members) for c in fixed.clusters}
+    assert names == {"Colorectal cancer incidence": ["P1", "P2", "P3"], "CRC mortality": ["P4"]}
+
+
+async def test_normalize_keeps_a_repaired_llm_clustering():
+    papers = [paper("P1", card("CRC incidence")), paper("P2", card("incident colorectal cancer")),
+              paper("P3", card("crc incidence"))]
+    partial = OutcomeClusters(clusters=[OutcomeCluster(canonical="Colorectal cancer incidence", members=[
+        OutcomeMember(ref="P1", outcome="CRC incidence"), OutcomeMember(ref="P2", outcome="incident colorectal cancer")])])
+    norm = FakeStructuredLLM("qwen", lambda s, u: partial)  # P3 always missing → validation never passes
+    out = await make_normalize_outcomes(deps(normalizer=norm))(state(papers))
+    q = out["quality"][0]
+    assert q["fallback"] is False and q["corrections"] == 1
+    assert [len(r["cells"]) for r in out["matrix"]["rows"]] == [3]
+
+
+def test_quality_reports_normalization_corrections():
+    from app.harness.quality import summarize_quality
+    assert summarize_quality([{"stage": "normalize", "corrections": 3, "fallback": False}], None)[
+        "normalization_corrections"] == 3
+
+
+def test_consensus_statement_names_the_dissenting_studies():
+    from app.graph.nodes.synthesis import _clusters
+    matrix = {"consensus": [{"outcome": "CRC incidence", "direction": "positive", "refs": ["P1", "P2", "P3"],
+                             "dissent": {"null": ["P4"]}}], "conflicts": []}
+    consensus, conflicts = _clusters(matrix, [])
+    assert consensus[0].refs == ["P1", "P2", "P3"] and conflicts == []
+    assert "3 of 4 studies" in consensus[0].explanation and "[P4]" in consensus[0].explanation
+
+
+def test_dissent_counts_distinct_studies_when_one_paper_reports_two_directions():
+    from app.graph.nodes.synthesis import _consensus_explanation
+    from app.harness.matrix import build_matrix
+
+    def two(ref, d1, d2):
+        c = card("CRC incidence", d1)
+        c["outcomes"].append({**c["outcomes"][0], "outcome": "CRC incidence (women)", "direction": d2})
+        return paper(ref, c)
+    papers = [paper(f"P{i}", card("CRC incidence")) for i in range(1, 4)] + [two("P4", "positive", "null")]
+    clusters = OutcomeClusters(clusters=[OutcomeCluster(canonical="CRC incidence", members=[
+        *[OutcomeMember(ref=f"P{i}", outcome="CRC incidence") for i in range(1, 5)],
+        OutcomeMember(ref="P4", outcome="CRC incidence (women)")])])
+    m = build_matrix(papers, clusters)
+    c = m["consensus"][0]
+    assert c["refs"] == ["P1", "P2", "P3", "P4"] and c["dissent"] == {}  # P4 is not both a supporter and a dissenter
+    assert _consensus_explanation({"outcome": "CRC", "refs": ["P1", "P2", "P3"], "dissent": {"null": ["P4"]}})         .endswith("[P4] shows no significant association.")

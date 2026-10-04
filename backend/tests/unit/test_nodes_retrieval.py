@@ -60,7 +60,7 @@ async def test_enrich_merges_epmc_metadata_filters_years_and_caps():
     assert merged["pmcid"] == "PMC5" and merged["abstract"] == ABSTRACT
     assert merged["title"] == "Metformin and colorectal cancer: a cohort"  # Europe PMC metadata wins
     assert epmc.calls == [(["10.1/a", "10.1/old"], ["11"])]
-    assert out["search_stats"] == {"unique": 3, "with_abstract": 2}
+    assert out["search_stats"] == {"unique": 3, "with_abstract": 2, "non_research": 0}
 
 
 async def test_enrich_survives_epmc_failure_and_keeps_only_abstract_holders_in_rank_order():
@@ -101,3 +101,19 @@ async def test_enrich_does_not_treat_search_snippets_as_abstracts():
     out = await make_enrich(_deps(europepmc=FakeEpmc([])))({"candidates": raw, "options": {}})
     assert [x["doi"] for x in out["candidates"]] == ["10.1/2", "10.1/3", "10.1/4"]
     assert out["search_stats"]["with_abstract"] == 3 and out["quality"][0]["snippet_only"] == 2
+
+
+async def test_enrich_drops_editorials_letters_and_retracted_papers_before_screening():
+    def c(i, types):
+        return Candidate(title=f"Paper {i} on metformin outcomes", doi=f"10.1/{i}", abstract=ABSTRACT,
+                         pub_types=types).model_dump()
+    raw = [c(0, ["Editorial"]), c(1, ["Letter", "Comment"]), c(2, ["Journal Article", "Retracted Publication"]),
+           c(3, ["Journal Article"]), c(4, ["Letter", "Journal Article"]), c(5, [])]
+    out = await make_enrich(_deps(europepmc=FakeEpmc([])))({"candidates": raw, "options": {}})
+    assert [x["doi"] for x in out["candidates"]] == ["10.1/3", "10.1/4", "10.1/5"]
+    assert out["search_stats"]["non_research"] == 3
+
+
+def test_screening_prompt_excludes_narrative_reviews():
+    from app.graph.prompts import SCREEN_SYSTEM
+    assert "narrative" in SCREEN_SYSTEM.lower()

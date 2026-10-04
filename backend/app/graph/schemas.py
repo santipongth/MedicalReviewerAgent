@@ -7,12 +7,16 @@ from __future__ import annotations
 import hashlib
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.services.text import normalize_title
 
 Direction = Literal["positive", "negative", "null", "mixed", "unclear"]
 EffectMeasure = Literal["HR", "OR", "RR", "RD", "MD", "SMD", "r", "other", "none"]
+DesignCategory = Literal["rct", "non_randomized_trial", "cohort", "case_control", "cross_sectional", "case_series",
+                         "mendelian_randomization", "sr_ma_rct", "sr_ma_observational", "sr_ma_mixed",
+                         "narrative_review", "other"]
+DESIGN_CATEGORIES: tuple[str, ...] = DesignCategory.__args__
 
 
 def candidate_key(*, doi: str | None, pmid: str | None, arxiv_id: str | None, title: str) -> str:
@@ -106,11 +110,19 @@ class QueryPlan(BaseModel):
     exclusion_criteria: list[str]
 
 
+def _require_design_guess(schema: dict) -> None:
+    schema.setdefault("required", []).append("design_guess")
+    schema["properties"]["design_guess"].pop("default", None)  # strict tool schemas reject "default"
+
+
 class ScreenDecision(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_require_design_guess)
+
     ref: str
     relevance: int
     include: bool
     reason: str
+    design_guess: DesignCategory | None = None  # from title/abstract; lets select_top keep narrative reviews out
 
 
 class ScreenBatch(BaseModel):
@@ -130,8 +142,17 @@ class OutcomeResult(BaseModel):
     direction: Direction
 
 
+def _require_design_category(schema: dict) -> None:
+    # Required (nullable) for the model; the Python default only serves cards stored before the field existed.
+    schema.setdefault("required", []).append("design_category")
+    schema["properties"]["design_category"].pop("default", None)  # strict tool schemas reject "default"
+
+
 class PaperCard(BaseModel):
-    study_design: str
+    model_config = ConfigDict(json_schema_extra=_require_design_category)
+
+    study_design: str  # free-text detail as the paper describes it
+    design_category: DesignCategory | None = None  # fixed category used for grading, filters and evidence tiers
     population: str
     sample_size: int | None
     sample_size_quote: str | None  # verbatim text stating the sample size

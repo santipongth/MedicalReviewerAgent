@@ -181,3 +181,18 @@ async def test_effort_none_reaches_the_request_body(fake_openai):
     fake_openai.replies.append(completion_body(OK, cost=0.0001))
     await make(fake_openai, method="json_schema", reasoning_effort="none").ainvoke("Answer in JSON.", "x")
     assert fake_openai.requests[0]["reasoning"] == {"effort": "none"}
+
+
+async def test_strict_tool_schema_has_no_default_for_required_nullable_fields(fake_openai):
+    # OpenAI strict mode rejects "default"; design_category / design_guess are required-but-nullable for the model.
+    from app.graph.schemas import PaperCard, ScreenBatch
+    for schema, name in ((PaperCard, "design_category"), (ScreenBatch, "design_guess")):
+        fake_openai.replies.append(completion_body(tool_name=schema.__name__, tool_args={}))
+        llm = OpenAICompatibleStructuredLLM(schema, model="m", api_key="k", base_url=fake_openai.url, max_tokens=64,
+                                            max_retries=0, method="tool_calling")
+        try:
+            await llm.ainvoke("s", "u")
+        except LLMError:
+            pass  # the empty reply does not validate; only the request body matters here
+        params = json.dumps(fake_openai.requests[-1]["tools"][0]["function"]["parameters"])
+        assert f'"{name}"' in params and '"default": null' not in params

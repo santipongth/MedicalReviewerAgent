@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     stale_running_minutes: int = 30
 
     graph_mode: str = "real"  # "stub" = Plan 1 placeholder graph (plumbing tests without Claude)
-    prompt_version: str = "2026-10-04.1"
+    prompt_version: str = "2026-10-05.2"
 
     searxng_engines: str = "pubmed,arxiv,semantic scholar,openalex,crossref"
     searxng_pages: int = 1

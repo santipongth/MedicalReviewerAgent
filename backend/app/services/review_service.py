@@ -90,7 +90,7 @@ class ReviewService:
 
     async def create(self, req: CreateReviewRequest, *, identity: Identity) -> ReviewCreated:
         options = req.options.model_dump()
-        cache_key = compute_cache_key(req.topic, req.language, options)
+        cache_key = compute_cache_key(req.topic, req.language, options, self.settings.prompt_version)
         if req.callback_url and identity.api_key is None:
             raise Forbidden("callback_url requires an API key")
         if (cached := await self._reuse(cache_key)) is not None:  # cache hits are free; no webhook for them

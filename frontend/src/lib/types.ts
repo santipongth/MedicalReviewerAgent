@@ -18,8 +18,13 @@ export interface OutcomeResult {
   direction: Direction;
 }
 
+export type DesignCategory =
+  | "rct" | "non_randomized_trial" | "cohort" | "case_control" | "cross_sectional" | "case_series"
+  | "mendelian_randomization" | "sr_ma_rct" | "sr_ma_observational" | "sr_ma_mixed" | "narrative_review" | "other";
+
 export interface PaperCard {
   study_design: string;
+  design_category?: DesignCategory | null; // absent on results stored before 2026-10-05
   population: string;
   sample_size?: number | null;
   sample_size_quote?: string | null;

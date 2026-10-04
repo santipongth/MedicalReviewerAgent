@@ -130,3 +130,26 @@ async def test_no_abstract_is_an_error_not_a_crash():
     entry = out["papers"][0]
     assert entry["card"] is None and entry["error"] == "no abstract"
     assert out["errors"] == ["no abstract for P1"] and primary.calls == []
+
+
+async def test_design_category_contradicting_publication_type_is_repaired_then_settled():
+    answers = iter([card().model_copy(update={"design_category": "cohort"}),
+                    card().model_copy(update={"design_category": "rct"})])
+    primary = FakeStructuredLLM("q", lambda s, u: next(answers))
+    p = payload()
+    p["paper"]["candidate"]["pub_types"] = ["Randomized Controlled Trial"]
+    out = await make_read_paper(deps(primary, harness=HarnessSpec(dual_extraction=False)))(p)
+    assert "contradicts the publication type Randomized Controlled Trial" in primary.calls[1][1]
+    assert out["papers"][0]["card"]["design_category"] == "rct"
+
+
+async def test_missing_design_category_is_inferred_without_another_call():
+    primary = FakeStructuredLLM("q", lambda s, u: card())  # study_design "cohort", no category
+    out = await make_read_paper(deps(primary, harness=HarnessSpec(dual_extraction=False)))(payload())
+    assert len(primary.calls) == 1 and out["papers"][0]["card"]["design_category"] == "cohort"
+    assert "design_category" in prompts_extract_system()
+
+
+def prompts_extract_system():
+    from app.graph import prompts
+    return prompts.extract_system()

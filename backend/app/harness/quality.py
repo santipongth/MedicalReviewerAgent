@@ -54,6 +54,7 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
         "question_refined": bool(refine) and not refine.get("skipped") and not refine.get("fallback"),
         "question_critique_applied": bool(refine.get("critique_applied")),
         "outcome_normalization_fallback": any(e.get("fallback") for e in by_stage.get("normalize", [])),
+        "normalization_corrections": sum(e.get("corrections", 0) for e in by_stage.get("normalize", [])),
         "conflict_fallbacks": sum(1 for e in by_stage.get("conflict", []) if e.get("fallback")),
         "citation_fixes": sum(e.get("citation_fixes", 0) for e in by_stage.get("narrative", [])),
         "localization_kept_english": sum(e.get("kept_english", 0) for stage in ("localize", "localize_cards")

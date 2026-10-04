@@ -1,6 +1,7 @@
 "use client";
 
 import { HighlightedQuote } from "@/components/landing/receipt-panel";
+import { designLabel } from "@/lib/charts-data";
 import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, safeHref } from "@/lib/evidence";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
@@ -66,7 +67,8 @@ function Facts({ paper, card, cardEn, lang }: { paper: Paper; card: PaperCard; c
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 text-[0.88rem]">
       <dt className="text-muted">{L(lang, "ปี", "Year")}</dt><dd>{paper.year ?? "–"}</dd>
-      <dt className="text-muted">{L(lang, "รูปแบบ", "Design")}</dt><dd className="break-words">{card.study_design}</dd>
+      <dt className="text-muted">{L(lang, "รูปแบบ", "Design")}</dt>
+      <dd className="break-words">{card.design_category ? `${designLabel(card.design_category, lang)} · ${card.study_design}` : card.study_design}</dd>
       <dt className="text-muted">{L(lang, "จำนวน", "Sample")}</dt>
       <dd>
         {n != null ? <>n = <VerifiedNumber value={asReported(n, cardEn?.sample_size_quote ?? card.sample_size_quote)} /></>

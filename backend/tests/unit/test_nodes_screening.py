@@ -154,3 +154,29 @@ async def test_select_top_tolerates_options_stored_under_the_old_ranges():
     out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
         {"candidates": candidates, "screened": screened, "options": {"max_papers": 3, "candidate_limit": 10}})
     assert len(out["selected"]) == 5  # old max_papers 3 → clamped to 5
+
+
+async def test_screen_batch_records_the_screeners_design_guess():
+    def respond(system, user):
+        return ScreenBatch(decisions=[ScreenDecision(ref=r, relevance=90, include=True, reason="ok",
+                                                     design_guess="narrative_review" if r == "C1" else "rct")
+                                      for r in refs_in(user)])
+    out = await make_screen_batch(deps(FakeStructuredLLM("s", respond)))(payload(3))
+    assert [d["design"] for d in out["screened"]] == ["narrative_review", "rct", "rct"]
+    from app.graph.prompts import SCREEN_SYSTEM
+    assert "design_guess" in SCREEN_SYSTEM
+
+
+async def test_select_top_drops_narrative_reviews_when_enough_primary_evidence_exists():
+    candidates = cands(6)
+    designs = ["narrative_review", "rct", "narrative_review", "cohort", "sr_ma_rct", "narrative_review"]
+    screened = [{"key": c["key"], "relevance": 99 - i, "include": True, "reason": "r", "uncertain": False,
+                 "design": designs[i]} for i, c in enumerate(candidates)]
+    out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": screened, "options": {}})
+    assert [s["candidate"]["key"] for s in out["selected"]] == [candidates[i]["key"] for i in (1, 3, 4)]
+    assert out["quality"][0]["narrative_excluded"] == 3
+    few = screened[:3]  # only 1 primary study: narrative reviews are kept so the review has something
+    out2 = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": few, "options": {}})
+    assert len(out2["selected"]) == 3

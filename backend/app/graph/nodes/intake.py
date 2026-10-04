@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -134,6 +135,30 @@ def make_refine_question(deps):
     return refine_question
 
 
+PRIMARY_DESIGN_TERMS = re.compile(
+    r"randomi[sz]ed|\btrials?\b|\brct\b|cohort|case-?control|cross-?sectional|diagnostic accuracy", re.IGNORECASE)
+REVIEW_TERMS = re.compile(r"meta-?analys|systematic review|\breview\b", re.IGNORECASE)
+DESIGN_FOR_QUESTION = {"harm_etiology": "cohort study", "prognosis": "cohort study", "prevalence": "cross-sectional study",
+                       "diagnosis": "diagnostic accuracy study"}
+
+
+def _is_primary_design_query(query: str) -> bool:
+    return bool(PRIMARY_DESIGN_TERMS.search(query)) and not REVIEW_TERMS.search(query)
+
+
+def ensure_design_query(queries: list[str], question: dict[str, Any] | None) -> list[str]:
+    """Search engines rank reviews highly; one query naming the right primary design makes sure original studies
+    are found too (a review query does not count). Added in code (replacing the last query when the cap is
+    reached) if the planner left it out; kept short like the planner's own keyword queries."""
+    if not question or any(_is_primary_design_query(q) for q in queries):
+        return queries
+    design = DESIGN_FOR_QUESTION.get(question.get("question_type") or "", "randomized controlled trial")
+    intervention = " ".join((question.get("intervention_or_exposure") or "").split()[:4])
+    population = " ".join((question.get("population") or "").split()[:3])
+    query = " ".join(f"{intervention} {population} {design}".split())
+    return [*queries[: MAX_QUERIES - 1], query] if len(queries) >= MAX_QUERIES else [*queries, query]
+
+
 def make_plan_queries(deps):
     async def plan_queries(state: ReviewState) -> dict:
         started = time.perf_counter()
@@ -164,7 +189,7 @@ def make_plan_queries(deps):
             q = " ".join(q.split())
             if q and q.lower() not in seen:
                 seen[q.lower()] = q
-        plan["queries"] = list(seen.values())[:MAX_QUERIES]
+        plan["queries"] = ensure_design_query(list(seen.values())[:MAX_QUERIES], question)
         if question:  # PICO comes from the refined question so every stage judges against the same criteria
             for key in ("population", "intervention_or_exposure", "comparator", "outcomes"):
                 plan[key] = question[key]

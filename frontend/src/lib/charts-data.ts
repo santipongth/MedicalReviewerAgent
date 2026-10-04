@@ -1,7 +1,16 @@
 // Chart data built only from verified values. Nothing here estimates, converts or recomputes a number from a paper.
 import { asReported, ciLabel, effectLabel, isBlankedEffect, isVerifiedEffect } from "./evidence";
-import type { Lang } from "./i18n";
-import type { Direction, Paper, RiskOfBias, Stats } from "./types";
+import { DESIGN_LABEL, type Lang } from "./i18n";
+import type { DesignCategory, Direction, Paper, PaperCard, RiskOfBias, Stats } from "./types";
+
+/** The design a paper is filtered by: its fixed category, or (results stored before categories) its free text. */
+export function designKey(card: PaperCard): string {
+  return card.design_category ?? card.study_design;
+}
+
+export function designLabel(key: string, lang: Lang): string {
+  return DESIGN_LABEL[lang][key as DesignCategory] ?? key;
+}
 
 export interface Filters {
   minRelevance: number;
@@ -26,7 +35,7 @@ export function filterPapers(papers: Paper[], f: Filters): Paper[] {
     if (f.yearFrom != null && (p.year == null || p.year < f.yearFrom)) return false;
     if (f.yearTo != null && (p.year == null || p.year > f.yearTo)) return false;
     if (f.risk.length && (!card || !f.risk.includes(card.risk_of_bias))) return false;
-    if (f.designs.length && (!card || !f.designs.includes(card.study_design))) return false;
+    if (f.designs.length && (!card || !f.designs.includes(designKey(card)))) return false;
     return true;
   });
 }
