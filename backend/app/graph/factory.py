@@ -10,6 +10,7 @@ from app.services.fulltext import FullTextFetcher
 from app.services.fulltext_cache import FullTextCache
 from app.services.http import HttpClient
 from app.services.llm import build_llms
+from app.services.mcp_client import McpRegistry
 from app.services.searxng import SearxngClient
 from app.services.unpaywall import UnpaywallClient
 
@@ -31,6 +32,7 @@ def build_graph_deps(settings: Settings, http: HttpClient, redis=None, catalog=N
     return GraphDeps(
         settings=settings,
         llms=llms,
+        mcp=McpRegistry(settings.mcp_servers_path),
         searxng=SearxngClient(http, settings.searxng_url, settings.searxng_engines,
                               timeout=settings.searxng_timeout_seconds),
         europepmc=europepmc,

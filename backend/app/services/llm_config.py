@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 Role = Literal[
     "guard", "planner", "screener", "extractor", "synthesizer",
     "normalizer", "conflict_explainer", "localizer", "screener_secondary", "extractor_secondary", "escalation",
-    "refiner",
+    "refiner", "enricher",
 ]
 # Every preset must define these.
 ROLES: tuple[str, ...] = ("guard", "planner", "screener", "extractor", "synthesizer")
@@ -19,6 +19,7 @@ ROLES: tuple[str, ...] = ("guard", "planner", "screener", "extractor", "synthesi
 # simply disabled when omitted (no second vote / no dual extraction / no escalation).
 FALLBACK_ROLES: dict[str, str] = {
     "normalizer": "planner", "conflict_explainer": "extractor", "localizer": "planner", "refiner": "planner",
+    "enricher": "planner",
 }
 OPTIONAL_ROLES: tuple[str, ...] = (*FALLBACK_ROLES, "screener_secondary", "extractor_secondary", "escalation")
 EscalationTrigger = Literal["repair_failed", "verification_failed", "disagreement"]

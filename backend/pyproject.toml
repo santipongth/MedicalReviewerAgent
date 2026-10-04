@@ -44,7 +44,10 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
   "integration: needs docker compose services (set MRA_INTEGRATION=1)",
-  "live: calls the real Anthropic API (needs ANTHROPIC_API_KEY)",
+  "live: calls the real LLM provider (needs OPENROUTER_API_KEY or ANTHROPIC_API_KEY)",
+]
+filterwarnings = [
+  "ignore:`langchain.mcp` is in beta:langchain_core._api.beta_decorator.LangChainBetaWarning",
 ]
 
 [tool.ruff]

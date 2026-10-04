@@ -35,6 +35,7 @@ TYPICAL_CALLS: dict[str, tuple[int, int, int]] = {  # role: (calls, input tokens
     "conflict_explainer": (3, 4000, 600),
     "localizer": (2, 6000, 6000),
     "escalation": (2, 12000, 1500),             # expected ~10-20% of steps
+    "enricher": (1, 3000, 400),                 # only when external MCP servers are configured
 }
 
 CatalogLoader = Callable[[], Awaitable[dict[str, ModelInfo]]]
