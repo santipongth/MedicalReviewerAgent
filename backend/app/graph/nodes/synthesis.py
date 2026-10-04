@@ -272,7 +272,8 @@ def make_write_synthesis(deps):
         user = prompts.narrative_user(question=review_question(state),
                                       sub_questions=question.get("sub_questions") or [],
                                       papers=[_brief(p) for p in papers], matrix=matrix, conflict_notes=notes,
-                                      baseline=matrix.get("grade") or {})
+                                      baseline=matrix.get("grade") or {},
+                                      external_context=state.get("external_context") or [])
         narrative_call = harness_runner(deps).call(deps.llms.synthesizer, prompts.NARRATIVE_SYSTEM, user,
                                                    schema=SynthesisNarrative, validate=validate, trigger="narrative")
         res, cards = await asyncio.gather(narrative_call, _localize_cards(deps, papers, language),
@@ -455,6 +456,9 @@ def make_finalize(deps):
             "quality": summarize_quality(state.get("quality") or [], state.get("started_at")),
             "errors": list(state.get("errors") or []), "prompt_version": deps.settings.prompt_version,
             "llm_preset": getattr(llms, "preset", ""), "models": models,
+            "external_context": [{"tool": e["tool"], "arguments": e["arguments"], "ok": e["ok"],
+                                  "preview": (e.get("text") or e.get("error") or "")[:500]}
+                                 for e in state.get("external_context") or []],
         }
         progress_writer()({"type": "finalizing"})
         return {"result": result}

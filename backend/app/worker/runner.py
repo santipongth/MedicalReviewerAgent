@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import TERMINAL_STATUSES
+from app.db.models import TERMINAL_STATUSES, ReviewStatus
 from app.db.repositories import ReviewRepository
 from app.graph.graph import initial_state
 from app.logging import get_logger
@@ -24,10 +24,18 @@ class ReviewRunner:
     so finished nodes are not re-run and add-reducers are not double-counted.
     """
 
-    def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph) -> None:
+    def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph, notify=None) -> None:
         self.session_factory = session_factory
         self.event_sink = event_sink
         self.graph = graph
+        self.notify = notify  # async (review_id) -> None: enqueue the webhook for reviews with a callback_url
+
+    async def _notify(self, review_id: uuid.UUID, has_callback: bool) -> None:
+        if has_callback and self.notify is not None:
+            try:
+                await self.notify(review_id)
+            except Exception:  # noqa: BLE001 - a webhook problem never changes the review outcome
+                log.warning("webhook_enqueue_failed", review_id=str(review_id))
 
     async def _has_checkpoint(self, config: dict) -> bool:
         if getattr(self.graph, "checkpointer", None) is None:
@@ -49,6 +57,7 @@ class ReviewRunner:
                 first_start = first_start.replace(tzinfo=UTC)
             await repo.update(review_id, status="running", started_at=first_start or now, error=None)
             topic, language, options = review.topic, review.language, dict(review.options or {})
+            has_callback = bool(review.callback_url)
         t0 = time.monotonic() - ((now - first_start).total_seconds() if first_start else 0.0)
 
         async def emit(event_type: str, payload: dict) -> None:
@@ -70,36 +79,44 @@ class ReviewRunner:
             snapshot = await self.graph.aget_state(config)
             values = snapshot.values
         except asyncio.CancelledError:
-            # Worker shutdown / restart: not a user decision. Hand the review back to the queue
-            # (arq re-runs the job with retry_jobs=True; the stale sweep is the backstop).
-            await self._set_status(review_id, "queued")
-            await emit("interrupted", {"will_resume": True})
+            # Cancelled by the user (DELETE → arq abort): the API already recorded it; do nothing more.
+            # Otherwise worker shutdown / restart: hand the review back to the queue (arq re-runs the job
+            # with retry_jobs=True; the stale sweep is the backstop).
+            if await self._set_status(review_id, "queued"):
+                await emit("interrupted", {"will_resume": True})
             raise
         except Exception as exc:
             log.exception("review_failed", review_id=str(review_id))
             message = f"{type(exc).__name__}: {exc}"
-            await self._finish(review_id, "error", error=message)
+            if not await self._finish(review_id, "error", error=message):
+                return ReviewStatus.cancelled.value
             await emit("error", {"message": message})
+            await self._notify(review_id, has_callback)
             return "error"
 
         cost = float(values.get("cost_usd", 0.0))
         if values.get("rejected"):
             reason = str(values["rejected"])
-            await self._finish(review_id, "rejected", error=reason, cost_usd=cost)
+            if not await self._finish(review_id, "rejected", error=reason, cost_usd=cost):
+                return ReviewStatus.cancelled.value
             await emit("rejected", {"reason": reason})
+            await self._notify(review_id, has_callback)
             return "rejected"
         result = values.get("result") or {}
-        await self._finish(review_id, "done", result=result, cost_usd=cost,
-                           prompt_version=result.get("prompt_version"), model_versions=result.get("models"))
+        if not await self._finish(review_id, "done", result=result, cost_usd=cost,
+                                  prompt_version=result.get("prompt_version"), model_versions=result.get("models")):
+            return ReviewStatus.cancelled.value
         await emit("done", {"cost_usd": cost})
+        await self._notify(review_id, has_callback)
         return "done"
 
-    async def _set_status(self, review_id: uuid.UUID, status: str) -> None:
+    async def _set_status(self, review_id: uuid.UUID, status: str) -> bool:
         async with self.session_factory() as session, session.begin():
-            await ReviewRepository(session).update(review_id, status=status)
+            return await ReviewRepository(session).update_unless(review_id, {ReviewStatus.cancelled.value},
+                                                                 status=status)
 
-    async def _finish(self, review_id: uuid.UUID, status: str, **fields) -> None:
+    async def _finish(self, review_id: uuid.UUID, status: str, **fields) -> bool:
+        """False when the review was cancelled meanwhile: a cancellation is never overwritten."""
         async with self.session_factory() as session, session.begin():
-            await ReviewRepository(session).update(
-                review_id, status=status, finished_at=datetime.now(UTC), **fields
-            )
+            return await ReviewRepository(session).update_unless(
+                review_id, {ReviewStatus.cancelled.value}, status=status, finished_at=datetime.now(UTC), **fields)

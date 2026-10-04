@@ -61,6 +61,12 @@ class ReviewRepository:
     async def update(self, review_id: uuid.UUID, **fields: Any) -> None:
         await self.session.execute(update(Review).where(Review.id == review_id).values(**fields))
 
+    async def update_unless(self, review_id: uuid.UUID, blocked: set[str], **fields: Any) -> bool:
+        """Update only when the current status is not in `blocked` (e.g. never overwrite a cancellation)."""
+        result = await self.session.execute(
+            update(Review).where(Review.id == review_id, Review.status.not_in(blocked)).values(**fields))
+        return bool(result.rowcount)
+
     async def list_recent(self, limit: int = 20) -> list[Review]:
         stmt = (
             select(Review)

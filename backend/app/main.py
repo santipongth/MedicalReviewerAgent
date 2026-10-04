@@ -8,33 +8,55 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.api import events, health, reviews
+from app.api import admin, events, health, papers, reviews
 from app.api.ratelimit import limiter
 from app.config import Settings, get_settings
 from app.logging import configure_logging
+from app.mcp.server import build_mcp, transport_security
 from app.runtime import AppDeps
 
 __all__ = ["AppDeps", "app", "create_app"]
+
+
+class McpPathMiddleware:
+    """Serve /mcp as /mcp/ (the documented endpoint) instead of answering POST /mcp with a 307 redirect."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"] == "/mcp":
+            scope = {**scope, "path": "/mcp/", "raw_path": b"/mcp/"}
+        await self.app(scope, receive, send)
 
 
 def create_app(settings: Settings | None = None, deps: AppDeps | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
 
+    def complete(d: AppDeps) -> AppDeps:
+        from app.services.ratelimits import RateLimits
+        from app.services.review_service import ReviewService
+
+        d.limits = d.limits or RateLimits(settings.ratelimit_storage_uri)
+        d.service = d.service or ReviewService(d.session_factory, d.queue, d.event_sink, settings, d.limits)
+        return d
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        if deps is not None:
-            app.state.deps = deps
-            yield
-            return
-        from app.infra import build_runtime_deps, close_runtime_deps
+        async with app.state.mcp.session_manager.run():
+            if deps is not None:
+                app.state.deps = complete(deps)
+                yield
+                return
+            from app.infra import build_runtime_deps, close_runtime_deps
 
-        runtime = await build_runtime_deps(settings)
-        app.state.deps = runtime
-        try:
-            yield
-        finally:
-            await close_runtime_deps(runtime)
+            runtime = complete(await build_runtime_deps(settings))
+            app.state.deps = runtime
+            try:
+                yield
+            finally:
+                await close_runtime_deps(runtime)
 
     app = FastAPI(
         title="Medical Reviewer Agent API",
@@ -47,18 +69,25 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
+    app.add_middleware(McpPathMiddleware)
     if deps is not None:
-        app.state.deps = deps
+        app.state.deps = complete(deps)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
-        expose_headers=["Mcp-Session-Id"],
+        allow_headers=["*", "Mcp-Protocol-Version", "Mcp-Session-Id", "Authorization", "X-API-Key"],
+        expose_headers=["Mcp-Session-Id", "Retry-After"],
     )
     app.include_router(health.router, prefix="/api/v1", tags=["system"])
     app.include_router(events.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(reviews.router, prefix="/api/v1", tags=["reviews"])
+    app.include_router(papers.router, prefix="/api/v1", tags=["papers"])
+    app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
+    mcp = build_mcp(lambda: app.state.deps, settings)
+    app.state.mcp = mcp
+    app.mount("/mcp", mcp.streamable_http_app(stateless_http=True, json_response=True, streamable_http_path="/",
+                                              transport_security=transport_security(settings)))
     return app
 
 

@@ -53,9 +53,14 @@ from app.services.events import EventSink
 class FakeJobQueue:
     def __init__(self) -> None:
         self.enqueued: list[str] = []
+        self.aborted: list[str] = []
 
     async def enqueue_review(self, review_id) -> bool:
         self.enqueued.append(str(review_id))
+        return True
+
+    async def abort_review(self, review_id) -> bool:
+        self.aborted.append(str(review_id))
         return True
 
 
@@ -76,7 +81,14 @@ async def app(session_factory, redis, queue, test_settings):
     rl.limiter.reset()
     sink = EventSink(session_factory, redis, ttl_seconds=60)
     deps = AppDeps(session_factory=session_factory, redis=redis, queue=queue, event_sink=sink)
-    return create_app(test_settings, deps=deps)
+    application = create_app(test_settings, deps=deps)
+    application.state.deps.service.url_check = fake_public_url  # unit tests never do real DNS
+    return application
+
+
+async def fake_public_url(url: str) -> bool:
+    """Offline stand-in for is_public_http_url: example.org hosts are public, everything else is not."""
+    return httpx.URL(url).host.endswith("example.org")
 
 
 @pytest.fixture

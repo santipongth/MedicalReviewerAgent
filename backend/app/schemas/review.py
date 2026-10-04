@@ -36,6 +36,9 @@ class ReviewCreated(BaseModel):
     review_id: uuid.UUID
     status: str
     cached: bool
+    # True only when this request's callback_url will receive the webhook. A cached response reuses another
+    # request's review, so no webhook is scheduled for it: poll GET /reviews/{id} instead.
+    callback_scheduled: bool = False
 
 
 class ReviewSummary(BaseModel):

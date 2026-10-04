@@ -28,6 +28,7 @@ from app.graph.schemas import (
     ReviewQuestion,
     ScreenBatch,
     SynthesisNarrative,
+    ToolPlan,
     TopicVerdict,
     TranslationBatch,
 )
@@ -45,7 +46,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "guard": TopicVerdict, "planner": QueryPlan, "screener": ScreenBatch, "extractor": PaperCard,
     "synthesizer": SynthesisNarrative, "normalizer": OutcomeClusters, "conflict_explainer": ConflictNote,
     "localizer": TranslationBatch, "screener_secondary": ScreenBatch, "extractor_secondary": PaperCard,
-    "refiner": ReviewQuestion,
+    "refiner": ReviewQuestion, "enricher": ToolPlan,
 }
 
 
@@ -253,6 +254,7 @@ class LLMs:
     screener_secondary: StructuredLLM | None = None
     extractor_secondary: StructuredLLM | None = None
     refiner: StructuredLLM | None = None
+    enricher: StructuredLLM | None = None  # plans external MCP tool calls (falls back to planner settings)
     refiner_critic: StructuredLLM | None = None  # same model as refiner, QuestionCritique schema, effort ≤ low
     # escalation(schema) → a bigger model bound to that output schema, or None when not configured
     escalation: Callable[[type[BaseModel]], StructuredLLM | None] | None = None

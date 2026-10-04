@@ -23,11 +23,37 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 4. The result's `quality` block reports number verification, model agreement, escalations and per-stage timings.
 5. Live LLM check: `cd backend && OPENROUTER_API_KEY=... uv run pytest -m live`
 
+## Integrations: REST, MCP, API keys, webhooks
+- **REST:** OpenAPI at `/api/docs`. Anonymous use works without a key (5 reviews/hour per IP).
+  `GET /api/v1/papers/search?q=` and `GET /api/v1/papers/fulltext/{pmcid}` answer quick literature questions.
+- **API keys** unlock a higher rate, a daily quota, `callback_url`, `DELETE /api/v1/reviews/{id}` and admin routes:
+  ```bash
+  docker compose exec api python -m app.cli.keys mint --name "partner lab" --quota 100   # prints the key once
+  docker compose exec api python -m app.cli.keys list
+  docker compose exec api python -m app.cli.keys revoke mra_XXXXXXXX
+  ```
+  Send it as `X-API-Key: <key>` or `Authorization: Bearer <key>`.
+- **Webhooks:** `POST /api/v1/reviews` with `"callback_url": "https://..."` (key required, HTTPS public host).
+  On completion we POST `{"review_id","status","result_url"}` with
+  `X-Signature: sha256=HMAC_SHA256(body, secret)` where `secret = sha256_hex(your_api_key)`.
+  A response with `"cached": true` reuses an existing review and has `"callback_scheduled": false`:
+  poll `GET /api/v1/reviews/{id}` in that case.
+- **MCP server** at `/mcp` (streamable HTTP). Tools: `search_papers`, `start_review`, `get_review_status`,
+  `get_review_result`, `get_fulltext`; resources `review://{id}` and `review://{id}/report.md`; prompt
+  `literature_review`. Connect from Claude Code: `claude mcp add --transport http medical-reviewer http://localhost:8000/mcp/`
+  or from any MCP client with `{"mcpServers": {"medical-reviewer": {"url": "http://localhost:8000/mcp/"}}}`.
+  Behind a domain, add it to `MCP_ALLOWED_HOSTS`.
+- **External MCP tools for the agent:** list servers in `backend/config/mcp_servers.json`
+  (`{"mcpServers": {"name": {"url": "https://.../mcp"}}}`). Workers pick up edits automatically; the agent calls at
+  most 3 relevant tools per review in parallel with paper reading and uses the output as background only.
+  `POST /api/v1/admin/mcp/reload` (admin key) validates the file.
+
 ## Status
 - Plan 1 (foundation) done: infra, API, queue, SSE, stub graph.
 - Plan 2 (review graph) done: question refinement, search, screening with second votes, evidence-grounded extraction,
   checked synthesis pipeline, Thai/English output, Crawl4AI full text.
-- Next: MCP and integrations (Plan 3), web dashboard and interactive report (Plan 4), hardening (Plan 5).
+- Plan 3 (integrations) done: MCP server, external MCP tools, API keys, webhooks, cancellation, paper search.
+- Next: web dashboard and interactive report (Plan 4), hardening (Plan 5).
   See `docs/superpowers/`.
 
 ## Development

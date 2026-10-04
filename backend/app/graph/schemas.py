@@ -211,3 +211,13 @@ class TranslationItem(BaseModel):
 
 class TranslationBatch(BaseModel):
     items: list[TranslationItem]
+
+
+class ExternalCall(BaseModel):
+    tool: str
+    arguments_json: str  # JSON object with the tool's arguments (a string keeps the schema strict-compatible)
+
+
+class ToolPlan(BaseModel):
+    rationale: str
+    calls: list[ExternalCall]

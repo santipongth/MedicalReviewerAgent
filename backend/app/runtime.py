@@ -12,3 +12,6 @@ class AppDeps:
     redis: Any
     queue: Any
     event_sink: Any
+    limits: Any = None  # app.services.ratelimits.RateLimits (built by create_app when omitted)
+    service: Any = None  # app.services.review_service.ReviewService
+    papers: Any = None  # app.services.paper_search.PaperSearch

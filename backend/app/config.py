@@ -20,7 +20,19 @@ class Settings(BaseSettings):
 
     trust_proxy: bool = False
     ip_hash_salt: str = "change-me"
-    review_rate_limit: str = "5/hour"
+    review_rate_limit: str = "5/hour"  # anonymous callers, per IP
+    api_key_rate_limit: str = "60/hour"  # callers with an API key, per key
+    paper_search_rate_limit: str = "30/minute"  # /papers/* and the MCP search/full-text tools
+    mcp_servers_path: str = "config/mcp_servers.json"  # external MCP servers the agent may consult
+    mcp_call_timeout_seconds: float = 20.0
+    mcp_session_timeout_seconds: float = 30.0  # connect + initialize + tools/list for external MCP servers
+    mcp_max_calls: int = 3
+    # Host headers the MCP endpoint accepts (DNS-rebinding protection); ["*"] disables the check.
+    mcp_allowed_hosts: list[str] = ["localhost", "localhost:*", "127.0.0.1:*", "api:*"]
+    public_base_url: str = "http://localhost:8000"  # used in webhook result_url and MCP links
+    webhook_allow_http: bool = False  # local testing only; production webhooks must be https
+    webhook_timeout_seconds: float = 10.0
+    webhook_max_tries: int = 3
     max_topic_length: int = 300
     result_cache_ttl_seconds: int = 86400
     event_stream_ttl_seconds: int = 86400

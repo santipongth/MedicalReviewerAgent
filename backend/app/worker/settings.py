@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+import httpx
 from arq import cron
 from arq.connections import RedisSettings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -17,8 +18,9 @@ from app.logging import configure_logging, get_logger
 from app.services.events import EventSink
 from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 from app.services.model_catalog import OpenRouterCatalog
+from app.services.queue import ArqJobQueue
 from app.worker.sweep import sweep_stale
-from app.worker.tasks import resume_review, run_review
+from app.worker.tasks import deliver_webhook, resume_review, run_review
 
 log = get_logger(__name__)
 
@@ -52,6 +54,8 @@ async def startup(ctx: dict) -> None:
             log.warning("openrouter_catalog_unavailable", error=str(exc))
     ctx["graph_deps"] = build_graph_deps(settings, ctx["http"], ctx["events_redis"], catalog)
     ctx["graph"] = build_graph(ctx["graph_deps"], checkpointer=AsyncPostgresSaver(pool))
+    ctx["queue"] = ArqJobQueue(ctx["redis"])  # arq's own pool: enqueue webhook deliveries
+    ctx["webhook_http"] = httpx.AsyncClient(timeout=settings.webhook_timeout_seconds, follow_redirects=False)
     log.info("worker_started", max_jobs=settings.max_concurrent_reviews_per_worker, graph_mode=settings.graph_mode,
              llm_preset=getattr(ctx["graph_deps"].llms, "preset", None),
              crawling=getattr(ctx["graph_deps"].fulltext, "crawler", None) is not None)
@@ -60,13 +64,14 @@ async def startup(ctx: dict) -> None:
 async def shutdown(ctx: dict) -> None:
     await close_graph_deps(ctx["graph_deps"])
     await ctx["http"].aclose()
+    await ctx["webhook_http"].aclose()
     await ctx["pg_pool"].close()
     await ctx["events_redis"].aclose()
     await ctx["engine"].dispose()
 
 
 class WorkerSettings:
-    functions: ClassVar[list] = [run_review, resume_review]
+    functions: ClassVar[list] = [run_review, resume_review, deliver_webhook]
     cron_jobs: ClassVar[list] = [
         cron(sweep_stale, name="sweep_stale", minute=set(range(0, 60, 5)), run_at_startup=True)
     ]
