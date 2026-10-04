@@ -225,16 +225,15 @@ export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Pap
 }
 
 export function QualityNote({ quality, stats, lang, preset }: { quality?: Quality; stats?: { found?: number; selected?: number; extracted?: number; with_fulltext?: number }; lang: Lang; preset?: string }) {
-  if (!quality && !stats) return null;
   const total = quality?.timings?.total;
-  return (
-    <p className="text-[0.85rem] text-muted">
-      {stats?.found != null && <>{L(lang, "ค้นเจอ", "Found")} {stats.found} · </>}
-      {stats?.selected != null && <>{L(lang, "เลือกอ่าน", "read")} {stats.selected} · </>}
-      {stats?.with_fulltext != null && <>{L(lang, "ฉบับเต็ม", "full text")} {stats.with_fulltext} · </>}
-      {quality?.papers_uncertain ? <>{L(lang, "ไม่แน่นอน", "uncertain")} {quality.papers_uncertain} · </> : null}
-      {total != null && <>{L(lang, "ใช้เวลา", "took")} {Math.round(total)} {L(lang, "วินาที", "s")} · </>}
-      {preset && <>{L(lang, "ชุดโมเดล", "model preset")} {preset}</>}
-    </p>
-  );
+  const parts = [
+    stats?.found != null && `${L(lang, "ค้นเจอ", "Found")} ${stats.found}`,
+    stats?.selected != null && `${L(lang, "เลือกอ่าน", "read")} ${stats.selected}`,
+    stats?.with_fulltext != null && `${L(lang, "ฉบับเต็ม", "full text")} ${stats.with_fulltext}`,
+    quality?.papers_uncertain ? `${L(lang, "ไม่แน่นอน", "uncertain")} ${quality.papers_uncertain}` : false,
+    total != null && `${L(lang, "ใช้เวลา", "took")} ${Math.round(total)} ${L(lang, "วินาที", "s")}`,
+    preset && `${L(lang, "ชุดโมเดล", "model preset")} ${preset}`,
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  return <p className="text-[0.85rem] text-muted">{parts.join(" · ")}</p>;
 }
