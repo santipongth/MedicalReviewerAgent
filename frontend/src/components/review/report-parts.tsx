@@ -224,11 +224,13 @@ export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Pap
   );
 }
 
-export function QualityNote({ quality, stats, lang, preset }: { quality?: Quality; stats?: { found?: number; selected?: number; extracted?: number; with_fulltext?: number }; lang: Lang; preset?: string }) {
+export function QualityNote({ quality, stats, lang, preset }: { quality?: Quality; stats?: { found?: number; with_abstract?: number; selected?: number; extracted?: number; with_fulltext?: number }; lang: Lang; preset?: string }) {
   const total = quality?.timings?.total;
   const parts = [
     stats?.found != null && `${L(lang, "ค้นเจอ", "Found")} ${stats.found}`,
-    stats?.selected != null && `${L(lang, "เลือกอ่าน", "read")} ${stats.selected}`,
+    stats?.selected != null && (stats.with_fulltext != null  // legacy full-text-era result
+      ? `${L(lang, "เลือกอ่าน", "read")} ${stats.selected}`
+      : `${L(lang, "วิเคราะห์จากบทคัดย่อ", "analysed from abstracts")} ${stats.selected}`),
     stats?.with_fulltext != null && `${L(lang, "ฉบับเต็ม", "full text")} ${stats.with_fulltext}`,
     quality?.papers_uncertain ? `${L(lang, "ไม่แน่นอน", "uncertain")} ${quality.papers_uncertain}` : false,
     total != null && `${L(lang, "ใช้เวลา", "took")} ${Math.round(total)} ${L(lang, "วินาที", "s")}`,

@@ -123,14 +123,17 @@ async def test_screening_failure_keeps_candidates_unscored():
     assert out["errors"] and "screening" in out["errors"][0]
 
 
-async def test_select_top_ranks_dedupes_and_caps_at_default_eight():
+async def test_select_top_ranks_dedupes_and_caps_at_max_papers():
     candidates = cands(12)
     screened = [{"key": c["key"], "relevance": 50 + i, "include": True, "reason": "r", "uncertain": False}
                 for i, c in enumerate(candidates)]
     screened.append(dict(screened[0]))  # duplicate after a resume
     out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
-        {"candidates": candidates, "screened": screened, "options": {}})
+        {"candidates": candidates, "screened": screened, "options": {"max_papers": 8, "candidate_limit": 20}})
     assert [s["ref"] for s in out["selected"]] == [f"P{i}" for i in range(1, 9)]
+    every = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": screened, "options": {}})
+    assert len(every["selected"]) == 12  # default max_papers 30 keeps every included candidate
     assert out["selected"][0]["candidate"]["key"] == candidates[11]["key"]
 
 
@@ -142,3 +145,12 @@ def test_route_to_reading_passes_question():
     assert sends[0].node == "read_paper" and sends[0].arg["question"] == "Q?"
     assert sends[0].arg["question_detail"]["outcomes"] == ["CRC"]
     assert route_to_reading({"selected": []}) == "normalize_outcomes"
+
+
+async def test_select_top_tolerates_options_stored_under_the_old_ranges():
+    candidates = cands(12)
+    screened = [{"key": c["key"], "relevance": 50 + i, "include": True, "reason": "r", "uncertain": False}
+                for i, c in enumerate(candidates)]
+    out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": screened, "options": {"max_papers": 3, "candidate_limit": 10}})
+    assert len(out["selected"]) == 5  # old max_papers 3 → clamped to 5

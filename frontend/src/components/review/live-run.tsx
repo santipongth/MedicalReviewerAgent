@@ -52,14 +52,14 @@ export function LiveRun({ run, topic, connection }: { run: RunState; topic: stri
             })}
           </ol>
           <div>
-            <div className="grid w-fit grid-cols-5 gap-2.5" aria-label={`งานวิจัยที่พบ ${run.candidates} ฉบับ เลือกอ่าน ${run.kept} ฉบับ`} role="img">
+            <div className="grid w-fit grid-cols-10 gap-1.5" aria-label={`งานวิจัยที่มีบทคัดย่อ ${run.candidates} ฉบับ เลือกวิเคราะห์ ${run.kept} ฉบับ`} role="img">
               {run.wells.map((w, i) => (
                 <span key={i} data-testid={`well-${w}`}
-                  className={`size-9 rounded-full border transition-[background,border-color] duration-200 ${WELL_CLASS[w]}`} />
+                  className={`size-5 rounded-full border transition-[background,border-color] duration-200 ${WELL_CLASS[w]}`} />
               ))}
             </div>
             <p className="mt-3 text-[0.85rem] text-muted">
-              หลุมละหนึ่งงานวิจัย: เติมเมื่อค้นเจอ ว่างเมื่อถูกคัดออก ปิดฝาเมื่อเป็นฉบับที่เลือกอ่าน
+              หลุมละหนึ่งงานวิจัยที่มีบทคัดย่อ: เติมเมื่อค้นเจอ ว่างเมื่อถูกคัดออก ปิดฝาเมื่อเป็นฉบับที่เลือกวิเคราะห์
               {run.found > 0 && ` · ค้นเจอทั้งหมด ${run.found} รายการก่อนตัดซ้ำ`}
             </p>
           </div>

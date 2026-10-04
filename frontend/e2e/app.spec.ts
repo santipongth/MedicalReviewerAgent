@@ -51,7 +51,8 @@ test("live run shows the refined question and the specimen tray while reading", 
   });
   await page.goto(`/r/${RID}`);
   await expect(page.getByText("เอเจนต์เข้าใจคำถามของคุณว่า")).toBeVisible();
-  await expect(page.getByTestId("well-cap")).toHaveCount(5);
+  await expect(page.getByTestId("well-cap")).toHaveCount(30);
+  await expect(page.getByTestId("well-out")).toHaveCount(30);
   await expect(page.getByText("Metformin and incident colorectal cancer in a national diabetes cohort")).toBeVisible();
   await page.screenshot({ path: shots("live-run"), fullPage: true });
   await noSeriousA11y(page);
@@ -79,6 +80,19 @@ test("report: matrix cell opens the verbatim sentence; charts and filters work; 
   await page.getByRole("button", { name: /^P4: / }).first().click();
   await page.screenshot({ path: shots("report-dark"), fullPage: true });
   await noSeriousA11y(page);
+});
+
+test("live wells fit phone: 60 candidates without horizontal scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, {
+    [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, { ...reviewFixture, status: "running", result: null }),
+    [`GET /api/v1/reviews/${RID}/events`]: (route) => route.fulfill({ status: 200,
+      headers: { "content-type": "text/event-stream", "access-control-allow-origin": "*" }, body: sse(LIVE_EVENTS) }),
+  });
+  await page.goto(`/r/${RID}`);
+  await expect(page.getByTestId("well-cap")).toHaveCount(30);
+  await noHorizontalScroll(page);
+  await page.screenshot({ path: shots("live-run-phone"), fullPage: true });
 });
 
 test("phone width: no horizontal scroll, source rail opens as a drawer", async ({ page }) => {

@@ -1,20 +1,17 @@
-import asyncio
-
 import pytest
 
 from app.config import Settings
 from app.graph.graph import GraphDeps
 from app.graph.nodes.reading import make_read_paper
 from app.graph.schemas import Candidate, OutcomeResult, PaperCard
-from app.services.fulltext import FullText
 from app.services.llm import LLMOutputError, LLMs
 from app.services.llm_config import HarnessSpec
 from tests.fakes import FakeStructuredLLM
 
-PAPER_TEXT = (
-    "## Methods\nWe enrolled 1,234 adults with type 2 diabetes in a population-based cohort. "
-    "## Results\nMetformin use was associated with a lower risk of colorectal cancer "
-    "(HR 0.80, 95% CI 0.71-0.90; p = 0.003). ## Discussion\nFindings support a protective association."
+ABSTRACT = (
+    "Methods: We enrolled 1,234 adults with type 2 diabetes in a population-based cohort. "
+    "Results: Metformin use was associated with a lower risk of colorectal cancer "
+    "(HR 0.80, 95% CI 0.71-0.90; p = 0.003). Conclusions: Findings support a protective association."
 )
 QUOTE = "lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90; p = 0.003)"
 
@@ -31,26 +28,16 @@ def card(effect=0.8, direction="positive", quote=QUOTE, n=1234):
         risk_of_bias="moderate", overall_direction=direction)
 
 
-class FakeFullText:
-    def __init__(self, text=PAPER_TEXT, source="europepmc", delay=0.0):
-        self.text, self.source, self.delay = text, source, delay
-
-    async def fetch(self, c):
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        return FullText(self.source, self.text, "https://europepmc.org/x")
-
-
-def deps(extractor, secondary=None, escalation=None, fulltext=None, harness=None, **settings):
+def deps(extractor, secondary=None, escalation=None, harness=None, **settings):
     u = FakeStructuredLLM("u", lambda s, user: AssertionError("unexpected"))
     llms = LLMs(guard=u, planner=u, screener=u, extractor=extractor, synthesizer=u, extractor_secondary=secondary,
                 escalation=(lambda schema: escalation) if escalation else None,
                 harness=harness or HarnessSpec(max_repairs=1))
-    return GraphDeps(settings=Settings(_env_file=None, **settings), llms=llms, fulltext=fulltext or FakeFullText())
+    return GraphDeps(settings=Settings(_env_file=None, **settings), llms=llms)
 
 
-def payload():
-    c = Candidate(title="Metformin and colorectal cancer", doi="10.1/a", abstract="Abstract about metformin.")
+def payload(abstract=ABSTRACT):
+    c = Candidate(title="Metformin and colorectal cancer", doi="10.1/a", abstract=abstract)
     return {"paper": {"ref": "P1", "relevance": 90, "reason": "relevant", "uncertain": False,
                       "candidate": c.model_dump()},
             "plan": {"outcomes": ["CRC incidence"]}, "question": "Does metformin reduce CRC incidence?",
@@ -65,9 +52,9 @@ async def test_verified_dual_extraction_agrees():
     assert entry["card"]["outcomes"][0]["effect_value"] == 0.8
     assert entry["verification"] == {"numbers_verified": 2, "numbers_total": 2, "agreement": 1.0,
                                      "escalated": False, "repaired": False, "uncertain": False, "unverified": []}
-    assert entry["fulltext_source"] == "europepmc"
+    assert "fulltext_source" not in entry and "fulltext_url" not in entry
     q = out["quality"][0]
-    assert q["stage"] == "read" and q["ref"] == "P1" and q["seconds"] >= 0 and q["fulltext_seconds"] >= 0
+    assert q["stage"] == "read" and q["ref"] == "P1" and q["seconds"] >= 0 and q["source"] == "abstract"
     assert out["cost_usd"] == pytest.approx(0.02)
 
 
@@ -128,11 +115,18 @@ async def test_secondary_rescues_failed_primary_and_total_failure_is_reported():
     assert worse["papers"][0]["card"] is None and "extraction failed for P1" in worse["errors"][0]
 
 
-async def test_fulltext_timeout_falls_back_to_abstract():
-    primary = FakeStructuredLLM("ds", lambda s, u: card(effect=None))
-    slow = FakeFullText(delay=1.0)
-    out = await make_read_paper(deps(primary, fulltext=slow, harness=HarnessSpec(dual_extraction=False),
-                                     fulltext_timeout_seconds=0.05))(payload())
-    assert out["papers"][0]["fulltext_source"] == "abstract"
-    assert out["quality"][0]["fulltext_timed_out"] is True
-    assert "Abstract about metformin." in primary.calls[0][1]
+async def test_reads_title_and_abstract_only():
+    primary = FakeStructuredLLM("ds", lambda s, u: card())
+    out = await make_read_paper(deps(primary, harness=HarnessSpec(dual_extraction=False)))(payload())
+    user = primary.calls[0][1]
+    assert "Metformin and colorectal cancer\n\nMethods: We enrolled" in user
+    assert '"text_source": "abstract"' in user
+    assert out["papers"][0]["card"] is not None
+
+
+async def test_no_abstract_is_an_error_not_a_crash():
+    primary = FakeStructuredLLM("ds", lambda s, u: card())
+    out = await make_read_paper(deps(primary))(payload(abstract=None))
+    entry = out["papers"][0]
+    assert entry["card"] is None and entry["error"] == "no abstract"
+    assert out["errors"] == ["no abstract for P1"] and primary.calls == []

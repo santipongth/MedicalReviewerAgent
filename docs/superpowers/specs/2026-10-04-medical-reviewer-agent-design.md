@@ -3,7 +3,7 @@
 ## 1. Context
 
 **ปัญหา:** นักวิจัย/แพทย์ตามอ่าน paper ใหม่ไม่ทัน
-**สิ่งที่สร้าง:** Web app สาธารณะ (ไม่ต้อง login) + REST API + MCP server ที่ผู้ใช้พิมพ์ชื่อโรค/สาร → Agent ค้น PubMed/arXiv/Semantic Scholar ฯลฯ ผ่าน **searxng-LDR-academic** → ดึง 20 candidate → คัดเหลือ 8 ฉบับที่ตรงที่สุด (revision 2026-10-04; เป้าเวลา ~45–60 วินาที/คำถาม, เลือกคุณภาพก่อน ไม่บังคับ 30 วินาที) → อ่าน methodology/results (abstract + full text ถ้า Open Access) → สรุปเป็น **ตารางเปรียบเทียบ** ว่า paper ไหนให้ผลสอดคล้อง/ขัดแย้งกัน
+**สิ่งที่สร้าง:** Web app สาธารณะ (ไม่ต้อง login) + REST API + MCP server ที่ผู้ใช้พิมพ์ชื่อโรค/สาร → Agent ค้น PubMed/arXiv/Semantic Scholar ฯลฯ ผ่าน **searxng-LDR-academic** → คัดกรอง ~60 candidate ที่มี abstract → วิเคราะห์ abstract ของสูงสุด 30 ฉบับที่ตรงที่สุด (revision 2026-10-05: ไม่ดึง full text อีกต่อไป; เดิม 20 → 8 พร้อม full text) → อ่าน methodology/results จาก abstract → สรุปเป็น **ตารางเปรียบเทียบ** ว่า paper ไหนให้ผลสอดคล้อง/ขัดแย้งกัน
 **จุดขาย:** ใช้ Claude ประมวล "Fat Context" (หลาย paper พร้อมกัน) และย่นเวลาการทำ literature review
 
 **การตัดสินใจที่ยืนยันกับผู้ใช้แล้ว**
@@ -11,7 +11,7 @@
 |---|---|
 | LLM | **OpenRouter** (ค่าเริ่มต้น, preset `budget`) ตั้งค่าใน `backend/config/llm.yaml` — เลือก/ปรับ model ต่อ role ได้เอง; Claude API โดยตรง (`claude_direct`) และ OpenAI-compatible (Ollama/LM Studio) เป็นทางเลือก; ผู้ใช้ public เลือก model ไม่ได้ (revision 2026-10-04) |
 | Deploy | Docker Compose บนเครื่องเดียว (Windows/VPS) |
-| ความลึก | Abstract + Full text เมื่อเป็น Open Access |
+| ความลึก | ~~Abstract + Full text เมื่อเป็น Open Access~~ → Abstract เท่านั้น (revision 2026-10-05) |
 | ภาษาผลลัพธ์ | ผู้ใช้เลือก ไทย/อังกฤษ (ค่าเริ่มต้นไทย) |
 | Runtime | FastAPI + Worker แยก (arq บน Redis) + Postgres checkpointer |
 | Frontend | Next.js 16 + React 19 + Tailwind v4 + shadcn/ui |
@@ -112,18 +112,20 @@ Send targets มี private input schema (`ScreenBatchInput`, `PaperInput`) เ�
 |---|---|---|---|
 | 0 | `topic_guard` | Haiku 4.5 | ปฏิเสธ topic ที่ไม่ใช่การแพทย์/ชีววิทยา หรือ abusive → status `rejected` (ประหยัดเงิน + กันหน้า public) |
 | 1 | `plan_queries` | Sonnet 5.5 | topic (ไทย/อังกฤษ) → 3-6 query (PICO, MeSH/synonym) + `Criteria` (inclusion/exclusion, outcomes ที่สนใจ) |
-| 2 | `search` | SearXNG `/search?q&format=json&engines=pubmed,arxiv,semantic%20scholar,openalex,crossref&pageno=` (+ NCBI esearch ถ้ามี key) | `asyncio.gather` ทุก query (≤4 query, 1 page, timeout 8s) → candidate 20 |
+| 2 | `search` | SearXNG `/search?q&format=json&engines=pubmed,arxiv,semantic%20scholar,openalex,crossref&pageno=` (+ NCBI esearch ถ้ามี key) | `asyncio.gather` ทุก query (≤4 query, 1 page, timeout 8s) → candidate ~60 ที่มี abstract (revision 2026-10-05; เดิม 20) |
 | 3 | `enrich_dedupe` | Europe PMC batch (`query=PMID:.. OR DOI:..`), arXiv API | abstract เต็ม, pmcid/doi, ปี, journal, OA flag, cited_by; รวมซ้ำ DOI → PMID → title fuzzy (`rapidfuzz`); upsert `papers` |
 | 4 | `screen_batch` (Send, 10 ฉบับ/batch) | Haiku 4.5 | relevance 0-100 + เหตุผล เทียบ `Criteria` |
 | 4b | `select_top` (join) | — | sort/cut `max_papers`, dedupe |
-| 5 | `fetch_fulltext` (รวมกับ extract เป็น `read_paper` ต่อ paper) | cache → Europe PMC JATS API → Crawl4AI (arXiv PDF / Unpaywall OA landing+PDF) → abstract | เก็บเฉพาะ Abstract/Methods/Results/Discussion/Conclusions, cap 60k ตัวอักษร/paper; บันทึก `fulltext_source` (`europepmc`, `crawl_html`, `crawl_pdf`, `abstract`, `title_only`) — ดู §4.1 |
+| 5 | `read_paper` (revision 2026-10-05: ~~`fetch_fulltext`~~ ถูกลบ) | title + abstract เท่านั้น | extraction ตาม harness เดิม ตรวจตัวเลขกับ abstract |
 | 6 | `extract` (Send ต่อ paper) | Sonnet 5.5 → `PaperCard` | design, population(n), intervention, comparator, outcomes + effect size/CI/p, findings, limitations, funding/COI, risk-of-bias ย่อ, `direction: positive/negative/null/mixed` (ไม่มี free-form instruction field; paper text อยู่ใน user turn ภายใน delimiter) |
 | 6b | `collect_cards` (join) | — | dedupe, upsert `review_papers.extraction` |
 | 6c | `external_enrich` (optional, ข้ามเมื่อ `mcp_servers.json` ว่าง) | Sonnet 5.5 ReAct ≤3 tool calls | เรียก tools จาก MCP ภายนอก (เช่น ฐานข้อมูลสถาบัน) เพิ่ม context ให้ cards |
 | 7 | `synthesize` | **Opus 5.5** effort high, streaming | รับเฉพาะ `PaperCard`s (ไม่ใช่ full text → ต้นทุนคาดการณ์ได้) → `Synthesis`: executive summary, comparison matrix (outcome × paper), consensus/conflict clusters + เหตุผล (population/dose/design), evidence strength, gaps; ภาษาตามเลือก; อ้าง `[P3]` |
 | 8 | `finalize` | DB | result JSON, `status=done`, `cost_usd`, `model_versions`, `prompt_version` |
 
-### 4.1 Full-text acquisition (Crawl4AI) — revision 2026-10-04
+### 4.1 Full-text acquisition (Crawl4AI) — revision 2026-10-04 — **REMOVED 2026-10-05**
+
+> ยกเลิกทั้งหมดตามการตัดสินใจของผู้ใช้ 2026-10-05 (ดู "Revision 2026-10-05: abstract-only" ท้ายเอกสาร). ข้อความด้านล่างเก็บไว้เป็นประวัติเท่านั้น
 
 ผลทดสอบจริง: MDPI และ Wiley ตอบ 403 กับ HTTP client ธรรมดา แต่ Crawl4AI 0.9.4 (Chromium) ดึงบทความ MDPI ได้ครบใน 3 วินาที, PDF ผ่าน `PDFContentScrapingStrategy`, เคารพ robots.txt (BMC `/track/pdf` ถูกปฏิเสธ) และมี SSRF guard ในตัว
 
@@ -159,7 +161,7 @@ Send targets มี private input schema (`ScreenBatchInput`, `PaperInput`) เ�
 - **Webhook:** POST `{review_id, status, result_url}` + `X-Signature: sha256=HMAC(body, key_secret)`; retry 3 ครั้ง (arq task); HTTPS public host เท่านั้น (SSRF guard: reject private/loopback)
 
 ### MCP server (`/mcp`, streamable HTTP, stateless)
-Tools: `search_papers(query, limit)`, `start_review(topic, language, max_papers)`, `get_review_status(review_id)`, `get_review_result(review_id)`, `get_fulltext(pmcid)`
+Tools: `search_papers(query, limit)`, `start_review(topic, language, max_papers)`, `get_review_status(review_id)`, `get_review_result(review_id)`; ~~`get_fulltext(pmcid)`~~ *(removed 2026-10-05: abstract-only, see Revision at the end)*
 Resources: `review://{id}`, `review://{id}/report.md` — Prompt: `literature_review(topic)`
 Tools เรียก service layer เดียวกับ REST (ไม่แตะ graph ตรง)
 
@@ -172,7 +174,7 @@ Tools เรียก service layer เดียวกับ REST (ไม่แ�
 
 ## 6. Data model (Postgres)
 - `reviews(id uuid, topic, cache_key, language, options jsonb, status enum[queued,running,done,error,rejected,cancelled], progress jsonb, result jsonb, error, ip_hash, api_key_id?, callback_url?, cost_usd, model_versions jsonb, prompt_version, is_listed bool, created_at, started_at, finished_at)`
-- `papers(id uuid, doi, pmid, pmcid, arxiv_id, title, authors jsonb, year, journal, abstract, oa_url, fulltext_source, metadata jsonb, updated_at)` — unique partial index บน doi/pmid/pmcid/arxiv_id
+- `papers(id uuid, doi, pmid, pmcid, arxiv_id, title, authors jsonb, year, journal, abstract, oa_url, metadata jsonb, updated_at)` (คอลัมน์ `fulltext_source` ถูกลบ 2026-10-05)` — unique partial index บน doi/pmid/pmcid/arxiv_id
 - `review_papers(review_id, paper_id, rank, relevance_score, screen_reason, included, extraction jsonb)` PK `(review_id, paper_id)`
 - `review_events(id, review_id, seq, type, payload jsonb, created_at)` `UNIQUE(review_id, seq)`
 - `api_keys(...)`; LangGraph `checkpoints*` จาก `AsyncPostgresSaver.setup()`
@@ -185,7 +187,7 @@ Tools เรียก service layer เดียวกับ REST (ไม่แ�
 - `topic_guard` node (Haiku) + จำกัดความยาว topic; Cloudflare Turnstile เปิดเป็นค่าเริ่มต้นใน production compose (`TURNSTILE_SECRET` ว่าง = ปิดสำหรับ dev)
 - เก็บเฉพาะ hash IP; SearXNG ไม่ expose ออกนอก network
 - Prompt-injection: paper text ไม่เข้า system prompt; schema ไม่มี free-form instruction fields
-- Crawler: Crawl4AI ≥ 0.9.0 + token + hooks ปิด + ไม่ส่ง proxy/extra_args + SSRF check + network isolation (§4.1)
+- ~~Crawler: Crawl4AI ≥ 0.9.0 + token + hooks ปิด + ไม่ส่ง proxy/extra_args + SSRF check + network isolation (§4.1)~~ *(removed 2026-10-05: abstract-only, see Revision at the end)*
 
 ---
 
@@ -242,6 +244,37 @@ D:\MedicalReviewerAgent\
 
 ## 11. ข้อสมมติ / ตัดออกใน v1
 - ไม่มี login; ไม่มี human-in-the-loop แก้รายการ paper (โครงรองรับ `interrupt` ภายหลัง); ไม่ทำ A2A (job contract start/status/result/events ออกแบบให้ wrap ได้ภายหลัง)
-- Full text เฉพาะ Open Access ตามกฎหมาย ผ่าน Europe PMC API หรือ Crawl4AI ที่เคารพ robots.txt; paper ปิด/ถูกปฏิเสธใช้ abstract
-- env ที่ต้องมี: `ANTHROPIC_API_KEY`, `CONTACT_EMAIL` (Unpaywall/NCBI); optional `NCBI_API_KEY`, `TURNSTILE_SECRET`, `LANGSMITH_API_KEY`
+- ~~Full text เฉพาะ Open Access ตามกฎหมาย ผ่าน Europe PMC API หรือ Crawl4AI ที่เคารพ robots.txt~~ *(removed 2026-10-05: abstract-only, see Revision at the end)*; อ่านเฉพาะ abstract (snippet จากเครื่องมือค้นหานับเป็น abstract ได้เมื่อยาว ≥ 600 ตัวอักษรและไม่ถูกตัด)
+- env ที่ต้องมี: `OPENROUTER_API_KEY` (revision 2026-10-04; `CONTACT_EMAIL` ถูกลบ 2026-10-05 เพราะใช้กับ Unpaywall เท่านั้น); optional `NCBI_API_KEY`, `TURNSTILE_SECRET`, `LANGSMITH_API_KEY`
 - Google Scholar/OpenAlex/Crossref ไม่ใช่แหล่งหลักใน v1 (captcha / ต้องการ key / ซ้ำซ้อนกับ Europe PMC)
+
+## Revision 2026-10-05: abstract-only
+
+ผู้ใช้ตัดสินใจเปลี่ยนแนวทาง: วิเคราะห์จาก abstract อย่างเดียว 30 ฉบับ และไม่ดึง full text อีกต่อไป
+
+**เหตุผลจากการรันจริงครั้งแรก (OpenRouter, preset budget, ดีไซน์ full text):**
+- review จบ `done` ใช้ $0.068 ตัวเลขตรวจผ่าน 87.5%
+- ใช้เวลารวม 1,451 วินาที โดยขั้นอ่าน paper ใช้นานสุด 454 วินาที
+- คำแปลไทยตกเป็นภาษาอังกฤษทั้งหมด เพราะ batch 60 ข้อความทำให้ output เกิน `max_tokens`
+
+**สิ่งที่เปลี่ยน**
+- **Pipeline:**
+  - `enrich` เก็บเฉพาะ candidate ที่มี abstract อย่างน้อย 150 ตัวอักษร
+  - ค่าเริ่มต้นคือ `candidate_limit` 60 (ช่วง 20–100) และ `max_papers` 30 (ช่วง 5–30) โดยต้องได้ `candidate_limit >= max_papers`
+  - `read_paper` สกัดจาก title + abstract และตรวจตัวเลขกับ abstract
+- **ลบออก:**
+  - Crawl4AI service และ network `crawl` (SearXNG ย้ายไปอยู่ network `search` ที่ยังแยกจาก Postgres/Redis)
+  - Europe PMC JATS, Unpaywall และ cache full text
+  - `GET /papers/fulltext/{pmcid}` และ MCP tool `get_fulltext`
+  - คอลัมน์ `papers.fulltext_source`
+- **ความเร็ว:**
+  - ทุก role ใช้ semaphore เดียวกันต่อ process (`LLM_CONCURRENCY`, ค่าเริ่มต้น 16)
+  - localization แบ่ง chunk ละ 15 ข้อความและรันขนาน ถ้า chunk ไหนล้มจะคงอังกฤษเฉพาะ chunk นั้น
+  - preset budget: **ทุก role ใช้ `qwen/qwen3.5-flash-02-23`** (Qwen3.5 Flash; ผู้ใช้ตัดสินใจ 2026-10-05 แทน gemini-2.5-flash และชุดที่ปรับจากผลวัดก่อนหน้า; ประมาณ ~$0.035/review)
+    - ผลที่ตามมา: extractor ตัวที่สองและ escalation เป็น model เดียวกับตัวหลัก การตรวจไขว้ข้ามตระกูล model และกฎ "escalate ไป open model ตัวใหญ่" จึงไม่มีผลใน preset นี้
+- **UI:**
+  - ถาดหลุมมี 60 หลุม และปิดฝาได้สูงสุด 30
+  - PRISMA เพิ่มขั้น "มีบทคัดย่อ"
+  - แหล่งข้อความของทุก paper คือ "บทคัดย่อ"
+  - ผลเก่าที่มี `fulltext_*` ยังแสดงได้
+- **ข้อจำกัดที่ต้องบอกผู้ใช้:** รายละเอียดที่มีเฉพาะในฉบับเต็ม เช่น การปรับ confounder หรือ subgroup อาจไม่ปรากฏใน abstract จึงอาจทำให้ "ไม่ได้รายงาน" บ่อยขึ้น

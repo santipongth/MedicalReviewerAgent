@@ -49,3 +49,37 @@ async def test_large_batches_are_chunked():
     strings = {f"k{i}": f"text {i}" for i in range(130)}
     out, _, _ = await localize_strings(llm, HarnessRunner(), strings, "th", chunk_size=60)
     assert len(out) == 130 and len(llm.calls) == 3
+
+
+async def test_chunks_of_15_run_in_parallel():
+    import asyncio
+    state = {"now": 0, "peak": 0}
+
+    async def slow(system, user):
+        state["now"] += 1
+        state["peak"] = max(state["peak"], state["now"])
+        await asyncio.sleep(0.01)
+        state["now"] -= 1
+        return thai(user)
+
+    llm = FakeStructuredLLM("gem", slow)
+    strings = {f"s{i}": f"Item {i} text." for i in range(40)}
+    out, kept, _ = await localize_strings(llm, HarnessRunner(max_repairs=0), strings, "th")
+    assert len(llm.calls) == 3 and state["peak"] > 1  # 15 + 15 + 10, overlapping
+    assert kept == 0 and all(v.startswith("แปล: ") for v in out.values())
+
+
+async def test_one_failed_chunk_keeps_only_that_chunk_english():
+    from app.services.llm import LLMOutputError
+
+    def respond(system, user):
+        if '"id": "s20"' in user:
+            return LLMOutputError("hit max_tokens before finishing the JSON output")
+        return thai(user)
+
+    llm = FakeStructuredLLM("gem", respond)
+    strings = {f"s{i}": f"Item {i} text." for i in range(40)}
+    out, kept, _ = await localize_strings(llm, HarnessRunner(max_repairs=0), strings, "th")
+    assert kept == 15
+    assert out["s20"] == "Item 20 text." and out["s15"] == "Item 15 text."
+    assert out["s0"].startswith("แปล: ") and out["s39"].startswith("แปล: ")

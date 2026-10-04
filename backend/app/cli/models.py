@@ -21,20 +21,20 @@ from app.services.model_catalog import (
     validate_role,
 )
 
-# Rough token budget of one review (20 candidates → 8 papers), used for the cost estimate in `check`.
+# Rough token budget of one review (60 candidates → 30 abstracts), used for the cost estimate in `check`.
 TYPICAL_CALLS: dict[str, tuple[int, int, int]] = {  # role: (calls, input tokens, output tokens) per call
     "guard": (1, 400, 100),
     "refiner": (2, 1500, 1200),                 # draft + one self-critique round
     "planner": (1, 900, 700),
-    "screener": (2, 6000, 900),                 # 20 candidates in 2 parallel batches
-    "extractor": (8, 9000, 1500),               # 8 selected papers
-    "synthesizer": (1, 8000, 3000),
-    "screener_secondary": (3, 3000, 500),       # only borderline papers get a second vote
-    "extractor_secondary": (8, 9000, 1500),     # dual extraction
-    "normalizer": (1, 3000, 1200),
-    "conflict_explainer": (3, 4000, 600),
-    "localizer": (2, 6000, 6000),
-    "escalation": (2, 12000, 1500),             # expected ~10-20% of steps
+    "screener": (6, 6000, 900),                 # 60 candidates in 6 parallel batches
+    "extractor": (30, 1200, 700),               # up to 30 abstracts
+    "synthesizer": (1, 20000, 3000),
+    "screener_secondary": (8, 3000, 500),       # only borderline papers get a second vote
+    "extractor_secondary": (30, 1200, 700),     # dual extraction
+    "normalizer": (1, 6000, 2000),
+    "conflict_explainer": (4, 6000, 600),
+    "localizer": (8, 1500, 2000),               # small chunks, run in parallel
+    "escalation": (4, 3000, 1000),              # expected ~10-20% of steps
     "enricher": (1, 3000, 400),                 # only when external MCP servers are configured
 }
 
@@ -91,7 +91,7 @@ def _check(args, catalog: dict[str, ModelInfo], out: TextIO) -> int:
         out.write(f"  {name:<12} {role.provider}:{role.spec.model:<40} method={method:<16} effort={effort:<7} "
                   f"~${cost:.4f}\n")
         problems += validate_role(role, catalog)
-    out.write(f"Estimated cost per review (20 candidates -> 8 papers, OpenRouter roles): ~${total:.3f}\n")
+    out.write(f"Estimated cost per review (60 candidates -> 30 abstracts, OpenRouter roles): ~${total:.3f}\n")
     out.writelines(f"PROBLEM {p}\n" for p in problems)
     return 1 if problems else 0
 

@@ -24,16 +24,3 @@ async def search_papers(q: str = Query(min_length=2, max_length=300), limit: int
         return await deps.papers.search(q, limit)
     except ServiceError as exc:
         return service_error_response(exc)
-
-
-@router.get("/papers/fulltext/{pmcid}", responses={404: {"description": "no open-access full text"},
-                                                   422: {"description": "invalid PMCID"}})
-async def paper_fulltext(pmcid: str, deps: AppDeps = Depends(get_deps), identity: Identity = Depends(get_identity)):
-    """Open-access full text (Methods/Results/Discussion/Conclusions) from Europe PMC."""
-    try:
-        decision = await deps.limits.hit("papers", identity.rate_key, deps.service.settings.paper_search_rate_limit)
-        if not decision.allowed:
-            raise RateLimited(decision.retry_after)
-        return await deps.papers.fulltext(pmcid)
-    except ServiceError as exc:
-        return service_error_response(exc)

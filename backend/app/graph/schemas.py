@@ -29,6 +29,9 @@ class Candidate(BaseModel):
     key: str = ""
     title: str
     abstract: str | None = None
+    # Where the abstract came from: a curated record (europepmc), the arXiv summary, or a search-engine snippet,
+    # which is often truncated and only counts as an abstract when it looks complete (see retrieval.usable_abstract).
+    abstract_source: Literal["europepmc", "arxiv", "snippet"] | None = None
     doi: str | None = None
     pmid: str | None = None
     pmcid: str | None = None

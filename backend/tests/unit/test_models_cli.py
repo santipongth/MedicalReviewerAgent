@@ -42,3 +42,9 @@ def test_check_reports_problems_with_nonzero_exit(tmp_path):
     p.write_text(bad, encoding="utf-8")
     code, text = run(["check", "--config", str(p)])
     assert code == 1 and "not found on OpenRouter" in text
+
+
+def test_typical_calls_assume_60_candidates_and_30_abstracts():
+    from app.cli.models import TYPICAL_CALLS
+    assert TYPICAL_CALLS["extractor"] == (30, 1200, 700) and TYPICAL_CALLS["extractor_secondary"][0] == 30
+    assert TYPICAL_CALLS["screener"][0] == 6  # 60 candidates in batches of 10

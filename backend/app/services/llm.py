@@ -5,6 +5,7 @@
 Every call returns an LLMResult (parsed value + cost) or raises an LLMError subclass."""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import Callable
@@ -240,6 +241,22 @@ class MissingKeyLLM:
         raise LLMError(f"{self.env_name} is not configured on the worker (needed for model {self.model})")
 
 
+class LimitedLLM:
+    """Runs the wrapped model's calls under a semaphore shared by every role of one worker process, so a
+    review's fan-out (30 papers x 2 extractors, parallel localization) stays under provider rate limits."""
+
+    def __init__(self, inner: StructuredLLM, sem: asyncio.Semaphore) -> None:
+        self.inner = inner
+        self.sem = sem
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
+
+    async def ainvoke(self, system: str, user: str) -> LLMResult:
+        async with self.sem:
+            return await self.inner.ainvoke(system, user)
+
+
 @dataclass
 class LLMs:
     guard: StructuredLLM
@@ -295,13 +312,15 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
 
 def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None) -> LLMs:
     config = load_llm_config(settings.llm_config_path, settings.llm_preset)
-    built = {role: build_role_llm(r, settings, catalog) for role, r in config.roles.items()
+    sem = asyncio.Semaphore(max(1, settings.llm_concurrency))
+    built = {role: LimitedLLM(build_role_llm(r, settings, catalog), sem) for role, r in config.roles.items()
              if role in SCHEMAS}
     if "refiner" in config.roles:
         refiner_role = config.roles["refiner"]
         if refiner_role.spec.reasoning_effort not in (None, "none", "minimal", "low"):
             refiner_role = refiner_role.with_spec(reasoning_effort="low")
-        built["refiner_critic"] = build_role_llm(refiner_role, settings, catalog, schema=QuestionCritique)
+        built["refiner_critic"] = LimitedLLM(
+            build_role_llm(refiner_role, settings, catalog, schema=QuestionCritique), sem)
     escalation = None
     if "escalation" in config.roles:
         esc_role = config.roles["escalation"]
@@ -309,7 +328,7 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None) 
 
         def escalation(schema: type[BaseModel]) -> StructuredLLM:
             if schema not in cache:
-                cache[schema] = build_role_llm(esc_role, settings, catalog, schema=schema)
+                cache[schema] = LimitedLLM(build_role_llm(esc_role, settings, catalog, schema=schema), sem)
             return cache[schema]
 
     return LLMs(**built, escalation=escalation, harness=config.harness, preset=config.preset,

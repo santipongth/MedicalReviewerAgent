@@ -1,7 +1,9 @@
 from app.config import Settings
 from app.graph.graph import GraphDeps
-from app.graph.nodes.retrieval import make_enrich, make_search
+from app.graph.nodes.retrieval import MIN_ABSTRACT_CHARS, make_enrich, make_search
 from app.graph.schemas import Candidate
+
+ABSTRACT = ("Background and methods of a cohort study on metformin and colorectal cancer risk in adults with type 2 diabetes, with results, conclusions and the limitations reported by the authors.")
 
 
 class FakeSearxng:
@@ -45,26 +47,57 @@ async def test_enrich_merges_epmc_metadata_filters_years_and_caps():
         Candidate(title="Metformin and colorectal cancer cohort", doi="10.1/a", year=2020, engines=["pubmed"]).model_dump(),
         Candidate(title="Metformin and colorectal cancer cohort.", pmid="11", year=2020, engines=["semantic scholar"]).model_dump(),
         Candidate(title="Old metformin study from long ago", doi="10.1/old", year=2001).model_dump(),
-        Candidate(title="Undated preprint on metformin and polyps", arxiv_id="2401.00001").model_dump(),
+        Candidate(title="Undated preprint on metformin and polyps", arxiv_id="2401.00001",
+                  abstract=ABSTRACT).model_dump(),
     ]
     epmc = FakeEpmc([Candidate(title="Metformin and colorectal cancer: a cohort", doi="10.1/a", pmid="11",
-                               pmcid="PMC5", is_open_access=True, abstract="full abstract", engines=["europepmc"])])
-    state = {"candidates": raw, "options": {"year_from": 2010, "candidate_limit": 20}}
+                               pmcid="PMC5", is_open_access=True, abstract=ABSTRACT, engines=["europepmc"])])
+    state = {"candidates": raw, "options": {"year_from": 2010, "candidate_limit": 20, "max_papers": 10}}
     out = await make_enrich(_deps(europepmc=epmc))(state)
     keys = [c["key"] for c in out["candidates"]]
     assert keys == ["doi:10.1/a", "arxiv:2401.00001"]  # merged, old paper filtered, undated kept
     merged = out["candidates"][0]
-    assert merged["pmcid"] == "PMC5" and merged["abstract"] == "full abstract"
+    assert merged["pmcid"] == "PMC5" and merged["abstract"] == ABSTRACT
     assert merged["title"] == "Metformin and colorectal cancer: a cohort"  # Europe PMC metadata wins
     assert epmc.calls == [(["10.1/a", "10.1/old"], ["11"])]
-    assert out["search_stats"] == {"unique": 3}
+    assert out["search_stats"] == {"unique": 3, "with_abstract": 2}
 
 
-async def test_enrich_survives_epmc_failure_and_ranks_abstracts_first():
+async def test_enrich_survives_epmc_failure_and_keeps_only_abstract_holders_in_rank_order():
     raw = [Candidate(title=f"Paper {i} on metformin outcomes", doi=f"10.1/{i}",
-                     abstract=("x" if i % 2 else None)).model_dump() for i in range(30)]
+                     abstract=(ABSTRACT if i % 2 else None)).model_dump() for i in range(30)]
     out = await make_enrich(_deps(europepmc=FakeEpmc([], fail=True)))(
-        {"candidates": raw, "options": {"candidate_limit": 20}})
-    assert len(out["candidates"]) == 20
-    assert all(c["abstract"] for c in out["candidates"][:15])
+        {"candidates": raw, "options": {"candidate_limit": 20, "max_papers": 10}})
+    assert [c["doi"] for c in out["candidates"]] == [f"10.1/{i}" for i in range(1, 30, 2)]
+    assert out["search_stats"]["with_abstract"] == 15
     assert out["errors"] and "Europe PMC" in out["errors"][0]
+
+
+async def test_enrich_drops_missing_and_short_abstracts():
+    raw = [Candidate(title="No abstract paper on metformin", doi="10.1/none").model_dump(),
+           Candidate(title="Short abstract paper on metformin", doi="10.1/short", abstract="x" * 80).model_dump(),
+           Candidate(title="Long abstract paper on metformin", doi="10.1/long", abstract="y" * 400).model_dump()]
+    out = await make_enrich(_deps(europepmc=FakeEpmc([])))({"candidates": raw, "options": {}})
+    assert [c["doi"] for c in out["candidates"]] == ["10.1/long"]
+    assert out["search_stats"]["with_abstract"] == 1 and MIN_ABSTRACT_CHARS == 150
+
+
+async def test_enrich_tolerates_options_stored_under_the_old_ranges():
+    raw = [Candidate(title=f"Paper {i} on metformin outcomes", doi=f"10.1/{i}", abstract=ABSTRACT).model_dump()
+           for i in range(30)]
+    out = await make_enrich(_deps(europepmc=FakeEpmc([])))(
+        {"candidates": raw, "options": {"max_papers": 3, "candidate_limit": 10}})  # legal before Plan 5
+    assert len(out["candidates"]) == 20  # clamped to the new minimum instead of crashing a resumed review
+
+
+async def test_enrich_does_not_treat_search_snippets_as_abstracts():
+    def c(i, text, source):
+        return Candidate(title=f"Paper {i} on metformin outcomes", doi=f"10.1/{i}", abstract=text,
+                         abstract_source=source).model_dump()
+    raw = [c(0, "y" * 400, "snippet"),                      # truncated search snippet: not an abstract
+           c(1, "z" * 700 + "…", "snippet"),                # long but visibly cut off
+           c(2, "w" * 700 + ".", "snippet"),                # long and complete: usable
+           c(3, ABSTRACT, "europepmc"), c(4, ABSTRACT, "arxiv")]
+    out = await make_enrich(_deps(europepmc=FakeEpmc([])))({"candidates": raw, "options": {}})
+    assert [x["doi"] for x in out["candidates"]] == ["10.1/2", "10.1/3", "10.1/4"]
+    assert out["search_stats"]["with_abstract"] == 3 and out["quality"][0]["snippet_only"] == 2

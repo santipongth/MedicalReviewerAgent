@@ -60,7 +60,7 @@ async def test_per_host_throttle_spaces_requests():
     await client.get("https://fast.example.org/a")
     await client.get("https://slow.example.org/2")
     await client.aclose()
-    assert len(sleep.calls) == 1 and 0.0 < sleep.calls[0] <= 0.2
+    assert len(sleep.calls) == 1 and 0.0 < sleep.calls[0] <= 0.2 + 1e-6  # clock granularity
 
 
 def test_parse_searxng_fixture_maps_identifiers():
@@ -116,3 +116,12 @@ async def test_searxng_client_passes_per_request_timeout():
     http = RecordingHttp()
     await SearxngClient(http, "http://searxng:8080", "pubmed", timeout=8.0).search("q")
     assert http.kwargs["timeout"] == 8.0
+
+
+def test_searxng_content_is_a_snippet_except_arxiv_summaries():
+    from app.services.searxng import parse_searxng_result
+    pubmed = parse_searxng_result({"title": "A cohort study", "content": "Some text", "engines": ["pubmed"]})
+    arxiv = parse_searxng_result({"title": "A preprint", "content": "Full summary", "engines": ["arxiv"],
+                                  "url": "https://arxiv.org/abs/2401.00001"})
+    assert pubmed.abstract_source == "snippet" and arxiv.abstract_source == "arxiv"
+    assert parse_searxng_result({"title": "No content", "engines": ["pubmed"]}).abstract_source is None

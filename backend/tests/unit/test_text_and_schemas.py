@@ -71,12 +71,9 @@ def test_new_settings_defaults():
     assert s.openrouter_api_key == "" and not hasattr(s, "synthesize_model")  # models live in llm.yaml
     assert s.searxng_engines == "pubmed,arxiv,semantic scholar,openalex,crossref"
     assert s.graph_mode == "real"
-    assert s.crawl4ai_url == "http://crawl4ai:11235" and s.crawl_concurrency == 4
     assert s.searxng_pages == 1 and s.searxng_timeout_seconds == 8.0
-    assert s.crawl_domain_interval == 2.0 and s.crawl_cooldown_minutes == 15 and s.fulltext_cache_days == 30
+    assert s.llm_concurrency == 16  # live run at 8: zero 429s, papers queued behind the limit
+    assert not any(n.startswith(("crawl", "fulltext", "unpaywall", "max_fulltext", "contact_email"))
+                   for n in type(s).model_fields)  # abstract-only: no full-text settings remain
 
 
-def test_crawl4ai_token_reads_env_alias_and_init_kwarg(monkeypatch):
-    monkeypatch.setenv("CRAWL4AI_API_TOKEN", "from-env")
-    assert Settings(_env_file=None).crawl4ai_token == "from-env"
-    assert Settings(_env_file=None, crawl4ai_token="kw").crawl4ai_token == "kw"

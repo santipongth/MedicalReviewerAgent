@@ -23,6 +23,7 @@ def parse_epmc_result(r: dict[str, Any]) -> Candidate:
     return Candidate(
         title=strip_markup(r.get("title")).rstrip("."),
         abstract=strip_markup(r.get("abstractText")) or None,
+        abstract_source="europepmc" if r.get("abstractText") else None,
         doi=normalize_doi(r.get("doi")),
         pmid=r.get("pmid"),
         pmcid=r.get("pmcid"),
@@ -63,10 +64,3 @@ class EuropePmcClient:
             resp.raise_for_status()
             out += [parse_epmc_result(r) for r in resp.json().get("resultList", {}).get("result", [])]
         return out
-
-    async def fulltext_xml(self, pmcid: str) -> str | None:
-        resp = await self.http.get(f"{self.base_url}/{pmcid}/fullTextXML")
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        return resp.text

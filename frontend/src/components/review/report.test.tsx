@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { emptyReviewFixture, reviewFixture } from "@/test/fixtures";
+import { emptyReviewFixture, legacyReviewFixture, reviewFixture } from "@/test/fixtures";
 
 vi.mock("./charts", () => ({ Charts: () => <div data-testid="charts" /> }));
 
@@ -27,6 +27,18 @@ describe("Report", () => {
     expect(rail().getByText("0.80", { selector: "mark" })).toBeInTheDocument();
     expect(rail().getByText("HR 0.80")).toHaveClass("num-verified");
     expect(rail().getByText("1,234")).toHaveClass("num-verified");
+  });
+
+  it("says every paper was read from its abstract, and old full-text results still show their source", async () => {
+    const { unmount } = render(<Report review={reviewFixture} />);
+    await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
+    expect(rail().getByText("บทคัดย่อ")).toBeInTheDocument();
+    expect(rail().queryByRole("link", { name: /ฉบับเต็มที่อ่าน/ })).toBeNull();
+    unmount();
+    render(<Report review={legacyReviewFixture} />);
+    await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
+    expect(rail().getByText("ฉบับเต็ม (เว็บสำนักพิมพ์ OA)")).toBeInTheDocument();
+    expect(rail().getByRole("link", { name: /ฉบับเต็มที่อ่าน/ })).toBeInTheDocument();
   });
 
   it("citations in the summary select the cited paper", async () => {

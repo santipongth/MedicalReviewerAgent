@@ -10,15 +10,14 @@ function snippets(api: string) {
     rest: `# 1) ส่งคำถาม (ไม่ต้องมี key: 5 รีวิว/ชั่วโมงต่อ IP)
 curl -X POST ${api}/api/v1/reviews \\
   -H "Content-Type: application/json" \\
-  -d '{"topic": "metformin and colorectal cancer", "language": "en", "options": {"max_papers": 8}}'
+  -d '{"topic": "metformin and colorectal cancer", "language": "en", "options": {"max_papers": 30}}'
 
 # 2) ติดตามความคืบหน้าแบบสด (Server-Sent Events)
 curl -N ${api}/api/v1/reviews/<review_id>/events
 
 # 3) อ่านผลลัพธ์
 curl ${api}/api/v1/reviews/<review_id>`,
-    papers: `curl "${api}/api/v1/papers/search?q=statins%20dementia&limit=10"
-curl ${api}/api/v1/papers/fulltext/PMC1234567`,
+    papers: `curl "${api}/api/v1/papers/search?q=statins%20dementia&limit=10"`,
     key: `# ใช้ API key ที่ผู้ดูแลระบบออกให้ (quota สูงขึ้น, webhook, ยกเลิกรีวิว)
 curl -X POST ${api}/api/v1/reviews \\
   -H "X-API-Key: mra_..." -H "Content-Type: application/json" \\
@@ -63,7 +62,7 @@ export default async function AboutPage() {
         <h2 id="h-rest" className="text-2xl font-bold">REST API</h2>
         <p className="max-w-[65ch]">เอกสาร OpenAPI ฉบับเต็มอยู่ที่ <a className="text-primary underline underline-offset-2" href={`${api}/api/docs`}>{api}/api/docs</a></p>
         <CodeBlock label="REST" code={s.rest} />
-        <CodeBlock label="ค้นงานวิจัยและอ่านฉบับเต็ม" code={s.papers} />
+        <CodeBlock label="ค้นงานวิจัย (ได้ชื่อเรื่อง บทคัดย่อ และตัวระบุ)" code={s.papers} />
       </section>
 
       <section aria-labelledby="h-keys" className="grid gap-4">
@@ -86,7 +85,7 @@ export default async function AboutPage() {
       <section aria-labelledby="h-mcp" className="grid gap-4">
         <h2 id="h-mcp" className="text-2xl font-bold">MCP สำหรับ AI agent</h2>
         <p className="max-w-[65ch]">
-          เครื่องมือ: <b>search_papers</b>, <b>start_review</b>, <b>get_review_status</b>, <b>get_review_result</b>, <b>get_fulltext</b> ·
+          เครื่องมือ: <b>search_papers</b>, <b>start_review</b>, <b>get_review_status</b>, <b>get_review_result</b> ·
           resources: <code className="font-num [font-stretch:87.5%]">review://&lt;id&gt;</code> และ <code className="font-num [font-stretch:87.5%]">review://&lt;id&gt;/report.md</code> ·
           prompt: <b>literature_review</b>
         </p>
@@ -98,8 +97,8 @@ export default async function AboutPage() {
         <h2 id="h-limits" className="text-2xl font-bold">ขอบเขตและข้อจำกัด</h2>
         <ul className="grid max-w-[65ch] list-disc gap-2 pl-5">
           <li>เป็นการทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่ systematic review และไม่ใช่คำแนะนำทางการแพทย์</li>
-          <li>อ่านฉบับเต็มเฉพาะงาน Open Access ที่เว็บต้นทางอนุญาต (เคารพ robots.txt) งานอื่นใช้บทคัดย่อ</li>
-          <li>ตัวเลขที่ตรวจกับประโยคต้นฉบับไม่ผ่านจะถูกเว้นว่างและแสดงเป็น “ไม่ยืนยัน” ไม่มีการเดาค่า</li>
+          <li>ใช้เฉพาะบทคัดย่อ ไม่ดาวน์โหลดฉบับเต็ม: คัดกรองงานที่มีบทคัดย่อ 60 ฉบับ แล้ววิเคราะห์สูงสุด 30 ฉบับ รายละเอียดที่มีแต่ในฉบับเต็มจึงอาจไม่ปรากฏ</li>
+          <li>ตัวเลขที่ตรวจกับประโยคในบทคัดย่อไม่ผ่านจะถูกเว้นว่างและแสดงเป็น “ไม่ยืนยัน” ไม่มีการเดาค่า</li>
           <li>ความแข็งแรงของหลักฐานเป็นแบบ GRADE-lite ที่คำนวณจากรูปแบบการศึกษา ความเสี่ยงอคติ ความสอดคล้อง และขนาดตัวอย่าง</li>
         </ul>
       </section>

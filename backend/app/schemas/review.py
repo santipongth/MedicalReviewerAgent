@@ -6,15 +6,37 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 
 class ReviewOptions(BaseModel):
-    # 20 candidates → the 8 most relevant are read and analysed (keeps a review to ~1 minute).
-    max_papers: int = Field(8, ge=3, le=10)
-    candidate_limit: int = Field(20, ge=10, le=40)
+    # Abstract-only: up to 60 candidates with abstracts are screened and the 30 most relevant are analysed.
+    max_papers: int = Field(30, ge=5, le=30)
+    candidate_limit: int = Field(60, ge=20, le=100)
     year_from: int | None = Field(None, ge=1950, le=2100)
     study_types: list[str] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def enough_candidates(self) -> ReviewOptions:
+        if self.candidate_limit < self.max_papers:
+            raise ValueError("candidate_limit must be at least max_papers")
+        return self
+
+    @classmethod
+    def clamped(cls, raw: dict[str, Any] | None) -> ReviewOptions:
+        """Options pulled into the current ranges instead of rejected: for MCP arguments and for graph state
+        stored under older ranges (e.g. max_papers 3, candidate_limit 10), which must not crash a resumed review."""
+        data = dict(raw or {})
+        bounds = {name: (f.metadata) for name, f in cls.model_fields.items()}
+        for name in ("max_papers", "candidate_limit"):
+            if isinstance(data.get(name), int):
+                lo = next(m.ge for m in bounds[name] if getattr(m, "ge", None) is not None)
+                hi = next(m.le for m in bounds[name] if getattr(m, "le", None) is not None)
+                data[name] = max(lo, min(data[name], hi))
+        max_papers = data.get("max_papers", cls.model_fields["max_papers"].default)
+        if isinstance(data.get("candidate_limit"), int):
+            data["candidate_limit"] = max(data["candidate_limit"], max_papers)
+        return cls.model_validate(data)
 
 
 class CreateReviewRequest(BaseModel):

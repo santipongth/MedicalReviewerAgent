@@ -6,7 +6,6 @@ import respx
 
 from app.services.europepmc import EuropePmcClient, parse_epmc_result
 from app.services.http import HttpClient
-from app.services.jats import extract_jats_text
 
 FIX = Path(__file__).parent.parent / "fixtures"
 BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest"
@@ -32,6 +31,7 @@ def test_parse_open_access_article():
     assert "<h4>" not in c.abstract
     assert c.url == "https://europepmc.org/articles/PMC13352196"
     assert "Journal Article" in c.pub_types and c.engines == ["europepmc"]
+    assert c.abstract_source == "europepmc"
     assert c.key == "doi:10.20524/aog.2026.1078"
 
 
@@ -67,33 +67,3 @@ async def test_lookup_splits_large_batches_and_skips_empty():
     await client.lookup(dois=[f"10.1/{i}" for i in range(85)], pmids=[])
     await http.aclose()
     assert route.call_count == 3  # 40 + 40 + 5
-
-
-@respx.mock
-async def test_fulltext_xml_404_returns_none():
-    respx.get(f"{BASE}/PMC1/fullTextXML").mock(return_value=httpx.Response(404))
-    http = HttpClient(sleep=_nosleep)
-    assert await EuropePmcClient(http, BASE).fulltext_xml("PMC1") is None
-    await http.aclose()
-
-
-def test_extract_jats_keeps_abstract_methods_results_discussion():
-    xml = (FIX / "epmc_fulltext_PMC13352196.xml").read_text(encoding="utf-8")
-    text = extract_jats_text(xml, max_chars=60_000)
-    for heading in ("## Abstract", "## Methods", "## Results", "## Discussion"):
-        assert heading in text
-    assert "## Introduction" not in text
-    assert "HCT116" in text
-    assert text.index("## Methods") < text.index("## Results") < text.index("## Discussion")
-
-
-def test_extract_jats_respects_budget():
-    xml = (FIX / "epmc_fulltext_PMC13352196.xml").read_text(encoding="utf-8")
-    text = extract_jats_text(xml, max_chars=6000)
-    assert len(text) <= 6000
-    assert "## Results" in text  # every kept section gets a share of the budget
-
-
-def test_extract_jats_handles_garbage():
-    assert extract_jats_text("<not-xml", max_chars=1000) is None
-    assert extract_jats_text("<article><body/></article>", max_chars=1000) is None

@@ -1,4 +1,4 @@
-"""Evidence-grounded reading: full text → quote-anchored extraction → verification → dual-model cross-check."""
+"""Evidence-grounded reading: abstract → quote-anchored extraction → verification → dual-model cross-check."""
 from __future__ import annotations
 
 import asyncio
@@ -11,23 +11,13 @@ from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate, PaperCard
 from app.harness.runner import HarnessResult
 from app.harness.verify import card_problems, compare_cards, null_unverified_numbers
-from app.services.fulltext import FullText
 from app.services.llm import LLMError
 
 
-def _fallback(cand: Candidate) -> FullText:
-    return FullText("abstract", cand.abstract) if cand.abstract else FullText("title_only", cand.title)
-
-
-async def _fetch(deps, cand: Candidate) -> tuple[FullText, bool, str | None]:
-    """(text, timed_out, error). Full text is optional: every failure falls back to the abstract."""
-    try:
-        ft = await asyncio.wait_for(deps.fulltext.fetch(cand), timeout=deps.settings.fulltext_timeout_seconds)
-        return ft, False, None
-    except TimeoutError:
-        return _fallback(cand), True, None
-    except Exception as exc:  # noqa: BLE001 - cache/policy/crawler faults must not fail the review
-        return _fallback(cand), False, f"{type(exc).__name__}: {exc}"
+def paper_text(cand: Candidate) -> str | None:
+    """The only text a paper is read from: its title and abstract (no full-text fetching)."""
+    abstract = (cand.abstract or "").strip()
+    return f"{cand.title}\n\n{abstract}" if abstract else None
 
 
 def _blanked(before: PaperCard, after: PaperCard) -> list[dict[str, Any]]:
@@ -57,16 +47,20 @@ def make_read_paper(deps):
         writer({"type": "reading", "ref": paper["ref"], "title": cand.title})
         spec, runner = harness_spec(deps), harness_runner(deps)
 
-        fetch_started = time.perf_counter()
-        fulltext, timed_out, fetch_error = await _fetch(deps, cand)
-        fulltext_seconds = round(time.perf_counter() - fetch_started, 3)
-
-        text = fulltext.text[: spec.extraction_chars]
+        entry: dict[str, Any] = {"ref": paper["ref"], "candidate": paper["candidate"], "relevance": paper["relevance"],
+                                 "screen_reason": paper.get("reason"), "card": None, "error": None}
+        source_text = paper_text(cand)
+        if source_text is None:
+            writer({"type": "extracted", "ref": paper["ref"], "ok": False, "verified": 0, "uncertain": False})
+            return {"papers": [{**entry, "error": "no abstract"}], "errors": [f"no abstract for {paper['ref']}"],
+                    "quality": [{"stage": "read", "ref": paper["ref"], "source": "abstract", "skipped": "no abstract",
+                                 "seconds": round(time.perf_counter() - started, 3)}]}
+        text = source_text[: spec.extraction_chars]
         outcomes = ((payload.get("question_detail") or {}).get("outcomes")
                     or (payload.get("plan") or {}).get("outcomes") or [])
         system = prompts.extract_system()
         user = prompts.extract_user(question=payload["question"], outcomes=outcomes, candidate=paper["candidate"],
-                                    source=fulltext.source, text=text)
+                                    source="abstract", text=text)
         threshold = spec.quote_match_threshold
 
         def validate(card: PaperCard) -> list[str]:
@@ -82,7 +76,7 @@ def make_read_paper(deps):
         primary, secondary = results[0], (results[1] if len(results) > 1 else None)
 
         cost = sum(r.cost for r in results if isinstance(r, HarnessResult))
-        errors: list[str] = [f"full text failed for {paper['ref']}: {fetch_error}"] if fetch_error else []
+        errors: list[str] = []
         p_card, s_card = _ok_value(primary), _ok_value(secondary)
         card = p_card or s_card
         repaired = isinstance(primary, HarnessResult) and primary.repaired
@@ -101,9 +95,6 @@ def make_read_paper(deps):
                 else:
                     uncertain = True
 
-        entry: dict[str, Any] = {"ref": paper["ref"], "candidate": paper["candidate"], "relevance": paper["relevance"],
-                                 "screen_reason": paper.get("reason"), "fulltext_source": fulltext.source,
-                                 "fulltext_url": fulltext.url, "card": None, "error": None}
         verified = total = 0
         unverified: list[dict[str, Any]] = []
         if card is None:
@@ -123,12 +114,11 @@ def make_read_paper(deps):
         entry["verification"] = {"numbers_verified": verified, "numbers_total": total, "agreement": agreement,
                                  "escalated": escalated, "repaired": repaired, "uncertain": uncertain,
                                  "unverified": unverified}
-        quality = {"stage": "read", "ref": paper["ref"], "source": fulltext.source,
-                   "fulltext_seconds": fulltext_seconds, "fulltext_timed_out": timed_out,
+        quality = {"stage": "read", "ref": paper["ref"], "source": "abstract",
                    **{k: v for k, v in entry["verification"].items() if k != "unverified"},
                    "seconds": round(time.perf_counter() - started, 3)}
         writer({"type": "extracted", "ref": paper["ref"], "ok": entry["card"] is not None,
-                "source": fulltext.source, "verified": verified, "uncertain": uncertain})
+                "verified": verified, "uncertain": uncertain})
         return {"papers": [entry], "cost_usd": cost, "errors": errors, "quality": [quality]}
 
     return read_paper

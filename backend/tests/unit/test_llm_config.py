@@ -110,15 +110,13 @@ def test_missing_file_is_a_clear_error(tmp_path):
 def test_repo_config_has_budget_default_and_all_presets_valid():
     cfg = load_llm_config(REPO_CONFIG)
     assert cfg.preset == "budget"
-    assert cfg.roles["guard"].spec.model == "google/gemini-2.5-flash-lite"
-    assert cfg.roles["synthesizer"].spec.model == "deepseek/deepseek-v4-pro"
-    assert cfg.roles["synthesizer"].spec.reasoning_effort == "high"
+    # user decision 2026-10-05: every budget role runs on Qwen3.5 Flash
+    assert {r.spec.model for r in cfg.roles.values()} == {"qwen/qwen3.5-flash-02-23"}
+    assert cfg.roles["synthesizer"].spec.reasoning_effort == "medium"
     for name in ("budget", "balanced", "claude", "gemini", "claude_direct"):
         resolved = load_llm_config(REPO_CONFIG, preset=name)
         assert set(resolved.roles) == set(ROLES) | set(OPTIONAL_ROLES)  # every repo preset sets all roles
     budget = load_llm_config(REPO_CONFIG)
-    assert budget.roles["extractor_secondary"].spec.model == "qwen/qwen3.8-flash"
-    assert budget.roles["escalation"].spec.model == "qwen/qwen3.8-max-0902"
     assert budget.harness.dual_extraction is True and budget.harness.localize is True
     direct = load_llm_config(REPO_CONFIG, preset="claude_direct")
     assert {r.provider for r in direct.roles.values()} == {"anthropic"}

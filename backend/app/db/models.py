@@ -126,7 +126,6 @@ class Paper(Base):
     journal: Mapped[str | None] = mapped_column(Text, nullable=True)
     abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
     oa_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    fulltext_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONType, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

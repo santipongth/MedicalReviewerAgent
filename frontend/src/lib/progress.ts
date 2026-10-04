@@ -2,7 +2,7 @@
 // a reconnect with Last-Event-ID never double-applies anything.
 import type { ReviewEvent } from "./types";
 
-export const WELL_COUNT = 20;
+export const WELL_COUNT = 60;
 export type Well = "empty" | "found" | "out" | "cap";
 export type StepKey = "queue" | "refine" | "search" | "screen" | "read" | "synthesize" | "done";
 export const STEPS: StepKey[] = ["refine", "search", "screen", "read", "synthesize"];

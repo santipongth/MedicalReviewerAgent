@@ -115,16 +115,18 @@ def screen_user(*, english_topic: str, plan: dict[str, Any], items: list[tuple[s
 
 
 EXTRACT_SYSTEM = """You extract structured evidence from ONE research paper for a comparison table in a medical literature
-review. Work in English (translation happens later). Report only what the paper states.
+review. The paper text is its title and abstract only. Work in English (translation happens later). Report only what
+the abstract states.
 - For every outcome relevant to the review question, copy into evidence_quote the exact sentence(s) from the paper
-  text that state the result and its numbers - verbatim, character for character, no paraphrase.
+  abstract that state the result and its numbers - verbatim, character for character, no paraphrase.
 - Numeric fields (effect_value, ci_lower, ci_upper, p_value) must be copied from that quote. If the paper does not
   report a number, use null and effect_measure "none". Never compute, round or guess numbers.
 - sample_size must come from sample_size_quote (verbatim); use null for both if not reported.
 - direction is relative to the review question's hypothesised effect: positive (supports it / benefit), negative
   (opposite effect or harm), null (no significant association), mixed, unclear.
 - risk_of_bias: brief judgement from design, sample size, confounding control and reporting.
-- If only the abstract is available, extract what it supports and reflect that uncertainty in limitations."""
+- Extract only what the abstract supports; note in limitations that details beyond the abstract were not available
+  when that matters (e.g. adjustment for confounders or follow-up is not described)."""
 
 EXTRACT_EXAMPLE = """Format example for one outcome (illustrative, not from this paper):
 {"outcome": "colorectal cancer incidence", "result": "Lower incidence with metformin than with sulfonylureas",
