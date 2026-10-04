@@ -11,9 +11,12 @@ from redis.asyncio import Redis
 
 from app.config import get_settings
 from app.db.session import make_engine, make_session_factory
-from app.graph.graph import GraphDeps, build_graph
+from app.graph.factory import build_graph_deps, close_graph_deps
+from app.graph.graph import build_graph
 from app.logging import configure_logging, get_logger
 from app.services.events import EventSink
+from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
+from app.services.model_catalog import OpenRouterCatalog
 from app.worker.sweep import sweep_stale
 from app.worker.tasks import resume_review, run_review
 
@@ -40,11 +43,23 @@ async def startup(ctx: dict) -> None:
     )
     await pool.open()
     ctx["pg_pool"] = pool
-    ctx["graph"] = build_graph(GraphDeps(settings=settings), checkpointer=AsyncPostgresSaver(pool))
-    log.info("worker_started", max_jobs=settings.max_concurrent_reviews_per_worker)
+    ctx["http"] = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)
+    catalog = None
+    if settings.graph_mode != "stub":
+        try:  # OpenRouter catalog: picks the structured-output method per model and prices; optional
+            catalog = await OpenRouterCatalog(ctx["http"]).load()
+        except Exception as exc:  # noqa: BLE001 - offline catalog only degrades to json_schema defaults
+            log.warning("openrouter_catalog_unavailable", error=str(exc))
+    ctx["graph_deps"] = build_graph_deps(settings, ctx["http"], ctx["events_redis"], catalog)
+    ctx["graph"] = build_graph(ctx["graph_deps"], checkpointer=AsyncPostgresSaver(pool))
+    log.info("worker_started", max_jobs=settings.max_concurrent_reviews_per_worker, graph_mode=settings.graph_mode,
+             llm_preset=getattr(ctx["graph_deps"].llms, "preset", None),
+             crawling=getattr(ctx["graph_deps"].fulltext, "crawler", None) is not None)
 
 
 async def shutdown(ctx: dict) -> None:
+    await close_graph_deps(ctx["graph_deps"])
+    await ctx["http"].aclose()
     await ctx["pg_pool"].close()
     await ctx["events_redis"].aclose()
     await ctx["engine"].dispose()

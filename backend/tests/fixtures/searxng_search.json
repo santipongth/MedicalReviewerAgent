@@ -1,0 +1,635 @@
+{
+ "query": "metformin colorectal cancer",
+ "number_of_results": 0,
+ "results": [
+  {
+   "title": "AI-Enabled Lung Cancer Prognosis",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2024-02-12T22:09:43",
+   "pubdate": "2024-02-12 22:09:43",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "arxiv"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    1
+   ],
+   "score": 1.0,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "Lung cancer is the primary cause of cancer-related mortality, claiming approximately 1.79 million lives globally in 2020, with an estimated 2.21 million new cases diagnosed within the same period. Among these, Non-Small Cell Lung Cancer (NSCLC) is the predominant subtype, characterized by a notably bleak prognosis and low overall survival rate of approximately 25% over five years across all disease stages. However, survival outcomes vary considerably based on the stage at diagnosis and the therapeutic interventions administered. Recent advancements in artificial intelligence (AI) have revolutionized the landscape of lung cancer prognosis. AI-driven methodologies, including machine learning and deep learning algorithms, have shown promise in enhancing survival prediction accuracy by efficiently analyzing complex multi-omics data and integrating diverse clinical variables. By leveraging AI techniques, clinicians can harness comprehensive prognostic insights to tailor personalized treatment strategies, ultimately improving patient outcomes in NSCLC. Overviewing AI-driven data processing can significantly help bolster the understanding and provide better directions for using such systems.",
+   "url": "http://arxiv.org/abs/2402.09476v1",
+   "engine": "arxiv",
+   "parsed_url": [
+    "http",
+    "arxiv.org",
+    "/abs/2402.09476v1",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": {
+    "datetime": "2024-02-12T22:09:43"
+   },
+   "comments": "This is the author's version of a book chapter entitled: \"Cancer Research: An Interdisciplinary Approach\", Springer",
+   "tags": [
+    "q-bio.QM",
+    "cs.AI",
+    "eess.IV"
+   ],
+   "type": "",
+   "authors": [
+    "Mahtab Darvish",
+    "Ryan Trask",
+    "Patrick Tallon",
+    "Mélina Khansari",
+    "Lei Ren",
+    "Michelle Hershman",
+    "Bardia Yousefi"
+   ],
+   "editor": "",
+   "publisher": "",
+   "journal": "Springer book chapter \"Cancer Research: An Interdisciplinary Approach\" 2024",
+   "volume": "",
+   "pages": "",
+   "number": "",
+   "doi": "",
+   "issn": [],
+   "isbn": [],
+   "pdf_url": "https://arxiv.org/pdf/2402.09476v1",
+   "html_url": ""
+  },
+  {
+   "title": "Effect of metformin on the viability of colorectal cancer derived organoids",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2017-11-14T01:01:00",
+   "pubdate": "2017-11-14 01:01:00",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "crossref"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    1
+   ],
+   "score": 1.0,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "",
+   "url": "https://www.morressier.com/article/59d51845d462b80296ca3a30",
+   "engine": "crossref",
+   "parsed_url": [
+    "https",
+    "www.morressier.com",
+    "/article/59d51845d462b80296ca3a30",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": null,
+   "comments": "",
+   "tags": null,
+   "type": "posted-content",
+   "authors": [
+    "van Nierop KML"
+   ],
+   "editor": "",
+   "publisher": "Morressier",
+   "journal": null,
+   "volume": "",
+   "pages": "",
+   "number": "",
+   "doi": "10.26226/morressier.59d51845d462b80296ca3a30",
+   "issn": [],
+   "isbn": [],
+   "pdf_url": "",
+   "html_url": ""
+  },
+  {
+   "title": "Role of the p53/miR-34a/SIRT1 Feedback Loop in Metformin-induced Radiosensitivity of Colorectal Cancer Cells.",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2025-02-04T00:00:00",
+   "pubdate": "2025-02-04 00:00:00",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "semantic scholar"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    1
+   ],
+   "score": 1.0,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "INTRODUCTION Metformin induces radiation sensitivity in cancer cells, including colorectal cancer cells; however, the exact molecular mechanisms underlying its radiosensitive effects are not yet known. In this study, we investigated the role of the p53/miR-34a/SIRT1 pathway in the radiosensitivity of colon cancer cells. METHODS The study was carried out from 2020 to 2022 at the Qazvin University of Medical Science's Cellular and Molecular Research Center. Two colorectal cancer cell lines (SW480 and SW620) obtained from primary and secondary tumors derived from a single patient were used as the study samples. After subjecting the cells to 50 Gy of radiation, we generated radioresistant cell lines. Resistant cells were treated with 50 μM metformin. Metformin-treated and untreated resistant cells constituted the study groups. The expression levels of miR-34-a and Sirtunin1 (SIRT1) were evaluated using Quantitative Real-time PCR. The rates of cell proliferation and apoptosis were assessed using a Cell Counting Kit-8 (CCK-8) assay and flow cytometry. Western blot analysis was performed to quantify the expression of proteins. For statistical analysis, the Student's ttest was carried out to examine the mean differences between the two groups, and analysis of variance (ANOVA) was used to examine additional groups. RESULTS Our results showed that the expression of miR-34-a was downregulated (0.29 ± 0.11) in radiation-resistant cancer cells (P <0.001), while the expression of SIRT-1 was upregulated (4.5 ± 0.25) (P <0.001). Metformin increased the radiosensitivity of colon cancer cells in a time- and dose-dependent manner. Treatment with 50 μM metformin after 48h caused decreased cell viability and increased apoptosis in resistant cells. We observed downregulation of SIRT-1 (1.1 ± 0.45) and upregulation of miR-34-a (4.3 ± 1.3) (P <0.001) in metformin-treated cells. In contrast, western blotting results showed the upregulation of acetylated P53 in metformin-treated cells. Metformin function was reversed by SIRT1 inhibitors or by transfection with miR-34-a overexpressing plasmids. CONCLUSION Based on these results, one of the radiosensitivity mechanisms of metformin in colorectal cancer is the modulation of the p53/miR-34a/SIRT1 loop.",
+   "url": "https://www.ncbi.nlm.nih.gov/pubmed/39917927",
+   "engine": "semantic scholar",
+   "parsed_url": [
+    "https",
+    "www.ncbi.nlm.nih.gov",
+    "/pubmed/39917927",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": {
+    "datetime": "2025-02-04T00:00:00"
+   },
+   "comments": "15 citations from the year 2025 to 2026",
+   "tags": [
+    "Medicine"
+   ],
+   "type": "",
+   "authors": [
+    "Ensiyeh Bahadoran",
+    "Yazdan Zafari",
+    "A. Homaei",
+    "Manijeh Jalilvand",
+    "Sahar Moghbelinejad"
+   ],
+   "editor": "",
+   "publisher": "",
+   "journal": "Current Radiopharmaceuticals",
+   "volume": "",
+   "pages": "",
+   "number": "",
+   "doi": "10.2174/0118744710331660250127115004",
+   "issn": [],
+   "isbn": [],
+   "pdf_url": "",
+   "html_url": ""
+  },
+  {
+   "title": "Metformin and Colorectal Cancer",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2018-10-23T00:00:00",
+   "pubdate": "2018-10-23 00:00:00",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "openalex"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    1
+   ],
+   "score": 1.0,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "Colorectal Cancer (CRC) is one of the most frequently encountered neoplasms in humans. The incidence of CRC has been increasing and new strategies for prevention, including chemoprevention, are required to lower its incidence and associated mortality. Metformin is a biguanide compound commonly used for the treatment of diabetes mellitus. Many recent basic research, epidemiological and clinical trial studies have indicated that metformin has benefits not only in diabetes treatment, but also in lowering the risk of developing cancer (including CRC). These studies indicate that metformin may be a candidate chemoprevention agent for CRC. This review article shall discuss the present evidence of metformin treatment and CRC, as well as outline our challenge in the investigation of metformin use in chemoprevention therapy for colorectal tumors.",
+   "url": "https://doi.org/10.3389/fendo.2018.00622",
+   "engine": "openalex",
+   "parsed_url": [
+    "https",
+    "doi.org",
+    "/10.3389/fendo.2018.00622",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": {
+    "datetime": "2018-10-23T00:00:00"
+   },
+   "comments": "66 citations",
+   "tags": [
+    "Metformin",
+    "Colorectal cancer",
+    "Medicine",
+    "Cancer",
+    "Oncology",
+    "Internal medicine",
+    "Insulin"
+   ],
+   "type": "article",
+   "authors": [
+    "Takuma Higurashi",
+    "Atsushi Nakajima"
+   ],
+   "editor": "",
+   "publisher": "",
+   "journal": "",
+   "volume": "9",
+   "pages": "622-622",
+   "number": null,
+   "doi": "10.3389/fendo.2018.00622",
+   "issn": [],
+   "isbn": [],
+   "pdf_url": "https://www.frontiersin.org/articles/10.3389/fendo.2018.00622/pdf",
+   "html_url": "https://doi.org/10.3389/fendo.2018.00622"
+  },
+  {
+   "title": "Dual Metabolic Targeting of Cancer: Lessons from Metformin and 2-Deoxy-D-Glucose Combinations.",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2026-08-04T00:00:00",
+   "pubdate": "2026-08-04 00:00:00",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "pubmed"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    1
+   ],
+   "score": 1.0,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "Background",
+   "url": "https://www.ncbi.nlm.nih.gov/pubmed/42649852",
+   "engine": "pubmed",
+   "parsed_url": [
+    "https",
+    "www.ncbi.nlm.nih.gov",
+    "/pubmed/42649852",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": {
+    "datetime": "2026-08-04T00:00:00"
+   },
+   "comments": "",
+   "tags": [],
+   "type": "",
+   "authors": [
+    "Vesna Zeljković",
+    "Slaviša Minić",
+    "Marko Mladenović",
+    "Dejan Milenković",
+    "Zoran Marković",
+    "Tanja V Soldatović",
+    "Vanja Kunkin",
+    "Maja Karaman"
+   ],
+   "editor": "",
+   "publisher": "",
+   "journal": "Cancers",
+   "volume": "",
+   "pages": "",
+   "number": "",
+   "doi": "10.3390/cancers18162537",
+   "issn": [
+    "2072-6694"
+   ],
+   "isbn": [],
+   "pdf_url": "",
+   "html_url": ""
+  },
+  {
+   "title": "Incentivising Personalised Colorectal Cancer Screening: an Adversarial Risk Analysis Approach",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2025-09-04T18:16:05",
+   "pubdate": "2025-09-04 18:16:05",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "arxiv"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    2
+   ],
+   "score": 0.5,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "This paper presents a framework for incentivising colorectal cancer (CRC) screening programs from the perspective of policymakers and under the assumption that the citizens participating in the program have misaligned objectives. To do so, it leverages tools from adversarial risk analysis to propose an optimal incentive scheme under uncertainty. The work relies on previous work on modeling CRC risk and optimal screening strategies and provides use cases regarding individual and group-based optimal incentives based on a simple financial scheme.",
+   "url": "http://arxiv.org/abs/2509.04592v1",
+   "engine": "arxiv",
+   "parsed_url": [
+    "http",
+    "arxiv.org",
+    "/abs/2509.04592v1",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": {
+    "datetime": "2025-09-04T18:16:05"
+   },
+   "comments": "",
+   "tags": [
+    "stat.AP",
+    "cs.GT"
+   ],
+   "type": "",
+   "authors": [
+    "Daniel Corrales",
+    "David Rios Insua"
+   ],
+   "editor": "",
+   "publisher": "",
+   "journal": "D. Corrales and D. R. Insua, \"Incentivising Personalised Colorectal Cancer Screening: an Adversarial Risk Analysis Approach,\" 2025 IEEE 38th International Symposium on Computer-Based Medical Systems (CBMS), Madrid, Spain, 2025, pp. 307-310",
+   "volume": "",
+   "pages": "",
+   "number": "",
+   "doi": "10.1109/CBMS65348.2025.00068",
+   "issn": [],
+   "isbn": [],
+   "pdf_url": "https://arxiv.org/pdf/2509.04592v1",
+   "html_url": ""
+  },
+  {
+   "title": "Metformin in colorectal cancer: A match ruled by MiR26b?",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2020-02-01T01:00:00",
+   "pubdate": "2020-02-01 01:00:00",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "crossref"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    2
+   ],
+   "score": 0.5,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "",
+   "url": "https://linkinghub.elsevier.com/retrieve/pii/S1877782119301377",
+   "engine": "crossref",
+   "parsed_url": [
+    "https",
+    "linkinghub.elsevier.com",
+    "/retrieve/pii/S1877782119301377",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": null,
+   "comments": "",
+   "tags": null,
+   "type": "journal-article",
+   "authors": [
+    "Raffaella Mormile"
+   ],
+   "editor": "",
+   "publisher": "Elsevier BV",
+   "journal": "Cancer Epidemiology",
+   "volume": "64",
+   "pages": "101627",
+   "number": "",
+   "doi": "10.1016/j.canep.2019.101627",
+   "issn": [],
+   "isbn": [],
+   "pdf_url": "",
+   "html_url": ""
+  },
+  {
+   "title": "Metformin in Colorectal Cancer: Epidemiological Evidence, Predictive Biomarkers, and Implications for Prevention and Treatment",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2025-06-24T00:00:00",
+   "pubdate": "2025-06-24 00:00:00",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "semantic scholar"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    2
+   ],
+   "score": 0.5,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "Interest in metformin as a potential anticancer agent for colorectal cancer (CRC) has increased. However, compelling epidemiological links and strong preclinical evidence suggest that metformin has variable efficacy in patients with CRC. This variability highlights the need to identify the patients who are most likely to benefit from effective stratification. We aimed to review the evidence concerning the diverse roles of metformin in CRC prevention and treatment, focusing on identifying and validating the predictive biomarkers essential for selecting patient subgroups that are likely to respond positively. We explored the various molecular pathways through which metformin acts and investigated how these diverse mechanisms might explain the observed differences in patient responses. Epidemiological studies and large meta-analyses have consistently reported reduced CRC incidence and improved survival among patients with diabetes treated with metformin. However, successfully extending these benefits broadly across all patients with CRC or achieving predictable outcomes in advanced disease settings remains a significant challenge. This review consolidates the current knowledge, highlights how different mechanisms interact, critically assesses clinical evidence in light of patient heterogeneity, and advocates for the development and implementation of biomarker-guided personalized therapeutic strategies as key to optimally utilizing the potential of metformin in CRC management. The current challenges and vital future research priorities in this critical area are also outlined.",
+   "url": "https://www.ncbi.nlm.nih.gov/pubmed/40649818",
+   "engine": "semantic scholar",
+   "parsed_url": [
+    "https",
+    "www.ncbi.nlm.nih.gov",
+    "/pubmed/40649818",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": {
+    "datetime": "2025-06-24T00:00:00"
+   },
+   "comments": "9 citations from the year 2025 to 2026",
+   "tags": [
+    "Medicine"
+   ],
+   "type": "",
+   "authors": [
+    "Seokho Myung",
+    "Youn Young Park",
+    "Man S. Kim"
+   ],
+   "editor": "",
+   "publisher": "",
+   "journal": "International Journal of Molecular Sciences",
+   "volume": "",
+   "pages": "",
+   "number": "",
+   "doi": "10.3390/ijms26136040",
+   "issn": [],
+   "isbn": [],
+   "pdf_url": "",
+   "html_url": ""
+  },
+  {
+   "title": "Metformin in colorectal cancer: molecular mechanism, preclinical and clinical aspects",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2019-12-01T00:00:00",
+   "pubdate": "2019-12-01 00:00:00",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "openalex"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    2
+   ],
+   "score": 0.5,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "Growing evidence showed the increased prevalence of cancer incidents, particularly colorectal cancer, among type 2 diabetic mellitus patients. Antidiabetic medications such as, insulin, sulfonylureas, dipeptyl peptidase (DPP) 4 inhibitors and glucose-dependent insulinotropic peptide (GLP-1) analogues increased the additional risk of different cancers to diabetic patients. Conversely, metformin has drawn attention among physicians and researchers since its use as antidiabetic drug exhibited beneficial effect in the prevention and treatment of cancer in diabetic patients as well as an independent anticancer drug. This review aims to provide the comprehensive information on the use of metformin at preclinical and clinical stages among colorectal cancer patients. We highlight the efficacy of metformin as an anti-proliferative, chemopreventive, apoptosis inducing agent, adjuvant, and radio-chemosensitizer in various colorectal cancer models. This multifarious effects of metformin is largely attributed to its capability in modulating upstream and downstream molecular targets involved in apoptosis, autophagy, cell cycle, oxidative stress, inflammation, metabolic homeostasis, and epigenetic regulation. Moreover, the review highlights metformin intake and colorectal cancer risk based on different clinical and epidemiologic results from different gender and specific population background among diabetic and non-diabetic patients. The improved understanding of metformin as a potential chemotherapeutic drug or as neo-adjuvant will provide better information for it to be used globally as an affordable, well-tolerated, and effective anticancer agent for colorectal cancer.",
+   "url": "https://doi.org/10.1186/s13046-019-1495-2",
+   "engine": "openalex",
+   "parsed_url": [
+    "https",
+    "doi.org",
+    "/10.1186/s13046-019-1495-2",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": {
+    "datetime": "2019-12-01T00:00:00"
+   },
+   "comments": "202 citations",
+   "tags": [
+    "Metformin",
+    "Medicine",
+    "Colorectal cancer",
+    "Cancer",
+    "Oncology",
+    "Population",
+    "Diabetes mellitus",
+    "Internal medicine",
+    "Pharmacology",
+    "Bioinformatics",
+    "Insulin",
+    "Endocrinology",
+    "Biology",
+    "Environmental health"
+   ],
+   "type": "article",
+   "authors": [
+    "Muhamad Noor Alfarizal Kamarudin",
+    "Md. Moklesur Rahman Sarker",
+    "Jin‐Rong Zhou",
+    "Ishwar S. Parhar"
+   ],
+   "editor": "",
+   "publisher": "",
+   "journal": "",
+   "volume": "38",
+   "pages": "491-491",
+   "number": "1",
+   "doi": "10.1186/s13046-019-1495-2",
+   "issn": [],
+   "isbn": [],
+   "pdf_url": "https://jeccr.biomedcentral.com/track/pdf/10.1186/s13046-019-1495-2",
+   "html_url": "https://doi.org/10.1186/s13046-019-1495-2"
+  },
+  {
+   "title": "GLUT1/SGLT1 balance associates with high-glucose buffering of metformin-induced lysosomal deacidification and mTORC1 inhibition in colorectal cancer.",
+   "img_src": "",
+   "iframe_src": "",
+   "audio_src": "",
+   "thumbnail": "",
+   "publishedDate": "2026-08-13T00:00:00",
+   "pubdate": "2026-08-13 00:00:00",
+   "length": null,
+   "views": "",
+   "author": "",
+   "metadata": "",
+   "priority": "",
+   "engines": [
+    "pubmed"
+   ],
+   "open_group": false,
+   "close_group": false,
+   "positions": [
+    2
+   ],
+   "score": 0.5,
+   "category": "academic",
+   "template": "paper.html",
+   "content": "Metformin has anticancer potential, but benefit in colorectal cancer (CRC) is heterogeneous and determinants of tumor cell response remain unclear. We tested whether extracellular glucose and the relative expression of glucose transporter 1 (GLUT1/SLC2A1) and sodium-glucose cotransporter 1 (SGLT1/SLC5A1), quantified as a glucose transporter ratio score (GTRS), are associated with buffering of metformin effects. We combined a 1,2-dimethylhydrazine (DMH)-induced CRC model, glucose-controlled cell-line experiments, and analyses of public bulk, single-cell, and spatial transcriptomic datasets. In mice, metformin (200 mg/kg/day) reduced DMH-associated neoplastic progression and Cyclin D1 expression. In vitro, metformin (5 mM) reduced viability and clonogenic growth while reducing endolysosomal acidity and inhibiting mTORC1 downstream signaling under normal glucose. Metformin-induced changes were attenuated under high glucose. Buffering of lysosomal acidity loss was stronger in the GTRS-high HCT116 cells than in the GTRS-low HT29 cells, with partial rescue of growth readouts in both lines. In human single-cell datasets, high-GTRS malignant clusters showed higher lysosome-related transcriptional program scores. In spatial transcriptomic datasets, lysosome-related programs were enriched at the tumor-stroma interface, where stromal laminin ligands and epithelial integrin receptors showed enriched spatial co-localization. In human bulk cohorts, higher GTRS was enriched in the aggressive mesenchymal CMS4 subtype. Together, these results support that glucose transporter balance is associated with partial buffering of metformin-induced lysosomal and mTORC1 perturbations under high glucose.",
+   "url": "https://www.ncbi.nlm.nih.gov/pubmed/42628623",
+   "engine": "pubmed",
+   "parsed_url": [
+    "https",
+    "www.ncbi.nlm.nih.gov",
+    "/pubmed/42628623",
+    "",
+    "",
+    ""
+   ],
+   "date_of_publication": {
+    "datetime": "2026-08-13T00:00:00"
+   },
+   "comments": "",
+   "tags": [],
+   "type": "",
+   "authors": [
+    "Badr-Eddine Allal",
+    "Susana Mendonça",
+    "Abdelkader Bounaama",
+    "Paula Fresco",
+    "Bahia Djerdjouri",
+    "Jorge Gonçalves",
+    "Sergia Velho"
+   ],
+   "editor": "",
+   "publisher": "",
+   "journal": "European journal of pharmacology",
+   "volume": "",
+   "pages": "",
+   "number": "",
+   "doi": "10.1016/j.ejphar.2026.179242",
+   "issn": [
+    "1879-0712"
+   ],
+   "isbn": [],
+   "pdf_url": "",
+   "html_url": ""
+  }
+ ],
+ "answers": [],
+ "corrections": [],
+ "infoboxes": [],
+ "suggestions": [],
+ "unresponsive_engines": []
+}

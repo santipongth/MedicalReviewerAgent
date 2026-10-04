@@ -74,3 +74,49 @@ async def test_missing_review_returns_missing(session_factory, redis):
     sink = EventSink(session_factory, redis, 60)
     graph = build_graph(GraphDeps(settings=Settings(_env_file=None)))
     assert await ReviewRunner(session_factory, sink, graph).run(uuid.uuid4()) == "missing"
+
+
+def _single_node_graph(fn):
+    b = StateGraph(ReviewState)
+    b.add_node("only", fn)
+    b.add_edge(START, "only")
+    b.add_edge("only", END)
+    return b.compile(checkpointer=InMemorySaver())
+
+
+async def test_rejected_graph_result_sets_rejected_status(session_factory, redis):
+    async def guard(state: ReviewState) -> dict:
+        return {"rejected": "not a medical topic", "cost_usd": 0.001}
+
+    review = await _queued_review(session_factory)
+    sink = EventSink(session_factory, redis, 60)
+    status = await ReviewRunner(session_factory, sink, _single_node_graph(guard)).run(review.id)
+    assert status == "rejected"
+    async with session_factory() as s:
+        got = await ReviewRepository(s).get(review.id)
+        events = await EventRepository(s).list_since(review.id, 0)
+    assert got.status == "rejected" and got.error == "not a medical topic"
+    assert float(got.cost_usd) == 0.001
+    assert events[-1].type == "rejected" and events[-1].payload["reason"] == "not a medical topic"
+
+
+async def test_done_review_records_prompt_and_model_versions(session_factory, redis):
+    async def fin(state: ReviewState) -> dict:
+        return {"result": {"summary": "s", "prompt_version": "pv1", "models": {"synthesizer": "m"}}}
+
+    review = await _queued_review(session_factory)
+    sink = EventSink(session_factory, redis, 60)
+    assert await ReviewRunner(session_factory, sink, _single_node_graph(fin)).run(review.id) == "done"
+    async with session_factory() as s:
+        got = await ReviewRepository(s).get(review.id)
+    assert got.prompt_version == "pv1" and got.model_versions == {"synthesizer": "m"}
+
+
+async def test_every_event_carries_elapsed_seconds(session_factory, redis):
+    review = await _queued_review(session_factory)
+    sink = EventSink(session_factory, redis, 60)
+    graph = build_graph(GraphDeps(settings=Settings(_env_file=None)), checkpointer=InMemorySaver())
+    await ReviewRunner(session_factory, sink, graph).run(review.id)
+    async with session_factory() as s:
+        events = await EventRepository(s).list_since(review.id, 0)
+    assert all(isinstance(e.payload.get("elapsed_s"), float) and e.payload["elapsed_s"] >= 0 for e in events)

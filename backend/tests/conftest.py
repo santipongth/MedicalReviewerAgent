@@ -84,3 +84,18 @@ async def client(app):
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+from tests.fake_anthropic import FakeAnthropicServer
+
+
+@pytest.fixture
+def fake_anthropic():
+    server = FakeAnthropicServer().start()
+    yield server
+    server.stop()
+
+
+def pytest_runtest_setup(item):
+    if "live" in item.keywords and not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
+        pytest.skip("live test: set OPENROUTER_API_KEY (or ANTHROPIC_API_KEY)")

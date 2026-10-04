@@ -1,17 +1,36 @@
 # Medical Reviewer Agent
 
-Public literature-review agent: type a disease / drug / topic → the agent searches PubMed, arXiv, Semantic Scholar, OpenAlex and CrossRef (via a self-hosted searxng-LDR-academic), screens ~100 candidates down to 10, reads abstracts and open-access full text, and produces a comparison table of agreeing / conflicting findings. Backend: Python + LangGraph + Claude. Exposed as a web app, a REST API and an MCP server.
+Public literature-review agent: type a disease / drug / topic → the agent interprets and refines your question, searches PubMed, arXiv, Semantic Scholar, OpenAlex and CrossRef (via a self-hosted searxng-LDR-academic), screens ~20 candidates down to the best 8, reads abstracts and open-access full text (Europe PMC, then a polite Crawl4AI service), and produces a comparison table of agreeing / conflicting findings with a GRADE-lite evidence rating. Backend: Python + LangGraph; LLMs via OpenRouter (models and presets in `backend/config/llm.yaml`). Exposed as a web app, a REST API and an MCP server.
 
 ## Quick start (Docker)
-1. `cp .env.example .env` and set `ANTHROPIC_API_KEY`, `CONTACT_EMAIL`, `SEARXNG_SECRET`.
-2. `docker compose up -d --build` (first build of SearXNG takes a few minutes).
+1. `cp .env.example .env` and set `CONTACT_EMAIL`, `SEARXNG_SECRET` and a random `CRAWL4AI_API_TOKEN` (`openssl rand -hex 32`).
+2. `docker compose up -d --build` (first build of SearXNG takes a few minutes; the Crawl4AI image is ~6 GB).
 3. `bash scripts/smoke.sh` — creates a review and tails its progress until `done`.
 4. API docs: http://localhost:8000/api/docs · SearXNG: http://localhost:8080
 5. More workers: `docker compose up -d --scale worker=3`
 
+Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE, worker) runs with a placeholder graph.
+
+## Running a real review
+1. Put `OPENROUTER_API_KEY` (or `ANTHROPIC_API_KEY` + `LLM_PRESET=claude_direct`) in `.env` and set `GRAPH_MODE=real`.
+   Choose or tune models in `backend/config/llm.yaml` (mounted read-only into the containers; restart the worker after
+   editing). Validate the file and see the estimated cost per review with
+   `docker compose run --rm worker python -m app.cli.models check`.
+2. `docker compose up -d --build`
+3. `bash scripts/smoke.sh "metformin and colorectal cancer risk"`. Progress events:
+   checking_topic → refining → question_refined → planning → searching → enriching → screening → screened →
+   reading/extracted ×8 → synthesizing → localizing → finalizing → done. Every event carries `elapsed_s`.
+4. The result's `quality` block reports number verification, model agreement, escalations and per-stage timings.
+5. Live LLM check: `cd backend && OPENROUTER_API_KEY=... uv run pytest -m live`
+
 ## Status
-Plan 1 (foundation) done: infra, API, queue, SSE, stub graph. Next: real search/extract/synthesize nodes (Plan 2), MCP (Plan 3), web dashboard (Plan 4), hardening (Plan 5). See `docs/superpowers/`.
+- Plan 1 (foundation) done: infra, API, queue, SSE, stub graph.
+- Plan 2 (review graph) done: question refinement, search, screening with second votes, evidence-grounded extraction,
+  checked synthesis pipeline, Thai/English output, Crawl4AI full text.
+- Next: MCP and integrations (Plan 3), web dashboard and interactive report (Plan 4), hardening (Plan 5).
+  See `docs/superpowers/`.
 
 ## Development
-See `CLAUDE.md` for commands. Unit tests need no services; integration tests need `docker compose up -d postgres redis searxng` and `MRA_INTEGRATION=1`.
+See `CLAUDE.md` for commands. Unit tests need no services; integration tests need
+`docker compose up -d postgres redis searxng crawl4ai`, `MRA_INTEGRATION=1` and `CRAWL4AI_API_TOKEN` exported.
 On a Windows host, run the dev API with `--loop app.compat:selector_loop_factory` (psycopg async cannot use the Proactor event loop).

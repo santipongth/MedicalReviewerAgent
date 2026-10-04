@@ -36,6 +36,7 @@ async def pg_session_factory():
 async def test_worker_runs_job_with_postgres_checkpointer(pg_session_factory, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", TEST_DB)
     monkeypatch.setenv("REDIS_URL", TEST_REDIS)
+    monkeypatch.setenv("GRAPH_MODE", "stub")  # plumbing test: never calls an LLM
     get_settings.cache_clear()
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 

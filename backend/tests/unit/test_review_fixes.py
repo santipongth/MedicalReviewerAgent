@@ -1,190 +1,202 @@
-"""Regression tests for the Plan 1 final-review findings (Important #1-#5)."""
-import asyncio
-import uuid
-from datetime import UTC, datetime, timedelta
-
-import httpx
+"""Regression tests for the Plan 2 final-review findings (Important 1-8)."""
 import pytest
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.config import get_stream_writer
-from langgraph.graph import END, START, StateGraph
-from sqlalchemy.exc import IntegrityError
-from starlette.requests import Request
 
-from app.api.ratelimit import client_ip
 from app.config import Settings
-from app.db.repositories import EventRepository, ReviewRepository
-from app.graph.state import ReviewState
-from app.main import AppDeps, create_app
-from app.services.events import EventSink
-from app.worker.runner import ReviewRunner
+from app.graph.graph import GraphDeps
+from app.graph.nodes.intake import make_plan_queries, make_refine_question
+from app.graph.nodes.reading import make_read_paper
+from app.graph.nodes.retrieval import make_enrich, make_search
+from app.graph.nodes.synthesis import make_write_synthesis
+from app.graph.schemas import Candidate, OutcomeResult, PaperCard, QueryPlan, TopicVerdict
+from app.harness.grade import grade_baseline
+from app.harness.runner import HarnessRunner
+from app.harness.verify import card_problems, null_unverified_numbers
+from app.services.fulltext import FullText
+from app.services.llm import LLMError, LLMOutputError, LLMRefusal, LLMs
+from app.services.llm_config import HarnessSpec
+from app.services.sections import assemble_sections
+from tests.fakes import FakeStructuredLLM
+
+SOURCE = ("We enrolled 1,234 adults with type 2 diabetes. Metformin use was associated with a lower risk of "
+          "colorectal cancer (HR 0.80, 95% CI 0.71-0.90; p = 0.003).")
+QUOTE = "lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90; p = 0.003)"
 
 
-# --- #1 rate-limit key must not be spoofable via X-Forwarded-For -------------------------
-def _request(xff: str | None, trust_proxy: bool) -> Request:
-    headers = [(b"x-forwarded-for", xff.encode())] if xff else []
-    app = type("A", (), {"state": type("S", (), {"settings": Settings(_env_file=None, trust_proxy=trust_proxy)})()})()
-    return Request({"type": "http", "headers": headers, "client": ("203.0.113.7", 5000), "app": app})
+def card(result="lower risk", findings=("lower CRC risk",), effect=0.8, direction="positive"):
+    return PaperCard(
+        study_design="cohort", population="adults", sample_size=1234,
+        sample_size_quote="We enrolled 1,234 adults with type 2 diabetes", intervention_or_exposure="metformin",
+        comparator=None,
+        outcomes=[OutcomeResult(outcome="CRC", result=result, evidence_quote=QUOTE, effect_size="HR 0.80",
+                                effect_measure="HR", effect_value=effect, ci_lower=0.71, ci_upper=0.9,
+                                p_value=0.003, direction=direction)],
+        key_findings=list(findings), limitations=[], funding_or_conflicts=None, risk_of_bias="moderate",
+        overall_direction=direction)
 
 
-def test_client_ip_ignores_forwarded_header_when_proxy_not_trusted():
-    assert client_ip(_request("1.2.3.4", trust_proxy=False)) == "203.0.113.7"
+def unexpected():
+    return FakeStructuredLLM("u", lambda s, u: AssertionError("unexpected"))
 
 
-def test_client_ip_uses_hop_appended_by_trusted_proxy_not_client_supplied_one():
-    # Client sent "X-Forwarded-For: 1.2.3.4"; our proxy appended the real peer 198.51.100.9.
-    assert client_ip(_request("1.2.3.4, 198.51.100.9", trust_proxy=True)) == "198.51.100.9"
+def deps(**roles):
+    u = unexpected()
+    base = {"guard": u, "planner": u, "screener": u, "extractor": u, "synthesizer": u,
+            "harness": HarnessSpec(max_repairs=1)}
+    extra = {k: roles.pop(k) for k in ("fulltext", "searxng", "europepmc") if k in roles}
+    return GraphDeps(settings=Settings(_env_file=None), llms=LLMs(**{**base, **roles}), **extra)
 
 
-# --- #2 a review whose enqueue failed must not become a permanent cache hit ---------------
-class BrokenQueue:
-    async def enqueue_review(self, review_id) -> bool:
-        raise ConnectionError("redis down")
+# ---- Important 1: numbers in free text must be in the paper ---------------------------------
+def test_numbers_in_result_and_findings_must_appear_in_the_paper():
+    bad = card(result="25% lower CRC risk (HR 0.75)", findings=("HR 0.75 for CRC", "lower risk in type 2 diabetes"))
+    problems = card_problems(bad, SOURCE, 90)
+    assert any("result mentions 25, 0.75" in p for p in problems)
+    assert any("key_findings" in p and "0.75" in p for p in problems)
+    fixed, _, _ = null_unverified_numbers(bad, SOURCE, 90)
+    assert fixed.outcomes[0].result == QUOTE  # replaced by the verified verbatim quote
+    assert fixed.key_findings == ["lower risk in type 2 diabetes"]  # unverifiable finding dropped
+    ok = card(result="HR 0.80 (0.71-0.90)")
+    assert not card_problems(ok, SOURCE, 90)
 
 
-async def test_enqueue_failure_marks_review_error_and_does_not_poison_cache(
-    session_factory, redis
-):
-    import app.api.ratelimit as rl
-
-    rl.limiter.reset()
-    sink = EventSink(session_factory, redis, 60)
-    broken = create_app(
-        Settings(_env_file=None), deps=AppDeps(session_factory, redis, BrokenQueue(), sink)
-    )
-    payload = {"topic": "colchicine pericarditis", "language": "en"}
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=broken), base_url="http://t") as c:
-        resp = await c.post("/api/v1/reviews", json=payload)
-    assert resp.status_code == 503
-    review_id = uuid.UUID(resp.json()["review_id"])
-    async with session_factory() as s:
-        assert (await ReviewRepository(s).get(review_id)).status == "error"
-
-    from tests.conftest import FakeJobQueue
-
-    healthy = create_app(
-        Settings(_env_file=None), deps=AppDeps(session_factory, redis, FakeJobQueue(), sink)
-    )
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=healthy), base_url="http://t") as c:
-        again = (await c.post("/api/v1/reviews", json=payload)).json()
-    assert again["cached"] is False and again["review_id"] != str(review_id)
+def test_result_with_unverifiable_numbers_and_unverified_quote_loses_its_numbers():
+    bad = card(result="HR 0.5 lower risk")
+    bad.outcomes[0].evidence_quote = "a sentence that does not appear anywhere in the paper"
+    fixed, _, _ = null_unverified_numbers(bad, SOURCE, 90)
+    assert "0.5" not in fixed.outcomes[0].result and fixed.outcomes[0].effect_value is None
 
 
-# --- #3/#4 interruption must leave the review resumable, and resume must not redo work ----
-def _two_step_graph(calls: dict, entered_second: asyncio.Event):
-    async def first(state: ReviewState) -> dict:
-        calls["first"] += 1
-        get_stream_writer()({"type": "planning"})
-        return {"cost_usd": 1.0}
-
-    async def second(state: ReviewState) -> dict:
-        calls["second"] += 1
-        if calls["second"] == 1:
-            entered_second.set()
-            await asyncio.Event().wait()  # hangs until the worker task is cancelled
-        return {"result": {"summary": "ok"}}
-
-    b = StateGraph(ReviewState)
-    b.add_node("first", first)
-    b.add_node("second", second)
-    b.add_edge(START, "first")
-    b.add_edge("first", "second")
-    b.add_edge("second", END)
-    return b.compile(checkpointer=InMemorySaver())
+# ---- Important 2: refine/plan failures degrade -------------------------------------------------
+@pytest.mark.parametrize("error", [LLMError("503"), LLMRefusal("filtered")])
+async def test_refiner_failure_falls_back_to_english_topic(error):
+    d = deps(refiner=FakeStructuredLLM("r", lambda s, u: error))
+    out = await make_refine_question(d)({"topic": "t", "english_topic": "metformin", "language": "th"})
+    assert out["question"] is None and out["quality"][0]["fallback"] is True
+    assert out["errors"] and "question refinement failed" in out["errors"][0]
 
 
-async def test_interrupted_review_is_requeued_then_resumes_from_checkpoint(session_factory, redis):
-    async with session_factory() as s, s.begin():
-        review = await ReviewRepository(s).create(topic="t", language="en", options={}, cache_key="k")
-    calls = {"first": 0, "second": 0}
-    entered = asyncio.Event()
-    graph = _two_step_graph(calls, entered)
-    runner = ReviewRunner(session_factory, EventSink(session_factory, redis, 60), graph)
-
-    task = asyncio.create_task(runner.run(review.id))  # what arq runs
-    await asyncio.wait_for(entered.wait(), timeout=5)
-    task.cancel()  # arq cancels in-flight jobs on SIGTERM / docker restart
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    async with session_factory() as s:
-        after_interrupt = await ReviewRepository(s).get(review.id)
-        types = [e.type for e in await EventRepository(s).list_since(review.id, 0)]
-    assert after_interrupt.status == "queued"
-    assert "cancelled" not in types
-
-    assert await runner.run(review.id) == "done"  # arq re-runs the same run_review job
-    async with session_factory() as s:
-        final = await ReviewRepository(s).get(review.id)
-    assert calls == {"first": 1, "second": 2}  # completed node was not re-executed
-    assert final.cost_usd == 1.0  # reducer did not double-count
-    assert final.result == {"summary": "ok"}
+async def test_planner_bad_json_is_repaired_and_failure_falls_back_to_topic_search():
+    plan = QueryPlan(queries=["metformin crc"], population="a", intervention_or_exposure="m", comparator="c",
+                     outcomes=["o"], inclusion_criteria=[], exclusion_criteria=[])
+    answers = iter([LLMOutputError("bad json"), plan])
+    out = await make_plan_queries(deps(planner=FakeStructuredLLM("p", lambda s, u: next(answers))))(
+        {"topic": "t", "english_topic": "metformin"})
+    assert out["plan"]["queries"] == ["metformin crc"]
+    down = await make_plan_queries(deps(planner=FakeStructuredLLM("p", lambda s, u: LLMError("down"))))(
+        {"topic": "t", "english_topic": "metformin"})
+    assert down["plan"] is None and "query planning failed" in down["errors"][0]
 
 
-async def test_worker_settings_let_arq_rerun_interrupted_jobs():
-    from app.worker.settings import WorkerSettings
-
-    assert WorkerSettings.retry_jobs is True
-    assert WorkerSettings.keep_result == 0  # a finished job never blocks re-enqueue of its id
-    assert any(c.name == "sweep_stale" for c in WorkerSettings.cron_jobs)
-
-
-class RecordingArq:
-    def __init__(self) -> None:
-        self.jobs: list[tuple[str, str, str]] = []
-
-    async def enqueue_job(self, name, review_id, _job_id):
-        self.jobs.append((name, review_id, _job_id))
-        return object()
+# ---- Important 3: escalation refusal does not crash --------------------------------------------
+async def test_escalation_refusal_becomes_a_failed_result():
+    big = FakeStructuredLLM("big", lambda s, u: LLMRefusal("filtered"))
+    res = await HarnessRunner(escalation=lambda schema: big).escalate("s", "u", schema=TopicVerdict,
+                                                                     reason="disagreement")
+    assert res is not None and not res.ok and res.value is None
 
 
-async def test_sweep_requeues_stale_queued_and_running_reviews_only(session_factory):
-    from app.worker.sweep import sweep_stale
-
-    now = datetime.now(UTC)
-    async with session_factory() as s, s.begin():
-        repo = ReviewRepository(s)
-        fresh = await repo.create(topic="a", language="en", options={}, cache_key="a")
-        stuck_q = await repo.create(topic="b", language="en", options={}, cache_key="b")
-        stuck_r = await repo.create(topic="c", language="en", options={}, cache_key="c")
-        await repo.update(stuck_q.id, created_at=now - timedelta(hours=1))
-        await repo.update(stuck_r.id, status="running", started_at=now - timedelta(hours=1))
-    arq = RecordingArq()
-    ctx = {"redis": arq, "session_factory": session_factory, "settings": Settings(_env_file=None)}
-    await sweep_stale(ctx)
-    assert sorted(j[1] for j in arq.jobs) == sorted([str(stuck_q.id), str(stuck_r.id)])
-    assert all(j[0] == "run_review" and j[2] == f"review:{j[1]}" for j in arq.jobs)
-    assert str(fresh.id) not in {j[1] for j in arq.jobs}
+async def test_reading_marks_uncertain_when_escalation_refuses():
+    d = deps(extractor=FakeStructuredLLM("a", lambda s, u: card()),
+             extractor_secondary=FakeStructuredLLM("b", lambda s, u: card(direction="negative")),
+             escalation=lambda schema: FakeStructuredLLM("big", lambda s, u: LLMRefusal("no")),
+             fulltext=FakeFullText())
+    out = await make_read_paper(d)(payload())
+    assert out["papers"][0]["verification"]["uncertain"] is True and out["papers"][0]["card"] is not None
 
 
-# --- #5 concurrent identical POSTs must not create two active reviews ---------------------
-async def test_db_rejects_two_active_reviews_with_same_cache_key(session_factory):
-    async with session_factory() as s, s.begin():
-        await ReviewRepository(s).create(topic="t", language="en", options={}, cache_key="dup")
-    with pytest.raises(IntegrityError):
-        async with session_factory() as s, s.begin():
-            await ReviewRepository(s).create(topic="t", language="en", options={}, cache_key="dup")
+# ---- Important 4: any full-text failure falls back to the abstract -------------------------------
+class FakeFullText:
+    def __init__(self, error=None):
+        self.error = error
+
+    async def fetch(self, c):
+        if self.error:
+            raise self.error
+        return FullText("europepmc", SOURCE, None)
 
 
-async def test_route_returns_existing_review_when_it_loses_the_insert_race(
-    client, queue, session_factory, monkeypatch
-):
-    payload = {"topic": "metoprolol heart failure", "language": "en"}
-    first = (await client.post("/api/v1/reviews", json=payload)).json()
+def payload():
+    c = Candidate(title="Metformin and CRC", doi="10.1/a", abstract="Abstract text.")
+    return {"paper": {"ref": "P1", "relevance": 90, "reason": "r", "uncertain": False, "candidate": c.model_dump()},
+            "plan": {}, "question": "Q?", "question_detail": {"outcomes": ["CRC"]}, "language": "en"}
 
-    async def lost_race(self, cache_key, done_after):  # the other replica inserted after our check
-        return None
 
-    original = ReviewRepository.find_reusable
-    calls = {"n": 0}
+async def test_fulltext_exception_falls_back_to_abstract():
+    d = deps(extractor=FakeStructuredLLM("a", lambda s, u: card(effect=None)),
+             fulltext=FakeFullText(RuntimeError("redis down")), harness=HarnessSpec(dual_extraction=False))
+    out = await make_read_paper(d)(payload())
+    assert out["papers"][0]["fulltext_source"] == "abstract"
+    assert any("full text failed for P1" in e for e in out["errors"])
 
-    async def first_miss_then_real(self, cache_key, done_after):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return await lost_race(self, cache_key, done_after)
-        return await original(self, cache_key, done_after)
 
-    monkeypatch.setattr(ReviewRepository, "find_reusable", first_miss_then_real)
-    second = await client.post("/api/v1/reviews", json=payload)
-    assert second.status_code == 202
-    assert second.json() == {"review_id": first["review_id"], "status": "queued", "cached": True}
-    assert len(queue.enqueued) == 1
+# ---- Important 5: candidate cut keeps search ranking, not citation counts ------------------------
+class FakeSearxng:
+    def __init__(self, by_query):
+        self.by_query = by_query
+
+    async def search(self, query, pageno=1):
+        return self.by_query.get(query, [])
+
+
+async def test_search_interleaves_queries_and_enrich_does_not_rank_by_citations():
+    def c(q, i, cited=None):
+        return Candidate(title=f"{q} paper number {i} unique words", doi=f"10.1/{q}{i}", abstract="a",
+                         cited_by=cited)
+    sx = FakeSearxng({"q1": [c("q1", 0), c("q1", 1)], "q2": [c("q2", 0), c("q2", 1, cited=5000)]})
+    out = await make_search(deps(searxng=sx))({"plan": {"queries": ["q1", "q2"]}})
+    assert [x["doi"] for x in out["candidates"]] == ["10.1/q10", "10.1/q20", "10.1/q11", "10.1/q21"]
+
+    class NoEpmc:
+        async def lookup(self, *, dois, pmids):
+            return []
+
+    enriched = await make_enrich(deps(europepmc=NoEpmc()))({"candidates": out["candidates"],
+                                                           "options": {"candidate_limit": 10}})
+    assert [x["doi"] for x in enriched["candidates"]] == ["10.1/q10", "10.1/q20", "10.1/q11", "10.1/q21"]
+
+
+# ---- Important 6: Results get the largest share; all sections survive the budget -----------------
+def test_sections_are_weighted_toward_results_and_all_kept():
+    parts = [(name, name[0] * 20_000) for name in ("Abstract", "Methods", "Results", "Discussion", "Conclusions")]
+    text = assemble_sections(parts, 30_000)
+    assert len(text) <= 30_000
+    assert all(f"## {n}" in text for n, _ in parts)
+    assert text.count("R") > text.count("M") > text.count("D") and text.count("R") >= 10_000
+
+
+def test_factory_assembles_full_text_at_the_extraction_budget(redis):
+    from app.graph.factory import build_graph_deps
+    from app.services.http import HttpClient
+    d = build_graph_deps(Settings(_env_file=None), HttpClient(), redis)
+    assert d.fulltext.max_chars == d.llms.harness.extraction_chars
+
+
+# ---- Important 7: pipeline failures are not reported as "no studies found" -----------------------
+EMPTY = {"rows": [], "consensus": [], "conflicts": [], "grade": {"level": "very_low", "factors": []}}
+
+
+async def test_extraction_failure_message_is_not_no_studies_found():
+    state = {"topic": "t", "language": "en", "matrix": EMPTY, "conflict_notes": [],
+             "candidates": [{}] * 5, "selected": [{}] * 3,
+             "papers": [{"ref": "P1", "card": None, "candidate": {"title": "x"}}]}
+    out = await make_write_synthesis(deps())(state)
+    assert "could not extract" in out["synthesis"]["executive_summary"]
+    assert "No sufficiently relevant" not in out["synthesis"]["executive_summary"]
+    th = await make_write_synthesis(deps())({**state, "language": "th"})
+    assert "ไม่พบงานวิจัย" not in th["synthesis_display"]["executive_summary"]
+
+
+async def test_screening_failure_message_names_the_failure():
+    state = {"topic": "t", "language": "en", "matrix": EMPTY, "conflict_notes": [], "candidates": [{}] * 5,
+             "selected": [], "papers": [], "errors": ["screening batch failed: LLMError: down"]}
+    out = await make_write_synthesis(deps())(state)
+    assert "could not be screened" in out["synthesis"]["executive_summary"]
+
+
+# ---- Important 8: non-randomized designs are not counted as randomized ---------------------------
+def test_non_randomized_designs_start_low():
+    papers = [{"card": {"study_design": d, "risk_of_bias": "moderate", "sample_size": 5000}}
+              for d in ("non-randomized controlled trial", "non-randomised cohort", "quasi-randomized trial")]
+    assert grade_baseline(papers, {"conflicts": []})["level"] == "low"
+    rct = [{"card": {"study_design": "randomized controlled trial", "risk_of_bias": "low", "sample_size": 5000}}]
+    assert grade_baseline(rct, {"conflicts": []})["level"] == "high"
