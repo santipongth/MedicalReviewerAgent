@@ -7,12 +7,12 @@ from langgraph.graph import END
 
 from app.graph import prompts
 from app.graph.progress import progress_writer
-from app.graph.schemas import QueryPlan, QuestionCritique, ReviewQuestion
+from app.graph.schemas import QueryPlan, QuestionCritique, ReviewQuestion, TopicVerdict
 from app.graph.state import ReviewState
 from app.harness.localize import localize_strings
 from app.harness.question import question_problems
 from app.harness.runner import HarnessRunner
-from app.services.llm import LLMError, LLMRefusal
+from app.services.llm import LLMError, LLMOutputError, LLMRefusal
 from app.services.llm_config import HarnessSpec
 
 MAX_QUERIES = 4
@@ -42,13 +42,17 @@ def make_topic_guard(deps):
     async def topic_guard(state: ReviewState) -> dict:
         progress_writer()({"type": "checking_topic"})
         try:
-            res = await deps.llms.guard.ainvoke(prompts.GUARD_SYSTEM, prompts.guard_user(state["topic"]))
+            # Through the harness: a malformed answer is repaired (then escalated) instead of failing the review.
+            res = await harness_runner(deps).call(deps.llms.guard, prompts.GUARD_SYSTEM,
+                                                  prompts.guard_user(state["topic"]), schema=TopicVerdict)
         except LLMRefusal:
             return {"rejected": "The topic was declined by the safety filter."}
+        if res.value is None:
+            raise LLMOutputError(f"topic check failed: {'; '.join(res.problems) or 'no valid answer'}")
         if not res.value.allowed:
             return {"rejected": res.value.reason or "The topic is not a biomedical research question.",
-                    "cost_usd": res.cost_usd}
-        return {"english_topic": res.value.english_topic or state["topic"], "cost_usd": res.cost_usd}
+                    "cost_usd": res.cost}
+        return {"english_topic": res.value.english_topic or state["topic"], "cost_usd": res.cost}
 
     return topic_guard
 

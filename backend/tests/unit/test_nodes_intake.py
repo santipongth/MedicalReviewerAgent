@@ -68,3 +68,13 @@ async def test_plan_queries_dedupes_caps_and_passes_options():
 
 def test_language_instruction():
     assert "Thai" in language_instruction("th") and "English" in language_instruction("en")
+
+
+async def test_guard_repairs_a_malformed_answer_instead_of_failing_the_review():
+    from app.services.llm import LLMOutputError
+    answers = iter([LLMOutputError("1 validation error for TopicVerdict: allowed Field required"),
+                    TopicVerdict(allowed=True, reason="ok", english_topic="statins and dementia")])
+    guard = FakeStructuredLLM("q", lambda s, u: next(answers))
+    out = await make_topic_guard(_deps(_llms(guard=guard)))({"topic": "statins and dementia", "language": "th"})
+    assert out["english_topic"] == "statins and dementia" and len(guard.calls) == 2
+    assert "allowed Field required" in guard.calls[1][1]  # the exact problem is fed back

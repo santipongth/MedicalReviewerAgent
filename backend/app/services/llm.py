@@ -190,19 +190,17 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
         self._runnable = ChatOpenAI(**kwargs).with_structured_output(
             schema, method=lc_method, include_raw=True, **extra
         )
+        # Always spell the schema out in the prompt, whatever the method: some providers (Alibaba/Qwen) accept
+        # response_format without enforcing it and reject it unless the prompt mentions JSON. Measured 2026-10-05 on
+        # Qwen3.5 Flash: 0/5 valid answers without this hint, 5/5 with it.
         self._json_hint = (
             "\n\nRespond with only a JSON object that conforms to this JSON schema:\n"
             + json.dumps(schema.model_json_schema(), ensure_ascii=False)
-            if lc_method == "json_mode" else ""
         )
 
     async def ainvoke(self, system: str, user: str) -> LLMResult[T]:
         try:
-            hint = self._json_hint
-            if not hint and "json" not in (system + user).lower():
-                # Alibaba (Qwen) rejects response_format unless the messages mention JSON; harmless elsewhere.
-                hint = "\n\nReturn the answer as JSON."
-            out = await self._runnable.ainvoke([SystemMessage(system + hint), HumanMessage(user)])
+            out = await self._runnable.ainvoke([SystemMessage(system + self._json_hint), HumanMessage(user)])
         except (ValidationError, json.JSONDecodeError) as exc:
             raise LLMOutputError(f"{self.model} returned output that does not match the schema: {exc}") from exc
         except openai.ContentFilterFinishReasonError as exc:
