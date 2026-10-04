@@ -197,6 +197,9 @@ def conflict_user(*, question: str, conflict: dict[str, Any], papers: list[dict[
 NARRATIVE_SYSTEM = """You are a senior clinical methodologist writing the narrative part of a rapid evidence synthesis.
 The comparison table, the consensus/conflict analysis and a GRADE-lite baseline were computed already from verified
 paper cards; build on them and do not contradict them.
+- Evidence tiers: cards with design_category sr_ma_* are pooled analyses (systematic reviews/meta-analyses). Lead with
+  their pooled estimates; primary studies that such reviews probably include are not independent confirmation, so
+  never count them as additional agreeing studies (say "consistent with" instead).
 - executive_summary: 4-8 English sentences that answer the review question and each sub-question, citing the
   supporting papers inline like [P3] or [P1, P4]. Mention conflicts where they exist.
 - evidence_strength: start from the GRADE-lite baseline; you may move at most one level, and only with a reason.

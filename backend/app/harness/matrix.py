@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from app.graph.schemas import OutcomeCluster, OutcomeClusters, OutcomeMember
+from app.harness.design import POOLED_CATEGORIES
 from app.services.text import normalize_title
 
 DIRECTIONS = ("positive", "negative", "null")
@@ -101,6 +102,8 @@ def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters) -> dic
                 "ref": member.ref, "finding": outcome["result"], "direction": outcome["direction"],
                 "effect_measure": outcome.get("effect_measure"), "effect_value": outcome.get("effect_value"),
                 "ci_lower": outcome.get("ci_lower"), "ci_upper": outcome.get("ci_upper"),
+                "design_category": card.get("design_category"),
+                "pooled": card.get("design_category") in POOLED_CATEGORIES,  # SR/MA: may include the primary studies
             })
         if cells:
             rows.append({"outcome": cluster.canonical, "cells": cells})

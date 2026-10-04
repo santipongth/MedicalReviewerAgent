@@ -101,3 +101,28 @@ def test_real_splits_are_still_conflicts():
     assert two_agree["consensus"][0]["refs"] == ["P1", "P2"] and two_agree["conflicts"] == []
     _, three = _row(["positive", "positive", "null"])  # 67 % < 70 %
     assert three["conflicts"] and not three["consensus"]
+
+
+def _pooled(ref, direction="positive"):
+    p = paper(ref, [("CRC", direction, 0.8)], n=None)
+    p["card"]["design_category"] = "sr_ma_rct"
+    return p
+
+
+def test_cells_say_which_studies_are_pooled():
+    papers = [_pooled("P1"), paper("P2", [("CRC", "positive", 0.7)])]
+    m = build_matrix(papers, fallback_clusters(papers))
+    cells = {c["ref"]: c for c in m["rows"][0]["cells"]}
+    assert cells["P1"]["pooled"] is True and cells["P2"]["pooled"] is False
+    assert cells["P1"]["design_category"] == "sr_ma_rct"
+
+
+def test_grade_starts_from_pooled_evidence_and_flags_overlap():
+    papers = [_pooled("P1"), _pooled("P2")] + [paper(f"P{i}", [("CRC", "positive", 0.8)]) for i in range(3, 6)]
+    m = build_matrix(papers, fallback_clusters(papers))
+    g = grade_baseline(papers, m)
+    assert g["level"] == "high"  # 2 SR/MA of RCTs, pooled sample sizes not reported: not called imprecise
+    assert any("pooled" in f and "overlap" in f for f in g["factors"])
+    primary_only = [paper(f"P{i}", [("CRC", "positive", 0.8)]) for i in range(1, 4)]
+    g2 = grade_baseline(primary_only, build_matrix(primary_only, fallback_clusters(primary_only)))
+    assert g2["level"] == "low" and not any("pooled" in f for f in g2["factors"])  # unchanged without SR/MA

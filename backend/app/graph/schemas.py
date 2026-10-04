@@ -193,6 +193,8 @@ class ComparisonCell(BaseModel):
     effect_value: float | None = None
     ci_lower: float | None = None
     ci_upper: float | None = None
+    design_category: str | None = None
+    pooled: bool = False  # from a systematic review / meta-analysis (may overlap with primary studies)
 
 
 class ComparisonRow(BaseModel):

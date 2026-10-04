@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.harness.design import POOLED_CATEGORIES
+
 LEVELS = ("very_low", "low", "moderate", "high")
 RANDOMIZED = ("randomi", "rct", "controlled trial", "meta-analysis of randomized")
 NOT_RANDOMIZED = re.compile(r"non[- ]?randomi|quasi|observational|uncontrolled|single[- ]arm", re.IGNORECASE)
@@ -23,6 +25,13 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     if not cards:
         return {"level": "very_low", "factors": ["no extracted studies"]}
     factors: list[str] = []
+    pooled = [c for c in cards if c.get("design_category") in POOLED_CATEGORIES]
+    if pooled:
+        # Systematic reviews / meta-analyses usually already contain the primary studies found alongside them, so the
+        # body of evidence is graded from the pooled tier instead of counting both as independent.
+        factors.append(f"graded from pooled evidence: {len(pooled)} systematic review(s)/meta-analysis(es); "
+                       f"{len(cards) - len(pooled)} primary stud(ies) may overlap with them")
+        cards = pooled
     randomized = sum(1 for c in cards if is_randomized(c))
     if randomized / len(cards) > 0.5:
         level = LEVELS.index("high")
@@ -41,7 +50,9 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     if dissenting:  # a small minority disagreeing is reported, not downgraded
         factors.append(f"minor inconsistency: {len(dissenting)} outcome(s) with a dissenting minority")
     total_n = sum(c.get("sample_size") or 0 for c in cards)
-    if total_n < 400:
+    if pooled and total_n == 0:
+        factors.append("imprecision not assessed: pooled sample sizes not reported in the abstracts")
+    elif total_n < 400:
         level -= 1
         factors.append(f"imprecision: total sample size {total_n}")
     return {"level": LEVELS[max(level, 0)], "factors": factors}

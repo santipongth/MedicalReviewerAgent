@@ -37,6 +37,8 @@ export function Report({ review }: { review: Review }) {
   const papers = useMemo(() => result.papers ?? [], [result.papers]);
   const byRef = useMemo(() => new Map(papers.map((p) => [p.ref, p])), [papers]);
   const refs = useMemo(() => new Set(papers.map((p) => p.ref)), [papers]);
+  const pooledRefs = useMemo(() => new Set(papers.filter((p) => (p.card_en ?? p.card)?.design_category?.startsWith("sr_ma"))
+    .map((p) => p.ref)), [papers]);
   const rows = useMemo(() => (synthesis.comparison?.length ? synthesis.comparison : showEn ? result.synthesis?.comparison ?? [] : []), [synthesis.comparison, showEn, result.synthesis?.comparison]);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const visible = useMemo(() => filterPapers(papers, filters), [papers, filters]);
@@ -105,6 +107,7 @@ export function Report({ review }: { review: Review }) {
             <section aria-labelledby="h-matrix">
               <h2 id="h-matrix" className="mb-3 text-lg font-semibold">{L(lang, "ผลแต่ละการศึกษา", "Findings by study")}</h2>
               {visibleRows.length ? <ComparisonMatrix rows={visibleRows} refs={matrixRefs} lang={lang} onSelect={select} selected={active ?? undefined}
+                pooledRefs={pooledRefs}
                 outcomeOf={(row, ref) => outcomeFor(byRef.get(ref), row, ref)} /> : <p className="text-[0.9rem] text-muted">{L(lang, "ไม่มีงานวิจัยที่ตรงกับตัวกรอง", "No studies match the filters")}</p>}
               <MatrixLegend lang={lang} />
             </section>
