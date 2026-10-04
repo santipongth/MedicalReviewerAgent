@@ -120,7 +120,9 @@ def screen_user(*, english_topic: str, plan: dict[str, Any], items: list[tuple[s
 EXTRACT_SYSTEM = """You extract structured evidence from ONE research paper for a comparison table in a medical literature
 review. The paper text is its title and abstract only. Work in English (translation happens later). Report only what
 the abstract states.
-- For every outcome relevant to the review question, copy into evidence_quote the exact sentence(s) from the paper
+- List only outcomes the abstract actually reports for the review question (at most 6, most relevant first). Never
+  list an outcome of interest that the abstract does not mention: leave it out instead of returning an empty quote.
+- For every outcome you list, copy into evidence_quote the exact sentence(s) from the paper
   abstract that state the result and its numbers - verbatim, character for character, no paraphrase.
 - Numeric fields (effect_value, ci_lower, ci_upper, p_value) must be copied from that quote. If the paper does not
   report a number, use null and effect_measure "none". Never compute, round or guess numbers.

@@ -63,6 +63,8 @@ class HarnessRunner:
 
         if trigger in self.escalate_on:
             esc = escalation_llm or (self.escalation(schema) if self.escalation else None)
+            if esc is not None and getattr(esc, "model", None) == getattr(llm, "model", object()):
+                esc = None  # the same model already failed here: escalating to it only repeats the cost
             if esc is not None:
                 escalated = await self._run_escalation(esc, system, user, validate)
                 escalated.cost += cost

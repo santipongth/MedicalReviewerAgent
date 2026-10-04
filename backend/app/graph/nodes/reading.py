@@ -73,6 +73,8 @@ def make_read_paper(deps):
         calls = [runner.call(deps.llms.extractor, system, user, schema=PaperCard, validate=validate,
                              trigger="verification_failed")]
         secondary_llm = getattr(deps.llms, "extractor_secondary", None) if spec.dual_extraction else None
+        if secondary_llm is not None and getattr(secondary_llm, "model", None) == getattr(deps.llms.extractor, "model", 0):
+            secondary_llm = None  # the same model twice is extra cost, not an independent cross-check
         if secondary_llm is not None:  # runs in parallel: costs money, not time
             calls.append(runner.call(secondary_llm, system, user, schema=PaperCard, validate=validate,
                                      trigger="secondary"))
