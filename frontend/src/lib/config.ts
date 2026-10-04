@@ -10,8 +10,10 @@ declare global {
 export const DEFAULT_API_URL = "http://localhost:8000";
 
 export function apiUrl(): string {
-  if (typeof window !== "undefined" && window.__MRA_CONFIG__?.apiUrl) {
-    return window.__MRA_CONFIG__.apiUrl.replace(/\/$/, "");
+  const configured = typeof window !== "undefined" ? window.__MRA_CONFIG__?.apiUrl : undefined;
+  if (configured) {
+    const url = configured.replace(/\/$/, "");
+    return url === "" ? window.location.origin : url; // "/" = same origin, behind the single-origin proxy (Caddy)
   }
   return (process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(/\/$/, "");
 }

@@ -1,0 +1,24 @@
+# Single public origin: the web app, the REST API (incl. SSE) and the MCP endpoint behind one address.
+# SITE_ADDRESS is ":80" for local use; set it to your domain (e.g. "reviews.example.org") for automatic HTTPS.
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		-Server
+	}
+
+	@backend path /api/* /mcp /mcp/*
+	handle @backend {
+		reverse_proxy api:8000 {
+			# Server-Sent Events: forward every event immediately instead of buffering.
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

@@ -88,7 +88,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend/config:/app/config:ro  # tune models without rebuilding
-    networks: [data, search]
+    networks: [data, search, edge]
 
   worker:
     image: mra/backend:dev
@@ -121,12 +121,35 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+    networks: [edge]
+
+  # Single public origin for the web app, REST/SSE and MCP (see infra/caddy/Caddyfile). In production publish only
+  # this service, set PUBLIC_API_URL=/ and TRUST_PROXY=true (the API then rate-limits real client addresses), and
+  # SITE_ADDRESS=your.domain for automatic HTTPS.
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${PUBLIC_PORT:-8088}:80"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    restart: unless-stopped
+    networks: [edge]  # not on "data": the proxy cannot reach Postgres or Redis
 
 volumes:
   pgdata:
   redisdata:
   searxngdata:
+  caddydata:
 
 networks:
   data: {}
   search: {}
+  edge: {}
