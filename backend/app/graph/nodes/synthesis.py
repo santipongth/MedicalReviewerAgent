@@ -70,6 +70,12 @@ def _with_cards(state: ReviewState) -> list[dict[str, Any]]:
     return [p for p in unique_papers(state) if p.get("card")]
 
 
+def _evidence(state: ReviewState) -> list[dict[str, Any]]:
+    """Papers that count as evidence: narrative reviews stay in the paper list but add no matrix cells, conflicts
+    or grade (they restate other studies)."""
+    return [p for p in _with_cards(state) if p["card"].get("design_category") != "narrative_review"]
+
+
 def _brief(p: dict[str, Any]) -> dict[str, Any]:
     """Compact paper card for multi-paper prompts (quotes dropped: they were verified already)."""
     card = copy.deepcopy(p["card"])
@@ -91,7 +97,7 @@ def _empty_synthesis(summary: str) -> dict[str, Any]:
 def make_normalize_outcomes(deps):
     async def normalize_outcomes(state: ReviewState) -> dict:
         started = time.perf_counter()
-        papers = _with_cards(state)
+        papers = _evidence(state)
         entry: dict[str, Any] = {"stage": "normalize", "fallback": False, "repaired": False}
         cost, errors = 0.0, []
         clusters: OutcomeClusters | None = None
@@ -125,7 +131,7 @@ def route_conflicts(state: ReviewState) -> list[Send] | str:
     conflicts = (state.get("matrix") or {}).get("conflicts") or []
     if not conflicts:
         return "write_synthesis"
-    by_ref = {p["ref"]: p for p in _with_cards(state)}
+    by_ref = {p["ref"]: p for p in _evidence(state)}
     question = review_question(state)
     return [Send("explain_conflict", {"conflict": c, "question": question,
                                       "papers": [_brief(by_ref[r]) for r in c["refs"] if r in by_ref]})
@@ -238,7 +244,7 @@ def make_write_synthesis(deps):
     async def write_synthesis(state: ReviewState) -> dict:
         started = time.perf_counter()
         language = state.get("language", "th")
-        papers = _with_cards(state)
+        papers = _evidence(state)
         if not papers:
             if state.get("selected"):
                 messages = EXTRACTION_FAILED

@@ -323,3 +323,12 @@ def test_quality_reports_snippet_only_candidates_excluded():
     q = summarize_quality([{"stage": "enrich", "snippet_only": 4, "seconds": 1.0}], None)
     assert q["snippet_only_excluded"] == 4
     assert summarize_quality([], None)["snippet_only_excluded"] == 0
+
+
+async def test_narrative_reviews_stay_listed_but_out_of_the_evidence():
+    review = {**card("CRC incidence", "negative"), "design_category": "narrative_review"}
+    papers = [paper("P1", card("CRC incidence")), paper("P2", card("CRC incidence")), paper("P3", review)]
+    out = await make_normalize_outcomes(deps())(state(papers))  # no normalizer: deterministic grouping
+    m = out["matrix"]
+    assert [c["ref"] for c in m["rows"][0]["cells"]] == ["P1", "P2"]  # the review adds no cell...
+    assert m["conflicts"] == []  # ...and no conflict

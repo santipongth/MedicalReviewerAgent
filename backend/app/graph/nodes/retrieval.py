@@ -11,6 +11,16 @@ from app.services.dedupe import merge_candidates
 
 # Papers are analysed from their abstracts, so a candidate needs one long enough to hold a result.
 MIN_ABSTRACT_CHARS = 150
+# Publication types (Europe PMC) that never carry study results; a retraction notice excludes a paper outright.
+NON_RESEARCH_TYPES = frozenset({"editorial", "letter", "comment", "news", "published erratum"})
+RETRACTED_TYPES = frozenset({"retracted publication", "retraction of publication"})
+
+
+def is_non_research(c: Candidate) -> bool:
+    types = {t.strip().lower() for t in c.pub_types}
+    return bool(types & RETRACTED_TYPES) or (bool(types) and types <= NON_RESEARCH_TYPES)
+
+
 # A search-engine snippet only counts as the abstract when it is long and not visibly cut off.
 MIN_SNIPPET_CHARS = 600
 
@@ -73,6 +83,8 @@ def make_enrich(deps):
         unique = len(enriched)
         if options.year_from:
             enriched = [c for c in enriched if c.year is None or c.year >= options.year_from]
+        non_research = sum(1 for c in enriched if is_non_research(c))
+        enriched = [c for c in enriched if not is_non_research(c)]
         snippet_only = sum(1 for c in enriched if c.abstract_source == "snippet" and not usable_abstract(c)
                            and len((c.abstract or "").strip()) >= MIN_ABSTRACT_CHARS)
         enriched = [c for c in enriched if usable_abstract(c)]
@@ -80,7 +92,7 @@ def make_enrich(deps):
         progress_writer()({"type": "enriching", "candidates": len(kept)})
         return {"candidates": [c.model_dump() for c in kept], "errors": errors,
                 "search_stats": {**(state.get("search_stats") or {}), "unique": unique,
-                                 "with_abstract": len(enriched)},
+                                 "with_abstract": len(enriched), "non_research": non_research},
                 "quality": [{"stage": "enrich", "snippet_only": snippet_only,
                              "seconds": round(time.perf_counter() - started, 3)}]}
 

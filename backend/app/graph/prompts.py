@@ -97,7 +97,7 @@ def plan_user(*, topic: str, english_topic: str, options: dict[str, Any],
 
 
 SCREEN_SYSTEM = """You screen titles and abstracts for a literature review.
-For every candidate give relevance (0-100) to the review question and include=true only if it meets the inclusion criteria and none of the exclusion criteria. Prefer primary human studies (RCTs, cohort, case-control, cross-sectional) and systematic reviews/meta-analyses that report outcomes for the question; exclude off-topic papers, editorials, protocols without results and papers with no relevant outcome.
+For every candidate give relevance (0-100) to the review question and include=true only if it meets the inclusion criteria and none of the exclusion criteria. Prefer primary human studies (RCTs, cohort, case-control, cross-sectional) and systematic reviews/meta-analyses that report outcomes for the question; exclude off-topic papers, editorials, protocols without results, narrative (non-systematic) reviews unless nothing else addresses the question, and papers with no relevant outcome.
 Return exactly one decision per candidate, using the candidate's ref label exactly as given (e.g. "C3"). reason: one short English sentence."""
 
 
