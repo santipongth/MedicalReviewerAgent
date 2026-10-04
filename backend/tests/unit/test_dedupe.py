@@ -46,3 +46,12 @@ def test_titles_differing_only_in_numbers_stay_distinct():
 
 def test_empty_input():
     assert merge_candidates([]) == []
+
+
+def test_a_real_abstract_beats_a_longer_search_snippet():
+    epmc = Candidate(title="Official Title", doi="10.1/x", abstract="Background: the real abstract.",
+                     abstract_source="europepmc")
+    sx = Candidate(title="searx title", doi="10.1/x", abstract="a much longer search snippet that was cut off …",
+                   abstract_source="snippet")
+    m = merge_candidates([sx, epmc])[0]
+    assert m.abstract == "Background: the real abstract." and m.abstract_source == "europepmc"

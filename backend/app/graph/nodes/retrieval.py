@@ -11,6 +11,17 @@ from app.services.dedupe import merge_candidates
 
 # Papers are analysed from their abstracts, so a candidate needs one long enough to hold a result.
 MIN_ABSTRACT_CHARS = 150
+# A search-engine snippet only counts as the abstract when it is long and not visibly cut off.
+MIN_SNIPPET_CHARS = 600
+
+
+def usable_abstract(c: Candidate) -> bool:
+    text = (c.abstract or "").strip()
+    if len(text) < MIN_ABSTRACT_CHARS:
+        return False
+    if c.abstract_source == "snippet":
+        return len(text) >= MIN_SNIPPET_CHARS and not text.endswith(("…", "..."))
+    return True
 
 
 def make_search(deps):
@@ -62,12 +73,15 @@ def make_enrich(deps):
         unique = len(enriched)
         if options.year_from:
             enriched = [c for c in enriched if c.year is None or c.year >= options.year_from]
-        enriched = [c for c in enriched if c.abstract and len(c.abstract.strip()) >= MIN_ABSTRACT_CHARS]
+        snippet_only = sum(1 for c in enriched if c.abstract_source == "snippet" and not usable_abstract(c)
+                           and len((c.abstract or "").strip()) >= MIN_ABSTRACT_CHARS)
+        enriched = [c for c in enriched if usable_abstract(c)]
         kept = enriched[: options.candidate_limit]  # search rank order is kept
         progress_writer()({"type": "enriching", "candidates": len(kept)})
         return {"candidates": [c.model_dump() for c in kept], "errors": errors,
                 "search_stats": {**(state.get("search_stats") or {}), "unique": unique,
                                  "with_abstract": len(enriched)},
-                "quality": [{"stage": "enrich", "seconds": round(time.perf_counter() - started, 3)}]}
+                "quality": [{"stage": "enrich", "snippet_only": snippet_only,
+                             "seconds": round(time.perf_counter() - started, 3)}]}
 
     return enrich

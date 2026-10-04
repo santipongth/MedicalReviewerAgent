@@ -17,9 +17,13 @@ def parse_searxng_result(r: dict[str, Any]) -> Candidate | None:
     if isinstance(authors, str):
         authors = [a.strip() for a in authors.split(",") if a.strip()]
     engines = list(r.get("engines") or ([r["engine"]] if r.get("engine") else []))
+    abstract = strip_markup(r.get("content")) or None
+    # The arXiv engine returns the paper's full summary; other engines return a search snippet.
+    source = None if abstract is None else "arxiv" if engines == ["arxiv"] else "snippet"
     return Candidate(
         title=title,
-        abstract=strip_markup(r.get("content")) or None,
+        abstract=abstract,
+        abstract_source=source,
         doi=normalize_doi(r.get("doi")),
         pmid=pmid_from_url(url),
         arxiv_id=arxiv_id_from_url(url),

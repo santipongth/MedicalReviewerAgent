@@ -33,7 +33,11 @@ def _combine(group: list[Candidate]) -> Candidate:
     for name in SCALARS:
         fields[name] = next((getattr(c, name) for c in group if getattr(c, name)), None)
     fields["title"] = fields["title"] or group[0].title
-    fields["abstract"] = max((c.abstract for c in group if c.abstract), key=len, default=None)
+    # A curated abstract beats a (possibly truncated) search snippet even when the snippet is longer.
+    best = max((c for c in group if c.abstract), key=lambda c: (c.abstract_source != "snippet", len(c.abstract)),
+               default=None)
+    fields["abstract"] = best.abstract if best else None
+    fields["abstract_source"] = best.abstract_source if best else None
     fields["authors"] = next((c.authors for c in group if c.authors), [])
     fields["engines"] = sorted({e for c in group for e in c.engines})
     fields["pub_types"] = list(dict.fromkeys(t for c in group for t in c.pub_types))

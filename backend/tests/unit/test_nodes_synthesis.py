@@ -316,3 +316,10 @@ async def test_missing_optional_roles_use_deterministic_paths():
 async def test_localize_without_localizer_keeps_english(language):
     out = await make_localize(deps())(state([], synthesis={"executive_summary": "x"}, language=language))
     assert out["synthesis_display"] == {"executive_summary": "x"}
+
+
+def test_quality_reports_snippet_only_candidates_excluded():
+    from app.harness.quality import summarize_quality
+    q = summarize_quality([{"stage": "enrich", "snippet_only": 4, "seconds": 1.0}], None)
+    assert q["snippet_only_excluded"] == 4
+    assert summarize_quality([], None)["snippet_only_excluded"] == 0

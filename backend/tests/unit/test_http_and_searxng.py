@@ -116,3 +116,12 @@ async def test_searxng_client_passes_per_request_timeout():
     http = RecordingHttp()
     await SearxngClient(http, "http://searxng:8080", "pubmed", timeout=8.0).search("q")
     assert http.kwargs["timeout"] == 8.0
+
+
+def test_searxng_content_is_a_snippet_except_arxiv_summaries():
+    from app.services.searxng import parse_searxng_result
+    pubmed = parse_searxng_result({"title": "A cohort study", "content": "Some text", "engines": ["pubmed"]})
+    arxiv = parse_searxng_result({"title": "A preprint", "content": "Full summary", "engines": ["arxiv"],
+                                  "url": "https://arxiv.org/abs/2401.00001"})
+    assert pubmed.abstract_source == "snippet" and arxiv.abstract_source == "arxiv"
+    assert parse_searxng_result({"title": "No content", "engines": ["pubmed"]}).abstract_source is None

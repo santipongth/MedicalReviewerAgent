@@ -23,6 +23,7 @@ def parse_epmc_result(r: dict[str, Any]) -> Candidate:
     return Candidate(
         title=strip_markup(r.get("title")).rstrip("."),
         abstract=strip_markup(r.get("abstractText")) or None,
+        abstract_source="europepmc" if r.get("abstractText") else None,
         doi=normalize_doi(r.get("doi")),
         pmid=r.get("pmid"),
         pmcid=r.get("pmcid"),

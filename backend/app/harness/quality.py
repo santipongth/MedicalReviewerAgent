@@ -47,6 +47,7 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
         "agreement_mean": _r(sum(agreements) / len(agreements)) if agreements else None,
         "extraction_escalations": sum(1 for e in read if e.get("escalated")),
         "extraction_repairs": sum(1 for e in read if e.get("repaired")),
+        "snippet_only_excluded": sum(e.get("snippet_only", 0) for e in by_stage.get("enrich", [])),
         "screen_borderline": sum(e.get("borderline", 0) for e in screen),
         "screen_disagreements": sum(e.get("disagreements", 0) for e in screen),
         "screen_escalations": sum(e.get("escalated", 0) for e in screen),

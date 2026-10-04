@@ -88,3 +88,16 @@ async def test_enrich_tolerates_options_stored_under_the_old_ranges():
     out = await make_enrich(_deps(europepmc=FakeEpmc([])))(
         {"candidates": raw, "options": {"max_papers": 3, "candidate_limit": 10}})  # legal before Plan 5
     assert len(out["candidates"]) == 20  # clamped to the new minimum instead of crashing a resumed review
+
+
+async def test_enrich_does_not_treat_search_snippets_as_abstracts():
+    def c(i, text, source):
+        return Candidate(title=f"Paper {i} on metformin outcomes", doi=f"10.1/{i}", abstract=text,
+                         abstract_source=source).model_dump()
+    raw = [c(0, "y" * 400, "snippet"),                      # truncated search snippet: not an abstract
+           c(1, "z" * 700 + "…", "snippet"),                # long but visibly cut off
+           c(2, "w" * 700 + ".", "snippet"),                # long and complete: usable
+           c(3, ABSTRACT, "europepmc"), c(4, ABSTRACT, "arxiv")]
+    out = await make_enrich(_deps(europepmc=FakeEpmc([])))({"candidates": raw, "options": {}})
+    assert [x["doi"] for x in out["candidates"]] == ["10.1/2", "10.1/3", "10.1/4"]
+    assert out["search_stats"]["with_abstract"] == 3 and out["quality"][0]["snippet_only"] == 2
