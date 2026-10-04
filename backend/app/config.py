@@ -20,7 +20,8 @@ class Settings(BaseSettings):
 
     trust_proxy: bool = False
     ip_hash_salt: str = "change-me"
-    review_rate_limit: str = "5/hour"
+    review_rate_limit: str = "5/hour"  # anonymous callers, per IP
+    api_key_rate_limit: str = "60/hour"  # callers with an API key, per key
     max_topic_length: int = 300
     result_cache_ttl_seconds: int = 86400
     event_stream_ttl_seconds: int = 86400

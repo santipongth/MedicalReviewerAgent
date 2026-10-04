@@ -21,15 +21,23 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     settings = settings or get_settings()
     configure_logging(settings.log_level)
 
+    def complete(d: AppDeps) -> AppDeps:
+        from app.services.ratelimits import RateLimits
+        from app.services.review_service import ReviewService
+
+        d.limits = d.limits or RateLimits(settings.ratelimit_storage_uri)
+        d.service = d.service or ReviewService(d.session_factory, d.queue, d.event_sink, settings, d.limits)
+        return d
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if deps is not None:
-            app.state.deps = deps
+            app.state.deps = complete(deps)
             yield
             return
         from app.infra import build_runtime_deps, close_runtime_deps
 
-        runtime = await build_runtime_deps(settings)
+        runtime = complete(await build_runtime_deps(settings))
         app.state.deps = runtime
         try:
             yield
@@ -48,7 +56,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
     if deps is not None:
-        app.state.deps = deps
+        app.state.deps = complete(deps)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
