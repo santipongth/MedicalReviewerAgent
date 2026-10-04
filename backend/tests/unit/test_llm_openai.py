@@ -51,7 +51,8 @@ async def test_openrouter_request_shape_and_cost_from_usage(fake_openai):
     assert body["reasoning"] == {"effort": "high"}
     assert body["provider"] == {"require_parameters": True}
     assert body["models"] == ["deepseek/deepseek-v4-pro", "google/gemini-3.5-flash"]
-    assert body["messages"][0] == {"role": "system", "content": "You are a filter."}
+    # Alibaba (Qwen) rejects structured output unless the prompt mentions JSON, so the word is always present
+    assert body["messages"][0] == {"role": "system", "content": "You are a filter.\n\nReturn the answer as JSON."}
     assert fake_openai.headers[0]["x-title"] == "Medical Reviewer Agent"
     assert fake_openai.headers[0]["authorization"] == "Bearer sk-or-test"
 
@@ -149,3 +150,10 @@ def test_build_llms_wires_harness_roles_and_escalation_factory():
     assert esc.model == "qwen/qwen3.5-flash-02-23" and esc.schema is PaperCard
     assert llms.escalation(PaperCard) is esc  # cached per schema
     assert llms.harness.dual_extraction is True and llms.harness.max_repairs == 2
+
+
+async def test_prompt_that_already_mentions_json_is_left_alone(fake_openai):
+    fake_openai.replies.append(completion_body(OK, cost=0.0001))
+    llm = make(fake_openai, method="json_schema")
+    await llm.ainvoke("Answer in JSON.", "<topic>x</topic>")
+    assert fake_openai.requests[0]["messages"][0]["content"] == "Answer in JSON."

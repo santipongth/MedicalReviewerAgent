@@ -198,7 +198,11 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
 
     async def ainvoke(self, system: str, user: str) -> LLMResult[T]:
         try:
-            out = await self._runnable.ainvoke([SystemMessage(system + self._json_hint), HumanMessage(user)])
+            hint = self._json_hint
+            if not hint and "json" not in (system + user).lower():
+                # Alibaba (Qwen) rejects response_format unless the messages mention JSON; harmless elsewhere.
+                hint = "\n\nReturn the answer as JSON."
+            out = await self._runnable.ainvoke([SystemMessage(system + hint), HumanMessage(user)])
         except (ValidationError, json.JSONDecodeError) as exc:
             raise LLMOutputError(f"{self.model} returned output that does not match the schema: {exc}") from exc
         except openai.ContentFilterFinishReasonError as exc:
