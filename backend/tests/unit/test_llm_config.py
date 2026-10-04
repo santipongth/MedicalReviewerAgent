@@ -110,20 +110,13 @@ def test_missing_file_is_a_clear_error(tmp_path):
 def test_repo_config_has_budget_default_and_all_presets_valid():
     cfg = load_llm_config(REPO_CONFIG)
     assert cfg.preset == "budget"
-    assert cfg.roles["guard"].spec.model == "google/gemini-2.5-flash-lite"
-    # retuned 2026-10-05 from live measurements (abstract-only, 60 → 30)
-    assert cfg.roles["synthesizer"].spec.model == "google/gemini-3.5-flash"
+    # user decision 2026-10-05: every budget role runs on Gemini 2.5 Flash
+    assert {r.spec.model for r in cfg.roles.values()} == {"google/gemini-2.5-flash"}
     assert cfg.roles["synthesizer"].spec.reasoning_effort == "medium"
-    assert cfg.roles["extractor"].spec.model == "google/gemini-3.1-flash-lite"
-    assert cfg.roles["localizer"].spec.model == "google/gemini-3.1-flash-lite"
     for name in ("budget", "balanced", "claude", "gemini", "claude_direct"):
         resolved = load_llm_config(REPO_CONFIG, preset=name)
         assert set(resolved.roles) == set(ROLES) | set(OPTIONAL_ROLES)  # every repo preset sets all roles
     budget = load_llm_config(REPO_CONFIG)
-    secondary = budget.roles["extractor_secondary"].spec.model
-    assert secondary == "deepseek/deepseek-v4-flash"
-    assert secondary.split("/")[0] != budget.roles["extractor"].spec.model.split("/")[0]  # cross-family check
-    assert budget.roles["escalation"].spec.model == "qwen/qwen3.8-max-0902"
     assert budget.harness.dual_extraction is True and budget.harness.localize is True
     direct = load_llm_config(REPO_CONFIG, preset="claude_direct")
     assert {r.provider for r in direct.roles.values()} == {"anthropic"}

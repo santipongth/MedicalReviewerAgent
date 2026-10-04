@@ -270,14 +270,8 @@ D:\MedicalReviewerAgent\
 - **ความเร็ว:**
   - ทุก role ใช้ semaphore เดียวกันต่อ process (`LLM_CONCURRENCY`, ค่าเริ่มต้น 16)
   - localization แบ่ง chunk ละ 15 ข้อความและรันขนาน ถ้า chunk ไหนล้มจะคงอังกฤษเฉพาะ chunk นั้น
-  - preset budget ปรับตามผลวัดจริง:
-
-    | Role | Model |
-    |---|---|
-    | extractor, localizer, normalizer | gemini-3.1-flash-lite |
-    | extractor/screener secondary | deepseek-v4-flash (ต่างตระกูลกับตัวหลัก) |
-    | planner, refiner, conflict, synthesizer | gemini-3.5-flash |
-    | escalation | qwen3.8-max (open model ตัวใหญ่ตามกฎเดิม) |
+  - preset budget: **ทุก role ใช้ `google/gemini-2.5-flash`** (ผู้ใช้ตัดสินใจ 2026-10-05 แทนชุดที่ปรับจากผลวัดก่อนหน้า)
+    - ผลที่ตามมา: extractor ตัวที่สองและ escalation เป็น model เดียวกับตัวหลัก การตรวจไขว้ข้ามตระกูล model และกฎ "escalate ไป open model ตัวใหญ่" จึงไม่มีผลใน preset นี้
 - **UI:**
   - ถาดหลุมมี 60 หลุม และปิดฝาได้สูงสุด 30
   - PRISMA เพิ่มขั้น "มีบทคัดย่อ"
