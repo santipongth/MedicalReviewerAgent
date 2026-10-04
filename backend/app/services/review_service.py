@@ -91,10 +91,10 @@ class ReviewService:
     async def create(self, req: CreateReviewRequest, *, identity: Identity) -> ReviewCreated:
         options = req.options.model_dump()
         cache_key = compute_cache_key(req.topic, req.language, options)
-        if (cached := await self._reuse(cache_key)) is not None:  # cache hits are free
-            return cached
         if req.callback_url and identity.api_key is None:
             raise Forbidden("callback_url requires an API key")
+        if (cached := await self._reuse(cache_key)) is not None:  # cache hits are free; no webhook for them
+            return cached
         if req.callback_url and (problem := await callback_url_problem(
                 str(req.callback_url), allow_http=self.settings.webhook_allow_http, url_check=self.url_check)):
             raise Unprocessable(problem)
@@ -132,7 +132,8 @@ class ReviewService:
                                                        error=f"enqueue failed: {type(exc).__name__}",
                                                        finished_at=datetime.now(UTC))
             raise QueueUnavailable(review_id) from exc
-        return ReviewCreated(review_id=review_id, status="queued", cached=False)
+        return ReviewCreated(review_id=review_id, status="queued", cached=False,
+                             callback_scheduled=bool(req.callback_url))
 
     async def cancel(self, review_id: uuid.UUID, *, identity: Identity) -> str:
         """Owner key (or an admin key) cancels a queued/running review; the worker job is aborted."""
@@ -144,13 +145,14 @@ class ReviewService:
             raise NotFound("review not found")
         if not key.is_admin and review.api_key_id != key.id:
             raise Forbidden("only the API key that created this review (or an admin key) can cancel it")
+        by = "owner" if review.api_key_id == key.id else "admin"  # key names stay private
         async with self.session_factory() as session, session.begin():
             changed = await ReviewRepository(session).update_unless(
                 review_id, TERMINAL_STATUSES, status="cancelled", finished_at=datetime.now(UTC),
-                error=f"cancelled by API key '{key.name}'")
+                error=f"cancelled by the {by}")
         if not changed:
             raise Conflict(f"review is already {review.status}")
-        await self.event_sink.emit(review_id, "cancelled", {"by": key.name})
+        await self.event_sink.emit(review_id, "cancelled", {"by": by})
         if review.callback_url and hasattr(self.queue, "enqueue_webhook"):
             await self.queue.enqueue_webhook(review_id)
         try:

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     paper_search_rate_limit: str = "30/minute"  # /papers/* and the MCP search/full-text tools
     mcp_servers_path: str = "config/mcp_servers.json"  # external MCP servers the agent may consult
     mcp_call_timeout_seconds: float = 20.0
+    mcp_session_timeout_seconds: float = 30.0  # connect + initialize + tools/list for external MCP servers
     mcp_max_calls: int = 3
     # Host headers the MCP endpoint accepts (DNS-rebinding protection); ["*"] disables the check.
     mcp_allowed_hosts: list[str] = ["localhost", "localhost:*", "127.0.0.1:*", "api:*"]

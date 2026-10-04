@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from contextlib import AsyncExitStack
 from typing import Any
 
 from app.graph import prompts
@@ -90,7 +91,10 @@ def make_external_enrich(deps):
         errors: list[str] = []
         cost = 0.0
         try:
-            async with registry.tools() as tools:
+            async with AsyncExitStack() as stack:
+                # A server that accepts the connection but never answers must not stall the review.
+                tools = await asyncio.wait_for(stack.enter_async_context(registry.tools()),
+                                               timeout=settings.mcp_session_timeout_seconds)
                 by_name = {t.name: t for t in tools}
                 if by_name:
                     res = await harness_runner(deps).call(

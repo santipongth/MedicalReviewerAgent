@@ -18,6 +18,18 @@ from app.runtime import AppDeps
 __all__ = ["AppDeps", "app", "create_app"]
 
 
+class McpPathMiddleware:
+    """Serve /mcp as /mcp/ (the documented endpoint) instead of answering POST /mcp with a 307 redirect."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"] == "/mcp":
+            scope = {**scope, "path": "/mcp/", "raw_path": b"/mcp/"}
+        await self.app(scope, receive, send)
+
+
 def create_app(settings: Settings | None = None, deps: AppDeps | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
@@ -57,6 +69,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
+    app.add_middleware(McpPathMiddleware)
     if deps is not None:
         app.state.deps = complete(deps)
     app.add_middleware(

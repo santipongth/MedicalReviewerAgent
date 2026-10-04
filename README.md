@@ -36,6 +36,8 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 - **Webhooks:** `POST /api/v1/reviews` with `"callback_url": "https://..."` (key required, HTTPS public host).
   On completion we POST `{"review_id","status","result_url"}` with
   `X-Signature: sha256=HMAC_SHA256(body, secret)` where `secret = sha256_hex(your_api_key)`.
+  A response with `"cached": true` reuses an existing review and has `"callback_scheduled": false`:
+  poll `GET /api/v1/reviews/{id}` in that case.
 - **MCP server** at `/mcp` (streamable HTTP). Tools: `search_papers`, `start_review`, `get_review_status`,
   `get_review_result`, `get_fulltext`; resources `review://{id}` and `review://{id}/report.md`; prompt
   `literature_review`. Connect from Claude Code: `claude mcp add --transport http medical-reviewer http://localhost:8000/mcp/`
