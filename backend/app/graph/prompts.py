@@ -152,19 +152,57 @@ def extract_user(*, question: str, outcomes: list[str], candidate: dict[str, Any
             f"{EXTRACT_EXAMPLE}\n\n{EXTRACT_CHECKLIST}")
 
 
-def synthesize_system(language: str) -> str:
-    return f"""You are a senior clinical methodologist writing an evidence synthesis from structured paper cards.
-comparison: one row per important outcome; in each row one cell per paper that reports that outcome, using the paper refs exactly as given (P1, P2, ...), with the finding and its direction.
-consensus: findings supported by two or more papers. conflicts: places where papers disagree; for each, explain the most likely reasons (population, dose or exposure definition, study design, follow-up, confounding, sample size).
-evidence_strength: an overall GRADE-like rating with a short rationale. research_gaps: what is still unknown.
-executive_summary: 4-8 sentences answering the review question, citing papers inline like [P3].
-Use only information present in the cards; never invent papers, numbers or citations.
-{language_instruction(language)}"""
+NORMALIZE_SYSTEM = """You group the outcome names reported by different papers of one literature review into canonical
+outcomes, so that the same outcome can be compared across papers.
+- Every input pair (ref, outcome) must appear in exactly one cluster, with ref and outcome copied exactly.
+- Put two outcomes in the same cluster only when they measure the same clinical construct
+  (e.g. "CRC incidence" and "incident colorectal cancer"); keep clearly different outcomes apart
+  (e.g. incidence vs mortality, different adverse events).
+- canonical: a short English outcome name (e.g. "Colorectal cancer incidence")."""
 
 
-def synthesize_user(*, topic: str, english_topic: str, papers: list[dict[str, Any]]) -> str:
-    cards = [{"ref": p["ref"], "title": p["candidate"]["title"], "year": p["candidate"].get("year"),
-              "journal": p["candidate"].get("journal"), "text_source": p.get("fulltext_source"),
-              "card": p["card"]} for p in papers]
-    return (f"Review question: {english_topic}\n{DATA_NOTICE}\n<original_topic>{topic}</original_topic>\n"
-            f"<paper_cards>\n{json.dumps(cards, ensure_ascii=False)}\n</paper_cards>")
+def normalize_user(*, question: str, pairs: list[tuple[str, str]]) -> str:
+    items = json.dumps([{"ref": r, "outcome": o} for r, o in pairs], ensure_ascii=False)
+    return (f"{DATA_NOTICE}\n<outcomes>\n{items}\n</outcomes>\n\nReview question: {question}\n\n"
+            "Checklist before answering:\n- every pair above is in exactly one cluster, copied verbatim\n"
+            "- no invented pairs; every cluster has a non-empty canonical name")
+
+
+CONFLICT_SYSTEM = """You explain why studies in a medical literature review disagree about one outcome.
+Use only the paper cards given; never invent facts or numbers.
+- likely_reasons: 1-4 short items, chosen from differences in population, dose or exposure definition, comparator,
+  study design, follow-up length, confounding control, sample size, outcome definition or risk of bias.
+- explanation: 2-4 English sentences that cite the papers inline like [P2]; cite only the papers in the conflict.
+- outcome and refs: copy them from the conflict."""
+
+
+def conflict_user(*, question: str, conflict: dict[str, Any], papers: list[dict[str, Any]]) -> str:
+    return (f"{DATA_NOTICE}\n<conflict>\n{json.dumps(conflict, ensure_ascii=False)}\n</conflict>\n"
+            f"<paper_cards>\n{json.dumps(papers, ensure_ascii=False)}\n</paper_cards>\n\n"
+            f"Review question: {question}\n\nChecklist before answering:\n"
+            "- every [Pn] cited belongs to this conflict\n- reasons are grounded in differences visible in the cards")
+
+
+NARRATIVE_SYSTEM = """You are a senior clinical methodologist writing the narrative part of a rapid evidence synthesis.
+The comparison table, the consensus/conflict analysis and a GRADE-lite baseline were computed already from verified
+paper cards; build on them and do not contradict them.
+- executive_summary: 4-8 English sentences that answer the review question and each sub-question, citing the
+  supporting papers inline like [P3] or [P1, P4]. Mention conflicts where they exist.
+- evidence_strength: start from the GRADE-lite baseline; you may move at most one level, and only with a reason.
+- evidence_rationale: 1-3 sentences explaining the rating (design, risk of bias, consistency, precision).
+- research_gaps: 2-5 concrete open questions.
+Use only the information given; never invent papers, numbers or citations."""
+
+
+def narrative_user(*, question: str, sub_questions: list[str], papers: list[dict[str, Any]],
+                   matrix: dict[str, Any], conflict_notes: list[dict[str, Any]], baseline: dict[str, Any]) -> str:
+    evidence = {"papers": papers, "comparison": matrix.get("rows", []), "consensus": matrix.get("consensus", []),
+                "conflicts": conflict_notes}
+    subs = "\n".join(f"- {s}" for s in sub_questions) or "- (none)"
+    return (f"{DATA_NOTICE}\n<evidence>\n{json.dumps(evidence, ensure_ascii=False)}\n</evidence>\n\n"
+            f"Review question: {question}\nSub-questions:\n{subs}\n"
+            f"GRADE-lite baseline: {baseline.get('level', 'very_low')} "
+            f"({'; '.join(baseline.get('factors', []))})\n\n"
+            "Checklist before answering:\n- cite only refs that appear in the evidence (P1, P2, ...)\n"
+            "- the summary answers the question and every sub-question\n"
+            "- evidence_strength is within one level of the baseline; all text is in English")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate
@@ -11,6 +12,7 @@ from app.services.dedupe import merge_candidates
 
 def make_search(deps):
     async def search(state: ReviewState) -> dict:
+        started = time.perf_counter()
         queries = (state.get("plan") or {}).get("queries") or [state.get("english_topic") or state["topic"]]
         jobs = [(q, page) for q in queries for page in range(1, deps.settings.searxng_pages + 1)]
         results = await asyncio.gather(*(deps.searxng.search(q, pageno=p) for q, p in jobs),
@@ -25,13 +27,16 @@ def make_search(deps):
         progress_writer()({"type": "searching", "found": len(found), "queries": len(queries),
                              "failed": len(errors)})
         return {"candidates": [c.model_dump() for c in found], "errors": errors,
-                "search_stats": {"found": len(found)}}
+                "search_stats": {"found": len(found)},
+                "quality": [{"stage": "search", "queries": len(queries), "failed": len(errors),
+                             "seconds": round(time.perf_counter() - started, 3)}]}
 
     return search
 
 
 def make_enrich(deps):
     async def enrich(state: ReviewState) -> dict:
+        started = time.perf_counter()
         options = ReviewOptions.model_validate(state.get("options") or {})
         merged = merge_candidates(Candidate.model_validate(c) for c in state.get("candidates") or [])
         errors: list[str] = []
@@ -53,6 +58,7 @@ def make_enrich(deps):
         kept = enriched[: options.candidate_limit]
         progress_writer()({"type": "enriching", "candidates": len(kept)})
         return {"candidates": [c.model_dump() for c in kept], "errors": errors,
-                "search_stats": {**(state.get("search_stats") or {}), "unique": unique}}
+                "search_stats": {**(state.get("search_stats") or {}), "unique": unique},
+                "quality": [{"stage": "enrich", "seconds": round(time.perf_counter() - started, 3)}]}
 
     return enrich
