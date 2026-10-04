@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Protocol
 
@@ -18,8 +19,17 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ValidationError
 
 from app.config import Settings
-from app.graph.schemas import PaperCard, QueryPlan, ScreenBatch, Synthesis, TopicVerdict
-from app.services.llm_config import ResolvedRole, load_llm_config
+from app.graph.schemas import (
+    ConflictNote,
+    OutcomeClusters,
+    PaperCard,
+    QueryPlan,
+    ScreenBatch,
+    SynthesisNarrative,
+    TopicVerdict,
+    TranslationBatch,
+)
+from app.services.llm_config import HarnessSpec, ResolvedRole, load_llm_config
 from app.services.model_catalog import ModelInfo, choose_structured_method
 
 # USD per million tokens (input, output) for direct Anthropic calls. Source: claude-api skill, 2026-09.
@@ -30,8 +40,9 @@ PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.0, 5.0),
 }
 SCHEMAS: dict[str, type[BaseModel]] = {
-    "guard": TopicVerdict, "planner": QueryPlan, "screener": ScreenBatch,
-    "extractor": PaperCard, "synthesizer": Synthesis,
+    "guard": TopicVerdict, "planner": QueryPlan, "screener": ScreenBatch, "extractor": PaperCard,
+    "synthesizer": SynthesisNarrative, "normalizer": OutcomeClusters, "conflict_explainer": ConflictNote,
+    "localizer": TranslationBatch, "screener_secondary": ScreenBatch, "extractor_secondary": PaperCard,
 }
 
 
@@ -232,6 +243,15 @@ class LLMs:
     screener: StructuredLLM
     extractor: StructuredLLM
     synthesizer: StructuredLLM
+    # Harness roles (None → that harness step falls back to a deterministic path or is skipped).
+    normalizer: StructuredLLM | None = None
+    conflict_explainer: StructuredLLM | None = None
+    localizer: StructuredLLM | None = None
+    screener_secondary: StructuredLLM | None = None
+    extractor_secondary: StructuredLLM | None = None
+    # escalation(schema) → a bigger model bound to that output schema, or None when not configured
+    escalation: Callable[[type[BaseModel]], StructuredLLM | None] | None = None
+    harness: HarnessSpec = field(default_factory=HarnessSpec)
     preset: str = ""
     models: dict[str, str] = field(default_factory=dict)
 
@@ -240,8 +260,9 @@ def _api_key(settings: Settings, env_name: str) -> str:
     return str(getattr(settings, env_name.lower(), "") or os.environ.get(env_name, ""))
 
 
-def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, ModelInfo] | None = None):
-    schema = SCHEMAS[role.role]
+def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, ModelInfo] | None = None,
+                   schema: type[BaseModel] | None = None):
+    schema = schema or SCHEMAS[role.role]
     spec, ps = role.spec, role.provider_spec
     key = _api_key(settings, ps.api_key_env)
     effort = None if spec.reasoning_effort in (None, "none") else spec.reasoning_effort
@@ -267,5 +288,17 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
 
 def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None) -> LLMs:
     config = load_llm_config(settings.llm_config_path, settings.llm_preset)
-    built = {role: build_role_llm(r, settings, catalog) for role, r in config.roles.items()}
-    return LLMs(**built, preset=config.preset, models=config.describe())
+    built = {role: build_role_llm(r, settings, catalog) for role, r in config.roles.items()
+             if role in SCHEMAS}
+    escalation = None
+    if "escalation" in config.roles:
+        esc_role = config.roles["escalation"]
+        cache: dict[type[BaseModel], StructuredLLM] = {}
+
+        def escalation(schema: type[BaseModel]) -> StructuredLLM:
+            if schema not in cache:
+                cache[schema] = build_role_llm(esc_role, settings, catalog, schema=schema)
+            return cache[schema]
+
+    return LLMs(**built, escalation=escalation, harness=config.harness, preset=config.preset,
+                models=config.describe())

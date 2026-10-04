@@ -83,6 +83,7 @@ class ScreenBatch(BaseModel):
 class OutcomeResult(BaseModel):
     outcome: str
     result: str
+    evidence_quote: str  # verbatim sentence(s) from the paper that support result and numbers
     effect_size: str | None  # as reported, e.g. "HR 0.80 (95% CI 0.71-0.90)"
     effect_measure: EffectMeasure
     effect_value: float | None  # numeric point estimate for forest plots (Plan 4)
@@ -96,6 +97,7 @@ class PaperCard(BaseModel):
     study_design: str
     population: str
     sample_size: int | None
+    sample_size_quote: str | None  # verbatim text stating the sample size
     intervention_or_exposure: str
     comparator: str | None
     outcomes: list[OutcomeResult]
@@ -110,6 +112,10 @@ class ComparisonCell(BaseModel):
     ref: str
     finding: str
     direction: Direction
+    effect_measure: str | None = None
+    effect_value: float | None = None
+    ci_lower: float | None = None
+    ci_upper: float | None = None
 
 
 class ComparisonRow(BaseModel):
@@ -121,6 +127,7 @@ class EvidenceCluster(BaseModel):
     statement: str
     refs: list[str]
     explanation: str
+    likely_reasons: list[str] = Field(default_factory=list)
 
 
 class Synthesis(BaseModel):
@@ -131,3 +138,42 @@ class Synthesis(BaseModel):
     evidence_strength: Literal["high", "moderate", "low", "very_low"]
     evidence_rationale: str
     research_gaps: list[str]
+    grade_baseline: str | None = None
+
+
+# ---- Harness steps (LLM outputs) ---------------------------------------------------------
+class OutcomeMember(BaseModel):
+    ref: str
+    outcome: str
+
+
+class OutcomeCluster(BaseModel):
+    canonical: str
+    members: list[OutcomeMember]
+
+
+class OutcomeClusters(BaseModel):
+    clusters: list[OutcomeCluster]
+
+
+class ConflictNote(BaseModel):
+    outcome: str
+    refs: list[str]
+    likely_reasons: list[str]
+    explanation: str
+
+
+class SynthesisNarrative(BaseModel):
+    executive_summary: str
+    evidence_strength: Literal["high", "moderate", "low", "very_low"]
+    evidence_rationale: str
+    research_gaps: list[str]
+
+
+class TranslationItem(BaseModel):
+    id: str
+    text: str
+
+
+class TranslationBatch(BaseModel):
+    items: list[TranslationItem]

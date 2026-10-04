@@ -27,7 +27,13 @@ TYPICAL_CALLS: dict[str, tuple[int, int, int]] = {  # role: (calls, input tokens
     "planner": (1, 900, 700),
     "screener": (10, 6000, 900),
     "extractor": (10, 12000, 1500),
-    "synthesizer": (1, 14000, 5000),
+    "synthesizer": (1, 8000, 3000),
+    "screener_secondary": (3, 3000, 500),       # only borderline papers get a second vote
+    "extractor_secondary": (10, 12000, 1500),   # dual extraction
+    "normalizer": (1, 3000, 1200),
+    "conflict_explainer": (3, 4000, 600),
+    "localizer": (2, 6000, 6000),
+    "escalation": (2, 12000, 1500),             # expected ~10-20% of steps
 }
 
 CatalogLoader = Callable[[], Awaitable[dict[str, ModelInfo]]]

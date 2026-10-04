@@ -8,8 +8,17 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-Role = Literal["guard", "planner", "screener", "extractor", "synthesizer"]
+Role = Literal[
+    "guard", "planner", "screener", "extractor", "synthesizer",
+    "normalizer", "conflict_explainer", "localizer", "screener_secondary", "extractor_secondary", "escalation",
+]
+# Every preset must define these.
 ROLES: tuple[str, ...] = ("guard", "planner", "screener", "extractor", "synthesizer")
+# Harness roles: the first three fall back to another role's settings when omitted; the last three are
+# simply disabled when omitted (no second vote / no dual extraction / no escalation).
+FALLBACK_ROLES: dict[str, str] = {"normalizer": "planner", "conflict_explainer": "extractor", "localizer": "planner"}
+OPTIONAL_ROLES: tuple[str, ...] = (*FALLBACK_ROLES, "screener_secondary", "extractor_secondary", "escalation")
+EscalationTrigger = Literal["repair_failed", "verification_failed", "disagreement"]
 ProviderName = Literal["openrouter", "anthropic", "openai_compatible"]
 Effort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 StructuredMethod = Literal["auto", "json_schema", "tool_calling", "json_mode"]
@@ -44,6 +53,23 @@ class RoleSpec(BaseModel):
     extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
+class HarnessSpec(BaseModel):
+    """Quality harness for smaller/open models: repairs, voting, verification, escalation, localization."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_repairs: int = Field(2, ge=0, le=5)
+    screen_borderline: tuple[int, int] = (35, 70)
+    dual_extraction: bool = True
+    verify_quotes: bool = True
+    quote_match_threshold: int = Field(90, ge=50, le=100)
+    escalate_on: list[EscalationTrigger] = Field(
+        default_factory=lambda: ["repair_failed", "verification_failed", "disagreement"]
+    )
+    localize: bool = True
+    extraction_chars: int = Field(30_000, ge=2_000, le=200_000)
+
+
 class LLMConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -51,6 +77,7 @@ class LLMConfig(BaseModel):
     default_provider: ProviderName = "openrouter"
     providers: dict[ProviderName, ProviderSpec]
     presets: dict[str, dict[Role, RoleSpec]]
+    harness: HarnessSpec = Field(default_factory=HarnessSpec)
     overrides: dict[Role, dict[str, Any]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -81,6 +108,7 @@ class ResolvedRole:
 class ResolvedLLMConfig:
     preset: str
     roles: dict[str, ResolvedRole]
+    harness: HarnessSpec
 
     def describe(self) -> dict[str, str]:
         return {role: f"{r.provider}:{r.spec.model}" for role, r in self.roles.items()}
@@ -103,8 +131,16 @@ def load_llm_config(path: str | Path, preset: str | None = None) -> ResolvedLLMC
         raise LLMConfigError(f"Unknown preset '{name}'. Available: {', '.join(config.presets)}")
 
     roles: dict[str, ResolvedRole] = {}
-    for role in ROLES:
-        spec = config.presets[name][role]
+    preset_roles = config.presets[name]
+    for role in (*ROLES, *OPTIONAL_ROLES):
+        if role in preset_roles:
+            spec = preset_roles[role]
+        elif role in FALLBACK_ROLES:
+            spec = preset_roles[FALLBACK_ROLES[role]]
+        elif role in config.overrides and "model" in config.overrides[role]:
+            spec = RoleSpec(model=config.overrides[role]["model"])  # enabled purely via overrides
+        else:
+            continue
         if role in config.overrides:
             try:
                 spec = RoleSpec.model_validate({**spec.model_dump(), **config.overrides[role]})
@@ -114,4 +150,4 @@ def load_llm_config(path: str | Path, preset: str | None = None) -> ResolvedLLMC
         if provider not in config.providers:
             raise LLMConfigError(f"Provider '{provider}' is not configured (overrides.{role})")
         roles[role] = ResolvedRole(role, provider, config.providers[provider], spec)
-    return ResolvedLLMConfig(preset=name, roles=roles)
+    return ResolvedLLMConfig(preset=name, roles=roles, harness=config.harness)

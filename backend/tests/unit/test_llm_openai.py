@@ -136,3 +136,17 @@ def test_build_llms_claude_direct_preset():
 async def test_missing_key_llm_message():
     with pytest.raises(LLMError, match="OPENROUTER_API_KEY"):
         await MissingKeyLLM("m", "OPENROUTER_API_KEY").ainvoke("s", "u")
+
+
+def test_build_llms_wires_harness_roles_and_escalation_factory():
+    from app.graph.schemas import ConflictNote, PaperCard, SynthesisNarrative
+
+    settings = Settings(_env_file=None, llm_config_path=REPO_CONFIG, openrouter_api_key="sk-or-x")
+    llms = build_llms(settings)
+    assert llms.normalizer.model == "qwen/qwen3.8-flash" and llms.localizer.model == "qwen/qwen3.8-flash"
+    assert llms.extractor_secondary.model == "qwen/qwen3.8-flash"
+    assert llms.synthesizer.schema is SynthesisNarrative and llms.conflict_explainer.schema is ConflictNote
+    esc = llms.escalation(PaperCard)
+    assert esc.model == "qwen/qwen3.8-max-0902" and esc.schema is PaperCard
+    assert llms.escalation(PaperCard) is esc  # cached per schema
+    assert llms.harness.dual_extraction is True and llms.harness.max_repairs == 2

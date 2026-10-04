@@ -2,7 +2,14 @@
 #
 # Pick a preset with `active_preset` (or env LLM_PRESET=...), or tweak any role below.
 # Roles: guard (topic filter), planner (search queries), screener (title/abstract screening),
-#        extractor (per-paper evidence card), synthesizer (comparison table & conclusions).
+#        extractor (per-paper evidence card), synthesizer (narrative & conclusions).
+# Harness roles (help open/smaller models reach big-model quality; see `harness:` below):
+#        screener_secondary (2nd vote on borderline papers), extractor_secondary (independent 2nd
+#        extraction for cross-checking), normalizer (groups outcome names across papers),
+#        conflict_explainer (explains why papers disagree), localizer (English → Thai, numbers checked),
+#        escalation (bigger model used only when checks fail or models disagree).
+#        normalizer/conflict_explainer/localizer fall back to planner/extractor/planner if omitted;
+#        screener_secondary/extractor_secondary/escalation are disabled if omitted.
 #
 # Per-role fields (all optional except model):
 #   model              provider model id (OpenRouter ids look like "vendor/model")
@@ -45,6 +52,12 @@ presets:
     extractor:   {model: deepseek/deepseek-v4-pro,     max_tokens: 8192,  temperature: 0}
     synthesizer: {model: deepseek/deepseek-v4-pro,     max_tokens: 16000, temperature: 0.3, reasoning_effort: high,
                   timeout_seconds: 600}
+    screener_secondary:  {model: qwen/qwen3.8-flash,     max_tokens: 4096, temperature: 0}
+    extractor_secondary: {model: qwen/qwen3.8-flash,     max_tokens: 8192, temperature: 0}
+    normalizer:          {model: qwen/qwen3.8-flash,     max_tokens: 4096, temperature: 0}
+    conflict_explainer:  {model: deepseek/deepseek-v4-pro, max_tokens: 2048, temperature: 0.2}
+    localizer:           {model: qwen/qwen3.8-flash,     max_tokens: 8192, temperature: 0}
+    escalation:          {model: qwen/qwen3.8-max-0902,  max_tokens: 8192, reasoning_effort: medium, timeout_seconds: 600}
 
   # Higher quality reading and synthesis with Claude, cheap screening with Gemini.
   balanced:
@@ -53,6 +66,12 @@ presets:
     screener:    {model: google/gemini-3.1-flash-lite, max_tokens: 4096, temperature: 0}
     extractor:   {model: anthropic/claude-sonnet-5.5,  max_tokens: 8192, reasoning_effort: medium}
     synthesizer: {model: anthropic/claude-opus-5.5,    max_tokens: 20000, reasoning_effort: high, timeout_seconds: 600}
+    screener_secondary:  {model: qwen/qwen3.8-flash,          max_tokens: 4096, temperature: 0}
+    extractor_secondary: {model: google/gemini-3.5-flash,     max_tokens: 8192, reasoning_effort: low}
+    normalizer:          {model: google/gemini-3.1-flash-lite, max_tokens: 4096, temperature: 0}
+    conflict_explainer:  {model: anthropic/claude-sonnet-5.5, max_tokens: 2048}
+    localizer:           {model: google/gemini-3.1-flash-lite, max_tokens: 8192, temperature: 0}
+    escalation:          {model: anthropic/claude-opus-5.5,   max_tokens: 8192, reasoning_effort: medium, timeout_seconds: 600}
 
   # The original all-Claude design, routed through OpenRouter.
   claude:
@@ -61,6 +80,12 @@ presets:
     screener:    {model: anthropic/claude-haiku-4.5,  max_tokens: 4096}
     extractor:   {model: anthropic/claude-sonnet-5.5, max_tokens: 8192, reasoning_effort: medium}
     synthesizer: {model: anthropic/claude-opus-5.5,   max_tokens: 20000, reasoning_effort: high, timeout_seconds: 600}
+    screener_secondary:  {model: anthropic/claude-haiku-4.5,  max_tokens: 4096}
+    extractor_secondary: {model: google/gemini-3.5-flash,     max_tokens: 8192, reasoning_effort: low}
+    normalizer:          {model: anthropic/claude-haiku-4.5,  max_tokens: 4096}
+    conflict_explainer:  {model: anthropic/claude-sonnet-5.5, max_tokens: 2048}
+    localizer:           {model: anthropic/claude-haiku-4.5,  max_tokens: 8192}
+    escalation:          {model: anthropic/claude-opus-5.5,   max_tokens: 8192, reasoning_effort: medium, timeout_seconds: 600}
 
   gemini:
     guard:       {model: google/gemini-3.1-flash-lite,   max_tokens: 1024, temperature: 0}
@@ -68,6 +93,12 @@ presets:
     screener:    {model: google/gemini-3.1-flash-lite,   max_tokens: 4096, temperature: 0}
     extractor:   {model: google/gemini-3.5-flash,        max_tokens: 8192, reasoning_effort: medium}
     synthesizer: {model: google/gemini-3.1-pro-preview,  max_tokens: 20000, reasoning_effort: high, timeout_seconds: 600}
+    screener_secondary:  {model: qwen/qwen3.8-flash,            max_tokens: 4096, temperature: 0}
+    extractor_secondary: {model: qwen/qwen3.8-flash,            max_tokens: 8192, temperature: 0}
+    normalizer:          {model: google/gemini-3.1-flash-lite,  max_tokens: 4096, temperature: 0}
+    conflict_explainer:  {model: google/gemini-3.5-flash,       max_tokens: 2048, reasoning_effort: low}
+    localizer:           {model: google/gemini-3.1-flash-lite,  max_tokens: 8192, temperature: 0}
+    escalation:          {model: google/gemini-3.1-pro-preview, max_tokens: 8192, reasoning_effort: medium, timeout_seconds: 600}
 
   # Direct Anthropic API (needs ANTHROPIC_API_KEY instead of OPENROUTER_API_KEY).
   claude_direct:
@@ -77,6 +108,24 @@ presets:
     extractor:   {model: claude-sonnet-5-5, provider: anthropic, max_tokens: 8192,  reasoning_effort: medium}
     synthesizer: {model: claude-opus-5-5,   provider: anthropic, max_tokens: 20000, reasoning_effort: high,
                   timeout_seconds: 600}
+    screener_secondary:  {model: claude-haiku-4-5,  provider: anthropic, max_tokens: 4096}
+    extractor_secondary: {model: claude-sonnet-5-5, provider: anthropic, max_tokens: 8192, reasoning_effort: low}
+    normalizer:          {model: claude-haiku-4-5,  provider: anthropic, max_tokens: 4096}
+    conflict_explainer:  {model: claude-sonnet-5-5, provider: anthropic, max_tokens: 2048, reasoning_effort: low}
+    localizer:           {model: claude-haiku-4-5,  provider: anthropic, max_tokens: 8192}
+    escalation:          {model: claude-opus-5-5,   provider: anthropic, max_tokens: 8192, reasoning_effort: medium,
+                          timeout_seconds: 600}
+
+# Quality harness for open/smaller models (see docs/superpowers/specs, harness section).
+harness:
+  max_repairs: 2                  # validate → repair rounds with the exact problems fed back
+  screen_borderline: [35, 70]     # relevance band that gets a second vote (screener_secondary)
+  dual_extraction: true           # extractor_secondary extracts independently; fields are cross-checked
+  verify_quotes: true             # every number must sit in a verbatim quote found in the paper text
+  quote_match_threshold: 90       # rapidfuzz partial_ratio for "quote found in source"
+  escalate_on: [repair_failed, verification_failed, disagreement]
+  localize: true                  # reason in English; translate user-facing text last (numbers checked)
+  extraction_chars: 30000         # paper text budget per extraction call (Results weighted first)
 
 # Per-role tweaks applied on top of whichever preset is active, e.g.
 #   synthesizer: {model: anthropic/claude-opus-5.5, reasoning_effort: high}

@@ -55,6 +55,80 @@
    ]
   },
   {
+   "id": "qwen/qwen3.8-max-0902",
+   "name": "Qwen: Qwen3.8 Max (0902)",
+   "context_length": 1000000,
+   "pricing": {
+    "prompt": "0.000002",
+    "completion": "0.000006",
+    "input_cache_read": "0.00000025",
+    "input_cache_write": "0.0000025"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logprobs",
+    "max_tokens",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ]
+  },
+  {
+   "id": "qwen/qwen3.8-flash",
+   "name": "Qwen: Qwen3.8 Flash",
+   "context_length": 1000000,
+   "pricing": {
+    "prompt": "0.00000015",
+    "completion": "0.00000047",
+    "input_cache_read": "0.000000016",
+    "input_cache_write": "0.0000002"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logprobs",
+    "max_tokens",
+    "presence_penalty",
+    "reasoning",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ]
+  },
+  {
+   "id": "tencent/hy-mt2-1.8b",
+   "name": "Tencent: Hy-MT2-1.8B",
+   "context_length": 8192,
+   "pricing": {
+    "prompt": "0.000000044",
+    "completion": "0.000000177"
+   },
+   "supported_parameters": [
+    "max_completion_tokens",
+    "max_tokens",
+    "stop",
+    "temperature"
+   ]
+  },
+  {
    "id": "google/gemini-3.5-flash",
    "name": "Google: Gemini 3.5 Flash",
    "context_length": 1048576,
@@ -292,21 +366,6 @@
     "tools",
     "top_k",
     "top_p"
-   ]
-  },
-  {
-   "id": "tencent/hy-mt2-1.8b",
-   "name": "Tencent: Hy-MT2-1.8B",
-   "context_length": 8192,
-   "pricing": {
-    "prompt": "0.000000044",
-    "completion": "0.000000177"
-   },
-   "supported_parameters": [
-    "max_completion_tokens",
-    "max_tokens",
-    "stop",
-    "temperature"
    ]
   }
  ]
