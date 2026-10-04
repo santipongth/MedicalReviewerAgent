@@ -15,11 +15,23 @@ if config.config_file_name is not None:
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 target_metadata = Base.metadata
 
+# Tables owned by LangGraph's AsyncPostgresSaver.setup(), not by our models: never autogenerate
+# drops for them.
+EXTERNAL_TABLE_PREFIXES = ("checkpoint",)
+
+
+def include_object(obj, name, type_, reflected, compare_to):
+    table = obj.table.name if type_ == "index" else name
+    if type_ in ("table", "index") and reflected and compare_to is None:
+        return not str(table).startswith(EXTERNAL_TABLE_PREFIXES)
+    return True
+
 
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -28,7 +40,9 @@ def run_migrations_offline() -> None:
 
 
 def _do_run_migrations(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection, target_metadata=target_metadata, include_object=include_object
+    )
     with context.begin_transaction():
         context.run_migrations()
 

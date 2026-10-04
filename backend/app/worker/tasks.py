@@ -10,10 +10,11 @@ def _runner(ctx: dict) -> ReviewRunner:
 
 
 async def run_review(ctx: dict, review_id: str) -> dict:
+    """Start or resume a review (the runner resumes when a checkpoint exists)."""
     status = await _runner(ctx).run(uuid.UUID(review_id))
     return {"review_id": review_id, "status": status}
 
 
 async def resume_review(ctx: dict, review_id: str) -> dict:
-    status = await _runner(ctx).run(uuid.UUID(review_id), resume=True)
-    return {"review_id": review_id, "status": status}
+    """Kept for jobs enqueued under the old name; identical to run_review."""
+    return await run_review(ctx, review_id)

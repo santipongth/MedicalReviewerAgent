@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 
+from arq import cron
 from arq.connections import RedisSettings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg.rows import dict_row
@@ -10,12 +10,11 @@ from psycopg_pool import AsyncConnectionPool
 from redis.asyncio import Redis
 
 from app.config import get_settings
-from app.db.repositories import ReviewRepository
 from app.db.session import make_engine, make_session_factory
 from app.graph.graph import GraphDeps, build_graph
 from app.logging import configure_logging, get_logger
 from app.services.events import EventSink
-from app.services.queue import review_job_id
+from app.worker.sweep import sweep_stale
 from app.worker.tasks import resume_review, run_review
 
 log = get_logger(__name__)
@@ -42,20 +41,7 @@ async def startup(ctx: dict) -> None:
     await pool.open()
     ctx["pg_pool"] = pool
     ctx["graph"] = build_graph(GraphDeps(settings=settings), checkpointer=AsyncPostgresSaver(pool))
-    await _requeue_stale_running(ctx)
     log.info("worker_started", max_jobs=settings.max_concurrent_reviews_per_worker)
-
-
-async def _requeue_stale_running(ctx: dict) -> None:
-    settings = ctx["settings"]
-    cutoff = datetime.now(UTC) - timedelta(minutes=settings.stale_running_minutes)
-    async with ctx["session_factory"]() as session:
-        stale = await ReviewRepository(session).list_stale_running(older_than=cutoff)
-    for review in stale:
-        job = await ctx["redis"].enqueue_job(
-            "resume_review", str(review.id), _job_id=review_job_id(review.id)
-        )
-        log.info("requeued_stale_review", review_id=str(review.id), enqueued=job is not None)
 
 
 async def shutdown(ctx: dict) -> None:
@@ -66,13 +52,20 @@ async def shutdown(ctx: dict) -> None:
 
 class WorkerSettings:
     functions: ClassVar[list] = [run_review, resume_review]
+    cron_jobs: ClassVar[list] = [
+        cron(sweep_stale, name="sweep_stale", minute=set(range(0, 60, 5)), run_at_startup=True)
+    ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_jobs = get_settings().max_concurrent_reviews_per_worker
     job_timeout = 1800
-    max_tries = 2
-    retry_jobs = False
+    # A cancelled job (worker shutdown/restart) is re-run by arq; the runner resumes from the
+    # LangGraph checkpoint, so a retry never redoes finished nodes. Ordinary exceptions are
+    # caught by the runner and recorded as status=error, so they are never retried.
+    retry_jobs = True
+    max_tries = 3
     allow_abort_jobs = True
     health_check_interval = 30
-    keep_result = 3600
+    # Results live in Postgres; keeping arq results would block re-enqueueing the same job id.
+    keep_result = 0

@@ -70,6 +70,18 @@ class ReviewRepository:
         )
         return list((await self.session.execute(stmt)).scalars())
 
+    async def list_stale(self, older_than: datetime) -> list[Review]:
+        """Reviews that should have progressed by now: queued and never picked up, or running
+        on a worker that died. Re-enqueueing them is safe because the runner resumes from the
+        LangGraph checkpoint."""
+        stmt = select(Review).where(
+            or_(
+                (Review.status == ReviewStatus.queued.value) & (Review.created_at < older_than),
+                (Review.status == ReviewStatus.running.value) & (Review.started_at < older_than),
+            )
+        )
+        return list((await self.session.execute(stmt)).scalars())
+
     async def list_stale_running(self, older_than: datetime) -> list[Review]:
         stmt = select(Review).where(
             Review.status == ReviewStatus.running.value, Review.started_at < older_than

@@ -66,6 +66,17 @@ class ApiKey(Base):
 
 class Review(Base):
     __tablename__ = "reviews"
+    __table_args__ = (
+        # At most one queued/running review per cache key: concurrent identical POSTs (or two
+        # API replicas) cannot both start a job; the loser re-selects the winner.
+        Index(
+            "ux_reviews_active_cache_key",
+            "cache_key",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     topic: Mapped[str] = mapped_column(Text)
