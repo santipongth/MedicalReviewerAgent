@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { emptyFilters, isFiltered, type Filters } from "@/lib/charts-data";
+import { designKey, designLabel, emptyFilters, isFiltered, type Filters } from "@/lib/charts-data";
 import { ROB_LABEL, type Lang } from "@/lib/i18n";
 import type { Paper, RiskOfBias } from "@/lib/types";
 import { L } from "./text";
@@ -16,7 +16,8 @@ export function FilterBar({ papers, filters, onChange, shown, lang }: {
   const years = papers.map((p) => p.year).filter((y): y is number => typeof y === "number");
   const minYear = years.length ? Math.min(...years) : null;
   const maxYear = years.length ? Math.max(...years) : null;
-  const designs = [...new Set(papers.map((p) => (p.card_en ?? p.card)?.study_design).filter((d): d is string => !!d))].sort();
+  const designs = [...new Set(papers.map((p) => { const c = p.card_en ?? p.card; return c ? designKey(c) : null; })
+    .filter((d): d is string => !!d))].sort();
   const yearOptions = minYear != null && maxYear != null ? Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i) : [];
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
@@ -66,7 +67,7 @@ export function FilterBar({ papers, filters, onChange, shown, lang }: {
             {designs.map((d) => (
               <label key={d} className="flex items-center gap-1.5">
                 <input type="checkbox" checked={filters.designs.includes(d)} onChange={() => onChange({ ...filters, designs: toggle(filters.designs, d) })} className="size-4 accent-primary" />
-                {d}
+                {designLabel(d, lang)}
               </label>
             ))}
           </div>

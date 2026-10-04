@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resultFixture, legacyReviewFixture } from "@/test/fixtures";
-import { emptyFilters, filterPapers, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
+import { designLabel, emptyFilters, filterPapers, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
 
 const papers = resultFixture.papers!;
 
@@ -10,7 +10,12 @@ describe("filterPapers", () => {
     expect(filterPapers(papers, { ...emptyFilters(), minRelevance: 85 }).map((p) => p.ref)).toEqual(["P1", "P2", "P3"]);
     expect(filterPapers(papers, { ...emptyFilters(), yearFrom: 2019, yearTo: 2020 }).map((p) => p.ref)).toEqual(["P1", "P4"]);
     expect(filterPapers(papers, { ...emptyFilters(), risk: ["low"] }).map((p) => p.ref)).toEqual(["P3"]);
-    expect(filterPapers(papers, { ...emptyFilters(), designs: ["case-control"] }).map((p) => p.ref)).toEqual(["P2"]);
+    expect(filterPapers(papers, { ...emptyFilters(), designs: ["case_control"] }).map((p) => p.ref)).toEqual(["P2"]);
+    // a card stored before design categories filters by its free-text design
+    const legacy = { ...papers[0], card_en: { ...papers[0].card_en!, design_category: undefined, study_design: "cohort" } };
+    expect(filterPapers([legacy], { ...emptyFilters(), designs: ["cohort"] }).map((p) => p.ref)).toEqual(["P1"]);
+    expect(designLabel("sr_ma_rct", "th")).toBe("SR/MA ของ RCT");
+    expect(designLabel("some free text", "en")).toBe("some free text");
   });
 });
 

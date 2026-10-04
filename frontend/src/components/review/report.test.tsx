@@ -63,6 +63,15 @@ describe("Report", () => {
     expect(screen.getByText(/อ่านไม่สำเร็จ/)).toBeInTheDocument();
   });
 
+  it("filters by study-design category and shows the category with the paper's own description", async () => {
+    render(<Report review={reviewFixture} />);
+    await userEvent.click(screen.getByLabelText("Case-control"));
+    const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
+    expect(within(table).queryByRole("columnheader", { name: "P1" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /^P2: / }));
+    expect(rail().getByText("Case-control · nested case-control")).toBeInTheDocument();
+  });
+
   it("switches to the English original", async () => {
     render(<Report review={reviewFixture} />);
     await userEvent.click(screen.getByRole("button", { name: "English" }));

@@ -7,7 +7,7 @@ const q4 = "Within two years of initiation, metformin users had higher colorecta
 
 function card(over: Partial<PaperCard>): PaperCard {
   return {
-    study_design: "cohort", population: "adults with type 2 diabetes", sample_size: null, sample_size_quote: null,
+    study_design: "cohort", design_category: "cohort", population: "adults with type 2 diabetes", sample_size: null, sample_size_quote: null,
     intervention_or_exposure: "metformin", comparator: "sulfonylurea", outcomes: [], key_findings: [],
     limitations: ["observational design"], funding_or_conflicts: null, risk_of_bias: "moderate",
     overall_direction: "positive", ...over,
@@ -26,7 +26,7 @@ const p1card = card({
     p_value: null, direction: "positive" }],
 });
 const p2card = card({
-  study_design: "case-control", sample_size: null, risk_of_bias: "high", overall_direction: "positive",
+  study_design: "nested case-control", design_category: "case_control", sample_size: null, risk_of_bias: "high", overall_direction: "positive",
   outcomes: [{ outcome: "CRC incidence", result: "Reduced odds with long-term use", evidence_quote: "a sentence that was not found",
     effect_size: null, effect_measure: "none", effect_value: null, ci_lower: null, ci_upper: null, p_value: null,
     direction: "positive" }],
