@@ -10,8 +10,8 @@ export function SiteHeader() {
           Medical Reviewer Agent
         </Link>
         <nav aria-label="หลัก" className="ml-auto flex flex-wrap items-center gap-4 font-display text-sm font-medium">
-          <Link href="/" className="text-ink hover:text-primary">ทบทวนงานวิจัย</Link>
-          <Link href="/about" className="text-ink hover:text-primary">API และ MCP</Link>
+          <Link href="/" className="inline-flex min-h-11 items-center text-ink hover:text-primary md:min-h-0">ทบทวนงานวิจัย</Link>
+          <Link href="/about" className="inline-flex min-h-11 items-center text-ink hover:text-primary md:min-h-0">API และ MCP</Link>
           <ThemeToggle />
         </nav>
       </div>

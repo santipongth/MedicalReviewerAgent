@@ -50,7 +50,7 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      className="rounded-sm border border-rule px-3 py-1 font-display text-sm font-semibold text-ink hover:border-ink"
+      className="min-h-11 rounded-sm border border-rule px-3 py-1 font-display md:min-h-0 text-sm font-semibold text-ink hover:border-ink"
       aria-label={theme === "dark" ? "ใช้ธีมสว่าง" : "ใช้ธีมมืด"}
     >
       {theme === "dark" ? "ธีมสว่าง" : "ธีมมืด"}
