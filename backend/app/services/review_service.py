@@ -54,6 +54,16 @@ class QueueUnavailable(ServiceError):
         self.review_id = review_id
 
 
+class Unavailable(ServiceError):
+    """503: the service is not accepting new reviews right now (queue full, daily capacity, captcha provider down)."""
+    status_code = 503
+
+    def __init__(self, detail: str, retry_after: int, reason: str) -> None:
+        super().__init__(detail)
+        self.retry_after = retry_after
+        self.reason = reason
+
+
 class Forbidden(ServiceError):
     status_code = 403
 
@@ -72,8 +82,9 @@ class Conflict(ServiceError):
 
 class ReviewService:
     def __init__(self, session_factory, queue, event_sink, settings: Settings, limits: RateLimits,
-                 url_check=is_public_http_url) -> None:
+                 url_check=is_public_http_url, capacity=None) -> None:
         self.url_check = url_check
+        self.capacity = capacity  # app.services.capacity.Capacity; None → no admission control (unit tests)
         self.session_factory = session_factory
         self.queue = queue
         self.event_sink = event_sink
@@ -103,6 +114,11 @@ class ReviewService:
                 used = await reviews_since(session, identity.api_key.id, datetime.now(UTC) - timedelta(days=1))
             if used >= identity.api_key.daily_quota:
                 raise RateLimited(3600, f"daily quota of {identity.api_key.daily_quota} reviews exhausted")
+        if self.capacity is not None:  # after the cache: cache hits are free even when the service is full
+            async with self.session_factory() as session:
+                queued = await ReviewRepository(session).count_by_status("queued")
+            if (refusal := await self.capacity.check(queued=queued)) is not None:
+                raise Unavailable(refusal.detail, refusal.retry_after, refusal.reason)
         rate = self.settings.api_key_rate_limit if identity.api_key else self.settings.review_rate_limit
         decision = await self.limits.hit("review", identity.rate_key, rate)
         if not decision.allowed:
@@ -132,8 +148,43 @@ class ReviewService:
                                                        error=f"enqueue failed: {type(exc).__name__}",
                                                        finished_at=datetime.now(UTC))
             raise QueueUnavailable(review_id) from exc
+        if self.capacity is not None:
+            try:
+                await self.capacity.note_review()
+            except Exception:  # noqa: BLE001 - a counter hiccup must not fail an accepted review
+                log.warning("capacity_count_failed", review_id=str(review_id))
         return ReviewCreated(review_id=review_id, status="queued", cached=False,
                              callback_scheduled=bool(req.callback_url))
+
+    async def status(self) -> dict:
+        """Public service status: whether new reviews are accepted and the limits callers must respect."""
+        from app.schemas.review import ReviewOptions
+        async with self.session_factory() as session:
+            repo = ReviewRepository(session)
+            queued, running = await repo.count_by_status("queued"), await repo.count_by_status("running")
+        refusal = await self.capacity.check(queued=queued) if self.capacity is not None else None
+        fields = ReviewOptions.model_fields
+
+        def bounds(name: str) -> dict:
+            meta = fields[name].metadata
+            return {"min": next(m.ge for m in meta if getattr(m, "ge", None) is not None),
+                    "max": next(m.le for m in meta if getattr(m, "le", None) is not None),
+                    "default": fields[name].default}
+        s = self.settings
+        return {
+            "accepting": refusal is None, "reason": refusal.reason if refusal else None,
+            "retry_after": refusal.retry_after if refusal else None,
+            "queue_depth": queued, "running": running,
+            "reviews_today": await self.capacity.reviews_today() if self.capacity is not None else None,
+            "limits": {"review_rate_limit": s.review_rate_limit, "api_key_rate_limit": s.api_key_rate_limit,
+                       "paper_search_rate_limit": s.paper_search_rate_limit,
+                       "max_papers": bounds("max_papers"), "candidate_limit": bounds("candidate_limit"),
+                       "max_queued_reviews": s.max_queued_reviews},
+        }
+
+    async def queue_position(self, review) -> int | None:
+        async with self.session_factory() as session:
+            return await ReviewRepository(session).queue_position(review)
 
     async def cancel(self, review_id: uuid.UUID, *, identity: Identity) -> str:
         """Owner key (or an admin key) cancels a queued/running review; the worker job is aborted."""

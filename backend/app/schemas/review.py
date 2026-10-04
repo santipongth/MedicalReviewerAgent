@@ -82,6 +82,7 @@ class ReviewOut(ReviewSummary):
     error: str | None
     cost_usd: float
     started_at: datetime | None
+    queue_position: int | None = None  # 1 = next to start; None once running or finished
 
 
 def compute_cache_key(topic: str, language: str, options: dict[str, Any], version: str = "") -> str:

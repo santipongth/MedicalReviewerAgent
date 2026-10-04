@@ -120,3 +120,16 @@ async def test_every_event_carries_elapsed_seconds(session_factory, redis):
     async with session_factory() as s:
         events = await EventRepository(s).list_since(review.id, 0)
     assert all(isinstance(e.payload.get("elapsed_s"), float) and e.payload["elapsed_s"] >= 0 for e in events)
+
+
+async def test_finished_review_cost_counts_toward_the_daily_budget(session_factory, redis):
+    from app.services.capacity import Capacity
+
+    async def fin(state: ReviewState) -> dict:
+        return {"result": {"summary": "s"}, "cost_usd": 0.04}
+
+    capacity = Capacity(redis, Settings(_env_file=None))
+    review = await _queued_review(session_factory)
+    sink = EventSink(session_factory, redis, 60)
+    assert await ReviewRunner(session_factory, sink, _single_node_graph(fin), capacity=capacity).run(review.id) == "done"
+    assert round(await capacity.usd_today(), 4) == 0.04

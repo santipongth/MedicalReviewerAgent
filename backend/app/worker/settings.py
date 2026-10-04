@@ -15,6 +15,7 @@ from app.db.session import make_engine, make_session_factory
 from app.graph.factory import build_graph_deps, close_graph_deps
 from app.graph.graph import build_graph
 from app.logging import configure_logging, get_logger
+from app.services.capacity import Capacity
 from app.services.events import EventSink
 from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 from app.services.model_catalog import OpenRouterCatalog
@@ -55,6 +56,7 @@ async def startup(ctx: dict) -> None:
     ctx["graph_deps"] = build_graph_deps(settings, ctx["http"], ctx["events_redis"], catalog)
     ctx["graph"] = build_graph(ctx["graph_deps"], checkpointer=AsyncPostgresSaver(pool))
     ctx["queue"] = ArqJobQueue(ctx["redis"])  # arq's own pool: enqueue webhook deliveries
+    ctx["capacity"] = Capacity(ctx["events_redis"], settings)  # finished reviews count toward the daily spend
     ctx["webhook_http"] = httpx.AsyncClient(timeout=settings.webhook_timeout_seconds, follow_redirects=False)
     log.info("worker_started", max_jobs=settings.max_concurrent_reviews_per_worker, graph_mode=settings.graph_mode,
              llm_preset=getattr(ctx["graph_deps"].llms, "preset", None))

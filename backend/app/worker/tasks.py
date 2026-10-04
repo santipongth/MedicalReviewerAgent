@@ -18,7 +18,8 @@ log = get_logger(__name__)
 def _runner(ctx: dict) -> ReviewRunner:
     queue = ctx.get("queue")
     notify = queue.enqueue_webhook if queue is not None else None
-    return ReviewRunner(ctx["session_factory"], ctx["event_sink"], ctx["graph"], notify=notify)
+    return ReviewRunner(ctx["session_factory"], ctx["event_sink"], ctx["graph"], notify=notify,
+                        capacity=ctx.get("capacity"))
 
 
 async def run_review(ctx: dict, review_id: str) -> dict:

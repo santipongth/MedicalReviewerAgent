@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, or_, select, update
@@ -28,6 +28,7 @@ class ReviewRepository:
         api_key_id: uuid.UUID | None = None,
     ) -> Review:
         review = Review(
+            created_at=datetime.now(UTC),  # microsecond order: queue positions follow submission order
             topic=topic,
             language=language,
             options=options,
@@ -66,6 +67,18 @@ class ReviewRepository:
         result = await self.session.execute(
             update(Review).where(Review.id == review_id, Review.status.not_in(blocked)).values(**fields))
         return bool(result.rowcount)
+
+    async def count_by_status(self, status: str) -> int:
+        return int(await self.session.scalar(select(func.count()).select_from(Review).where(Review.status == status))
+                   or 0)
+
+    async def queue_position(self, review: Review) -> int | None:
+        """1-based position among queued reviews (oldest first); None once it left the queue."""
+        if review.status != "queued":
+            return None
+        ahead = await self.session.scalar(select(func.count()).select_from(Review).where(
+            Review.status == "queued", Review.created_at < review.created_at))
+        return int(ahead or 0) + 1
 
     async def list_recent(self, limit: int = 20) -> list[Review]:
         stmt = (

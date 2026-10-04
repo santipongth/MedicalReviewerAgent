@@ -9,7 +9,13 @@ from app.api.auth import get_identity, require_key
 from app.api.deps import get_deps
 from app.runtime import AppDeps
 from app.schemas.review import CreateReviewRequest, ReviewCreated, ReviewOut, ReviewSummary
-from app.services.review_service import Identity, QueueUnavailable, RateLimited, ServiceError
+from app.services.review_service import (
+    Identity,
+    QueueUnavailable,
+    RateLimited,
+    ServiceError,
+    Unavailable,
+)
 
 router = APIRouter()
 
@@ -17,8 +23,10 @@ router = APIRouter()
 def service_error_response(exc: ServiceError) -> JSONResponse:
     content: dict = {"detail": exc.detail}
     headers: dict[str, str] = {}
-    if isinstance(exc, RateLimited):
+    if isinstance(exc, RateLimited | Unavailable):
         headers["Retry-After"] = str(exc.retry_after)
+    if isinstance(exc, Unavailable):
+        content["reason"] = exc.reason
     if isinstance(exc, QueueUnavailable):
         content["review_id"] = str(exc.review_id)
     return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
@@ -51,7 +59,8 @@ async def get_review(review_id: uuid.UUID, deps: AppDeps = Depends(get_deps)) ->
     review = await deps.service.get(review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="review not found")
-    return ReviewOut.model_validate(review)
+    return ReviewOut.model_validate(review).model_copy(
+        update={"queue_position": await deps.service.queue_position(review)})
 
 
 @router.delete("/reviews/{review_id}", responses={401: {"description": "API key required"},

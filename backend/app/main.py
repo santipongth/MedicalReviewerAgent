@@ -8,7 +8,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.api import admin, events, health, papers, reviews
+from app.api import admin, events, health, papers, reviews, status
 from app.api.ratelimit import limiter
 from app.config import Settings, get_settings
 from app.logging import configure_logging
@@ -39,7 +39,10 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
         from app.services.review_service import ReviewService
 
         d.limits = d.limits or RateLimits(settings.ratelimit_storage_uri)
-        d.service = d.service or ReviewService(d.session_factory, d.queue, d.event_sink, settings, d.limits)
+        if d.service is None:
+            from app.services.capacity import Capacity
+            d.service = ReviewService(d.session_factory, d.queue, d.event_sink, settings, d.limits,
+                                      capacity=Capacity(d.redis, settings))
         return d
 
     @asynccontextmanager
@@ -80,6 +83,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
         expose_headers=["Mcp-Session-Id", "Retry-After"],
     )
     app.include_router(health.router, prefix="/api/v1", tags=["system"])
+    app.include_router(status.router, prefix="/api/v1", tags=["system"])
     app.include_router(events.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(reviews.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(papers.router, prefix="/api/v1", tags=["papers"])

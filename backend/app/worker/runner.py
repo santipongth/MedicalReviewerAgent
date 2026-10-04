@@ -24,7 +24,9 @@ class ReviewRunner:
     so finished nodes are not re-run and add-reducers are not double-counted.
     """
 
-    def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph, notify=None) -> None:
+    def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph, notify=None,
+                 capacity=None) -> None:
+        self.capacity = capacity  # app.services.capacity.Capacity: finished reviews count toward the daily spend
         self.session_factory = session_factory
         self.event_sink = event_sink
         self.graph = graph
@@ -95,6 +97,7 @@ class ReviewRunner:
             return "error"
 
         cost = float(values.get("cost_usd", 0.0))
+        await self._note_cost(cost)
         if values.get("rejected"):
             reason = str(values["rejected"])
             if not await self._finish(review_id, "rejected", error=reason, cost_usd=cost):
@@ -109,6 +112,14 @@ class ReviewRunner:
         await emit("done", {"cost_usd": cost})
         await self._notify(review_id, has_callback)
         return "done"
+
+    async def _note_cost(self, cost: float) -> None:
+        if self.capacity is None:
+            return
+        try:
+            await self.capacity.note_cost(cost)
+        except Exception:  # noqa: BLE001 - the budget counter must never fail a finished review
+            log.warning("capacity_cost_failed")
 
     async def _set_status(self, review_id: uuid.UUID, status: str) -> bool:
         async with self.session_factory() as session, session.begin():

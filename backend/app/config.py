@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     event_stream_ttl_seconds: int = 86400
     sse_ping_seconds: int = 15
     max_concurrent_reviews_per_worker: int = 2
+    # Admission control (shared through Redis by every API process): a bounded queue and a daily cap on reviews and spend.
+    max_queued_reviews: int = 50
+    max_reviews_per_day: int = 500
+    max_usd_per_day: float = 10.0
     stale_running_minutes: int = 30
 
     graph_mode: str = "real"  # "stub" = Plan 1 placeholder graph (plumbing tests without Claude)
