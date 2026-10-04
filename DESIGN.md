@@ -38,10 +38,10 @@ colors:
   dark-tape: "#3A4A36"
   dark-tape-stripe: "#DDEAE2"
   dark-hatch: "#4F665B"
-  dark-finding-supports: "#56B4E9"
-  dark-finding-harm: "#F08A4B"
+  dark-finding-supports: "#3B98D4"
+  dark-finding-harm: "#DB712F"
   dark-finding-none: "#9AA5AD"
-  dark-finding-mixed: "#D98BC6"
+  dark-finding-mixed: "#B05C9E"
   dark-warning: "#E9C75A"
   dark-warning-bg: "#3A3420"
   dark-error: "#F08A4B"
@@ -203,4 +203,5 @@ Flat. Depth comes from surface order (ground → surface → rail) and 1px rules
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-10-04 | Initial design system "Theatre Green" | Created by /design-consultation from product context, research on Elicit and Consensus, and three independent proposals. Mine supplied the clinical-instrument direction, Bai Jamjuree with Anuphan, and Okabe-Ito. Codex supplied the provenance-led hero and source sheet. The Claude subagent supplied the theatre green, autoclave tape, Martian Mono rule, Source Serif 4 quotes, glyphs, request slip and showing the gaps. The user approved it after an HTML preview at https://claude.ai/artifact/XUvrWN7gxW3GhzEMrEnNpY |
+| 2026-10-05 | Dark finding colors re-stepped to #3B98D4 / #DB712F / #B05C9E | dataviz validator: the preview's dark set failed the dark lightness band (L 0.48–0.67) and was in the CVD floor band; the new set passes all checks on #1B3029 (light set passes unchanged) |
 | 2026-10-04 | Tokens from the approved HTML preview | AI image mockups were unavailable (no OpenAI key), so the HTML preview (Path B) is the source of every token |

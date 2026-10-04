@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { emptyFilters, filterPapers, type Filters } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { Charts } from "./charts";
+import { FilterBar } from "./filter-bar";
 import { CitedText, ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, QualityNote, QuestionHeader, StrengthLine } from "./report-parts";
 import { SourceRail } from "./source-rail";
 import { L } from "./text";
@@ -34,7 +36,10 @@ export function Report({ review }: { review: Review }) {
   const byRef = useMemo(() => new Map(papers.map((p) => [p.ref, p])), [papers]);
   const refs = useMemo(() => new Set(papers.map((p) => p.ref)), [papers]);
   const rows = useMemo(() => (synthesis.comparison?.length ? synthesis.comparison : showEn ? result.synthesis?.comparison ?? [] : []), [synthesis.comparison, showEn, result.synthesis?.comparison]);
-  const matrixRefs = useMemo(() => papers.filter((p) => rows.some((r) => r.cells.some((c) => c.ref === p.ref))).map((p) => p.ref), [papers, rows]);
+  const [filters, setFilters] = useState<Filters>(emptyFilters);
+  const visible = useMemo(() => filterPapers(papers, filters), [papers, filters]);
+  const matrixRefs = useMemo(() => visible.filter((p) => rows.some((r) => r.cells.some((c) => c.ref === p.ref))).map((p) => p.ref), [visible, rows]);
+  const visibleRows = useMemo(() => rows.filter((r) => r.cells.some((c) => matrixRefs.includes(c.ref))), [rows, matrixRefs]);
   const firstWithCard = papers.find((p) => p.card)?.ref;
   const [selection, setSelection] = useState<Selection | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -77,18 +82,22 @@ export function Report({ review }: { review: Review }) {
             </p>
           </section>
 
+          {papers.length > 1 && (
+            <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} />
+          )}
+
           {rows.length > 0 && (
             <section aria-labelledby="h-matrix">
               <h2 id="h-matrix" className="mb-3 text-lg font-semibold">{L(lang, "ผลแต่ละการศึกษา", "Findings by study")}</h2>
-              <ComparisonMatrix rows={rows} refs={matrixRefs} lang={lang} onSelect={select} selected={active ?? undefined}
-                outcomeOf={(row, ref) => outcomeFor(byRef.get(ref), row, ref)} />
+              {visibleRows.length ? <ComparisonMatrix rows={visibleRows} refs={matrixRefs} lang={lang} onSelect={select} selected={active ?? undefined}
+                outcomeOf={(row, ref) => outcomeFor(byRef.get(ref), row, ref)} /> : <p className="text-[0.9rem] text-muted">{L(lang, "ไม่มีงานวิจัยที่ตรงกับตัวกรอง", "No studies match the filters")}</p>}
               <MatrixLegend lang={lang} />
             </section>
           )}
 
           <ClaimsPanel consensus={synthesis.consensus ?? []} conflicts={synthesis.conflicts ?? []} lang={lang} onSelect={select} refs={refs} />
 
-          {hasPapers && <Charts result={result} papers={papers} lang={lang} onSelect={select} />}
+          {hasPapers && <Charts result={result} papers={visible} lang={lang} onSelect={select} />}
 
           {!!synthesis.research_gaps?.length && (
             <section aria-labelledby="h-gaps" className="grid gap-2">
@@ -100,7 +109,7 @@ export function Report({ review }: { review: Review }) {
           {hasPapers && (
             <section aria-labelledby="h-papers">
               <h2 id="h-papers" className="mb-2 text-lg font-semibold">{L(lang, "งานวิจัยที่อ่าน", "Papers read")}</h2>
-              <PaperList papers={papers} lang={lang} onSelect={select} selectedRef={active?.ref} />
+              <PaperList papers={visible} lang={lang} onSelect={select} selectedRef={active?.ref} />
             </section>
           )}
 

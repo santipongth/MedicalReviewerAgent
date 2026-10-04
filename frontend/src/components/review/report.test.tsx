@@ -58,6 +58,20 @@ describe("Report", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("In adults with type 2 diabetes");
   });
 
+  it("filters narrow the matrix and the paper list", async () => {
+    render(<Report review={reviewFixture} />);
+    const slider = screen.getByLabelText(/ความเกี่ยวข้องขั้นต่ำ/);
+    // fireEvent-style change: user-event cannot drag range inputs in jsdom
+    const { fireEvent } = await import("@testing-library/react");
+    fireEvent.change(slider, { target: { value: "90" } });
+    const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
+    expect(within(table).queryByRole("columnheader", { name: "P4" })).not.toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "P3" })).toBeInTheDocument();
+    expect(screen.getByText("แสดง 2 จาก 5 ฉบับ")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "ล้างตัวกรอง" }));
+    expect(within(table).getByRole("columnheader", { name: "P4" })).toBeInTheDocument();
+  });
+
   it("a review with no papers shows the explicit message and no matrix", () => {
     render(<Report review={emptyReviewFixture} />);
     expect(screen.getByText(/ไม่พบงานวิจัยที่ตรงกับหัวข้อนี้/)).toBeInTheDocument();
