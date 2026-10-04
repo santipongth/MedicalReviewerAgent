@@ -4,15 +4,38 @@ import type { OutcomeResult, Paper, ReviewResult } from "./types";
 
 const NUM = /(?<![A-Za-z0-9_.])-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<![A-Za-z0-9_.])-?\d+(?:\.\d+)?/g;
 
-/** The number as written in `quote` (e.g. "0.80", "1,234"); falls back to the plain value. */
-export function asReported(value: number, quote?: string | null): string {
-  if (quote) {
-    for (const m of quote.matchAll(NUM)) {
-      const parsed = Number(m[0].replace(/,/g, ""));
-      if (Math.abs(parsed - value) <= Math.max(1e-9, Math.abs(value) * 0.005)) return m[0];
+// Same normalisation as the backend verifier (app/harness/verify.py), one character for one character so indices
+// still point into the original quote: Lancet decimal point, unicode minus, en/em dashes used as ranges.
+const SAME_LENGTH: Record<string, string> = { "\u00b7": ".", "\u2212": "-", "\u2013": " ", "\u2014": " ", "\u00a0": " " };
+
+export interface Reported {
+  text: string;
+  index: number;
+}
+
+/** Where and how `value` appears in `quote` (exact spelling, standalone number), or null. */
+export function findReported(value: number, quote?: string | null): Reported | null {
+  if (!quote) return null;
+  const normalised = quote.replace(/[\u00b7\u2212\u2013\u2014\u00a0]/g, (c) => SAME_LENGTH[c] ?? c);
+  for (const m of normalised.matchAll(NUM)) {
+    const parsed = Number(m[0].replace(/,/g, ""));
+    if (Math.abs(parsed - value) <= Math.max(1e-9, Math.abs(value) * 0.005)) {
+      const index = m.index ?? 0;
+      return { text: quote.slice(index, index + m[0].length), index };
     }
   }
-  return String(value);
+  return null;
+}
+
+/** The number as written in `quote` (e.g. "0.80", "0·80", "1,234"); falls back to the plain value. */
+export function asReported(value: number, quote?: string | null): string {
+  return findReported(value, quote)?.text ?? String(value);
+}
+
+/** Only http(s) links are rendered; anything else (javascript:, data:) is dropped. */
+export function safeHref(url?: string | null): string | null {
+  const u = url?.trim();
+  return u && /^https?:\/\//i.test(u) ? u : null;
 }
 
 /** True when the outcome carries a numeric effect that survived verification. */
@@ -47,6 +70,7 @@ export interface Receipt {
   outcome: string;
   display: string;
   reported: string;
+  value: number;
   quote: string;
   design?: string;
   sampleSize?: string;
@@ -61,7 +85,8 @@ export function pickReceipt(result: ReviewResult | null | undefined): Receipt | 
       if (!o.evidence_quote || !isVerifiedEffect(p, o)) continue;
       return {
         ref: p.ref, title: p.title, outcome: o.outcome, display: effectLabel(o),
-        reported: asReported(o.effect_value as number, o.evidence_quote), quote: o.evidence_quote,
+        reported: asReported(o.effect_value as number, o.evidence_quote), value: o.effect_value as number,
+        quote: o.evidence_quote,
         design: card.study_design,
         sampleSize: card.sample_size != null ? asReported(card.sample_size, card.sample_size_quote) : undefined,
       };

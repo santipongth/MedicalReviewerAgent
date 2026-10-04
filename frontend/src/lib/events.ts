@@ -37,9 +37,11 @@ export async function followReview(id: string, opts: FollowOptions): Promise<Fol
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       const parser = new SSEParser();
+      let received = false;
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        received = true;
         failures = 0;
         for (const msg of parser.feed(decoder.decode(value, { stream: true }))) {
           let payload: Record<string, unknown> = {};
@@ -56,6 +58,9 @@ export async function followReview(id: string, opts: FollowOptions): Promise<Fol
           }
         }
       }
+      // A clean close that delivered nothing (e.g. a finished review whose final event was lost) counts as a
+      // failure, so the caller falls back to polling instead of reconnecting forever.
+      if (!received) failures += 1;
     } catch (e) {
       if (opts.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) return "aborted";
       failures += 1;

@@ -39,7 +39,7 @@ describe("ReceiptPanel", () => {
     expect(screen.getByText(/lower risk of colorectal cancer/)).toBeInTheDocument();
     expect(screen.getByText("0.80", { selector: "mark" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /เมตฟอร์มินกับมะเร็งลำไส้ใหญ่/ })).toHaveAttribute("href", "/r/a");
-    expect(screen.getByText("96%")).toHaveClass("num-verified");
+    expect(screen.getByText("96%")).not.toHaveClass("num-verified");
   });
 
   it("explains verification when there are no public reviews yet", async () => {

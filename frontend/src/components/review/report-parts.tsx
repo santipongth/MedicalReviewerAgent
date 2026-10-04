@@ -3,7 +3,7 @@
 import { Fragment, type ReactNode } from "react";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
 import type { ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, QuestionBlock, Quality, Synthesis } from "@/lib/types";
-import { Glyph, VerifiedNumber } from "../ui/evidence";
+import { Glyph } from "../ui/evidence";
 import { L } from "./text";
 
 export type Select = (ref: string, outcome?: string) => void;
@@ -86,7 +86,7 @@ export function StrengthLine({ synthesis, lang, quality }: { synthesis: Synthesi
         {quality?.numbers_total ? (
           <p className="text-muted">
             {L(lang, "ตัวเลขที่ตรวจกับต้นฉบับผ่าน", "Numbers verified against the papers")}{" "}
-            <VerifiedNumber value={`${quality.numbers_verified ?? 0}/${quality.numbers_total}`} />
+            <span className="font-num [font-stretch:87.5%]">{`${quality.numbers_verified ?? 0}/${quality.numbers_total}`}</span>
           </p>
         ) : null}
       </div>
@@ -123,7 +123,7 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
                     <button type="button" onClick={() => onSelect(ref, outcome)} aria-pressed={isSel}
                       aria-label={`${ref}: ${row.outcome} — ${DIRECTION_LABEL[lang][cell.direction]}. ${cell.finding}`}
                       title={cell.finding}
-                      className={`inline-grid h-7 w-8 place-items-center rounded-sm border ${isSel ? "border-ink bg-rail" : "border-transparent hover:border-ink"}`}>
+                      className={`inline-grid min-h-11 min-w-11 place-items-center rounded-sm border md:h-7 md:min-h-0 md:w-8 md:min-w-0 ${isSel ? "border-ink bg-rail" : "border-transparent hover:border-ink"}`}>
                       <Glyph direction={cell.direction} lang={lang} />
                     </button>
                   </td>

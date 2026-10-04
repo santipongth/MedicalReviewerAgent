@@ -44,6 +44,7 @@ describe("evidence helpers", () => {
     expect(r?.ref).toBe("P2");
     expect(r?.display).toBe("HR 0.80");
     expect(r?.quote).toBe(quote);
+    expect(r?.value).toBe(0.8);
     expect(pickReceipt({ papers: [paper("P1", null)] })).toBeNull();
     expect(pickReceipt({})).toBeNull();
   });

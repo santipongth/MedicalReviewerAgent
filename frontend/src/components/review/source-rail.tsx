@@ -1,7 +1,7 @@
 "use client";
 
 import { HighlightedQuote } from "@/components/landing/receipt-panel";
-import { asReported, ciLabel, effectLabel, isBlankedEffect, isBlankedSampleSize } from "@/lib/evidence";
+import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, safeHref } from "@/lib/evidence";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
 import { Glyph, Hole, VerifiedNumber } from "../ui/evidence";
@@ -14,6 +14,12 @@ const SOURCE_LABEL: Record<string, [string, string]> = {
   abstract: ["บทคัดย่อเท่านั้น", "Abstract only"],
   title_only: ["ชื่อเรื่องเท่านั้น", "Title only"],
 };
+
+/** Free text where the verifier masked numbers as "[unverified]": each mask becomes a visible not-verified gap. */
+function MaskedText({ text, lang }: { text: string; lang: Lang }) {
+  const parts = text.split("[unverified]");
+  return <>{parts.map((p, i) => <span key={i}>{p}{i < parts.length - 1 && <Hole lang={lang} />}</span>)}</>;
+}
 
 function OutcomeEvidence({ paper, o, en, lang, selected }: {
   paper: Paper; o: OutcomeResult; en?: OutcomeResult; lang: Lang; selected: boolean;
@@ -29,7 +35,7 @@ function OutcomeEvidence({ paper, o, en, lang, selected }: {
         <b className="font-display text-[0.95rem]">{o.outcome}</b>
         <span className="text-sm text-muted">{DIRECTION_LABEL[lang][o.direction]}</span>
       </div>
-      <p className="text-[0.92rem]">{o.result}</p>
+      <p className="text-[0.92rem]"><MaskedText text={o.result} lang={lang} /></p>
       <p className="text-[0.92rem]">
         {hasEffect ? (
           <>
@@ -46,7 +52,7 @@ function OutcomeEvidence({ paper, o, en, lang, selected }: {
         <div className="grid gap-1">
           <span className="label">{L(lang, "ประโยคที่ใช้ยืนยัน", "Source sentence")}</span>
           <p className="font-quote text-[1rem] leading-relaxed">
-            {hasEffect ? <HighlightedQuote quote={quote} number={asReported(o.effect_value as number, quote)} /> : <>&ldquo;{quote}&rdquo;</>}
+            {hasEffect ? <HighlightedQuote quote={quote} number={findReported(o.effect_value as number, quote)} /> : <>&ldquo;{quote}&rdquo;</>}
           </p>
         </div>
       )}
@@ -75,11 +81,13 @@ function Facts({ paper, card, cardEn, lang }: { paper: Paper; card: PaperCard; c
 
 function Links({ paper, lang }: { paper: Paper; lang: Lang }) {
   const links: [string, string][] = [];
+  const fullText = safeHref(paper.fulltext_url);
+  const page = safeHref(paper.url);
   if (paper.pmcid) links.push([`https://pmc.ncbi.nlm.nih.gov/articles/${paper.pmcid}/`, "PubMed Central"]);
   if (paper.pmid) links.push([`https://pubmed.ncbi.nlm.nih.gov/${paper.pmid}/`, "PubMed"]);
   if (paper.doi) links.push([`https://doi.org/${paper.doi}`, `DOI ${paper.doi}`]);
-  if (paper.fulltext_url && !links.some(([u]) => u === paper.fulltext_url)) links.push([paper.fulltext_url, L(lang, "ฉบับเต็มที่อ่าน", "Full text read")]);
-  if (!links.length && paper.url) links.push([paper.url, L(lang, "หน้าบทความ", "Article page")]);
+  if (fullText && !links.some(([u]) => u === fullText)) links.push([fullText, L(lang, "ฉบับเต็มที่อ่าน", "Full text read")]);
+  if (!links.length && page) links.push([page, L(lang, "หน้าบทความ", "Article page")]);
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 font-display text-[0.88rem] font-semibold">
       {links.map(([href, label]) => (

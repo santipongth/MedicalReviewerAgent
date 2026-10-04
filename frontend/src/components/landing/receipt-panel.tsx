@@ -3,20 +3,21 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getReview, listRecent } from "@/lib/api";
-import { pickReceipt, type Receipt } from "@/lib/evidence";
+import { findReported, pickReceipt, type Receipt, type Reported } from "@/lib/evidence";
 import type { ReviewSummary } from "@/lib/types";
 import { VerifiedNumber } from "../ui/evidence";
 
 type Loaded = { recent: ReviewSummary[]; receipt: Receipt | null; receiptId: string | null };
 
-export function HighlightedQuote({ quote, number }: { quote: string; number: string }) {
-  const i = quote.indexOf(number);
-  if (i < 0) return <>&ldquo;{quote}&rdquo;</>;
+/** The verbatim quote with the verified number marked at its exact position (never inside another number). */
+export function HighlightedQuote({ quote, number }: { quote: string; number: Reported | null }) {
+  if (!number) return <>&ldquo;{quote}&rdquo;</>;
+  const { index, text } = number;
   return (
     <>
-      &ldquo;{quote.slice(0, i)}
-      <mark className="bg-highlight px-0.5 text-[var(--highlight-ink)]">{number}</mark>
-      {quote.slice(i + number.length)}&rdquo;
+      &ldquo;{quote.slice(0, index)}
+      <mark className="bg-highlight px-0.5 text-[var(--highlight-ink)]">{text}</mark>
+      {quote.slice(index + text.length)}&rdquo;
     </>
   );
 }
@@ -63,7 +64,7 @@ export function ReceiptPanel() {
         <>
           <div className="text-[2.4rem] leading-none"><VerifiedNumber value={data.receipt.display} /></div>
           <p className="font-quote text-[1.05rem] leading-relaxed">
-            <HighlightedQuote quote={data.receipt.quote} number={data.receipt.reported} />
+            <HighlightedQuote quote={data.receipt.quote} number={findReported(data.receipt.value, data.receipt.quote)} />
           </p>
           <p className="text-[0.85rem] text-muted">
             {data.receipt.design}
@@ -87,7 +88,7 @@ export function ReceiptPanel() {
                 <Link href={`/r/${r.id}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 py-2.5 text-ink hover:text-primary">
                   <span className="min-w-0 break-words">{r.topic}</span>
                   {r.verification_rate != null ? (
-                    <VerifiedNumber value={`${Math.round(r.verification_rate * 100)}%`} />
+                    <span className="font-num text-[0.9rem] [font-stretch:87.5%]">{`${Math.round(r.verification_rate * 100)}%`}</span>
                   ) : (
                     <span className="text-sm text-muted">–</span>
                   )}
