@@ -9,19 +9,25 @@ from app.graph.schemas import PaperCard
 RANDOMIZED_CATEGORIES = frozenset({"rct", "sr_ma_rct"})
 POOLED_CATEGORIES = frozenset({"sr_ma_rct", "sr_ma_observational", "sr_ma_mixed"})
 
-# Ordered: the first matching rule wins (pooled designs before the primary designs they mention).
+# Ordered: the first matching rule wins. Pooled designs come before the primary designs they mention, and every
+# design that merely *mentions* a trial (a cohort nested in one, a post hoc analysis, a non-systematic review of
+# trials) comes before "rct", so only genuinely randomised studies count as randomised.
 _RULES: list[tuple[str, re.Pattern[str]]] = [
+    ("sr_ma_observational", re.compile(
+        r"(meta-?analys|systematic review).*(observational|cohort|case-?control|non-?randomi[sz]ed)", re.IGNORECASE)),
     ("sr_ma_rct", re.compile(r"(meta-?analys|systematic review).*(randomi[sz]ed|rcts?\b|trials)", re.IGNORECASE)),
-    ("sr_ma_observational", re.compile(r"(meta-?analys|systematic review).*(observational|cohort|case-control)", re.IGNORECASE)),
     ("sr_ma_mixed", re.compile(r"meta-?analys|systematic review|pooled analysis", re.IGNORECASE)),
     ("mendelian_randomization", re.compile(r"mendelian randomi", re.IGNORECASE)),
+    ("narrative_review", re.compile(
+        r"^\s*(narrative |literature |scoping )?review(\s+article)?\s*$|narrative review|literature review|^\s*review of\b",
+        re.IGNORECASE)),
     ("non_randomized_trial", re.compile(r"non-?randomi[sz]ed|single[- ]arm|quasi-?experimental", re.IGNORECASE)),
-    ("rct", re.compile(r"randomi[sz]ed|\brct\b|controlled trial", re.IGNORECASE)),
     ("case_control", re.compile(r"case-?control", re.IGNORECASE)),
-    ("cohort", re.compile(r"cohort|target trial emulation|longitudinal|registry|claims database|new-user", re.IGNORECASE)),
+    ("cohort", re.compile(r"cohort|observational analysis|secondary analysis|post[- ]hoc|target trial emulation|"
+                          r"longitudinal|registry|claims database|new-user", re.IGNORECASE)),
+    ("rct", re.compile(r"randomi[sz]ed|\brct\b|controlled trial", re.IGNORECASE)),
     ("cross_sectional", re.compile(r"cross-?sectional|survey", re.IGNORECASE)),
     ("case_series", re.compile(r"case series|case report", re.IGNORECASE)),
-    ("narrative_review", re.compile(r"^\s*(narrative |literature |scoping )?review(\s+article)?\s*$|narrative review", re.IGNORECASE)),
 ]
 
 

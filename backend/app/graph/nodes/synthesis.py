@@ -240,8 +240,11 @@ def _consensus_explanation(c: dict[str, Any]) -> str:
     if not dissent:
         return f"{len(c['refs'])} studies report the same direction for {c['outcome']}."
     total = len(c["refs"]) + sum(len(refs) for refs in dissent.values())
-    others = "; ".join(f"{', '.join(f'[{r}]' for r in refs)} {DIRECTION_TEXT.get(d, d).replace('findings ', '')}"
-                       for d, refs in dissent.items())
+    def finding(d: str, n: int) -> str:
+        text = DIRECTION_TEXT.get(d, d).replace("findings ", "")
+        return text.replace("show ", "shows ", 1) if n == 1 else text
+
+    others = "; ".join(f"{', '.join(f'[{r}]' for r in refs)} {finding(d, len(refs))}" for d, refs in dissent.items())
     return f"{len(c['refs'])} of {total} studies report the same direction for {c['outcome']}; {others}."
 
 

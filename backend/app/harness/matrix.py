@@ -119,8 +119,10 @@ def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters) -> dic
             consensus.append({"outcome": row["outcome"], "direction": top, "refs": by_direction[top], "dissent": {}})
         elif (len(present) >= 2 and studies >= CONSENSUS_MIN_STUDIES
               and len(by_direction[top]) / studies >= CONSENSUS_SHARE):
+            # a study that also reports the majority direction (another outcome in this row) is not a dissenter
+            dissent = {d: [r for r in by_direction[d] if r not in by_direction[top]] for d in present if d != top}
             consensus.append({"outcome": row["outcome"], "direction": top, "refs": by_direction[top],
-                              "dissent": {d: by_direction[d] for d in present if d != top}})
+                              "dissent": {d: refs for d, refs in dissent.items() if refs}})
         elif len(present) >= 2:
             refs = sorted({r for d in present for r in by_direction[d]}, key=_ref_num)
             conflicts.append({"outcome": row["outcome"], "refs": refs,

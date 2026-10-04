@@ -96,3 +96,15 @@ async def test_plan_always_has_a_study_design_query():
     already = FakeStructuredLLM("p", lambda s, u: _plan(queries=["metformin crc cohort", "metformin crc"]))
     out3 = await make_plan_queries(_deps(_llms(planner=already)))({"topic": "x", "language": "en", "options": {}})
     assert out3["plan"]["queries"] == ["metformin crc cohort", "metformin crc"]
+
+
+def test_a_review_query_does_not_count_as_a_primary_design_query():
+    from app.graph.nodes.intake import ensure_design_query
+    q = {"question_type": "therapy", "intervention_or_exposure": "SGLT2 inhibitors", "population": "HFpEF"}
+    out = ensure_design_query(["sglt2 hfpef", "sglt2 hfpef meta-analysis"], q)
+    assert out[-1].endswith("randomized controlled trial")  # reviews alone would crowd out the trials again
+    prevalence = {**q, "question_type": "prevalence"}
+    assert ensure_design_query(["hfpef cross-sectional survey"], prevalence) == ["hfpef cross-sectional survey"]
+    long_pico = {**q, "population": "adults aged 50 years or older with heart failure and preserved ejection "
+                                    "fraction above fifty percent"}
+    assert len(ensure_design_query(["x"], long_pico)[-1].split()) <= 10  # planner rule: short keyword queries

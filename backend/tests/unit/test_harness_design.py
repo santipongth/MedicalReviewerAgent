@@ -51,3 +51,11 @@ def test_settle_fills_missing_categories_and_lets_publication_types_win():
     assert settle_design_category(card(category="cohort"), ["Randomized Controlled Trial"]).design_category == "rct"
     pooled = settle_design_category(card(design="Meta-analysis of cohort studies", category="cohort"), ["Meta-Analysis"])
     assert pooled.design_category == "sr_ma_observational"
+
+
+def test_designs_that_only_mention_a_trial_are_not_randomized():
+    assert infer_design_category("Prospective cohort nested in a randomized trial") == "cohort"
+    assert infer_design_category("Observational analysis of RCT participants") == "cohort"
+    assert infer_design_category("Post hoc secondary analysis of a randomised trial") == "cohort"
+    assert infer_design_category("Review of randomised controlled trials") == "narrative_review"
+    assert infer_design_category("Systematic review of non-randomized trials") == "sr_ma_observational"

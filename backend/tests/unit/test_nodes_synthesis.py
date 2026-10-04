@@ -332,6 +332,9 @@ async def test_narrative_reviews_stay_listed_but_out_of_the_evidence():
     m = out["matrix"]
     assert [c["ref"] for c in m["rows"][0]["cells"]] == ["P1", "P2"]  # the review adds no cell...
     assert m["conflicts"] == []  # ...and no conflict
+    r = (await make_finalize(deps())(state(papers, synthesis={"executive_summary": "EN"})))["result"]
+    listed = {p["ref"]: p for p in r["papers"]}
+    assert listed["P3"]["card"]["design_category"] == "narrative_review"  # still listed, labelled as a review
 
 
 def test_repair_clusters_fixes_a_near_miss_instead_of_discarding_it():
@@ -375,3 +378,21 @@ def test_consensus_statement_names_the_dissenting_studies():
     consensus, conflicts = _clusters(matrix, [])
     assert consensus[0].refs == ["P1", "P2", "P3"] and conflicts == []
     assert "3 of 4 studies" in consensus[0].explanation and "[P4]" in consensus[0].explanation
+
+
+def test_dissent_counts_distinct_studies_when_one_paper_reports_two_directions():
+    from app.graph.nodes.synthesis import _consensus_explanation
+    from app.harness.matrix import build_matrix
+
+    def two(ref, d1, d2):
+        c = card("CRC incidence", d1)
+        c["outcomes"].append({**c["outcomes"][0], "outcome": "CRC incidence (women)", "direction": d2})
+        return paper(ref, c)
+    papers = [paper(f"P{i}", card("CRC incidence")) for i in range(1, 4)] + [two("P4", "positive", "null")]
+    clusters = OutcomeClusters(clusters=[OutcomeCluster(canonical="CRC incidence", members=[
+        *[OutcomeMember(ref=f"P{i}", outcome="CRC incidence") for i in range(1, 5)],
+        OutcomeMember(ref="P4", outcome="CRC incidence (women)")])])
+    m = build_matrix(papers, clusters)
+    c = m["consensus"][0]
+    assert c["refs"] == ["P1", "P2", "P3", "P4"] and c["dissent"] == {}  # P4 is not both a supporter and a dissenter
+    assert _consensus_explanation({"outcome": "CRC", "refs": ["P1", "P2", "P3"], "dissent": {"null": ["P4"]}})         .endswith("[P4] shows no significant association.")

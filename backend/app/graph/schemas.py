@@ -112,6 +112,7 @@ class QueryPlan(BaseModel):
 
 def _require_design_guess(schema: dict) -> None:
     schema.setdefault("required", []).append("design_guess")
+    schema["properties"]["design_guess"].pop("default", None)  # strict tool schemas reject "default"
 
 
 class ScreenDecision(BaseModel):
@@ -144,6 +145,7 @@ class OutcomeResult(BaseModel):
 def _require_design_category(schema: dict) -> None:
     # Required (nullable) for the model; the Python default only serves cards stored before the field existed.
     schema.setdefault("required", []).append("design_category")
+    schema["properties"]["design_category"].pop("default", None)  # strict tool schemas reject "default"
 
 
 class PaperCard(BaseModel):
