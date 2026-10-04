@@ -50,3 +50,11 @@ describe("TerminalState", () => {
     expect(screen.getByRole("heading")).toHaveTextContent(/ยกเลิก/);
   });
 });
+
+describe("LiveRun queue", () => {
+  it("shows the place in the queue while waiting", () => {
+    const run = { ...initialRun(), status: "queued" as const };
+    render(<LiveRun run={run} topic="statins" connection="open" queuePosition={3} />);
+    expect(screen.getByText(/ลำดับที่ 3/)).toBeInTheDocument();
+  });
+});

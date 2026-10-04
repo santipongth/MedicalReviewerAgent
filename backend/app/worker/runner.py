@@ -11,6 +11,7 @@ from app.db.models import TERMINAL_STATUSES, ReviewStatus
 from app.db.repositories import ReviewRepository
 from app.graph.graph import initial_state
 from app.logging import get_logger
+from app.services.budget import ReviewBudget, use_budget
 from app.services.events import EventSink
 
 log = get_logger(__name__)
@@ -24,7 +25,10 @@ class ReviewRunner:
     so finished nodes are not re-run and add-reducers are not double-counted.
     """
 
-    def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph, notify=None) -> None:
+    def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph, notify=None,
+                 capacity=None, cost_cap_usd: float | None = None) -> None:
+        self.cost_cap_usd = cost_cap_usd  # per-review LLM spend cap (None → uncapped)
+        self.capacity = capacity  # app.services.capacity.Capacity: finished reviews count toward the daily spend
         self.session_factory = session_factory
         self.event_sink = event_sink
         self.graph = graph
@@ -69,13 +73,16 @@ class ReviewRunner:
         await emit("started", {"resume": resume})
         state_input = None if resume else initial_state(str(review_id), topic, language, options)
 
+        # Every LLM call of this run (any node or branch) is charged to this review's budget.
+        budget = ReviewBudget(cap_usd=self.cost_cap_usd) if self.cost_cap_usd else None
         try:
-            async for mode, chunk in self.graph.astream(
-                state_input, config, stream_mode=["custom", "updates"], durability="sync"
-            ):
-                if mode == "custom" and isinstance(chunk, dict):
-                    payload = {k: v for k, v in chunk.items() if k != "type"}
-                    await emit(str(chunk.get("type", "progress")), payload)
+            with use_budget(budget):
+                async for mode, chunk in self.graph.astream(
+                    state_input, config, stream_mode=["custom", "updates"], durability="sync"
+                ):
+                    if mode == "custom" and isinstance(chunk, dict):
+                        payload = {k: v for k, v in chunk.items() if k != "type"}
+                        await emit(str(chunk.get("type", "progress")), payload)
             snapshot = await self.graph.aget_state(config)
             values = snapshot.values
         except asyncio.CancelledError:
@@ -88,13 +95,16 @@ class ReviewRunner:
         except Exception as exc:
             log.exception("review_failed", review_id=str(review_id))
             message = f"{type(exc).__name__}: {exc}"
-            if not await self._finish(review_id, "error", error=message):
+            spent = round(budget.spent, 6) if budget is not None else 0.0  # what the failed run already cost
+            await self._note_cost(spent)
+            if not await self._finish(review_id, "error", error=message, cost_usd=spent):
                 return ReviewStatus.cancelled.value
             await emit("error", {"message": message})
             await self._notify(review_id, has_callback)
             return "error"
 
         cost = float(values.get("cost_usd", 0.0))
+        await self._note_cost(cost)
         if values.get("rejected"):
             reason = str(values["rejected"])
             if not await self._finish(review_id, "rejected", error=reason, cost_usd=cost):
@@ -109,6 +119,14 @@ class ReviewRunner:
         await emit("done", {"cost_usd": cost})
         await self._notify(review_id, has_callback)
         return "done"
+
+    async def _note_cost(self, cost: float) -> None:
+        if self.capacity is None:
+            return
+        try:
+            await self.capacity.note_cost(cost)
+        except Exception:  # noqa: BLE001 - the budget counter must never fail a finished review
+            log.warning("capacity_cost_failed")
 
     async def _set_status(self, review_id: uuid.UUID, status: str) -> bool:
         async with self.session_factory() as session, session.begin():

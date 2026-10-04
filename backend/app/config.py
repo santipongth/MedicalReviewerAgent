@@ -35,10 +35,22 @@ class Settings(BaseSettings):
     result_cache_ttl_seconds: int = 86400
     event_stream_ttl_seconds: int = 86400
     sse_ping_seconds: int = 15
-    max_concurrent_reviews_per_worker: int = 2
+    sse_max_per_ip: int = 5  # concurrent event streams per client (all API processes share the count)
+    db_pool_size: int = 10  # per process; Postgres max_connections must cover processes × (size + overflow)
+    db_max_overflow: int = 20
+    max_concurrent_reviews_per_worker: int = 4
+    # Admission control (shared through Redis by every API process): a bounded queue and a daily cap on reviews and spend.
+    max_queued_reviews: int = 50
+    max_reviews_per_day: int = 500
+    max_usd_per_day: float = 10.0
+    max_cost_per_review_usd: float = 0.25  # LLM steps beyond this are skipped; the review finishes with what it has
+    # Cloudflare Turnstile for anonymous web submissions (empty secret = off; API keys and MCP never need it).
+    turnstile_secret: str = ""
+    turnstile_site_key: str = ""
     stale_running_minutes: int = 30
 
     graph_mode: str = "real"  # "stub" = Plan 1 placeholder graph (plumbing tests without Claude)
+    stub_delay_seconds: float = 0.0  # stub graph only: simulated review duration for load tests
     prompt_version: str = "2026-10-05.2"
 
     searxng_engines: str = "pubmed,arxiv,semantic scholar,openalex,crossref"

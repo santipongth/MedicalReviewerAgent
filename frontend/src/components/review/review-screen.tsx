@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getReview } from "@/lib/api";
 import { useReview } from "@/lib/use-review";
 import { LiveRun } from "./live-run";
 import { Report } from "./report";
@@ -9,6 +11,18 @@ import { TerminalState } from "./terminal-state";
 export function ReviewScreen({ id }: { id: string }) {
   const { review, run, phase, connection } = useReview(id);
   const topic = review?.topic ?? "";
+  const [polledPosition, setPolledPosition] = useState<number | null | undefined>(undefined);
+  const waiting = phase === "live" && run.status !== "running";
+
+  // While the review waits in the queue (no events yet), refresh its place every few seconds.
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(() => {
+      getReview(id).then((r) => setPolledPosition(r.queue_position ?? null)).catch(() => undefined);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [id, waiting]);
+  const queuePosition = polledPosition === undefined ? review?.queue_position : polledPosition;
 
   if (phase === "loading") {
     return <p className="pt-12 text-muted" aria-live="polite">กำลังโหลดรีวิว…</p>;
@@ -36,5 +50,5 @@ export function ReviewScreen({ id }: { id: string }) {
   if (phase === "report" && review) {
     return <Report review={review} />;
   }
-  return <LiveRun run={run} topic={topic} connection={connection} />;
+  return <LiveRun run={run} topic={topic} connection={connection} queuePosition={queuePosition} />;
 }

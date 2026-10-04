@@ -8,7 +8,8 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from app.api import admin, events, health, papers, reviews
+from app import __version__
+from app.api import admin, events, health, papers, reviews, status
 from app.api.ratelimit import limiter
 from app.config import Settings, get_settings
 from app.logging import configure_logging
@@ -30,6 +31,21 @@ class McpPathMiddleware:
         await self.app(scope, receive, send)
 
 
+API_DESCRIPTION = """Automated rapid literature reviews of published medical research.
+
+Submit a topic (POST /api/v1/reviews), follow it live (GET /api/v1/reviews/{id}/events, Server-Sent Events) and read
+or download the result. The agent refines the question, screens about 60 candidate papers that have abstracts,
+analyses the abstracts of up to 30 (no full-text fetching) and checks every number against the abstract; numbers it
+cannot verify are left empty, never estimated.
+
+Limits and capacity are published at GET /api/v1/status. Refusals always say why and when to retry: 429 (rate limit,
+key quota, too many event streams) and 503 (queue full, daily capacity, verification unavailable) carry a
+Retry-After header; 503 bodies also carry a reason. API keys (X-API-Key or Authorization: Bearer) raise limits and
+unlock webhooks and cancellation. The same service is available to AI agents over MCP at /mcp.
+
+Full reference: docs/api.md in the repository. Results are an automated review, not medical advice."""
+
+
 def create_app(settings: Settings | None = None, deps: AppDeps | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
@@ -39,7 +55,10 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
         from app.services.review_service import ReviewService
 
         d.limits = d.limits or RateLimits(settings.ratelimit_storage_uri)
-        d.service = d.service or ReviewService(d.session_factory, d.queue, d.event_sink, settings, d.limits)
+        if d.service is None:
+            from app.services.capacity import Capacity
+            d.service = ReviewService(d.session_factory, d.queue, d.event_sink, settings, d.limits,
+                                      capacity=Capacity(d.redis, settings))
         return d
 
     @asynccontextmanager
@@ -60,7 +79,8 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
 
     app = FastAPI(
         title="Medical Reviewer Agent API",
-        version="0.1.0",
+        version=__version__,
+        description=API_DESCRIPTION,
         lifespan=lifespan,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
@@ -80,6 +100,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
         expose_headers=["Mcp-Session-Id", "Retry-After"],
     )
     app.include_router(health.router, prefix="/api/v1", tags=["system"])
+    app.include_router(status.router, prefix="/api/v1", tags=["system"])
     app.include_router(events.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(reviews.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(papers.router, prefix="/api/v1", tags=["papers"])

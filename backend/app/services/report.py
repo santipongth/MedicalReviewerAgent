@@ -1,6 +1,8 @@
-"""Markdown rendering of a review (MCP resource review://{id}/report.md; exports later)."""
+"""Review exports: Markdown (also the MCP resource review://{id}/report.md) and CSV."""
 from __future__ import annotations
 
+import csv
+import io
 from typing import Any
 
 DIRECTION = {"positive": "supports", "negative": "opposite/harm", "null": "no association",
@@ -65,3 +67,29 @@ def render_markdown(review) -> str:
         out.append(f"_Numbers verified against paper text: {'n/a' if rate is None else f'{rate:.0%}'}; "
                    f"papers flagged uncertain: {quality.get('papers_uncertain', 0)}._")
     return "\n".join(out) + "\n"
+
+
+CSV_FIELDS = ["ref", "title", "year", "journal", "doi", "pmid", "design_category", "study_design", "sample_size",
+              "outcome", "direction", "effect_measure", "effect_value", "ci_lower", "ci_upper", "p_value",
+              "evidence_quote", "error"]
+
+
+def render_csv(result: dict[str, Any] | None) -> str:
+    """One row per paper × outcome, from the English cards. Values the verifier blanked are already null and stay
+    empty here: nothing is estimated. A paper without a card gets one row carrying its error."""
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=CSV_FIELDS, extrasaction="ignore", lineterminator="\n")
+    writer.writeheader()
+    for p in (result or {}).get("papers") or []:
+        card = p.get("card_en") or p.get("card")
+        base = {"ref": p.get("ref"), "title": p.get("title"), "year": p.get("year"), "journal": p.get("journal"),
+                "doi": p.get("doi"), "pmid": p.get("pmid"), "error": p.get("error")}
+        if not card:
+            writer.writerow(base)
+            continue
+        base |= {"design_category": card.get("design_category"), "study_design": card.get("study_design"),
+                 "sample_size": card.get("sample_size")}
+        for o in card.get("outcomes") or [{}]:
+            writer.writerow(base | {k: o.get(k) for k in ("outcome", "direction", "effect_measure", "effect_value",
+                                                          "ci_lower", "ci_upper", "p_value", "evidence_quote")})
+    return "\ufeff" + out.getvalue()  # BOM: spreadsheet apps then read Thai/unicode titles correctly

@@ -1,5 +1,5 @@
 import { apiUrl } from "./config";
-import type { CreateReviewBody, Review, ReviewCreated, ReviewSummary } from "./types";
+import type { CreateReviewBody, Review, ReviewCreated, ReviewSummary, ServiceStatus } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -7,6 +7,7 @@ export class ApiError extends Error {
     message: string,
     public retryAfter?: number,
     public reviewId?: string,
+    public reason?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -42,14 +43,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       body = undefined;
     }
     const retry = Number(res.headers.get("retry-after"));
-    const reviewId = (body as { review_id?: string } | undefined)?.review_id;
-    throw new ApiError(res.status, detailMessage(body) ?? res.statusText, Number.isFinite(retry) && retry > 0 ? retry : undefined, reviewId);
+    const { review_id: reviewId, reason } = (body ?? {}) as { review_id?: string; reason?: string };
+    throw new ApiError(res.status, detailMessage(body) ?? res.statusText, Number.isFinite(retry) && retry > 0 ? retry : undefined,
+      reviewId, reason);
   }
   return (await res.json()) as T;
 }
 
-export function createReview(body: CreateReviewBody): Promise<ReviewCreated> {
-  return request<ReviewCreated>("/api/v1/reviews", { method: "POST", body: JSON.stringify(body) });
+export function createReview(body: CreateReviewBody, opts?: { turnstileToken?: string }): Promise<ReviewCreated> {
+  const headers: Record<string, string> = opts?.turnstileToken ? { "cf-turnstile-response": opts.turnstileToken } : {};
+  return request<ReviewCreated>("/api/v1/reviews", { method: "POST", body: JSON.stringify(body), headers });
+}
+
+export function getStatus(): Promise<ServiceStatus> {
+  return request<ServiceStatus>("/api/v1/status");
+}
+
+export function exportUrl(id: string, format: "md" | "csv" | "json"): string {
+  return `${apiUrl()}/api/v1/reviews/${encodeURIComponent(id)}/export?format=${format}`;
 }
 
 export function getReview(id: string): Promise<Review> {

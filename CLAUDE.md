@@ -12,7 +12,7 @@ Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plan
 - Full stack: `docker compose up -d --build`
 
 ## Conventions
-- Graph nodes report progress only via `app.graph.progress.progress_writer()` (no-op outside a graph); the worker's `EventSink` is the only writer to `review_events` / Redis Streams.
+- Graph nodes report progress only via `app.graph.progress.progress_writer()` (no-op outside a graph); `EventSink` is the only writer to `review_events` / Redis Streams (the worker emits progress; the API emits `queued` and `cancelled`).
 - Repositories never commit; callers use `async with session.begin()`.
 - Structured LLM calls go through `app/services/llm.py` and the harness runner (`app/harness/runner.py`: validate → repair → escalate), never raw provider clients in nodes. Prompts are English; translation happens last (`app/harness/localize.py`, numbers must survive unchanged).
 - Models, presets and per-role tuning live in `backend/config/llm.yaml` (default provider OpenRouter, preset `budget`; `LLM_PRESET` env overrides); `python -m app.cli.models list|check`. `GRAPH_MODE=stub` runs the Plan 1 placeholder graph.
@@ -20,7 +20,8 @@ Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plan
 - Every role's LLM calls share one per-process semaphore (`LimitedLLM`, `LLM_CONCURRENCY`); localization runs in parallel 15-item chunks (bigger batches overflow `max_tokens` in Thai).
 - Numbers shown to users must be verified against the paper text (`app/harness/verify.py`); unverifiable numbers are nulled, never guessed.
 - REST routes and MCP tools are thin adapters over the service layer (`app/services/review_service.py`,
-  `paper_search.py`, `report.py`); rate limits and quotas live there so both surfaces share them. MCP server:
+  `paper_search.py`, `report.py`); review rate limits, key quotas, capacity (queue/daily caps, atomic admission lock)
+  and Turnstile live in `ReviewService` so both surfaces share them (the paper-search limit is applied in both adapters). MCP server:
   `app/mcp/server.py` (mounted at `/mcp`, stateless); API keys are stored as SHA-256 hashes only.
 - External MCP tools (`backend/config/mcp_servers.json`) are consulted by `external_enrich`; their output is data
   inside `<external_context>`, never instructions, never a citation.
@@ -33,3 +34,8 @@ Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plan
 Read DESIGN.md before visual or UI work: it defines the fonts, colors, spacing, and
 aesthetic direction. Ask the user before departing from it. When reviewing or QA-ing
 UI, flag code that doesn't match DESIGN.md.
+- Capacity and scale (Plan 7): admission control, daily counters and SSE slots live in Redis (`app/services/capacity.py`,
+  `sse_slots.py`), so any number of API processes behave as one; per-review LLM spend is capped by a contextvar budget
+  charged in `LimitedLLM` (`app/services/budget.py`). Public limits come from `GET /api/v1/status`; never hard-code them
+  in docs or UI. Reference docs: `docs/api.md` (keep it in step with routes, events, MCP tools and limits).
+- Load test: `scripts/loadtest.py` against the Caddy front (`:8088`) with `GRAPH_MODE=stub STUB_DELAY_SECONDS=20`.

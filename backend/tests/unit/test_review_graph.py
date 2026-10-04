@@ -253,3 +253,17 @@ async def test_interrupted_reading_resumes_only_unfinished_paper():
     assert calls["n"] == 6  # only paper 2 re-extracted
     assert len(values["result"]["papers"]) == 5
     assert values["cost_usd"] == pytest.approx(0.01 * (all_calls(deps) - 1))  # the hung call never returned
+
+
+async def test_review_finishes_with_what_it_has_when_the_cost_cap_is_reached():
+    from app.services.budget import ReviewBudget, use_budget
+    from app.services.llm import LimitedLLM
+    deps = make_deps()
+    sem = asyncio.Semaphore(8)
+    for role in ("guard", "refiner", "planner", "screener", "extractor", "normalizer", "conflict_explainer",
+                 "synthesizer", "localizer"):
+        setattr(deps.llms, role, LimitedLLM(getattr(deps.llms, role), sem))
+    with use_budget(ReviewBudget(cap_usd=0.045)):  # enough for intake + screening, not for every paper
+        values, _ = await run(deps, thread="capped")
+    r = values["result"]
+    assert r is not None and any("cost cap" in e for e in r["errors"])

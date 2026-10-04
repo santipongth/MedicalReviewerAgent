@@ -183,6 +183,25 @@ export interface ReviewResult {
   external_context?: ExternalNote[];
 }
 
+export interface ServiceStatus {
+  accepting: boolean;
+  reason: "queue_full" | "daily_reviews" | "daily_budget" | null;
+  retry_after: number | null;
+  queue_depth: number;
+  running: number;
+  reviews_today: number | null;
+  turnstile_site_key: string | null;
+  limits: {
+    review_rate_limit: string;
+    api_key_rate_limit: string;
+    paper_search_rate_limit: string;
+    max_papers: { min: number; max: number; default: number };
+    candidate_limit: { min: number; max: number; default: number };
+    max_queued_reviews: number;
+    sse_max_per_ip?: number;
+  };
+}
+
 export interface ReviewSummary {
   id: string;
   topic: string;
@@ -200,6 +219,7 @@ export interface Review extends ReviewSummary {
   error: string | null;
   cost_usd: number;
   started_at: string | null;
+  queue_position?: number | null;
 }
 
 export interface ReviewOptions {

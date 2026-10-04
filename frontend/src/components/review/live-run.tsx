@@ -19,7 +19,9 @@ const WELL_CLASS = {
 } as const;
 
 /** What the agent is doing right now: steps, the specimen tray (20 candidates → 8 capped) and each paper read. */
-export function LiveRun({ run, topic, connection }: { run: RunState; topic: string; connection: Connection }) {
+export function LiveRun({ run, topic, connection, queuePosition }: {
+  run: RunState; topic: string; connection: Connection; queuePosition?: number | null;
+}) {
   const activeIdx = STEPS.indexOf(run.step);
   return (
     <section aria-labelledby="h-live" className="grid gap-8 pt-10">
@@ -27,7 +29,9 @@ export function LiveRun({ run, topic, connection }: { run: RunState; topic: stri
         <span className="label">กำลังทบทวน</span>
         <h1 id="h-live" className="text-[clamp(1.6rem,3vw,2.25rem)] font-bold break-words">{topic}</h1>
         <p className="text-sm text-muted" aria-live="polite">
-          {run.status === "queued" ? "อยู่ในคิว จะเริ่มในไม่ช้า" : `ผ่านไป ${Math.round(run.elapsed)} วินาที`}
+          {run.status === "queued"
+            ? (queuePosition ? `อยู่ในคิวลำดับที่ ${queuePosition} จะเริ่มเมื่อถึงคิว` : "อยู่ในคิว จะเริ่มในไม่ช้า")
+            : `ผ่านไป ${Math.round(run.elapsed)} วินาที`}
         </p>
         {(connection === "reconnecting" || connection === "polling") && (
           <p role="status" className="w-fit rounded-sm bg-warn-bg px-3 py-1.5 text-sm text-ink">

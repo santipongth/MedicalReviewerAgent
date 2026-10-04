@@ -16,7 +16,8 @@ from app.services.searxng import SearxngClient
 
 
 async def build_runtime_deps(settings: Settings) -> AppDeps:
-    engine = make_engine(settings.database_url)
+    engine = make_engine(settings.database_url, pool_size=settings.db_pool_size,
+                         max_overflow=settings.db_max_overflow)
     session_factory = make_session_factory(engine)
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
     arq_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))

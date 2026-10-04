@@ -33,6 +33,7 @@ from app.graph.schemas import (
     TopicVerdict,
     TranslationBatch,
 )
+from app.services.budget import current_budget
 from app.services.llm_config import HarnessSpec, ResolvedRole, load_llm_config
 from app.services.model_catalog import ModelInfo, choose_structured_method
 
@@ -66,6 +67,10 @@ class LLMRefusal(LLMError):
 
 class LLMOutputError(LLMError):
     pass
+
+
+class BudgetExceeded(LLMError):
+    """The review's cost cap is spent: the step is skipped like any failed LLM step."""
 
 
 @dataclass
@@ -255,8 +260,14 @@ class LimitedLLM:
         return getattr(self.inner, name)
 
     async def ainvoke(self, system: str, user: str) -> LLMResult:
+        budget = current_budget()
+        if budget is not None and budget.exhausted:
+            raise BudgetExceeded(f"cost cap of ${budget.cap_usd:.2f} per review reached; step skipped")
         async with self.sem:
-            return await self.inner.ainvoke(system, user)
+            res = await self.inner.ainvoke(system, user)
+        if budget is not None:
+            budget.charge(res.cost_usd)
+        return res
 
 
 @dataclass

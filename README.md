@@ -2,12 +2,19 @@
 
 Public literature-review agent: type a disease / drug / topic → the agent interprets and refines your question, searches PubMed, arXiv, Semantic Scholar, OpenAlex and CrossRef (via a self-hosted searxng-LDR-academic), screens ~60 candidates that have abstracts, analyses up to the 30 most relevant abstracts (no full-text fetching), and produces a comparison table of agreeing / conflicting findings with a GRADE-lite evidence rating. Backend: Python + LangGraph; LLMs via OpenRouter (models and presets in `backend/config/llm.yaml`). Exposed as a web app, a REST API and an MCP server.
 
+**Reference for every route, event, limit, webhook and MCP tool: [`docs/api.md`](docs/api.md)** (live limits on any
+deployment: `GET /api/v1/status`; interactive OpenAPI at `/api/docs`).
+
 ## Quick start (Docker)
 1. `cp .env.example .env` and set `OPENROUTER_API_KEY` and `SEARXNG_SECRET`.
 2. `docker compose up -d --build` (first build of SearXNG takes a few minutes).
 3. `bash scripts/smoke.sh` — creates a review and tails its progress until `done`.
-4. Web app: http://localhost:3000 · API docs: http://localhost:8000/api/docs · SearXNG: http://localhost:8080
-5. More workers: `docker compose up -d --scale worker=3`
+4. One origin for everything (Caddy): http://localhost:8088 (web app, `/api/...`, `/mcp`). Direct ports for
+   development: web http://localhost:3000 · API docs http://localhost:8000/api/docs · SearXNG http://localhost:8080
+5. Production: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` (only Caddy is
+   published; set `SITE_ADDRESS`, `TURNSTILE_*`). Scale: `API_WORKERS` (uvicorn processes), `WORKER_REPLICAS` × `MAX_CONCURRENT_REVIEWS_PER_WORKER` (concurrent
+   reviews). Capacity guards: `MAX_QUEUED_REVIEWS`, `MAX_REVIEWS_PER_DAY`, `MAX_USD_PER_DAY`, `MAX_COST_PER_REVIEW_USD`
+   (see `.env.example` and the capacity section of `docs/api.md`, incl. load-test numbers).
 
 Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE, worker) runs with a placeholder graph.
 
@@ -19,14 +26,20 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 2. `docker compose up -d --build`
 3. `bash scripts/smoke.sh "metformin and colorectal cancer risk"`. Progress events:
    checking_topic → refining → question_refined → planning → searching → enriching → screening → screened →
-   reading/extracted ×(up to 30) → synthesizing → localizing → finalizing → done. Every event carries `elapsed_s`.
+   reading/extracted ×(up to 30) → synthesizing → localizing (Thai only) → finalizing → done (or error / rejected /
+   cancelled). Events from the worker carry `elapsed_s`; the full list with payloads is in `docs/api.md`.
 4. The result's `quality` block reports number verification, model agreement, escalations and per-stage timings.
 5. Live LLM check: `cd backend && OPENROUTER_API_KEY=... uv run pytest -m live`
 
 ## Integrations: REST, MCP, API keys, webhooks
-- **REST:** OpenAPI at `/api/docs`. Anonymous use works without a key (5 reviews/hour per IP).
-  `GET /api/v1/papers/search?q=` answers quick literature questions (titles, abstracts, identifiers).
-- **API keys** unlock a higher rate, a daily quota, `callback_url`, `DELETE /api/v1/reviews/{id}` and admin routes:
+- **REST:** OpenAPI at `/api/docs`. Anonymous use works without a key (default 5 reviews/hour per IP; when the
+  deployment sets `TURNSTILE_SECRET`, anonymous submissions also need a browser Turnstile token, so scripts should use
+  an API key). The same topic/language/options within 24 h returns the existing review (`cached: true`, free).
+  `GET /api/v1/status` reports whether reviews are accepted, the queue and the limits; a full queue or used-up
+  daily capacity answers 503 with a `reason` and `Retry-After`. `GET /api/v1/reviews/{id}/export?format=md|csv|json`
+  downloads a finished review. `GET /api/v1/papers/search?q=` answers quick literature questions.
+- **API keys** raise the hourly rate (default 60/hour per key, with a per-key daily quota, default 100) and unlock
+  `callback_url` and `DELETE /api/v1/reviews/{id}`; admin routes need a key minted with `--admin`:
   ```bash
   docker compose exec api python -m app.cli.keys mint --name "partner lab" --quota 100   # prints the key once
   docker compose exec api python -m app.cli.keys list
@@ -34,14 +47,16 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
   ```
   Send it as `X-API-Key: <key>` or `Authorization: Bearer <key>`.
 - **Webhooks:** `POST /api/v1/reviews` with `"callback_url": "https://..."` (key required, HTTPS public host).
-  On completion we POST `{"review_id","status","result_url"}` with
+  When the review ends (done, error, rejected or cancelled) we POST `{"review_id","status","result_url"}` (up to 3
+  tries, 10 s / 20 s apart, retried on network errors, 5xx and 429) with
   `X-Signature: sha256=HMAC_SHA256(body, secret)` where `secret = sha256_hex(your_api_key)`.
   A response with `"cached": true` reuses an existing review and has `"callback_scheduled": false`:
   poll `GET /api/v1/reviews/{id}` in that case.
 - **MCP server** at `/mcp` (streamable HTTP). Tools: `search_papers`, `start_review`, `get_review_status`,
   `get_review_result`; resources `review://{id}` and `review://{id}/report.md`; prompt
-  `literature_review`. Connect from Claude Code: `claude mcp add --transport http medical-reviewer http://localhost:8000/mcp/`
-  or from any MCP client with `{"mcpServers": {"medical-reviewer": {"url": "http://localhost:8000/mcp/"}}}`.
+  `literature_review`. API keys work the same way as on REST; MCP is never asked for Turnstile.
+  Connect from Claude Code: `claude mcp add --transport http medical-reviewer http://localhost:8088/mcp/`
+  or from any MCP client with `{"mcpServers": {"medical-reviewer": {"url": "http://localhost:8088/mcp/"}}}`.
   Behind a domain, add it to `MCP_ALLOWED_HOSTS`.
 - **External MCP tools for the agent:** list servers in `backend/config/mcp_servers.json`
   (`{"mcpServers": {"name": {"url": "https://.../mcp"}}}`). Workers pick up edits automatically; the agent calls at
@@ -57,12 +72,18 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
   PRISMA, study map, filters), /about; design system in `DESIGN.md` ("Theatre Green").
 - Plan 5 (abstract-only) done: full-text/crawling stack removed, ~60 candidates → up to 30 abstracts, shared LLM
   concurrency limit, parallel Thai localization, budget preset retuned from live latency measurements.
-- Next: hardening (Plan 6): quotas and budget, Turnstile, exports (incl. single-file interactive HTML), Caddy, docs.
+- Plan 6 (harness round 2) done: fixed study-design categories, non-research filter, clustering repair, consensus
+  with dissent, design-aware search, versioned cache.
+- Plan 7 (hardening and scale) done: bounded queue and daily caps (atomic across API processes), per-review cost cap,
+  `/status`, queue position, per-client SSE limit, Turnstile, exports, Caddy single origin, multi-process API and
+  worker replicas, load test, `docs/api.md`.
+- Next (Plan 8): single-file interactive HTML export, preferring pooled estimates over overlapping primary studies.
   See `docs/superpowers/`.
 
 ## Web app (`frontend/`)
 Next.js 16 + React 19 + Tailwind 4 + ECharts 6. The browser calls the API directly; the address is read at request time
-from `PUBLIC_API_URL` (compose default `http://localhost:8000`), so one image serves every deployment.
+from `PUBLIC_API_URL` (compose default `http://localhost:8000`; `/` = same origin behind Caddy), so one image serves
+every deployment.
 ```bash
 cd frontend && npm ci
 npm run dev            # http://localhost:3000 (API on :8000)

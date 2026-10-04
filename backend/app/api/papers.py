@@ -12,8 +12,10 @@ from app.services.review_service import Identity, RateLimited, ServiceError
 router = APIRouter()
 
 
-@router.get("/papers/search", response_model=list[Candidate],
-            responses={429: {"description": "rate limit exceeded"}, 502: {"description": "search unavailable"}})
+@router.get("/papers/search", response_model=list[Candidate], summary="Search published papers",
+            responses={401: {"description": "invalid or revoked API key"},
+                       429: {"description": "rate limit exceeded (Retry-After header)"},
+                       502: {"description": "search unavailable"}})
 async def search_papers(q: str = Query(min_length=2, max_length=300), limit: int = Query(10, ge=1, le=25),
                         deps: AppDeps = Depends(get_deps), identity: Identity = Depends(get_identity)):
     """Literature search (SearXNG academic engines + Europe PMC metadata). No LLM involved."""
