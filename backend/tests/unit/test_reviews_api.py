@@ -122,3 +122,19 @@ async def test_rate_limit_returns_429(session_factory, redis, queue, monkeypatch
     assert [r.status_code for r in responses] == [202, 202, 429]
     assert "retry-after" in responses[2].headers
     get_settings.cache_clear()
+
+
+def test_cache_key_changes_with_pipeline_version():
+    a = compute_cache_key("metformin and cancer", "th", {"max_papers": 30}, version="2026-10-04.1")
+    b = compute_cache_key("metformin and cancer", "th", {"max_papers": 30}, version="2026-10-05.1")
+    assert a != b
+
+
+async def test_new_pipeline_version_does_not_reuse_an_old_review(client, app, queue, session_factory):
+    payload = {"topic": "colchicine after myocardial infarction", "language": "en"}
+    first = (await client.post("/api/v1/reviews", json=payload)).json()
+    async with session_factory() as s, s.begin():
+        await ReviewRepository(s).update(uuid.UUID(first["review_id"]), status="done", finished_at=datetime.now(UTC))
+    app.state.deps.service.settings.prompt_version = "next-version"
+    again = (await client.post("/api/v1/reviews", json=payload)).json()
+    assert again["cached"] is False and again["review_id"] != first["review_id"]
