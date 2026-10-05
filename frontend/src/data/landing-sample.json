@@ -1,0 +1,643 @@
+{
+ "topic": "colchicine after myocardial infarction",
+ "capturedAt": "2026-10-04T23:08:15.798037Z",
+ "question": "ในผู้ใหญ่ที่มีภาวะกล้ามเนื้อหัวใจตายเฉียบพลันภายใน 30 วันที่ผ่านมา การให้ colchicine ขนาดต่ำเสริมช่วยลดเหตุการณ์หัวใจและหลอดเลือดที่ไม่พึงประสงค์หลัก (major adverse cardiovascular events) เมื่อเทียบกับยาหลอกหรือมาตรฐานการดูแลเพียงอย่างเดียวหรือไม่?",
+ "stats": {
+  "found": 174,
+  "unique": 143,
+  "screened": 60,
+  "selected": 26,
+  "extracted": 26,
+  "candidates": 60,
+  "with_abstract": 109
+ },
+ "quality": {
+  "numbers_verified": 63,
+  "numbers_total": 76,
+  "verification_rate": 0.829
+ },
+ "papers": [
+  {
+   "ref": "P1",
+   "title": "Efficacy and Safety of Low-Dose Colchicine after Myocardial Infarction",
+   "journal": "The New England journal of medicine",
+   "year": 2019,
+   "doi": "10.1056/nejmoa1912388",
+   "pmid": "31733140",
+   "url": "https://europepmc.org/article/MED/31733140",
+   "relevance": 100,
+   "card": {
+    "study_design": "การทดลองแบบสุ่มและมีผู้ประเมินผลไม่ทราบกลุ่มการรักษา",
+    "design_category": "rct",
+    "population": "ผู้ป่วยที่รับเข้าศึกษาภายใน 30 วันหลังเกิดภาวะกล้ามเนื้อหัวใจตายเฉียบพลัน",
+    "sample_size": 4745,
+    "sample_size_quote": "A total of 4745 patients were enrolled; 2366 patients were assigned to the colchicine group, and 2379 to the placebo group.",
+    "intervention_or_exposure": "โคลชิซินขนาดต่ำ (0.5 mg ครั้งเดียวต่อวัน)",
+    "comparator": "ยาหลอก",
+    "risk_of_bias": "low",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "มีความเสี่ยงต่ำกว่าในกลุ่มโคลชิซินเมื่อเทียบกับกลุ่มยาหลอก",
+      "outcome": "เหตุการณ์ไม่พึงประสงค์ทางหัวใจและหลอดเลือดที่สำคัญ (MACE)",
+      "p_value": 0.02,
+      "ci_lower": 0.61,
+      "ci_upper": 0.96,
+      "direction": "positive",
+      "effect_size": "HR 0.77 (95% CI 0.61-0.96)",
+      "effect_value": 0.77,
+      "effect_measure": "HR",
+      "evidence_quote": "The primary end point occurred in 5.5% of the patients in the colchicine group, as compared with 7.1% of those in the placebo group (hazard ratio, 0.77; 95% confidence interval [CI], 0.61 to 0.96; P = 0.02)."
+     },
+     {
+      "result": "ไม่พบความแตกต่างอย่างมีนัยสำคัญระหว่างกลุ่ม",
+      "outcome": "ภาวะกล้ามเนื้อหัวใจตายเฉียบพลันซ้ำ",
+      "p_value": null,
+      "ci_lower": null,
+      "ci_upper": null,
+      "direction": "null",
+      "effect_size": null,
+      "effect_value": null,
+      "effect_measure": "none",
+      "evidence_quote": "The hazard ratios were ... 0.91 (95% CI, 0.68 to 1.21) for myocardial infarction"
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "card_en": {
+    "study_design": "randomized, double-blind trial",
+    "design_category": "rct",
+    "population": "patients recruited within 30 days after a myocardial infarction",
+    "sample_size": 4745,
+    "sample_size_quote": "A total of 4745 patients were enrolled; 2366 patients were assigned to the colchicine group, and 2379 to the placebo group.",
+    "intervention_or_exposure": "low-dose colchicine (0.5 mg once daily)",
+    "comparator": "placebo",
+    "risk_of_bias": "low",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "Lower risk with colchicine than with placebo",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": 0.02,
+      "ci_lower": 0.61,
+      "ci_upper": 0.96,
+      "direction": "positive",
+      "effect_size": "HR 0.77 (95% CI 0.61-0.96)",
+      "effect_value": 0.77,
+      "effect_measure": "HR",
+      "evidence_quote": "The primary end point occurred in 5.5% of the patients in the colchicine group, as compared with 7.1% of those in the placebo group (hazard ratio, 0.77; 95% confidence interval [CI], 0.61 to 0.96; P = 0.02)."
+     },
+     {
+      "result": "No significant difference between groups",
+      "outcome": "Recurrent myocardial infarction",
+      "p_value": null,
+      "ci_lower": null,
+      "ci_upper": null,
+      "direction": "null",
+      "effect_size": null,
+      "effect_value": null,
+      "effect_measure": "none",
+      "evidence_quote": "The hazard ratios were ... 0.91 (95% CI, 0.68 to 1.21) for myocardial infarction"
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "verification": {
+    "repaired": true,
+    "agreement": null,
+    "escalated": false,
+    "uncertain": false,
+    "unverified": [
+     {
+      "field": "effect",
+      "outcome": "Recurrent myocardial infarction"
+     }
+    ],
+    "numbers_total": 4,
+    "numbers_verified": 3
+   }
+  },
+  {
+   "ref": "P2",
+   "title": "Colchicine in Acute Myocardial Infarction",
+   "journal": "The New England journal of medicine",
+   "year": 2025,
+   "doi": "10.1056/nejmoa2405922",
+   "pmid": "39555823",
+   "url": "https://europepmc.org/article/MED/39555823",
+   "relevance": 98,
+   "card": {
+    "study_design": "การทดลองแบบสุ่มที่มีกลุ่มควบคุมหลายศูนย์ (Multicenter, randomized controlled trial) ด้วยรูปแบบปัจจัยสองระดับ (2-by-2 factorial design)",
+    "design_category": "rct",
+    "population": "ผู้ป่วยที่เคยเกิดภาวะกล้ามเนื้อหัวใจตาย",
+    "sample_size": 7062,
+    "sample_size_quote": "A total of 7062 patients at 104 centers in 14 countries underwent randomization",
+    "intervention_or_exposure": "Colchicine",
+    "comparator": "Placebo",
+    "risk_of_bias": "low",
+    "overall_direction": "null",
+    "outcomes": [
+     {
+      "result": "ไม่พบความแตกต่างอย่างมีนัยสำคัญในผลลัพธ์หลักแบบผสมระหว่างกลุ่ม Colchicine และกลุ่ม Placebo",
+      "outcome": "เหตุการณ์ไม่พึงประสงค์ทางหัวใจและหลอดเลือดที่สำคัญ (Major Adverse Cardiovascular Events (MACE))",
+      "p_value": 0.93,
+      "ci_lower": 0.85,
+      "ci_upper": 1.16,
+      "direction": "null",
+      "effect_size": "HR 0.99 (95% CI 0.85 to 1.16)",
+      "effect_value": 0.99,
+      "effect_measure": "HR",
+      "evidence_quote": "A primary-outcome event occurred in 322 of 3528 patients (9.1%) in the colchicine group and 327 of 3534 patients (9.3%) in the placebo group over a median follow-up period of 3 years (hazard ratio, 0.99; 95% confidence interval [CI], 0.85 to 1.16; P = 0.93)."
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "card_en": {
+    "study_design": "Multicenter, randomized controlled trial with 2-by-2 factorial design",
+    "design_category": "rct",
+    "population": "Patients who had myocardial infarction",
+    "sample_size": 7062,
+    "sample_size_quote": "A total of 7062 patients at 104 centers in 14 countries underwent randomization",
+    "intervention_or_exposure": "Colchicine",
+    "comparator": "Placebo",
+    "risk_of_bias": "low",
+    "overall_direction": "null",
+    "outcomes": [
+     {
+      "result": "No significant difference in the composite primary outcome between colchicine and placebo groups",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": 0.93,
+      "ci_lower": 0.85,
+      "ci_upper": 1.16,
+      "direction": "null",
+      "effect_size": "HR 0.99 (95% CI 0.85 to 1.16)",
+      "effect_value": 0.99,
+      "effect_measure": "HR",
+      "evidence_quote": "A primary-outcome event occurred in 322 of 3528 patients (9.1%) in the colchicine group and 327 of 3534 patients (9.3%) in the placebo group over a median follow-up period of 3 years (hazard ratio, 0.99; 95% confidence interval [CI], 0.85 to 1.16; P = 0.93)."
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "verification": {
+    "repaired": false,
+    "agreement": null,
+    "escalated": false,
+    "uncertain": false,
+    "unverified": [],
+    "numbers_total": 2,
+    "numbers_verified": 2
+   }
+  },
+  {
+   "ref": "P4",
+   "title": "The effect of 0.5 mg dose of colchicine on clinical outcomes in patients with acute myocardial infarction: An updated meta-analysis of randomized controlled trials",
+   "journal": "Current problems in cardiology",
+   "year": 2025,
+   "doi": "10.1016/j.cpcardiol.2025.103169",
+   "pmid": "40912343",
+   "url": "https://europepmc.org/article/MED/40912343",
+   "relevance": 95,
+   "card": {
+    "study_design": "Meta-analysis of randomized controlled trials",
+    "design_category": "sr_ma_rct",
+    "population": "ผู้ป่วยที่มีภาวะกล้ามเนื้อหัวใจตายเฉียบพลัน (AMI)",
+    "sample_size": 13623,
+    "sample_size_quote": "Ten RCTs involving 13,623 patients with a median follow-up of 6 months (range 5 days-36 months) were included.",
+    "intervention_or_exposure": "ขนาดยา colchicine 0.5 mg",
+    "comparator": "Placebo",
+    "risk_of_bias": "moderate",
+    "overall_direction": "mixed",
+    "outcomes": [
+     {
+      "result": "แนวโน้มการลดลงที่ไม่มีความสำคัญทางสถิติ",
+      "outcome": "เหตุการณ์หัวใจและหลอดเลือดรุนแรงหลัก (MACE)",
+      "p_value": 0.07,
+      "ci_lower": 0.8,
+      "ci_upper": 1.01,
+      "direction": "null",
+      "effect_size": "RR 0.90 (95% CI 0.80-1.01)",
+      "effect_value": 0.9,
+      "effect_measure": "RR",
+      "evidence_quote": "Low-dose colchicine showed a non-significant trend toward reducing MACE versus placebo (RR = 0.90, 95% CI: 0.80-1.01, p = 0.07; I² = 0%)."
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "card_en": {
+    "study_design": "Meta-analysis of randomized controlled trials",
+    "design_category": "sr_ma_rct",
+    "population": "Patients with acute myocardial infarction (AMI)",
+    "sample_size": 13623,
+    "sample_size_quote": "Ten RCTs involving 13,623 patients with a median follow-up of 6 months (range 5 days-36 months) were included.",
+    "intervention_or_exposure": "0.5 mg dose of colchicine",
+    "comparator": "Placebo",
+    "risk_of_bias": "moderate",
+    "overall_direction": "mixed",
+    "outcomes": [
+     {
+      "result": "Non-significant trend toward reduction",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": 0.07,
+      "ci_lower": 0.8,
+      "ci_upper": 1.01,
+      "direction": "null",
+      "effect_size": "RR 0.90 (95% CI 0.80-1.01)",
+      "effect_value": 0.9,
+      "effect_measure": "RR",
+      "evidence_quote": "Low-dose colchicine showed a non-significant trend toward reducing MACE versus placebo (RR = 0.90, 95% CI: 0.80-1.01, p = 0.07; I² = 0%)."
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "verification": {
+    "repaired": false,
+    "agreement": null,
+    "escalated": false,
+    "uncertain": false,
+    "unverified": [],
+    "numbers_total": 4,
+    "numbers_verified": 4
+   }
+  },
+  {
+   "ref": "P5",
+   "title": "Early long-term low-dosage colchicine and major adverse cardiovascular events in patients with acute myocardial infarction: a systematic review and meta-analysis",
+   "journal": "Frontiers in cardiovascular medicine",
+   "year": 2023,
+   "doi": "10.3389/fcvm.2023.1194605",
+   "pmid": "37608812",
+   "url": "https://europepmc.org/articles/PMC10440701",
+   "relevance": 95,
+   "card": {
+    "study_design": "Systematic review and meta-analysis of randomized controlled trials",
+    "design_category": "sr_ma_rct",
+    "population": "Patients with acute myocardial infarction (AMI)",
+    "sample_size": 5872,
+    "sample_size_quote": "Eight studies identified from 564 screened records were analyzed, with 5,872 patients after AMI.",
+    "intervention_or_exposure": "Early long-term low-dose colchicine (0.5-1.0 mg/d)",
+    "comparator": "Control group (placebo or standard care)",
+    "risk_of_bias": "moderate",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "Colchicine reduced the occurrence of MACE compared to control",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": null,
+      "ci_lower": 0.48,
+      "ci_upper": 0.67,
+      "direction": "positive",
+      "effect_size": "RR 0.56 (95% CI 0.48-0.67)",
+      "effect_value": 0.56,
+      "effect_measure": "RR",
+      "evidence_quote": "In summary, compared to the control group, colchicine reduced the occurrence of MACE (RR, 0.56; 95% CI, 0.48-0.67)"
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "card_en": {
+    "study_design": "Systematic review and meta-analysis of randomized controlled trials",
+    "design_category": "sr_ma_rct",
+    "population": "Patients with acute myocardial infarction (AMI)",
+    "sample_size": 5872,
+    "sample_size_quote": "Eight studies identified from 564 screened records were analyzed, with 5,872 patients after AMI.",
+    "intervention_or_exposure": "Early long-term low-dose colchicine (0.5-1.0 mg/d)",
+    "comparator": "Control group (placebo or standard care)",
+    "risk_of_bias": "moderate",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "Colchicine reduced the occurrence of MACE compared to control",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": null,
+      "ci_lower": 0.48,
+      "ci_upper": 0.67,
+      "direction": "positive",
+      "effect_size": "RR 0.56 (95% CI 0.48-0.67)",
+      "effect_value": 0.56,
+      "effect_measure": "RR",
+      "evidence_quote": "In summary, compared to the control group, colchicine reduced the occurrence of MACE (RR, 0.56; 95% CI, 0.48-0.67)"
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "verification": {
+    "repaired": true,
+    "agreement": null,
+    "escalated": false,
+    "uncertain": false,
+    "unverified": [],
+    "numbers_total": 3,
+    "numbers_verified": 3
+   }
+  },
+  {
+   "ref": "P8",
+   "title": "The effect of colchicine on myocardial infarction: An updated systematic review and meta-analysis of randomized controlled trials",
+   "journal": "Current problems in cardiology",
+   "year": 2025,
+   "doi": "10.1016/j.cpcardiol.2024.102878",
+   "pmid": "39393620",
+   "url": "https://europepmc.org/article/MED/39393620",
+   "relevance": 95,
+   "card": {
+    "study_design": "Systematic review and meta-analysis of randomized controlled trials",
+    "design_category": "sr_ma_rct",
+    "population": "Patients with acute myocardial infarction",
+    "sample_size": 7161,
+    "sample_size_quote": "Eleven trials with 7161 patients were included in our analysis out of which 3546 (49.51 %) were allocated to colchicine and 3591 (50.14 %) received placebo.",
+    "intervention_or_exposure": "Colchicine",
+    "comparator": "Placebo",
+    "risk_of_bias": "unclear",
+    "overall_direction": "mixed",
+    "outcomes": [
+     {
+      "result": "Statistically significant reduction with colchicine",
+      "outcome": "Major Adverse Cardiovascular Events (Composite of adverse cardiovascular events)",
+      "p_value": 0.01,
+      "ci_lower": 0.6,
+      "ci_upper": 0.94,
+      "direction": "positive",
+      "effect_size": "RR 0.75 (95% CI 0.60-0.94)",
+      "effect_value": 0.75,
+      "effect_measure": "RR",
+      "evidence_quote": "Colchicine demonstrated statistically significant reduction in the composite of adverse cardiovascular events (RR = 0.75, 95 % CI: 0.60-0.94, P = 0.01, I 2 = 47 %)"
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "card_en": {
+    "study_design": "Systematic review and meta-analysis of randomized controlled trials",
+    "design_category": "sr_ma_rct",
+    "population": "Patients with acute myocardial infarction",
+    "sample_size": 7161,
+    "sample_size_quote": "Eleven trials with 7161 patients were included in our analysis out of which 3546 (49.51 %) were allocated to colchicine and 3591 (50.14 %) received placebo.",
+    "intervention_or_exposure": "Colchicine",
+    "comparator": "Placebo",
+    "risk_of_bias": "unclear",
+    "overall_direction": "mixed",
+    "outcomes": [
+     {
+      "result": "Statistically significant reduction with colchicine",
+      "outcome": "Major Adverse Cardiovascular Events (Composite of adverse cardiovascular events)",
+      "p_value": 0.01,
+      "ci_lower": 0.6,
+      "ci_upper": 0.94,
+      "direction": "positive",
+      "effect_size": "RR 0.75 (95% CI 0.60-0.94)",
+      "effect_value": 0.75,
+      "effect_measure": "RR",
+      "evidence_quote": "Colchicine demonstrated statistically significant reduction in the composite of adverse cardiovascular events (RR = 0.75, 95 % CI: 0.60-0.94, P = 0.01, I 2 = 47 %)"
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "verification": {
+    "repaired": true,
+    "agreement": null,
+    "escalated": false,
+    "uncertain": false,
+    "unverified": [],
+    "numbers_total": 5,
+    "numbers_verified": 3
+   }
+  },
+  {
+   "ref": "P10",
+   "title": "Colchicine for the Prevention of Major Adverse Cardiovascular Events After Acute Coronary Syndromes: A Systematic Review and Meta-Analysis of Large, Long-Term, Placebo-Controlled Randomized Trials",
+   "journal": "Journal of clinical medicine",
+   "year": 2026,
+   "doi": "10.3390/jcm15072695",
+   "pmid": "41976993",
+   "url": "https://europepmc.org/articles/PMC13073614",
+   "relevance": 95,
+   "card": {
+    "study_design": "การทบทวนวรรณกรรมอย่างเป็นระบบและการวิเคราะห์อภิมานของการทดลองแบบสุ่มที่มีกลุ่มควบคุมด้วยยาหลอก ขนาดใหญ่ และระยะยาว",
+    "design_category": "sr_ma_rct",
+    "population": "ผู้ป่วยผู้ใหญ่ที่มีกลุ่มอาการหัวใจขาดเลือดเฉียบพลัน (ACS)",
+    "sample_size": 12602,
+    "sample_size_quote": "We included three large, long-term, placebo-controlled randomized trials (n = 12,602 participants).",
+    "intervention_or_exposure": "การให้ colchicine",
+    "comparator": "ยาหลอก",
+    "risk_of_bias": "moderate",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "การลดลงเล็กน้อยของ MACEs เมื่อใช้ colchicine เปรียบเทียบกับ placebo",
+      "outcome": "เหตุการณ์ไม่พึงประสงค์ทางหัวใจและหลอดเลือดที่สำคัญ (MACE)",
+      "p_value": 0.03,
+      "ci_lower": 0.77,
+      "ci_upper": 0.99,
+      "direction": "positive",
+      "effect_size": "OR 0.87 (95% CI 0.77-0.99)",
+      "effect_value": 0.87,
+      "effect_measure": "OR",
+      "evidence_quote": "Primary events occurred in 485 participants in the colchicine group and 551 in the control group, with a calculated odds ratio (OR) of 0.87 (95% CI 0.77-0.99, p = 0.03), with high heterogeneity between studies (I 2 ≈ 71%): p for heterogeneity ≈ 0.03."
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "card_en": {
+    "study_design": "Systematic review and meta-analysis of large, long-term, placebo-controlled randomized trials",
+    "design_category": "sr_ma_rct",
+    "population": "Adult patients with acute coronary syndromes (ACS)",
+    "sample_size": 12602,
+    "sample_size_quote": "We included three large, long-term, placebo-controlled randomized trials (n = 12,602 participants).",
+    "intervention_or_exposure": "Colchicine administration",
+    "comparator": "Placebo",
+    "risk_of_bias": "moderate",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "Modest reduction in MACEs with colchicine compared to placebo",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": 0.03,
+      "ci_lower": 0.77,
+      "ci_upper": 0.99,
+      "direction": "positive",
+      "effect_size": "OR 0.87 (95% CI 0.77-0.99)",
+      "effect_value": 0.87,
+      "effect_measure": "OR",
+      "evidence_quote": "Primary events occurred in 485 participants in the colchicine group and 551 in the control group, with a calculated odds ratio (OR) of 0.87 (95% CI 0.77-0.99, p = 0.03), with high heterogeneity between studies (I 2 ≈ 71%): p for heterogeneity ≈ 0.03."
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "verification": {
+    "repaired": true,
+    "agreement": null,
+    "escalated": false,
+    "uncertain": false,
+    "unverified": [],
+    "numbers_total": 3,
+    "numbers_verified": 3
+   }
+  },
+  {
+   "ref": "P11",
+   "title": "Colchicine for secondary prevention of vascular events: a meta-analysis of trials",
+   "journal": "European heart journal",
+   "year": 2025,
+   "doi": "10.1093/eurheartj/ehaf210",
+   "pmid": "40314334",
+   "url": "https://europepmc.org/article/MED/40314334",
+   "relevance": 95,
+   "card": {
+    "study_design": "Systematic review และ study-level meta-analysis ของ randomized controlled trials",
+    "design_category": "sr_ma_rct",
+    "population": "ผู้ป่วยที่มีโรคหลอดเลือดหัวใจหรือโรคหลอดเลือดสมองที่ทราบแล้ว (secondary prevention)",
+    "sample_size": null,
+    "sample_size_quote": null,
+    "intervention_or_exposure": "Colchicine",
+    "comparator": "No colchicine",
+    "risk_of_bias": "moderate",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "ความเสี่ยงลดลงเมื่อใช้ colchicine เทียบกับ no colchicine",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": null,
+      "ci_lower": null,
+      "ci_upper": null,
+      "direction": "positive",
+      "effect_size": null,
+      "effect_value": null,
+      "effect_measure": "none",
+      "evidence_quote": "Compared with no colchicine, patients randomized to colchicine had a relative risk (RR) of 0.88 [95% confidence interval (CI) 0.81-0.95, P = .002] for the primary composite outcome"
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "card_en": {
+    "study_design": "Systematic review and study-level meta-analysis of randomized controlled trials",
+    "design_category": "sr_ma_rct",
+    "population": "Patients with known coronary artery disease or stroke (secondary prevention)",
+    "sample_size": null,
+    "sample_size_quote": null,
+    "intervention_or_exposure": "Colchicine",
+    "comparator": "No colchicine",
+    "risk_of_bias": "moderate",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "Reduced risk with colchicine compared to no colchicine",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": null,
+      "ci_lower": null,
+      "ci_upper": null,
+      "direction": "positive",
+      "effect_size": null,
+      "effect_value": null,
+      "effect_measure": "none",
+      "evidence_quote": "Compared with no colchicine, patients randomized to colchicine had a relative risk (RR) of 0.88 [95% confidence interval (CI) 0.81-0.95, P = .002] for the primary composite outcome"
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "verification": {
+    "repaired": true,
+    "agreement": null,
+    "escalated": false,
+    "uncertain": false,
+    "unverified": [
+     {
+      "field": "effect",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)"
+     },
+     {
+      "field": "sample_size",
+      "outcome": null
+     }
+    ],
+    "numbers_total": 5,
+    "numbers_verified": 0
+   }
+  },
+  {
+   "ref": "P15",
+   "title": "Colchicine for secondary prevention of ischaemic stroke and atherosclerotic events: a meta-analysis of randomised trials",
+   "journal": "EClinicalMedicine",
+   "year": 2024,
+   "doi": "10.1016/j.eclinm.2024.102835",
+   "pmid": "39431112",
+   "url": "https://europepmc.org/articles/PMC11490869",
+   "relevance": 90,
+   "card": {
+    "study_design": "Trial-level meta-analysis of randomised trials",
+    "design_category": "sr_ma_rct",
+    "population": "Patients with prior stroke or coronary disease",
+    "sample_size": 14934,
+    "sample_size_quote": "Six trials involving 14,934 patients with prior stroke or coronary disease were included.",
+    "intervention_or_exposure": "Colchicine",
+    "comparator": "Placebo or no colchicine",
+    "risk_of_bias": "moderate",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "Reduced risk by 27%",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": null,
+      "ci_lower": 0.65,
+      "ci_upper": 0.81,
+      "direction": "positive",
+      "effect_size": "RR 0.73 (95% CI 0.65-0.81)",
+      "effect_value": 0.73,
+      "effect_measure": "RR",
+      "evidence_quote": "In all patients, colchicine compared with placebo or no colchicine reduced the risk for ischaemic stroke by 27% (132 [1.8%] events versus 186 [2.5%] events, RR 0.73 [95% CI 0.58-0.90]) and MACE by 27% (505 [6.8%] events versus 693 [9.4%] events, with RR 0.73 [0.65-0.81])."
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "card_en": {
+    "study_design": "Trial-level meta-analysis of randomised trials",
+    "design_category": "sr_ma_rct",
+    "population": "Patients with prior stroke or coronary disease",
+    "sample_size": 14934,
+    "sample_size_quote": "Six trials involving 14,934 patients with prior stroke or coronary disease were included.",
+    "intervention_or_exposure": "Colchicine",
+    "comparator": "Placebo or no colchicine",
+    "risk_of_bias": "moderate",
+    "overall_direction": "positive",
+    "outcomes": [
+     {
+      "result": "Reduced risk by 27%",
+      "outcome": "Major Adverse Cardiovascular Events (MACE)",
+      "p_value": null,
+      "ci_lower": 0.65,
+      "ci_upper": 0.81,
+      "direction": "positive",
+      "effect_size": "RR 0.73 (95% CI 0.65-0.81)",
+      "effect_value": 0.73,
+      "effect_measure": "RR",
+      "evidence_quote": "In all patients, colchicine compared with placebo or no colchicine reduced the risk for ischaemic stroke by 27% (132 [1.8%] events versus 186 [2.5%] events, RR 0.73 [95% CI 0.58-0.90]) and MACE by 27% (505 [6.8%] events versus 693 [9.4%] events, with RR 0.73 [0.65-0.81])."
+     }
+    ],
+    "key_findings": [],
+    "limitations": []
+   },
+   "verification": {
+    "repaired": true,
+    "agreement": null,
+    "escalated": false,
+    "uncertain": false,
+    "unverified": [],
+    "numbers_total": 4,
+    "numbers_verified": 4
+   }
+  }
+ ]
+}

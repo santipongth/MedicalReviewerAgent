@@ -1,0 +1,19 @@
+// A snapshot of one real public review (colchicine after myocardial infarction, 2026-10-05, Qwen3.5 Flash), trimmed
+// to the MACE outcome, for the landing page. Rebuilt only by scripts/landing_sample.py; landing-sample.test.ts fails
+// if any number shown is not found verbatim in its source sentence.
+import data from "@/data/landing-sample.json";
+import type { Paper, Stats } from "./types";
+
+export interface LandingSample {
+  topic: string;
+  capturedAt: string;
+  question: string;
+  stats: Stats;
+  quality: { numbers_verified: number; numbers_total: number; verification_rate: number };
+  papers: Paper[];
+}
+
+export const SAMPLE = data as unknown as LandingSample;
+
+/** The plotted outcome (papers word it slightly differently, so rows match on this prefix). */
+export const SAMPLE_OUTCOME = "Major Adverse Cardiovascular Events";
