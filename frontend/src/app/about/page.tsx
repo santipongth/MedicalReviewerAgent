@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { LiveLimits } from "@/components/about/live-limits";
 import { CodeBlock } from "@/components/code-block";
+import { publicApiUrl } from "@/lib/public-api";
 
 export const metadata: Metadata = { title: "API และ MCP" };
 
@@ -54,10 +54,7 @@ export function verify(body: Buffer, signatureHeader: string, apiKey: string): b
 
 export default async function AboutPage() {
   await connection();
-  const configured = (process.env.PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
-  // "/" = same origin (behind the single-origin proxy): show the address the visitor actually used.
-  const h = await headers();
-  const api = configured || `${h.get("x-forwarded-proto") ?? "http"}://${h.get("x-forwarded-host") ?? h.get("host") ?? "localhost"}`;
+  const api = await publicApiUrl();
   const s = snippets(api);
   return (
     <div className="grid max-w-[880px] gap-12 pt-12">
@@ -82,7 +79,7 @@ export default async function AboutPage() {
         <CodeBlock label="ค้นงานวิจัย (ได้ชื่อเรื่อง บทคัดย่อ และตัวระบุ)" code={s.papers} />
         <p className="max-w-[65ch]">
           ถ้าผู้ให้บริการเปิด Cloudflare Turnstile การส่งรีวิวแบบไม่ใช้ key ต้องมาจากหน้าเว็บ (หัว
-          <code className="font-num [font-stretch:87.5%]"> cf-turnstile-response</code>) สคริปต์และระบบอื่นจึงควรใช้ API key
+          <code className="font-code"> cf-turnstile-response</code>) สคริปต์และระบบอื่นจึงควรใช้ API key
           ส่วน MCP ไม่ต้องผ่าน Turnstile ระบบเปิดสตรีม SSE พร้อมกันได้จำกัดต่อผู้ใช้ เกินแล้วจะได้ 429
         </p>
       </section>
@@ -90,16 +87,16 @@ export default async function AboutPage() {
       <section aria-labelledby="h-keys" className="grid gap-4">
         <h2 id="h-keys" className="text-2xl font-bold">API key และ webhook</h2>
         <p className="max-w-[65ch]">
-          API key เพิ่มจำนวนรีวิวต่อชั่วโมง (พร้อมโควตาต่อวันของแต่ละ key) เปิดใช้ <code className="font-num [font-stretch:87.5%]">callback_url</code> และให้ยกเลิกรีวิวที่ตัวเองสร้างได้
-          ส่ง key ทาง <code className="font-num [font-stretch:87.5%]">X-API-Key</code> หรือ <code className="font-num [font-stretch:87.5%]">Authorization: Bearer</code> เท่านั้น
+          API key เพิ่มจำนวนรีวิวต่อชั่วโมง (พร้อมโควตาต่อวันของแต่ละ key) เปิดใช้ <code className="font-code">callback_url</code> และให้ยกเลิกรีวิวที่ตัวเองสร้างได้
+          ส่ง key ทาง <code className="font-code">X-API-Key</code> หรือ <code className="font-code">Authorization: Bearer</code> เท่านั้น
           key ที่ส่งมาแต่ใช้ไม่ได้จะได้ 401 ไม่ถูกลดเป็นผู้ใช้ไม่ระบุตัวตน
         </p>
         <CodeBlock label="ใช้ API key" code={s.key} />
         <p className="max-w-[65ch]">
-          เมื่อรีวิวจบ (done, error, rejected หรือ cancelled) ระบบ POST <code className="font-num [font-stretch:87.5%]">{"{review_id, status, result_url}"}</code> ไปยัง callback_url
+          เมื่อรีวิวจบ (done, error, rejected หรือ cancelled) ระบบ POST <code className="font-code">{"{review_id, status, result_url}"}</code> ไปยัง callback_url
           (ต้องเป็น HTTPS และเป็นที่อยู่สาธารณะ ลองส่งสูงสุด 3 ครั้งห่างกัน 10 และ 20 วินาที เมื่อเครือข่ายขัดข้อง 5xx หรือ 429)
-          พร้อมหัว <code className="font-num [font-stretch:87.5%]">X-Signature</code> ตรวจลายเซ็นด้วย secret = SHA-256 ของ API key
-          ถ้าการตอบกลับมี <code className="font-num [font-stretch:87.5%]">&quot;cached&quot;: true</code> แปลว่าใช้รีวิวที่มีอยู่แล้วและไม่มี webhook ให้ดึงผลด้วย GET แทน
+          พร้อมหัว <code className="font-code">X-Signature</code> ตรวจลายเซ็นด้วย secret = SHA-256 ของ API key
+          ถ้าการตอบกลับมี <code className="font-code">&quot;cached&quot;: true</code> แปลว่าใช้รีวิวที่มีอยู่แล้วและไม่มี webhook ให้ดึงผลด้วย GET แทน
         </p>
         <CodeBlock label="ตรวจลายเซ็น (Python)" code={s.pyVerify} />
         <CodeBlock label="ตรวจลายเซ็น (Node.js)" code={s.nodeVerify} />
@@ -109,7 +106,7 @@ export default async function AboutPage() {
         <h2 id="h-mcp" className="text-2xl font-bold">MCP สำหรับ AI agent</h2>
         <p className="max-w-[65ch]">
           เครื่องมือ: <b>search_papers</b>, <b>start_review</b>, <b>get_review_status</b>, <b>get_review_result</b> ·
-          resources: <code className="font-num [font-stretch:87.5%]">review://&lt;id&gt;</code> และ <code className="font-num [font-stretch:87.5%]">review://&lt;id&gt;/report.md</code> ·
+          resources: <code className="font-code">review://&lt;id&gt;</code> และ <code className="font-code">review://&lt;id&gt;/report.md</code> ·
           prompt: <b>literature_review</b> · รอสถานะจนเป็น done, error, rejected หรือ cancelled (ปกติ 1–3 นาที)
           max_papers ถูกปรับให้อยู่ในช่วง 5–30 และเมื่อระบบเต็มเครื่องมือจะบอกเหตุผลและเวลาที่ควรลองใหม่
         </p>

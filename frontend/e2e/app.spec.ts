@@ -32,10 +32,20 @@ test("landing: receipt from a real verified number, then submit opens the live r
     },
   });
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("ทุกตัวเลขพร้อมประโยคต้นฉบับ");
-  await expect(page.locator("aside .num-verified").first()).toHaveText("HR 0.86");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("แตะที่ตัวเลข");
+  const rail = page.getByRole("region", { name: "แหล่งที่มาของตัวเลขที่เลือก" });
+  await expect(rail.locator("mark")).toHaveText("0.77");
+  await page.getByRole("button", { name: /^P2 HR 0\.99/ }).click();
+  await expect(rail.locator("mark")).toHaveText("0.99");
+  await expect(page.getByRole("button", { name: /^P2 HR 0\.99/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("unplotted").locator(".hole")).toBeVisible();
+  await expect(page.getByRole("link", { name: /เมตฟอร์มินกับมะเร็งลำไส้ใหญ่/ })).toContainText("86%");
   await page.screenshot({ path: shots("landing-light"), fullPage: true });
   await noSeriousA11y(page);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.screenshot({ path: shots("landing-dark"), fullPage: true });
+  await noSeriousA11y(page);
+  await page.emulateMedia({ colorScheme: "light" });
 
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
   await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
@@ -110,6 +120,33 @@ test("phone width: no horizontal scroll, source rail opens as a drawer", async (
   await page.screenshot({ path: shots("report-phone-drawer") });
   await rail.getByRole("button", { name: "ปิด" }).click();
   await expect(rail).toBeHidden();
+});
+
+test("landing on a phone: no horizontal scroll, the source sits under the plot, a dead API leaves the page usable", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, { "GET /api/v1/reviews": (route) => route.abort() });
+  await page.goto("/");
+  await expect(page.getByText("โหลดรายการไม่ได้ตอนนี้", { exact: false })).toBeVisible();
+  await noHorizontalScroll(page);
+  const lastRow = await page.getByRole("button", { name: /^P15 / }).boundingBox();
+  const rail = await page.getByRole("region", { name: "แหล่งที่มาของตัวเลขที่เลือก" }).boundingBox();
+  expect(rail!.y).toBeGreaterThan(lastRow!.y);
+  await page.getByRole("button", { name: /^P5 RR 0\.56/ }).click();
+  await expect(page.getByRole("region", { name: "แหล่งที่มาของตัวเลขที่เลือก" }).locator("mark")).toHaveText("0.56");
+  await expect(page.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ })).toBeEnabled();
+  await page.screenshot({ path: shots("landing-phone"), fullPage: true });
+  await noSeriousA11y(page);
+});
+
+test("landing on a phone: recent reviews read topic first, share on the right", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto("/");
+  const row = page.getByRole("link", { name: /เมตฟอร์มินกับมะเร็งลำไส้ใหญ่/ });
+  const topic = await row.getByText("เมตฟอร์มินกับมะเร็งลำไส้ใหญ่").boundingBox();
+  const share = await row.getByText("86%").boundingBox();
+  expect(topic!.x).toBeLessThan(share!.x);
+  await noHorizontalScroll(page);
 });
 
 test("landing: a full service says so and keeps the submit button off", async ({ page }) => {

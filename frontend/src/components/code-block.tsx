@@ -33,7 +33,7 @@ export function CodeBlock({ code, label }: { code: string; label: string }) {
             className="rounded-sm border border-rule px-2 py-0.5 font-display text-[0.8rem] hover:border-ink">คัดลอก</button>
         </span>
       </div>
-      <pre ref={pre} className="overflow-x-auto p-3 font-num text-[0.82rem] leading-relaxed [font-stretch:87.5%]"><code>{code}</code></pre>
+      <pre ref={pre} className="overflow-x-auto p-3 font-code text-[0.82rem] leading-relaxed"><code>{code}</code></pre>
     </div>
   );
 }

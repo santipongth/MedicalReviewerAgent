@@ -1,6 +1,6 @@
 // Helpers that keep the "every number is verifiable" promise in the UI: numbers are displayed exactly as the paper
 // wrote them (never re-formatted or computed), and only values the backend verified are treated as verified.
-import type { OutcomeResult, Paper, ReviewResult } from "./types";
+import type { OutcomeResult, Paper } from "./types";
 
 const NUM = /(?<![A-Za-z0-9_.])-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<![A-Za-z0-9_.])-?\d+(?:\.\d+)?/g;
 
@@ -13,18 +13,31 @@ export interface Reported {
   index: number;
 }
 
-/** Where and how `value` appears in `quote` (exact spelling, standalone number), or null. */
-export function findReported(value: number, quote?: string | null): Reported | null {
+/**
+ * Where and how `value` appears in `quote` (exact spelling, standalone number), or null. When the same value appears
+ * more than once (e.g. "RR 0.73" for two outcomes), `ci` picks the occurrence its own interval follows.
+ */
+export function findReported(value: number, quote?: string | null,
+  ci?: { lo?: number | null; hi?: number | null }): Reported | null {
   if (!quote) return null;
   const normalised = quote.replace(/[\u00b7\u2212\u2013\u2014\u00a0]/g, (c) => SAME_LENGTH[c] ?? c);
+  const hits: Reported[] = [];
   for (const m of normalised.matchAll(NUM)) {
     const parsed = Number(m[0].replace(/,/g, ""));
     if (Math.abs(parsed - value) <= Math.max(1e-9, Math.abs(value) * 0.005)) {
       const index = m.index ?? 0;
-      return { text: quote.slice(index, index + m[0].length), index };
+      hits.push({ text: quote.slice(index, index + m[0].length), index });
     }
   }
-  return null;
+  if (hits.length > 1 && ci?.lo != null && ci?.hi != null) {
+    const { lo, hi } = ci;
+    const own = hits.find((h) => {
+      const after = quote.slice(h.index + h.text.length, h.index + h.text.length + 60);
+      return findReported(lo, after) !== null && findReported(hi, after) !== null;
+    });
+    if (own) return own;
+  }
+  return hits[0] ?? null;
 }
 
 /** The number as written in `quote` (e.g. "0.80", "0·80", "1,234"); falls back to the plain value. */
@@ -62,35 +75,4 @@ export function effectLabel(o: OutcomeResult): string {
 export function ciLabel(o: OutcomeResult): string | null {
   if (o.ci_lower == null || o.ci_upper == null) return null;
   return `${asReported(o.ci_lower, o.evidence_quote)}–${asReported(o.ci_upper, o.evidence_quote)}`;
-}
-
-export interface Receipt {
-  ref: string;
-  title: string;
-  outcome: string;
-  display: string;
-  reported: string;
-  value: number;
-  quote: string;
-  design?: string;
-  sampleSize?: string;
-}
-
-/** First verified effect (with its verbatim quote) in a result, for the landing page's receipt. */
-export function pickReceipt(result: ReviewResult | null | undefined): Receipt | null {
-  for (const p of result?.papers ?? []) {
-    const card = p.card_en ?? p.card;
-    if (!card) continue;
-    for (const o of card.outcomes ?? []) {
-      if (!o.evidence_quote || !isVerifiedEffect(p, o)) continue;
-      return {
-        ref: p.ref, title: p.title, outcome: o.outcome, display: effectLabel(o),
-        reported: asReported(o.effect_value as number, o.evidence_quote), value: o.effect_value as number,
-        quote: o.evidence_quote,
-        design: card.study_design,
-        sampleSize: card.sample_size != null ? asReported(card.sample_size, card.sample_size_quote) : undefined,
-      };
-    }
-  }
-  return null;
 }

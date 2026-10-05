@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { followReview } from "./events";
 import { findReported, safeHref } from "./evidence";
-import { HighlightedQuote } from "@/components/landing/receipt-panel";
+import { HighlightedQuote } from "@/components/ui/quote";
 import { SourceRail } from "@/components/review/source-rail";
 import { StrengthLine, ComparisonMatrix } from "@/components/review/report-parts";
 import { resultFixture } from "@/test/fixtures";

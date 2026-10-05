@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { asReported, isVerifiedEffect, pickReceipt } from "./evidence";
-import type { Paper, ReviewResult } from "./types";
+import { asReported, findReported, isVerifiedEffect } from "./evidence";
+import type { Paper } from "./types";
 
 const quote = "Metformin use was associated with a lower risk of colorectal cancer (HR 0.80, 95% CI 0.71–0.90).";
 
@@ -32,20 +32,12 @@ describe("evidence helpers", () => {
     expect(isVerifiedEffect(paper("P2", null), paper("P2", null).card!.outcomes[0])).toBe(false);
   });
 
-  it("pickReceipt returns the first verified effect with its quote and skips blanked ones", () => {
-    const result: ReviewResult = {
-      papers: [
-        paper("P1", null, { numbers_verified: 0, numbers_total: 1, agreement: null, escalated: false, repaired: false,
-          uncertain: false, unverified: [{ field: "effect", outcome: "CRC incidence" }] }),
-        paper("P2", 0.8),
-      ],
-    };
-    const r = pickReceipt(result);
-    expect(r?.ref).toBe("P2");
-    expect(r?.display).toBe("HR 0.80");
-    expect(r?.quote).toBe(quote);
-    expect(r?.value).toBe(0.8);
-    expect(pickReceipt({ papers: [paper("P1", null)] })).toBeNull();
-    expect(pickReceipt({})).toBeNull();
+  it("marks the occurrence followed by its own confidence interval when a value appears twice", () => {
+    const q = "reduced ischaemic stroke (RR 0.73 [95% CI 0.58-0.90]) and MACE by 27% (with RR 0.73 [0.65-0.81]).";
+    const second = q.lastIndexOf("0.73");
+    expect(findReported(0.73, q)?.index).toBe(q.indexOf("0.73")); // without bounds: the first, as before
+    expect(findReported(0.73, q, { lo: 0.65, hi: 0.81 })?.index).toBe(second);
+    expect(findReported(0.73, q, { lo: 0.58, hi: 0.9 })?.index).toBe(q.indexOf("0.73"));
+    expect(findReported(0.73, q, { lo: 0.1, hi: 0.2 })?.index).toBe(q.indexOf("0.73")); // no match: first occurrence
   });
 });

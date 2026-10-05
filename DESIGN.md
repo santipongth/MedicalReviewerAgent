@@ -150,7 +150,7 @@ Loading: Google Fonts via `next/font/google` with `display: swap`, Thai and Lati
 - **Report "bench":** a 12-column grid at 1024px and up, with a reading column of 7 columns and a sticky source rail of 5 columns. Below 900px the rail becomes a bottom drawer.
 - **Width:** the page is at most 1240px wide, and running text is at most 65 characters.
 - **Report density:** comfortable-compact, with 36px table rows and a sticky first column in the comparison matrix. The matrix scrolls horizontally inside its own container.
-- **Landing:** left-aligned and generous. The search is a request slip whose PICO fields fill back in after submission, and a real receipt from a public review sits beside it.
+- **Landing:** left-aligned and generous. The headline sits beside the request slip; below them a sample report from a real review (forest rows and numbers tap to show their source sentence in a rail), then how a number earns its tape, the run timeline, the agent band and recent public reviews. The site footer carries the disclaimer and data sources.
 - **Gutters:** the side gutter is 16px at every width, and the spacing scale has a 4px base.
 
 ## Elevation & Depth
@@ -203,5 +203,7 @@ Flat. Depth comes from surface order (ground → surface → rail) and 1px rules
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-10-04 | Initial design system "Theatre Green" | Created by /design-consultation from product context, research on Elicit and Consensus, and three independent proposals. Mine supplied the clinical-instrument direction, Bai Jamjuree with Anuphan, and Okabe-Ito. Codex supplied the provenance-led hero and source sheet. The Claude subagent supplied the theatre green, autoclave tape, Martian Mono rule, Source Serif 4 quotes, glyphs, request slip and showing the gaps. The user approved it after an HTML preview at https://claude.ai/artifact/XUvrWN7gxW3GhzEMrEnNpY |
+| 2026-10-05 | Landing direction C: "อย่าเพิ่งเชื่อเรา แตะที่ตัวเลขดูก่อน" | Chosen from three HTML mockups (https://claude.ai/artifact/JWBF5BDC9c2Hb1uenjivpG). The receipt is a committed snapshot of a real review (MACE rows of the colchicine review) rendered by the same components as the report, so the landing shows rather than claims; a test pins every shown number to its quote |
+| 2026-10-05 | Code gets its own face (`--font-code`: ui-monospace stack) | Martian Mono stays exclusive to verified numbers; code samples, ref chips and pipeline counts had borrowed it, which diluted the signal |
 | 2026-10-05 | Dark finding colors re-stepped to #3B98D4 / #DB712F / #B05C9E | dataviz validator: the preview's dark set failed the dark lightness band (L 0.48–0.67) and was in the CVD floor band; the new set passes all checks on #1B3029 (light set passes unchanged) |
 | 2026-10-04 | Tokens from the approved HTML preview | AI image mockups were unavailable (no OpenAI key), so the HTML preview (Path B) is the source of every token |

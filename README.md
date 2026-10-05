@@ -77,7 +77,12 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 - Plan 7 (hardening and scale) done: bounded queue and daily caps (atomic across API processes), per-review cost cap,
   `/status`, queue position, per-client SSE limit, Turnstile, exports, Caddy single origin, multi-process API and
   worker replicas, load test, `docs/api.md`.
-- Next (Plan 8): single-file interactive HTML export, preferring pooled estimates over overlapping primary studies.
+- Plan 8 (quality and export) done: lenient extraction (quoted outcomes only, at most 6), pooled (SR/MA) evidence
+  graded apart from overlapping primary studies, the whole report as one HTML file that opens offline.
+- Plan 9 (landing) done: "อย่าเพิ่งเชื่อเรา แตะที่ตัวเลขดูก่อน" - a tappable sample report from a real review
+  (`frontend/src/data/landing-sample.json`, rebuilt by `scripts/landing_sample.py`; a test fails if any shown number is
+  not found verbatim in its quote), how a number earns its tape, the run timeline, the agent band, recent reviews.
+- Next: production readiness (`docs/superpowers/notes/2026-10-05-production-readiness-audit.md`).
   See `docs/superpowers/`.
 
 ## Web app (`frontend/`)

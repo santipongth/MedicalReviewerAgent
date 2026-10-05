@@ -177,7 +177,7 @@ export function PrismaFigure({ stages, tokens, lang }: { stages: Stage[]; tokens
       chart={<EChart option={option} height={stages.length * 34 + 16} label={stages.map((s) => `${s.label} ${s.value}`).join(", ")} />}
       table={
         <table className="w-full border-collapse text-[0.88rem]"><tbody>
-          {stages.map((s) => <tr key={s.key} className="border-b border-rule"><td className="py-1.5 pr-3">{s.label}</td><td className="py-1.5 font-num">{s.value}</td></tr>)}
+          {stages.map((s) => <tr key={s.key} className="border-b border-rule"><td className="py-1.5 pr-3">{s.label}</td><td className="py-1.5 font-display tabular-nums">{s.value}</td></tr>)}
         </tbody></table>
       }
     />
@@ -224,7 +224,7 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
         <table className="w-full min-w-[420px] border-collapse text-[0.88rem]"><tbody>
           {points.map((p) => (
             <tr key={p.ref} className="border-b border-rule">
-              <td className="py-1.5 pr-3 font-num">{p.ref}</td><td className="py-1.5 pr-3">{p.year}</td>
+              <td className="py-1.5 pr-3 font-display">{p.ref}</td><td className="py-1.5 pr-3">{p.year}</td>
               <td className="py-1.5 pr-3">n = <VerifiedNumber value={p.nText} /></td><td className="py-1.5 pr-3">{p.design}</td>
               <td className="py-1.5"><span className="inline-flex items-center gap-1.5"><Glyph direction={p.direction} lang={lang} />{DIRECTION_LABEL[lang][p.direction]}</span></td>
             </tr>
