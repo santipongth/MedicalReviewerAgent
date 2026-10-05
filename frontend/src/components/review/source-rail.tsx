@@ -1,6 +1,6 @@
 "use client";
 
-import { HighlightedQuote } from "@/components/landing/receipt-panel";
+import { HighlightedQuote } from "@/components/ui/quote";
 import { designLabel } from "@/lib/charts-data";
 import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, safeHref } from "@/lib/evidence";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";

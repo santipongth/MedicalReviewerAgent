@@ -25,7 +25,7 @@ export function CitedText({ text, onSelect, refs }: { text: string; onSelect: Se
             {i > 0 && ", "}
             {refs.has(id) ? (
               <button type="button" onClick={() => onSelect(id)}
-                className="font-num text-[0.85em] text-primary [font-stretch:87.5%] hover:underline">{id}</button>
+                className="font-display text-[0.85em] font-semibold text-primary hover:underline">{id}</button>
             ) : id}
           </Fragment>
         ))}]
@@ -87,7 +87,7 @@ export function StrengthLine({ synthesis, lang, quality }: { synthesis: Synthesi
         {quality?.numbers_total ? (
           <p className="text-muted">
             {L(lang, "ตัวเลขที่ตรวจกับต้นฉบับผ่าน", "Numbers verified against the papers")}{" "}
-            <span className="font-num [font-stretch:87.5%]">{`${quality.numbers_verified ?? 0}/${quality.numbers_total}`}</span>
+            <span className="font-display tabular-nums">{`${quality.numbers_verified ?? 0}/${quality.numbers_total}`}</span>
           </p>
         ) : null}
       </div>
@@ -165,7 +165,7 @@ function RefButtons({ refs, onSelect, lang }: { refs: string[]; onSelect: Select
     <span className="inline-flex flex-wrap gap-1.5">
       {refs.map((r) => (
         <button key={r} type="button" onClick={() => onSelect(r)} aria-label={L(lang, `เปิด ${r}`, `Open ${r}`)}
-          className="rounded-sm border border-rule px-1.5 font-num text-[0.8rem] [font-stretch:87.5%] hover:border-ink">{r}</button>
+          className="rounded-sm border border-rule px-1.5 font-display text-[0.8rem] hover:border-ink">{r}</button>
       ))}
     </span>
   );
@@ -212,7 +212,7 @@ export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Pap
             <button type="button" onClick={() => onSelect(p.ref)} aria-pressed={selectedRef === p.ref}
               aria-label={`${p.ref} ${p.title}`}
               className={`grid w-full grid-cols-[2.6rem_minmax(0,1fr)] gap-3 px-1 py-3 text-left hover:bg-ground ${selectedRef === p.ref ? "bg-ground" : ""}`}>
-              <span className="font-num text-[0.85rem] [font-stretch:87.5%]">{p.ref}</span>
+              <span className="font-display text-[0.85rem] font-semibold">{p.ref}</span>
               <span className="grid min-w-0 gap-1">
                 <span className="font-display font-semibold break-words">{p.title}</span>
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.85rem] text-muted">

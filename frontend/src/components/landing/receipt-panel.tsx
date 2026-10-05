@@ -3,24 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getReview, listRecent } from "@/lib/api";
-import { findReported, pickReceipt, type Receipt, type Reported } from "@/lib/evidence";
+import { findReported, pickReceipt, type Receipt } from "@/lib/evidence";
 import type { ReviewSummary } from "@/lib/types";
 import { VerifiedNumber } from "../ui/evidence";
+import { HighlightedQuote } from "../ui/quote";
 
 type Loaded = { recent: ReviewSummary[]; receipt: Receipt | null; receiptId: string | null };
-
-/** The verbatim quote with the verified number marked at its exact position (never inside another number). */
-export function HighlightedQuote({ quote, number }: { quote: string; number: Reported | null }) {
-  if (!number) return <>&ldquo;{quote}&rdquo;</>;
-  const { index, text } = number;
-  return (
-    <>
-      &ldquo;{quote.slice(0, index)}
-      <mark className="bg-highlight px-0.5 text-[var(--highlight-ink)]">{text}</mark>
-      {quote.slice(index + text.length)}&rdquo;
-    </>
-  );
-}
 
 /** Instead of a logo wall: one real verified number from a public review, with the sentence it came from. */
 export function ReceiptPanel() {
