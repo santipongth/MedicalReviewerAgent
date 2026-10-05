@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { AgentBand } from "@/components/landing/agent-band";
 import { Anatomy } from "@/components/landing/anatomy";
+import { RecentReviews } from "@/components/landing/recent-reviews";
 import { SampleBench } from "@/components/landing/sample-bench";
 import { Timeline } from "@/components/landing/timeline";
 import { publicApiUrl } from "@/lib/public-api";
@@ -26,6 +27,7 @@ export default async function Home() {
       <Anatomy />
       <Timeline />
       <AgentBand api={await publicApiUrl()} />
+      <RecentReviews />
     </div>
   );
 }

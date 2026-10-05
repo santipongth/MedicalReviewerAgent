@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Anuphan, Bai_Jamjuree, Martian_Mono, Source_Serif_4 } from "next/font/google";
 import { connection } from "next/server";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import "./globals.css";
 
@@ -38,6 +39,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-dvh">
         <SiteHeader />
         <main className="mx-auto w-full max-w-[1240px] px-4 pb-16">{children}</main>
+        <SiteFooter />
       </body>
     </html>
   );

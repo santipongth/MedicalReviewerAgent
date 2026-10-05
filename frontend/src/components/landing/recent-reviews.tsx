@@ -1,0 +1,73 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { listRecent } from "@/lib/api";
+import type { ReviewSummary } from "@/lib/types";
+
+type State = { kind: "loading" } | { kind: "error" } | { kind: "ok"; rows: ReviewSummary[] };
+
+const rtf = new Intl.RelativeTimeFormat("th", { numeric: "auto" });
+
+function ago(iso: string | null): string {
+  if (!iso) return "";
+  const minutes = Math.round((Date.parse(iso) - Date.now()) / 60_000);
+  if (Number.isNaN(minutes)) return "";
+  if (Math.abs(minutes) < 60) return rtf.format(minutes, "minute");
+  if (Math.abs(minutes) < 60 * 24) return rtf.format(Math.round(minutes / 60), "hour");
+  return rtf.format(Math.round(minutes / (60 * 24)), "day");
+}
+
+/** Finished public reviews; the right-hand figure is the share of numbers that passed verification. */
+export function RecentReviews() {
+  const [state, setState] = useState<State>({ kind: "loading" });
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      let next: State;
+      try {
+        next = { kind: "ok", rows: (await listRecent(10)).filter((r) => r.status === "done").slice(0, 8) };
+      } catch {
+        next = { kind: "error" };
+      }
+      if (alive) setState(next);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <section aria-labelledby="h-recent" className="grid gap-6 border-t border-rule pt-10">
+      <div className="grid max-w-[65ch] gap-3">
+        <h2 id="h-recent" className="text-[1.75rem] font-bold">รีวิวสาธารณะล่าสุด</h2>
+        <p className="text-muted">ทุกฉบับเปิดอ่านได้ ตัวเลขทางขวาคือสัดส่วนตัวเลขที่ตรวจผ่าน ที่เหลือแสดงเป็นช่องว่าง</p>
+      </div>
+      {state.kind === "loading" && <p className="text-[0.92rem] text-muted">กำลังโหลดรีวิวล่าสุด…</p>}
+      {state.kind === "error" && (
+        <p className="text-[0.92rem] text-muted">โหลดรายการไม่ได้ตอนนี้ ส่วนอื่นของหน้ายังใช้ได้ตามปกติ</p>
+      )}
+      {state.kind === "ok" && state.rows.length === 0 && (
+        <p className="text-[0.92rem] text-muted">ยังไม่มีรีวิวสาธารณะที่เสร็จแล้ว รีวิวแรกของคุณจะปรากฏที่นี่</p>
+      )}
+      {state.kind === "ok" && state.rows.length > 0 && (
+        <ul className="border-t border-rule">
+          {state.rows.map((r) => (
+            <li key={r.id} className="border-b border-rule">
+              <Link href={`/r/${r.id}`}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-0.5 py-3 text-ink hover:text-primary sm:grid-cols-[minmax(0,1fr)_4rem_7rem_3.5rem]">
+                <span className="min-w-0 break-words font-display font-medium">{r.topic}</span>
+                <span className="order-last col-span-1 text-[0.8rem] text-muted sm:order-none">{r.language === "th" ? "ไทย" : "English"}</span>
+                <span className="order-last text-[0.8rem] text-muted sm:order-none">{ago(r.finished_at ?? r.created_at)}</span>
+                <span className="row-start-1 text-right font-display tabular-nums sm:row-auto">
+                  {r.verification_rate != null ? `${Math.round(r.verification_rate * 100)}%` : <span className="text-muted">–</span>}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
