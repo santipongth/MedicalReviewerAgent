@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { asReported, isVerifiedEffect, pickReceipt } from "./evidence";
-import type { Paper, ReviewResult } from "./types";
+import { asReported, isVerifiedEffect } from "./evidence";
+import type { Paper } from "./types";
 
 const quote = "Metformin use was associated with a lower risk of colorectal cancer (HR 0.80, 95% CI 0.71–0.90).";
 
@@ -30,22 +30,5 @@ describe("evidence helpers", () => {
       repaired: false, uncertain: false, unverified: [] });
     expect(isVerifiedEffect(p, p.card!.outcomes[0])).toBe(true);
     expect(isVerifiedEffect(paper("P2", null), paper("P2", null).card!.outcomes[0])).toBe(false);
-  });
-
-  it("pickReceipt returns the first verified effect with its quote and skips blanked ones", () => {
-    const result: ReviewResult = {
-      papers: [
-        paper("P1", null, { numbers_verified: 0, numbers_total: 1, agreement: null, escalated: false, repaired: false,
-          uncertain: false, unverified: [{ field: "effect", outcome: "CRC incidence" }] }),
-        paper("P2", 0.8),
-      ],
-    };
-    const r = pickReceipt(result);
-    expect(r?.ref).toBe("P2");
-    expect(r?.display).toBe("HR 0.80");
-    expect(r?.quote).toBe(quote);
-    expect(r?.value).toBe(0.8);
-    expect(pickReceipt({ papers: [paper("P1", null)] })).toBeNull();
-    expect(pickReceipt({})).toBeNull();
   });
 });
