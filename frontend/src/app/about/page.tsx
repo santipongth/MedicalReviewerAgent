@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { LiveLimits } from "@/components/about/live-limits";
 import { CodeBlock } from "@/components/code-block";
+import { publicApiUrl } from "@/lib/public-api";
 
 export const metadata: Metadata = { title: "API และ MCP" };
 
@@ -54,10 +54,7 @@ export function verify(body: Buffer, signatureHeader: string, apiKey: string): b
 
 export default async function AboutPage() {
   await connection();
-  const configured = (process.env.PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
-  // "/" = same origin (behind the single-origin proxy): show the address the visitor actually used.
-  const h = await headers();
-  const api = configured || `${h.get("x-forwarded-proto") ?? "http"}://${h.get("x-forwarded-host") ?? h.get("host") ?? "localhost"}`;
+  const api = await publicApiUrl();
   const s = snippets(api);
   return (
     <div className="grid max-w-[880px] gap-12 pt-12">
