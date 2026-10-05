@@ -150,7 +150,7 @@ Loading: Google Fonts via `next/font/google` with `display: swap`, Thai and Lati
 - **Report "bench":** a 12-column grid at 1024px and up, with a reading column of 7 columns and a sticky source rail of 5 columns. Below 900px the rail becomes a bottom drawer.
 - **Width:** the page is at most 1240px wide, and running text is at most 65 characters.
 - **Report density:** comfortable-compact, with 36px table rows and a sticky first column in the comparison matrix. The matrix scrolls horizontally inside its own container.
-- **Landing:** left-aligned and generous. The search is a request slip whose PICO fields fill back in after submission, and a real receipt from a public review sits beside it.
+- **Landing:** left-aligned and generous. The headline sits beside the request slip; below them a sample report from a real review (forest rows and numbers tap to show their source sentence in a rail), then how a number earns its tape, the run timeline, the agent band and recent public reviews. The site footer carries the disclaimer and data sources.
 - **Gutters:** the side gutter is 16px at every width, and the spacing scale has a 4px base.
 
 ## Elevation & Depth

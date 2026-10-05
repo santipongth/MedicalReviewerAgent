@@ -13,18 +13,31 @@ export interface Reported {
   index: number;
 }
 
-/** Where and how `value` appears in `quote` (exact spelling, standalone number), or null. */
-export function findReported(value: number, quote?: string | null): Reported | null {
+/**
+ * Where and how `value` appears in `quote` (exact spelling, standalone number), or null. When the same value appears
+ * more than once (e.g. "RR 0.73" for two outcomes), `ci` picks the occurrence its own interval follows.
+ */
+export function findReported(value: number, quote?: string | null,
+  ci?: { lo?: number | null; hi?: number | null }): Reported | null {
   if (!quote) return null;
   const normalised = quote.replace(/[\u00b7\u2212\u2013\u2014\u00a0]/g, (c) => SAME_LENGTH[c] ?? c);
+  const hits: Reported[] = [];
   for (const m of normalised.matchAll(NUM)) {
     const parsed = Number(m[0].replace(/,/g, ""));
     if (Math.abs(parsed - value) <= Math.max(1e-9, Math.abs(value) * 0.005)) {
       const index = m.index ?? 0;
-      return { text: quote.slice(index, index + m[0].length), index };
+      hits.push({ text: quote.slice(index, index + m[0].length), index });
     }
   }
-  return null;
+  if (hits.length > 1 && ci?.lo != null && ci?.hi != null) {
+    const { lo, hi } = ci;
+    const own = hits.find((h) => {
+      const after = quote.slice(h.index + h.text.length, h.index + h.text.length + 60);
+      return findReported(lo, after) !== null && findReported(hi, after) !== null;
+    });
+    if (own) return own;
+  }
+  return hits[0] ?? null;
 }
 
 /** The number as written in `quote` (e.g. "0.80", "0·80", "1,234"); falls back to the plain value. */

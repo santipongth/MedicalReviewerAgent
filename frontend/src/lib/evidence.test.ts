@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asReported, isVerifiedEffect } from "./evidence";
+import { asReported, findReported, isVerifiedEffect } from "./evidence";
 import type { Paper } from "./types";
 
 const quote = "Metformin use was associated with a lower risk of colorectal cancer (HR 0.80, 95% CI 0.71–0.90).";
@@ -30,5 +30,14 @@ describe("evidence helpers", () => {
       repaired: false, uncertain: false, unverified: [] });
     expect(isVerifiedEffect(p, p.card!.outcomes[0])).toBe(true);
     expect(isVerifiedEffect(paper("P2", null), paper("P2", null).card!.outcomes[0])).toBe(false);
+  });
+
+  it("marks the occurrence followed by its own confidence interval when a value appears twice", () => {
+    const q = "reduced ischaemic stroke (RR 0.73 [95% CI 0.58-0.90]) and MACE by 27% (with RR 0.73 [0.65-0.81]).";
+    const second = q.lastIndexOf("0.73");
+    expect(findReported(0.73, q)?.index).toBe(q.indexOf("0.73")); // without bounds: the first, as before
+    expect(findReported(0.73, q, { lo: 0.65, hi: 0.81 })?.index).toBe(second);
+    expect(findReported(0.73, q, { lo: 0.58, hi: 0.9 })?.index).toBe(q.indexOf("0.73"));
+    expect(findReported(0.73, q, { lo: 0.1, hi: 0.2 })?.index).toBe(q.indexOf("0.73")); // no match: first occurrence
   });
 });

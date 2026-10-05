@@ -54,7 +54,7 @@ function OutcomeEvidence({ paper, o, en, lang, selected }: {
         <div className="grid gap-1">
           <span className="label">{L(lang, "ประโยคที่ใช้ยืนยัน", "Source sentence")}</span>
           <p className="font-quote text-[1rem] leading-relaxed">
-            {hasEffect ? <HighlightedQuote quote={quote} number={findReported(o.effect_value as number, quote)} /> : <>&ldquo;{quote}&rdquo;</>}
+            {hasEffect ? <HighlightedQuote quote={quote} number={findReported(o.effect_value as number, quote, { lo: o.ci_lower, hi: o.ci_upper })} /> : <>&ldquo;{quote}&rdquo;</>}
           </p>
         </div>
       )}

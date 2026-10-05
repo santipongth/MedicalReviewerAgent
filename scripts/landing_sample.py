@@ -32,7 +32,8 @@ def trim(card: dict, indexes: list[int]) -> dict:
 
 
 def main(path: str) -> None:
-    review = json.load(open(path, encoding="utf-8"))
+    with open(path, encoding="utf-8") as f:
+        review = json.load(f)
     result = review["result"]
     papers = []
     for p in result["papers"]:

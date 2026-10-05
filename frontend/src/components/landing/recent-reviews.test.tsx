@@ -29,6 +29,8 @@ describe("RecentReviews", () => {
     expect(first).toHaveTextContent("96%");
     expect(screen.getByRole("link", { name: /Vitamin D and fractures/ })).toHaveTextContent("–");
     expect(screen.queryByText("still running")).toBeNull();
+    const cells = Array.from(first.children).map((c) => c.textContent);
+    expect(cells.slice(0, 2)).toEqual(["เมตฟอร์มินกับมะเร็งลำไส้ใหญ่", "96%"]); // topic, then share: same order at every width
   });
 
   it("says so calmly when the list cannot be loaded", async () => {

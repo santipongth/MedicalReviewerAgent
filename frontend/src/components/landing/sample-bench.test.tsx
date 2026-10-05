@@ -6,10 +6,9 @@ import { SampleBench } from "./sample-bench";
 const rail = () => screen.getByRole("region", { name: "แหล่งที่มาของตัวเลขที่เลือก" });
 
 describe("SampleBench", () => {
-  it("says it is a snapshot of a real review, with its date", () => {
+  it("says it is a snapshot of a real review", () => {
     render(<SampleBench />);
     expect(screen.getByText(/ตัวอย่างจากรีวิวจริง/)).toBeInTheDocument();
-    expect(screen.getByText(/5 ต\.ค\. 2569|5 ต\.ค\. 2026/)).toBeInTheDocument();
   });
 
   it("opens on P1 with its verified number marked inside the source sentence", () => {
@@ -40,5 +39,22 @@ describe("SampleBench", () => {
     expect(numbers.length).toBeGreaterThanOrEqual(4);
     await userEvent.click(within(summary).getByRole("button", { name: "HR 0.99" }));
     expect(within(rail()).getByText("0.99", { selector: "mark" })).toBeInTheDocument();
+  });
+
+  it("marks P15's MACE 0.73, not the stroke 0.73 earlier in the same sentence", async () => {
+    render(<SampleBench />);
+    await userEvent.click(screen.getByRole("button", { name: /^P15 RR 0\.73/ }));
+    const mark = within(rail()).getByText("0.73", { selector: "mark" });
+    expect(mark.nextSibling?.textContent ?? "").toMatch(/^ \[0\.65-0\.81\]/);
+  });
+
+  it("never links to the sample review itself (it exists in one database only)", () => {
+    render(<SampleBench />);
+    for (const a of screen.queryAllByRole("link")) expect(a.getAttribute("href") ?? "").not.toMatch(/^\/r\//);
+  });
+
+  it("dates the snapshot in the Common Era like every other year on the page", () => {
+    render(<SampleBench />);
+    expect(screen.getByText(/5 ต\.ค\. 2026/)).toBeInTheDocument();
   });
 });

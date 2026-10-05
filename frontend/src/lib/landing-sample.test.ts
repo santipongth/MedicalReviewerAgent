@@ -23,6 +23,19 @@ describe("landing sample snapshot", () => {
     expect(shown).toBeGreaterThanOrEqual(5);
   });
 
+  it("marks the occurrence of each value that carries its own interval", () => {
+    for (const p of SAMPLE.papers) {
+      for (const o of p.card_en?.outcomes ?? []) {
+        if (o.effect_value == null || o.ci_lower == null || o.ci_upper == null || isBlankedEffect(p, o.outcome)) continue;
+        const q = o.evidence_quote ?? "";
+        const at = findReported(o.effect_value, q, { lo: o.ci_lower, hi: o.ci_upper })!;
+        const after = q.slice(at.index + at.text.length, at.index + at.text.length + 60);
+        expect(findReported(o.ci_lower, after), `${p.ref} lower bound follows the marked value`).not.toBeNull();
+        expect(findReported(o.ci_upper, after), `${p.ref} upper bound follows the marked value`).not.toBeNull();
+      }
+    }
+  });
+
   it("keeps the Thai and English cards aligned outcome by outcome", () => {
     for (const p of SAMPLE.papers) {
       expect(p.card?.outcomes.length, p.ref).toBe(p.card_en?.outcomes.length);

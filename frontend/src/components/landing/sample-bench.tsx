@@ -10,7 +10,7 @@ import { Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { HighlightedQuote } from "../ui/quote";
 import { MiniForest, rowKey } from "./mini-forest";
 
-const CAPTURED = new Date(SAMPLE.capturedAt).toLocaleDateString("th-TH", {
+const CAPTURED = new Date(SAMPLE.capturedAt).toLocaleDateString("th-TH-u-ca-gregory", {
   day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Bangkok",
 });
 
@@ -61,7 +61,7 @@ export function SampleBench() {
           <span className="font-display tabular-nums">วิเคราะห์ {SAMPLE.stats.extracted} บทคัดย่อ · ตัวเลขตรวจผ่าน {verifiedPct}%</span>
         </p>
         <div className="grid gap-2">
-          <h2 id="h-sample" className="text-[1.35rem] font-bold">โคลชิซีนหลังกล้ามเนื้อหัวใจตายเฉียบพลัน</h2>
+          <h2 id="h-sample" className="text-[1.35rem] font-bold">โคลชิซินหลังกล้ามเนื้อหัวใจตายเฉียบพลัน</h2>
           <p className="max-w-[65ch] text-[0.95rem] text-muted">{SAMPLE.question}</p>
         </div>
         <p data-testid="sample-summary" className="max-w-[65ch] text-[1.02rem] leading-[1.9]">
@@ -122,7 +122,7 @@ function SourcePane({ row }: { row: ForestRow }) {
         <div className="grid gap-1">
           <span className="label">ประโยคในบทคัดย่อ</span>
           <p className="font-quote text-[1.02rem] leading-relaxed">
-            <HighlightedQuote quote={quote} number={findReported(row.value, quote)} />
+            <HighlightedQuote quote={quote} number={findReported(row.value, quote, { lo: row.lo, hi: row.hi })} />
           </p>
           <p className="text-[0.8rem] text-muted">ตัวเลขที่ไฮไลต์พบในบทคัดย่อตรงทุกตัวอักษร</p>
         </div>

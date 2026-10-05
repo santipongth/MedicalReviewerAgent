@@ -138,6 +138,17 @@ test("landing on a phone: no horizontal scroll, the source sits under the plot, 
   await noSeriousA11y(page);
 });
 
+test("landing on a phone: recent reviews read topic first, share on the right", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto("/");
+  const row = page.getByRole("link", { name: /เมตฟอร์มินกับมะเร็งลำไส้ใหญ่/ });
+  const topic = await row.getByText("เมตฟอร์มินกับมะเร็งลำไส้ใหญ่").boundingBox();
+  const share = await row.getByText("86%").boundingBox();
+  expect(topic!.x).toBeLessThan(share!.x);
+  await noHorizontalScroll(page);
+});
+
 test("landing: a full service says so and keeps the submit button off", async ({ page }) => {
   await mockApi(page, {
     "GET /api/v1/status": (route) => json(route, 200, { ...OPEN_STATUS, accepting: false, reason: "queue_full", retry_after: 60 }),

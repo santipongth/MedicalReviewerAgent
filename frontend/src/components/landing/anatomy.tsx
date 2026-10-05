@@ -48,7 +48,7 @@ export function Anatomy() {
         <Step no="2 · ค้นหา" title="ระบบค้นค่านั้นในประโยคต้นฉบับ" testId="anatomy-search"
           note="ต้องตรงทุกตัวอักษร และต้องไม่ใช่ส่วนหนึ่งของตัวเลขอื่น">
           <p className="font-quote text-[0.98rem] leading-relaxed">
-            <HighlightedQuote quote={quote} number={findReported(passed.effect_value as number, quote)} />
+            <HighlightedQuote quote={quote} number={findReported(passed.effect_value as number, quote, { lo: passed.ci_lower, hi: passed.ci_upper })} />
           </p>
         </Step>
         <Step no="3 · ตัดสิน" title="ผ่านได้เทป ไม่ผ่านเว้นว่าง" testId="anatomy-verdict"

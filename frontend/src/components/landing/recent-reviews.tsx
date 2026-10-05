@@ -58,11 +58,11 @@ export function RecentReviews() {
               <Link href={`/r/${r.id}`}
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-0.5 py-3 text-ink hover:text-primary sm:grid-cols-[minmax(0,1fr)_4rem_7rem_3.5rem]">
                 <span className="min-w-0 break-words font-display font-medium">{r.topic}</span>
-                <span className="order-last col-span-1 text-[0.8rem] text-muted sm:order-none">{r.language === "th" ? "ไทย" : "English"}</span>
-                <span className="order-last text-[0.8rem] text-muted sm:order-none">{ago(r.finished_at ?? r.created_at)}</span>
-                <span className="row-start-1 text-right font-display tabular-nums sm:row-auto">
+                <span className="text-right font-display tabular-nums sm:order-last">
                   {r.verification_rate != null ? `${Math.round(r.verification_rate * 100)}%` : <span className="text-muted">–</span>}
                 </span>
+                <span className="text-[0.8rem] text-muted">{r.language === "th" ? "ไทย" : "English"}</span>
+                <span className="text-[0.8rem] text-muted">{ago(r.finished_at ?? r.created_at)}</span>
               </Link>
             </li>
           ))}
