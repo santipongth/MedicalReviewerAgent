@@ -37,7 +37,7 @@ export function buildStandaloneHtml(review: Review, assets: StandaloneAssets, do
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="${FONTS}">
+<link rel="stylesheet" href="${FONTS}" media="print" onload="this.media='all'">
 <style>:root{--font-anuphan:"Anuphan";--font-bai-jamjuree:"Bai Jamjuree";--font-martian-mono:"Martian Mono";--font-source-serif:"Source Serif 4"}</style>
 <style>${assets.css.replace(/<\/style/gi, "<\\/style")}</style>
 </head>

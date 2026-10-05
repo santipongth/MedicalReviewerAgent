@@ -57,9 +57,12 @@ describe("RequestSlip", () => {
 
   it("tells the reopening time from the service, in the viewer's own clock", async () => {
     const { capacityText } = await import("./request-slip");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T10:59:59.900+07:00")); // a minute boundary must not split the two reads
     const reopen = new Date(Date.now() + 5400 * 1000).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
     expect(capacityText("daily_budget", 5400)).toContain(reopen);
     expect(capacityText("daily_budget", 5400)).not.toContain("07:00");
+    vi.useRealTimers();
   });
 
   it("explains a full queue returned at submit time", async () => {

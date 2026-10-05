@@ -1,6 +1,7 @@
 """Rate limits shared by REST and MCP (moving window, Redis-backed in production)."""
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 
@@ -33,7 +34,8 @@ class RateLimits:
         if await self.strategy.hit(item, scope, identity):
             return RateDecision(True)
         stats = await self.strategy.get_window_stats(item, scope, identity)
-        return RateDecision(False, max(1, int(stats.reset_time - time.time()) + 1))
+        # Whole seconds, at least 1 and never longer than the window itself (int()+1 could say 61 for a minute).
+        return RateDecision(False, min(item.get_expiry(), max(1, math.ceil(stats.reset_time - time.time()))))
 
     async def reset(self) -> None:
         await self.storage.reset()

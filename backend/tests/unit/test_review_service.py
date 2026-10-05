@@ -73,3 +73,14 @@ async def test_queue_failure_marks_error_and_raises(session_factory, redis):
     svc.queue.ok = True
     again = await svc.create(req(), identity=ANON)  # the failed row is not served as a cache hit
     assert again.review_id != exc.value.review_id
+
+
+async def test_retry_after_never_exceeds_the_window(monkeypatch):
+    from app.services import ratelimits
+
+    limits = ratelimits.RateLimits("memory://")
+    assert (await limits.hit("s", "id", "1/minute")).allowed
+    real = ratelimits.time.time
+    monkeypatch.setattr(ratelimits.time, "time", lambda: real() - 0.5)  # the clock reads just before the hit
+    decision = await limits.hit("s", "id", "1/minute")
+    assert not decision.allowed and 1 <= decision.retry_after <= 60

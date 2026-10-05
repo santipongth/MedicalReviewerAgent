@@ -13,6 +13,7 @@ export default defineConfig({
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
     "process.env.NEXT_PUBLIC_API_URL": "undefined",
+    "process.env": "{}", // any other env read in the Report graph is undefined instead of crashing the offline file
   },
   publicDir: false,
   build: {

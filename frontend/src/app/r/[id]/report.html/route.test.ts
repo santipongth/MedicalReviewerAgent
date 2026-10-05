@@ -27,4 +27,24 @@ describe("GET /r/[id]/report.html", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...reviewFixture, status: "running" }))));
     expect((await call(reviewFixture.id)).status).toBe(409);
   });
+
+  it("answers 502 and logs where it looked when the API cannot be reached", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
+    expect((await call(reviewFixture.id)).status).toBe(502);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("localhost:8000"), expect.anything());
+    log.mockRestore();
+  });
+
+  it("answers 502, not a crash, when the API sends something that is not JSON", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>proxy error</html>", { status: 200 })));
+    expect((await call(reviewFixture.id)).status).toBe(502);
+    log.mockRestore();
+  });
+
+  it("answers 502 when the API fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
+    expect((await call(reviewFixture.id)).status).toBe(502);
+  });
 });

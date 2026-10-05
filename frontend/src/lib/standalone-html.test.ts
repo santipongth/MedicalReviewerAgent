@@ -15,6 +15,13 @@ describe("buildStandaloneHtml", () => {
     expect(html).toContain("ไม่ใช่คำแนะนำทางการแพทย์"); // the disclaimer travels with the file
   });
 
+  it("never waits for web fonts before showing the report (offline or on a flaky network)", () => {
+    const html = buildStandaloneHtml(reviewFixture, ASSETS);
+    const link = html.match(/<link[^>]*fonts\.googleapis\.com\/css2[^>]*>/)?.[0] ?? "";
+    expect(link).toContain('media="print"');
+    expect(link).toContain("onload=");
+  });
+
   it("cannot be broken out of by data or code that contains </script>", () => {
     const evil = { ...reviewFixture, topic: "</script><script>alert(1)</script>" };
     const html = buildStandaloneHtml(evil, { js: "var s='</script>';", css: "" }, new Date());

@@ -83,7 +83,9 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 ## Web app (`frontend/`)
 Next.js 16 + React 19 + Tailwind 4 + ECharts 6. The browser calls the API directly; the address is read at request time
 from `PUBLIC_API_URL` (compose default `http://localhost:8000`; `/` = same origin behind Caddy), so one image serves
-every deployment.
+every deployment. The offline HTML report (`/r/{id}/report.html`) is built on the web server, which fetches the review
+from `INTERNAL_API_URL` (compose: `http://api:8000`); set it whenever `PUBLIC_API_URL` is not an absolute URL the web
+server can reach, or the download answers 502 and the web log says where it looked.
 ```bash
 cd frontend && npm ci
 npm run dev            # http://localhost:3000 (API on :8000)
