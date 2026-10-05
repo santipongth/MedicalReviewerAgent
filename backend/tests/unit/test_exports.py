@@ -41,3 +41,14 @@ async def test_export_endpoint_formats_and_states(client, session_factory):
     assert (await client.get(f"/api/v1/reviews/{running.id}/export")).status_code == 409
     assert (await client.get(f"/api/v1/reviews/{uuid.uuid4()}/export")).status_code == 404
     assert (await client.get(f"/api/v1/reviews/{done.id}/export", params={"format": "pdf"})).status_code == 422
+
+
+def test_csv_cells_cannot_become_spreadsheet_formulas():
+    hostile = {"papers": [{"ref": "P1", "title": "=HYPERLINK(\"http://x\")", "card_en": {
+        "study_design": "@SUM(A1)", "design_category": "rct", "sample_size": 10, "outcomes": [
+            {"outcome": "+cmd", "direction": "negative", "effect_measure": "MD", "effect_value": -1.5, "ci_lower": -2.0,
+             "ci_upper": -1.0, "p_value": None, "evidence_quote": "-2 points"}]}}]}
+    rows = list(csv.DictReader(io.StringIO(render_csv(hostile).lstrip("\ufeff"))))
+    assert rows[0]["title"].startswith("'=") and rows[0]["study_design"].startswith("'@")
+    assert rows[0]["outcome"] == "'+cmd" and rows[0]["evidence_quote"] == "'-2 points"
+    assert rows[0]["effect_value"] == "-1.5" and rows[0]["ci_lower"] == "-2.0"  # real numbers stay numbers

@@ -3,7 +3,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-import respx
 
 from app.services.http import HttpClient
 from app.services.llm_config import load_llm_config
@@ -64,11 +63,16 @@ def test_validate_role_reports_unknown_model_and_unsupported_reasoning(tmp_path)
     assert text  # repo config readable
 
 
-@respx.mock
 async def test_catalog_loads_from_openrouter():
     body = (FIX / "openrouter_models.json").read_text(encoding="utf-8")
-    respx.get(OPENROUTER_MODELS_URL).mock(return_value=httpx.Response(200, text=body))
-    http = HttpClient(retries=0)
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:  # an in-process transport: never the real network
+        seen.append(str(request.url))
+        return httpx.Response(200, text=body)
+
+    http = HttpClient(retries=0, transport=httpx.MockTransport(handler))
     models = await OpenRouterCatalog(http).load()
     await http.aclose()
-    assert "deepseek/deepseek-v4-pro" in models and len(models) == 16
+    assert seen == [OPENROUTER_MODELS_URL]
+    assert {"deepseek/deepseek-v4-pro", "qwen/qwen3.5-flash-02-23"} <= set(models)  # membership, not a drifting count

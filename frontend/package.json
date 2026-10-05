@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run build:standalone && next build",
+    "build:standalone": "vite build -c vite.standalone.config.mts",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

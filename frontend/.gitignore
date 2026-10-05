@@ -43,3 +43,6 @@ next-env.d.ts
 # playwright
 /test-results/
 /playwright-report/
+
+# single-file report bundle (npm run build:standalone)
+/standalone-dist

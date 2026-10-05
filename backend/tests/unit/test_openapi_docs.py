@@ -15,7 +15,8 @@ EXPECTED_ERRORS = {
 def test_every_route_is_described_and_declares_its_error_responses(app):
     spec = app.openapi()
     assert "abstract" in spec["info"]["description"] and "Retry-After" in spec["info"]["description"]
-    assert spec["info"]["version"] == app.state.mcp.version if hasattr(app.state.mcp, "version") else True
+    from app import __version__
+    assert spec["info"]["version"] == __version__  # the MCP server reports the same version (app.mcp.server)
     seen = set()
     for path, ops in spec["paths"].items():
         for method, op in ops.items():

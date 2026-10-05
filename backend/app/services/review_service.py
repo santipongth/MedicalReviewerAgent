@@ -12,7 +12,13 @@ from app.config import Settings
 from app.db.models import TERMINAL_STATUSES, Review
 from app.db.repositories import ReviewRepository
 from app.logging import get_logger
-from app.schemas.review import CreateReviewRequest, ReviewCreated, compute_cache_key, hash_ip
+from app.schemas.review import (
+    CreateReviewRequest,
+    ReviewCreated,
+    ReviewOptions,
+    compute_cache_key,
+    hash_ip,
+)
 from app.services.api_keys import ApiKeyInfo, reviews_since
 from app.services.capacity import AdmissionBusy
 from app.services.ratelimits import RateLimits
@@ -193,7 +199,6 @@ class ReviewService:
 
     async def status(self) -> dict:
         """Public service status: whether new reviews are accepted and the limits callers must respect."""
-        from app.schemas.review import ReviewOptions
         async with self.session_factory() as session:
             repo = ReviewRepository(session)
             queued, running = await repo.count_by_status("queued"), await repo.count_by_status("running")

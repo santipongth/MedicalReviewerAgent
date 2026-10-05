@@ -115,6 +115,8 @@ services:
     environment:
       # Address the browser uses to reach the API (read at request time; no rebuild per deployment).
       PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
+      # Server-side calls from the web app (offline HTML report) go straight to the API inside the network.
+      INTERNAL_API_URL: http://api:8000
     ports:
       - "3000:3000"
     depends_on:

@@ -153,3 +153,14 @@ async def test_missing_design_category_is_inferred_without_another_call():
 def prompts_extract_system():
     from app.graph import prompts
     return prompts.extract_system()
+
+
+async def test_a_secondary_extractor_on_the_same_model_is_skipped():
+    primary = FakeStructuredLLM("qwen/qwen3.5-flash-02-23", lambda s, u: card())
+    same = FakeStructuredLLM("qwen/qwen3.5-flash-02-23", lambda s, u: card())
+    out = await make_read_paper(deps(primary, same))(payload())
+    assert len(primary.calls) == 1 and same.calls == []  # same model twice is cost, not a cross-check
+    assert out["papers"][0]["verification"]["agreement"] is None
+    other = FakeStructuredLLM("deepseek/deepseek-v4-flash", lambda s, u: card())
+    await make_read_paper(deps(FakeStructuredLLM("qwen/qwen3.5-flash-02-23", lambda s, u: card()), other))(payload())
+    assert len(other.calls) == 1  # a different model still cross-checks

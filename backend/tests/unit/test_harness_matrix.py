@@ -101,3 +101,53 @@ def test_real_splits_are_still_conflicts():
     assert two_agree["consensus"][0]["refs"] == ["P1", "P2"] and two_agree["conflicts"] == []
     _, three = _row(["positive", "positive", "null"])  # 67 % < 70 %
     assert three["conflicts"] and not three["consensus"]
+
+
+def _pooled(ref, direction="positive"):
+    p = paper(ref, [("CRC", direction, 0.8)], n=None)
+    p["card"]["design_category"] = "sr_ma_rct"
+    return p
+
+
+def test_cells_say_which_studies_are_pooled():
+    papers = [_pooled("P1"), paper("P2", [("CRC", "positive", 0.7)])]
+    m = build_matrix(papers, fallback_clusters(papers))
+    cells = {c["ref"]: c for c in m["rows"][0]["cells"]}
+    assert cells["P1"]["pooled"] is True and cells["P2"]["pooled"] is False
+    assert cells["P1"]["design_category"] == "sr_ma_rct"
+
+
+def test_grade_starts_from_pooled_evidence_and_flags_overlap():
+    papers = [_pooled("P1"), _pooled("P2")] + [paper(f"P{i}", [("CRC", "positive", 0.8)]) for i in range(3, 6)]
+    m = build_matrix(papers, fallback_clusters(papers))
+    g = grade_baseline(papers, m)
+    assert g["level"] == "high"  # 2 SR/MA of RCTs, pooled sample sizes not reported: not called imprecise
+    assert any("pooled" in f and "overlap" in f for f in g["factors"])
+    primary_only = [paper(f"P{i}", [("CRC", "positive", 0.8)]) for i in range(1, 4)]
+    g2 = grade_baseline(primary_only, build_matrix(primary_only, fallback_clusters(primary_only)))
+    assert g2["level"] == "low" and not any("pooled" in f for f in g2["factors"])  # unchanged without SR/MA
+
+
+def test_a_missing_pooled_sample_size_never_raises_the_grade():
+    def review(sr_n):
+        sr = _pooled("P1")
+        sr["card"]["sample_size"] = sr_n
+        rcts = [paper(f"P{i}", [("CRC", "positive", 0.8)], design="RCT", n=60) for i in range(2, 7)]
+        for p in rcts:
+            p["card"]["design_category"] = "rct"
+        papers = [sr] + rcts
+        return grade_baseline(papers, build_matrix(papers, fallback_clusters(papers)))
+
+    reported_small, unreported = review(350), review(None)
+    assert reported_small["level"] == "moderate"
+    order = ("very_low", "low", "moderate", "high")
+    assert order.index(unreported["level"]) <= order.index(reported_small["level"])
+    assert any("primary" in f and "300" in f for f in unreported["factors"])  # judged from the primary studies' n
+
+
+def test_pooled_only_evidence_without_any_sample_size_is_imprecise_and_says_so():
+    papers = [_pooled("P1"), _pooled("P2")]
+    g = grade_baseline(papers, build_matrix(papers, fallback_clusters(papers)))
+    assert g["level"] == "moderate"
+    assert any("not reported" in f for f in g["factors"])
+    assert not any("0 primary" in f for f in g["factors"])

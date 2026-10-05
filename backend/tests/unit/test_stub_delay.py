@@ -11,4 +11,5 @@ async def test_stub_graph_can_simulate_a_slow_review_for_load_tests():
                         checkpointer=InMemorySaver())
     started = time.perf_counter()
     out = await graph.ainvoke(initial_state("r", "topic", "en", {}), {"configurable": {"thread_id": "r"}})
-    assert time.perf_counter() - started >= 0.2 and out["result"]["summary"].startswith("Stub review")
+    # asyncio.sleep can wake up to one clock tick (~16 ms on Windows) early, so allow a small tolerance.
+    assert time.perf_counter() - started >= 0.18 and out["result"]["summary"].startswith("Stub review")

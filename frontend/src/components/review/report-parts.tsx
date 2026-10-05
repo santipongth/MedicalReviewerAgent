@@ -97,9 +97,10 @@ export function StrengthLine({ synthesis, lang, quality }: { synthesis: Synthesi
 }
 
 /** Outcome × paper; every cell is a glyph button that opens its source in the rail. */
-export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcomeOf }: {
+export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcomeOf, pooledRefs }: {
   rows: ComparisonRow[]; refs: string[]; lang: Lang; onSelect: Select; selected?: { ref: string; outcome?: string };
   outcomeOf: (row: ComparisonRow, ref: string) => string | undefined;
+  pooledRefs?: Set<string>; // systematic reviews / meta-analyses: may already include the primary studies
 }) {
   return (
     <div className="overflow-x-auto rounded-sm border border-rule">
@@ -107,7 +108,18 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
         <thead>
           <tr className="bg-ground">
             <th scope="col" className="left-0 z-10 min-w-[9rem] bg-ground px-2.5 py-2 text-left label sm:sticky sm:min-w-[190px]">{L(lang, "ผลลัพธ์", "Outcome")}</th>
-            {refs.map((r) => <th key={r} scope="col" className="px-2 py-2 text-center label">{r}</th>)}
+            {refs.map((r) => (
+              <th key={r} scope="col" className="px-2 py-2 text-center label">
+                {r}
+                {pooledRefs?.has(r) && (
+                  <span className="mt-0.5 block text-[0.68rem] font-semibold text-muted"
+                    title={L(lang, "ผลรวมจาก systematic review/meta-analysis อาจรวมงานต้นฉบับในตารางนี้ไว้แล้ว",
+                      "Pooled result from a systematic review/meta-analysis; may already include primary studies in this table")}>
+                    SR/MA
+                  </span>
+                )}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>

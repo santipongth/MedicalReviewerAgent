@@ -44,6 +44,7 @@ const p3card = card({
 });
 const p4card = card({
   sample_size: 6331, sample_size_quote: "A total of 6,331 new metformin users were followed.", overall_direction: "negative",
+  study_design: "meta-analysis of cohort studies", design_category: "sr_ma_observational",
   outcomes: [{ outcome: "CRC incidence", result: "Higher detection within two years", evidence_quote: q4,
     effect_size: "HR 1.28 (1.05–1.56)", effect_measure: "HR", effect_value: 1.28, ci_lower: 1.05, ci_upper: 1.56,
     p_value: null, direction: "negative" }],

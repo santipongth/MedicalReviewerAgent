@@ -88,6 +88,14 @@ describe("Report", () => {
     }
   });
 
+  it("marks pooled (SR/MA) columns in the comparison table", () => {
+    render(<Report review={reviewFixture} />);
+    const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
+    const p4 = within(table).getByRole("columnheader", { name: /P4/ });
+    expect(p4).toHaveTextContent("SR/MA");
+    expect(within(table).getByRole("columnheader", { name: /^P1$/ })).not.toHaveTextContent("SR/MA");
+  });
+
   it("switches to the English original", async () => {
     render(<Report review={reviewFixture} />);
     await userEvent.click(screen.getByRole("button", { name: "English" }));
@@ -102,11 +110,11 @@ describe("Report", () => {
     const { fireEvent } = await import("@testing-library/react");
     fireEvent.change(slider, { target: { value: "90" } });
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
-    expect(within(table).queryByRole("columnheader", { name: "P4" })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /^P4/ })).not.toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: "P3" })).toBeInTheDocument();
     expect(screen.getByText("แสดง 2 จาก 5 ฉบับ")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "ล้างตัวกรอง" }));
-    expect(within(table).getByRole("columnheader", { name: "P4" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /^P4/ })).toBeInTheDocument();
   });
 
   it("a review with no papers shows the explicit message and no matrix", () => {

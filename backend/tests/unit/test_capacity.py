@@ -97,3 +97,15 @@ async def test_a_held_admission_lock_is_a_short_honest_503(client, redis, monkey
     r = await client.post("/api/v1/reviews", json={"topic": "held lock topic statins", "language": "en"})
     assert r.status_code == 503 and r.json()["reason"] == "busy" and r.headers["retry-after"] == "5"
     assert await redis.get(capacity.ADMISSION_KEY) == "another-process"  # never released a lock it did not hold
+
+
+async def test_admission_release_never_deletes_a_lock_taken_over_after_expiry(redis):
+    from app.services import capacity
+    cap = Capacity(redis, settings())
+    async with cap.admission():
+        await redis.set(capacity.ADMISSION_KEY, "next-holder", px=10_000)  # ours expired; someone else holds it now
+    assert await redis.get(capacity.ADMISSION_KEY) == "next-holder"
+    await redis.delete(capacity.ADMISSION_KEY)
+    async with cap.admission():
+        pass
+    assert await redis.get(capacity.ADMISSION_KEY) is None  # our own lock is released

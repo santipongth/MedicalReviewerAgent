@@ -5,9 +5,9 @@ Anthropic structured outputs (json_schema)."""
 from __future__ import annotations
 
 import hashlib
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.services.text import normalize_title
 
@@ -142,6 +142,9 @@ class OutcomeResult(BaseModel):
     direction: Direction
 
 
+MAX_OUTCOMES = 6  # an abstract rarely reports more; the extractor lists the most relevant first
+
+
 def _require_design_category(schema: dict) -> None:
     # Required (nullable) for the model; the Python default only serves cards stored before the field existed.
     schema.setdefault("required", []).append("design_category")
@@ -165,6 +168,22 @@ class PaperCard(BaseModel):
     risk_of_bias: Literal["low", "moderate", "high", "unclear"]
     overall_direction: Direction
 
+    @field_validator("outcomes", mode="before")
+    @classmethod
+    def keep_quoted_outcomes(cls, value: Any) -> Any:
+        """Measured on Qwen3.5 Flash: the model lists every outcome of interest and gives the unreported ones a null
+        evidence_quote, which used to reject the whole card on every repair. An outcome without a quote is simply not
+        reported by the abstract, so it is dropped here; the rest of the card stays usable."""
+        if not isinstance(value, list):
+            return value
+        quoted = [o for o in value if not isinstance(o, dict) or (o.get("evidence_quote") or "").strip()]
+        return quoted[:MAX_OUTCOMES]
+
+    @field_validator("key_findings", "limitations", mode="before")
+    @classmethod
+    def null_list_is_empty(cls, value: Any) -> Any:
+        return [] if value is None else value
+
 
 class ComparisonCell(BaseModel):
     ref: str
@@ -174,6 +193,8 @@ class ComparisonCell(BaseModel):
     effect_value: float | None = None
     ci_lower: float | None = None
     ci_upper: float | None = None
+    design_category: str | None = None
+    pooled: bool = False  # from a systematic review / meta-analysis (may overlap with primary studies)
 
 
 class ComparisonRow(BaseModel):

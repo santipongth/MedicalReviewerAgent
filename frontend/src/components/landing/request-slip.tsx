@@ -17,7 +17,10 @@ const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?ren
 export function capacityText(reason: string | null | undefined, retryAfter?: number | null): string {
   if (reason === "queue_full") return `คิวเต็มชั่วคราวเพราะมีผู้ใช้จำนวนมาก ลองใหม่อีกครั้งในอีก ${waitText(retryAfter ?? 60)}`;
   if (reason === "daily_reviews" || reason === "daily_budget") {
-    return "วันนี้รับรีวิวใหม่ครบแล้ว เปิดรับอีกครั้งเวลา 07:00 น. (เวลาไทย) ระหว่างนี้ยังเปิดดูรีวิวที่เคยทำได้ตามปกติ";
+    const when = retryAfter
+      ? new Date(Date.now() + retryAfter * 1000).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })
+      : null; // the service says when its daily window resets; shown in the viewer's own clock
+    return `วันนี้รับรีวิวใหม่ครบแล้ว ${when ? `เปิดรับอีกครั้งเวลา ${when} น.` : "เปิดรับอีกครั้งพรุ่งนี้"} ระหว่างนี้ยังเปิดดูรีวิวที่เคยทำได้ตามปกติ`;
   }
   if (reason === "verification_unavailable") return "ระบบยืนยันว่าเป็นผู้ใช้จริงขัดข้องชั่วคราว ลองใหม่อีกครั้งในไม่กี่วินาที";
   if (reason === "busy") return "ตอนนี้มีผู้ส่งพร้อมกันจำนวนมาก ลองกดส่งอีกครั้งในไม่กี่วินาที";

@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.harness.design import POOLED_CATEGORIES
+
 LEVELS = ("very_low", "low", "moderate", "high")
 RANDOMIZED = ("randomi", "rct", "controlled trial", "meta-analysis of randomized")
 NOT_RANDOMIZED = re.compile(r"non[- ]?randomi|quasi|observational|uncontrolled|single[- ]arm", re.IGNORECASE)
@@ -23,6 +25,14 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     if not cards:
         return {"level": "very_low", "factors": ["no extracted studies"]}
     factors: list[str] = []
+    pooled = [c for c in cards if c.get("design_category") in POOLED_CATEGORIES]
+    primary = [c for c in cards if c.get("design_category") not in POOLED_CATEGORIES]
+    if pooled:
+        # Systematic reviews / meta-analyses usually already contain the primary studies found alongside them, so the
+        # body of evidence is graded from the pooled tier instead of counting both as independent.
+        overlap = f"; {len(primary)} primary stud(ies) may overlap with them" if primary else ""
+        factors.append(f"graded from pooled evidence: {len(pooled)} systematic review(s)/meta-analysis(es){overlap}")
+        cards = pooled
     randomized = sum(1 for c in cards if is_randomized(c))
     if randomized / len(cards) > 0.5:
         level = LEVELS.index("high")
@@ -41,9 +51,20 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     if dissenting:  # a small minority disagreeing is reported, not downgraded
         factors.append(f"minor inconsistency: {len(dissenting)} outcome(s) with a dissenting minority")
     total_n = sum(c.get("sample_size") or 0 for c in cards)
-    if total_n < 400:
+    source = "total sample size"
+    if pooled and total_n == 0:
+        # A missing pooled n must never grade higher than a reported small one: judge from the primary studies the
+        # reviews pool (a lower bound), and call it imprecise when nothing reports a sample size at all.
+        total_n = sum(c.get("sample_size") or 0 for c in primary)
+        source = "pooled sample sizes not reported; primary studies' total sample size"
+    if total_n == 0:
         level -= 1
-        factors.append(f"imprecision: total sample size {total_n}")
+        factors.append("imprecision: sample sizes not reported in the abstracts")
+    elif total_n < 400:
+        level -= 1
+        factors.append(f"imprecision: {source} {total_n}")
+    elif source != "total sample size":
+        factors.append(f"precision judged from the primary studies: {source} {total_n}")
     return {"level": LEVELS[max(level, 0)], "factors": factors}
 
 

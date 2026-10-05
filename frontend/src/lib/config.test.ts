@@ -9,6 +9,11 @@ describe("apiUrl", () => {
     expect(apiUrl()).toBe("https://api.example.org");
   });
 
+  it("an empty address also means the same origin", () => {
+    window.__MRA_CONFIG__ = { apiUrl: "" };
+    expect(apiUrl()).toBe(window.location.origin);
+  });
+
   it("'/' means the same origin (behind the single-origin proxy)", () => {
     window.__MRA_CONFIG__ = { apiUrl: "/" };
     expect(apiUrl()).toBe(window.location.origin);

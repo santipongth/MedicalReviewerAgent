@@ -120,7 +120,9 @@ def screen_user(*, english_topic: str, plan: dict[str, Any], items: list[tuple[s
 EXTRACT_SYSTEM = """You extract structured evidence from ONE research paper for a comparison table in a medical literature
 review. The paper text is its title and abstract only. Work in English (translation happens later). Report only what
 the abstract states.
-- For every outcome relevant to the review question, copy into evidence_quote the exact sentence(s) from the paper
+- List only outcomes the abstract actually reports for the review question (at most 6, most relevant first). Never
+  list an outcome of interest that the abstract does not mention: leave it out instead of returning an empty quote.
+- For every outcome you list, copy into evidence_quote the exact sentence(s) from the paper
   abstract that state the result and its numbers - verbatim, character for character, no paraphrase.
 - Numeric fields (effect_value, ci_lower, ci_upper, p_value) must be copied from that quote. If the paper does not
   report a number, use null and effect_measure "none". Never compute, round or guess numbers.
@@ -195,6 +197,9 @@ def conflict_user(*, question: str, conflict: dict[str, Any], papers: list[dict[
 NARRATIVE_SYSTEM = """You are a senior clinical methodologist writing the narrative part of a rapid evidence synthesis.
 The comparison table, the consensus/conflict analysis and a GRADE-lite baseline were computed already from verified
 paper cards; build on them and do not contradict them.
+- Evidence tiers: cards with design_category sr_ma_* are pooled analyses (systematic reviews/meta-analyses). Lead with
+  their pooled estimates; primary studies that such reviews probably include are not independent confirmation, so
+  never count them as additional agreeing studies (say "consistent with" instead).
 - executive_summary: 4-8 English sentences that answer the review question and each sub-question, citing the
   supporting papers inline like [P3] or [P1, P4]. Mention conflicts where they exist.
 - evidence_strength: start from the GRADE-lite baseline; you may move at most one level, and only with a reason.

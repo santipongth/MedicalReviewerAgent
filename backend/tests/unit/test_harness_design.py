@@ -35,10 +35,12 @@ def test_free_text_designs_map_to_categories():
 
 
 def test_grade_starts_high_for_randomized_categories_and_legacy_text_still_works():
-    cards = [card(category="rct").model_dump(), card(category="sr_ma_rct").model_dump(),
+    cards = [card(category="rct").model_dump(), card(category="rct").model_dump(),
              card(category="cohort").model_dump()]
     grade = grade_baseline([{"card": c} for c in cards], {"conflicts": []})
     assert grade["factors"][0].startswith("start high")
+    pooled = grade_baseline([{"card": card(category="sr_ma_rct").model_dump()}], {"conflicts": []})
+    assert any(f.startswith("start high") for f in pooled["factors"])  # SR/MA of RCTs count as randomised
     legacy = {"study_design": "Systematic review and meta-analysis of randomized trials"}  # stored before categories
     assert is_randomized(legacy) is True
     assert is_randomized({"study_design": "Randomized trial", "design_category": "cohort"}) is False  # category wins

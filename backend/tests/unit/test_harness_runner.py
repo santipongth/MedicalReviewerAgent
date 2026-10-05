@@ -75,3 +75,11 @@ async def test_force_escalation_for_disagreement():
     assert res.ok and res.escalated and res.value.reason == "good"
     assert await HarnessRunner(escalate_on=("repair_failed",), escalation=lambda s: big).escalate(
         "sys", "user", schema=TopicVerdict, reason="disagreement") is None
+
+
+async def test_escalation_to_the_same_model_is_skipped():
+    small = FakeStructuredLLM("qwen", lambda s, u: verdict("bad"))
+    same = FakeStructuredLLM("qwen", lambda s, u: verdict("good"))
+    runner = HarnessRunner(max_repairs=1, escalation=lambda schema: same)
+    res = await runner.call(small, "sys", "user", schema=TopicVerdict, validate=must_say_good)
+    assert not res.ok and not res.escalated and same.calls == []  # it already failed on this model

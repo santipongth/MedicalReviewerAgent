@@ -396,3 +396,8 @@ def test_dissent_counts_distinct_studies_when_one_paper_reports_two_directions()
     c = m["consensus"][0]
     assert c["refs"] == ["P1", "P2", "P3", "P4"] and c["dissent"] == {}  # P4 is not both a supporter and a dissenter
     assert _consensus_explanation({"outcome": "CRC", "refs": ["P1", "P2", "P3"], "dissent": {"null": ["P4"]}})         .endswith("[P4] shows no significant association.")
+
+
+def test_narrative_prompt_prefers_pooled_estimates():
+    from app.graph.prompts import NARRATIVE_SYSTEM
+    assert "pooled" in NARRATIVE_SYSTEM and "independent" in NARRATIVE_SYSTEM
