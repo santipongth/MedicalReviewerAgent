@@ -50,5 +50,5 @@ export function ReviewScreen({ id }: { id: string }) {
   if (phase === "report" && review) {
     return <Report review={review} />;
   }
-  return <LiveRun run={run} topic={topic} connection={connection} queuePosition={queuePosition} />;
+  return <LiveRun run={run} topic={topic} connection={connection} queuePosition={queuePosition} startedAt={review?.started_at} />;
 }

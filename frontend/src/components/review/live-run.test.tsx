@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialRun, reduceRun } from "@/lib/progress";
 import type { ReviewEvent } from "@/lib/types";
 import { LiveRun } from "./live-run";
@@ -24,14 +24,14 @@ describe("LiveRun", () => {
     expect(screen.getByText("Is the effect dose dependent?")).toBeInTheDocument();
     expect(screen.getAllByTestId("well-cap")).toHaveLength(8);
     expect(screen.getByText("Cohort study")).toBeInTheDocument();
-    expect(screen.getByText(/ไม่แน่นอน/)).toBeInTheDocument();
+    expect(screen.getByText(/สองโมเดลอ่านต่างกัน/)).toBeInTheDocument();
     expect(screen.getByText(/42 วินาที/)).toBeInTheDocument();
     expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("สังเคราะห์");
   });
 
   it("tells the reader when the stream is reconnecting", () => {
     render(<LiveRun run={initialRun()} topic="x" connection="reconnecting" />);
-    expect(screen.getByRole("status")).toHaveTextContent(/กำลังเชื่อมต่อใหม่/);
+    expect(screen.getByText(/กำลังเชื่อมต่อใหม่/)).toHaveAttribute("role", "status");
   });
 });
 
@@ -56,5 +56,53 @@ describe("LiveRun queue", () => {
     const run = { ...initialRun(), status: "queued" as const };
     render(<LiveRun run={run} topic="statins" connection="open" queuePosition={3} />);
     expect(screen.getByText(/ลำดับที่ 3/)).toBeInTheDocument();
+  });
+});
+
+describe("LiveRun progress details", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("makes the queue a real step and the current one while queued", () => {
+    const run = { ...initialRun(), status: "queued" as const };
+    render(<LiveRun run={run} topic="x" connection="open" />);
+    expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("รอคิว");
+  });
+
+  it("says it is connecting instead of counting 0 seconds", () => {
+    render(<LiveRun run={initialRun()} topic="x" connection="connecting" />);
+    expect(screen.getByText("กำลังเชื่อมต่อ…")).toBeInTheDocument();
+    expect(screen.queryByText(/0 วินาที/)).not.toBeInTheDocument();
+  });
+
+  it("ticks a local clock from startedAt and shows the typical duration", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-09T10:00:10Z"));
+    const run = stateOf([["started", {}], ["searching", { found: 5 }]]);
+    render(<LiveRun run={run} topic="x" connection="open" startedAt="2026-10-09T10:00:00Z" />);
+    expect(screen.getByText(/ผ่านไป 10 วินาที · ปกติใช้ 1–3 นาที/)).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(screen.getByText(/ผ่านไป 13 วินาที/)).toBeInTheDocument();
+  });
+
+  it("lists the first three search queries and folds the rest", () => {
+    const run = stateOf([["started", {}], ["planning", { queries: ["q one", "q two", "q three", "q four", "q five"] }]]);
+    render(<LiveRun run={run} topic="x" connection="open" />);
+    expect(screen.getByText("q one")).toBeInTheDocument();
+    expect(screen.getByText("q three")).toBeInTheDocument();
+    expect(screen.getByText("และอีก 2 คำค้น")).toBeInTheDocument();
+    expect(screen.getByText("q five").closest("details")).not.toBeNull();
+  });
+
+  it("shows pipeline counters as plain figures, not verified numbers", () => {
+    const run = stateOf([
+      ["searching", { found: 41 }], ["enriching", { candidates: 20 }], ["screened", { kept: 8, total: 20 }],
+      ["reading", { ref: "P1", title: "A" }], ["extracted", { ref: "P1", ok: true }],
+      ["reading", { ref: "P2", title: "B" }], ["extracted", { ref: "P2", ok: false }],
+    ]);
+    const { container } = render(<LiveRun run={run} topic="x" connection="open" />);
+    expect(screen.getByText("ค้นเจอ").nextElementSibling).toHaveTextContent("41");
+    expect(screen.getByText("อ่านแล้ว").nextElementSibling).toHaveTextContent("2/8");
+    expect(container.querySelector("dl .num-verified")).toBeNull();
+    expect(screen.getByRole("img")).toBeInTheDocument();
   });
 });
