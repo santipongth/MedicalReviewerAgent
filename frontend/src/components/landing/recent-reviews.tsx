@@ -7,7 +7,7 @@ import type { ReviewSummary } from "@/lib/types";
 
 type State = { kind: "loading" } | { kind: "error" } | { kind: "ok"; rows: ReviewSummary[] };
 
-const ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-0.5 sm:grid-cols-[minmax(0,1fr)_4rem_7rem_3.5rem]";
+const ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-0.5 sm:grid-cols-[minmax(0,1fr)_4rem_7rem_4.5rem]";
 const rtf = new Intl.RelativeTimeFormat("th", { numeric: "auto" });
 
 function ago(iso: string | null): string {
@@ -55,8 +55,9 @@ export function RecentReviews() {
       {state.kind === "ok" && state.rows.length > 0 && (
         <>
         <div aria-hidden="true" className={`${ROW} label border-t border-rule pt-3`}>
+          <span className="sm:hidden" />{/* keeps the label over the share column on a phone */}
           <span className="hidden sm:inline">หัวข้อ</span>
-          <span className="text-right sm:order-last"><span className="sm:hidden">ตรวจผ่าน</span><span className="hidden sm:inline">ตัวเลขตรวจผ่าน</span></span>
+          <span className="text-right sm:order-last">ตรวจผ่าน</span>
           <span className="hidden sm:inline">ภาษา</span>
           <span className="hidden sm:inline">เมื่อ</span>
         </div>

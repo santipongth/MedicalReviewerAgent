@@ -135,7 +135,7 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
         <>
           {paper.verification?.uncertain && (
             <p className="flex flex-wrap items-center gap-2 border-t-2 border-dashed border-harm pt-2 font-display text-[0.85rem] font-semibold text-warn">
-              <UncertainFlag lang={lang} label={L(lang, "ไม่แน่นอน: สองโมเดลอ่านทิศทางผลต่างกัน", "Uncertain: two models read the direction differently")} />
+              <UncertainFlag lang={lang} />
               <Term k="uncertain" lang={lang}>{L(lang, "หมายถึงอะไร", "what does this mean?")}</Term>
             </p>
           )}

@@ -8,6 +8,7 @@ import { CopyLinkButton } from "../ui/copy-link";
 import { Glyph } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { CitedText, QuestionTitle, StrengthLine, type Select } from "./report-parts";
+import { SECTION_H2 } from "./report-nav";
 import { L } from "./text";
 
 const ORDER: Direction[] = ["positive", "negative", "null", "mixed", "unclear"];
@@ -26,7 +27,7 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
       <QuestionTitle question={question} topic={topic} lang={lang} />
       {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} />}
       <div className="grid gap-2">
-        <h2 id="h-summary" className="scroll-mt-28 text-lg font-semibold">{L(lang, "สรุป", "Summary")}</h2>
+        <h2 id="h-summary" className={SECTION_H2}>{L(lang, "สรุป", "Summary")}</h2>
         <p className="max-w-[65ch] text-[1.02rem] leading-[1.75]">
           <CitedText text={synthesis.executive_summary || result.summary || ""} onSelect={onSelect} refs={refs} />
         </p>

@@ -190,7 +190,7 @@ export function MatrixLegend({ lang }: { lang: Lang }) {
       {(["positive", "negative", "null", "mixed", "unclear"] as const).map((d) => (
         <span key={d} className="inline-flex items-center gap-1.5"><Glyph direction={d} lang={lang} />{DIRECTION_LABEL[lang][d]}</span>
       ))}
-      <UncertainFlag lang={lang} label={L(lang, "สองโมเดลอ่านผลต่างกัน", "the two models read the result differently")} />
+      <UncertainFlag lang={lang} />
     </div>
   );
 }
@@ -280,7 +280,7 @@ export function QualityNote({ quality, stats, lang, preset }: { quality?: Qualit
       ? `${L(lang, "เลือกอ่าน", "read")} ${stats.selected}`
       : `${L(lang, "วิเคราะห์จากบทคัดย่อ", "analysed from abstracts")} ${stats.selected}`),
     stats?.with_fulltext != null && `${L(lang, "ฉบับเต็ม", "full text")} ${stats.with_fulltext}`,
-    quality?.papers_uncertain ? `${L(lang, "ไม่แน่นอน", "uncertain")} ${quality.papers_uncertain}` : false,
+    quality?.papers_uncertain ? `${L(lang, "สองโมเดลอ่านต่างกัน", "models disagree")} ${quality.papers_uncertain}` : false,
     total != null && `${L(lang, "ใช้เวลา", "took")} ${Math.round(total)} ${L(lang, "วินาที", "s")}`,
     preset && `${L(lang, "ชุดโมเดล", "model preset")} ${preset}`,
   ].filter(Boolean);

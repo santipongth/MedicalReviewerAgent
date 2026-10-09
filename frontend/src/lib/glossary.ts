@@ -24,14 +24,14 @@ export const GLOSSARY: Record<TermKey, { label: Bi; body: Bi }> = {
     },
   },
   riskOfBias: {
-    label: { th: "ความเสี่ยงต่ออคติ", en: "risk of bias" },
+    label: { th: "ความเสี่ยงอคติ", en: "risk of bias" },
     body: {
       th: "โอกาสที่วิธีทำงานวิจัยจะทำให้ผลเบี้ยวไปจากความจริง เช่น ไม่สุ่มกลุ่ม หรือผู้ประเมินรู้ว่าใครได้รับการรักษา",
       en: "The chance that how a study was run pushed its results away from the truth, for example unblinded assessors or non-random grouping.",
     },
   },
   rct: {
-    label: { th: "การทดลองแบบสุ่มมีกลุ่มควบคุม (RCT)", en: "randomized controlled trial (RCT)" },
+    label: { th: "การทดลองแบบสุ่ม (RCT)", en: "randomized controlled trial (RCT)" },
     body: {
       th: "ผู้เข้าร่วมถูกสุ่มเข้ากลุ่มรักษาหรือกลุ่มเปรียบเทียบ ช่วยให้สองกลุ่มใกล้เคียงกันมากที่สุด",
       en: "Participants are randomly assigned to treatment or comparison, so the groups are as alike as possible.",

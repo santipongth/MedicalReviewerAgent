@@ -50,9 +50,14 @@ export function directionTally(papers: Paper[]): Record<Direction, number> {
   return tally;
 }
 
-/** True when any paper is a systematic review / meta-analysis (it may already pool the primary studies). */
+/** True when the paper is a systematic review / meta-analysis (it may already pool the primary studies). */
+export function isPooled(p: Paper): boolean {
+  return !!(p.card_en ?? p.card)?.design_category?.startsWith("sr_ma");
+}
+
+/** True when any paper is a systematic review / meta-analysis. */
 export function hasPooledPapers(papers: Paper[]): boolean {
-  return papers.some((p) => (p.card_en ?? p.card)?.design_category?.startsWith("sr_ma"));
+  return papers.some(isPooled);
 }
 
 export type Family = "ratio" | "difference" | "correlation";

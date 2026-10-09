@@ -74,7 +74,7 @@ export function RailDrawer({ open, onClose, headingId, returnFocus, children }: 
     <>
       {modal && <div data-testid="rail-backdrop" aria-hidden="true" onClick={onClose} className="fixed inset-0 z-30 bg-ink/40 lg:hidden" />}
       <div ref={panel} role={modal ? "dialog" : undefined} aria-modal={modal || undefined} aria-labelledby={modal ? headingId : undefined}
-        className={`min-w-0 lg:sticky lg:top-14 lg:max-h-[calc(100dvh-4.5rem)] lg:self-start lg:overflow-auto ${open ? "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[70dvh] max-lg:overflow-auto max-lg:border-t max-lg:border-ink" : "max-lg:hidden"}`}>
+        className={`min-w-0 lg:sticky lg:top-[calc(var(--header-h)+env(safe-area-inset-top,0px))] lg:max-h-[calc(100dvh-var(--header-h)-1rem)] lg:self-start lg:overflow-auto ${open ? "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[70dvh] max-lg:overflow-auto max-lg:border-t max-lg:border-ink" : "max-lg:hidden"}`}>
         {children}
       </div>
     </>

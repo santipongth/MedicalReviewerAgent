@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyReviewFixture, legacyReviewFixture, reviewFixture } from "@/test/fixtures";
@@ -50,7 +50,7 @@ describe("Report", () => {
     const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
     await userEvent.click(within(summary).getByRole("button", { name: "P4" }));
     expect(rail().getByText(/Short-term metformin initiation/)).toBeInTheDocument();
-    expect(rail().getByText(/ไม่แน่นอน/)).toBeInTheDocument();
+    expect(rail().getByText("สองโมเดลอ่านต่างกัน")).toBeInTheDocument();
   });
 
   it("a blanked effect is a visible hole, an unreported one is labelled as such", async () => {
@@ -112,8 +112,10 @@ describe("Report", () => {
 
   it("renders one legend that includes the uncertain flag, and no diamond marker", () => {
     render(<Report review={reviewFixture} />);
-    expect(screen.getAllByText("สองโมเดลอ่านผลต่างกัน")).toHaveLength(1);
-    expect(screen.getAllByText("สองโมเดลอ่านต่างกัน").length).toBeGreaterThan(0); // paper list flag
+    const matrix = screen.getByRole("heading", { name: "ผลแต่ละการศึกษา" }).closest("section")!;
+    expect(within(matrix).getAllByText("สองโมเดลอ่านต่างกัน")).toHaveLength(1); // the legend, same wording as the flag
+    const list = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    expect(within(list).getAllByText("สองโมเดลอ่านต่างกัน").length).toBeGreaterThan(0); // paper list flag
     expect(screen.queryByText(/◆ ไม่แน่นอน/)).toBeNull();
   });
 
@@ -193,8 +195,11 @@ describe("Report", () => {
     expect(within(method).getByText(/ไม่ใช่คำแนะนำทางการแพทย์/)).toBeInTheDocument();
     unmount();
     render(<Report review={reviewFixture} offline />);
-    const offlineMethod = screen.getByRole("heading", { name: "วิธีทำและดาวน์โหลด" }).closest("section")!;
+    const offlineMethod = screen.getByRole("heading", { name: "วิธีทำ" }).closest("section")!;
+    expect(screen.getByRole("navigation", { name: "ในรายงานนี้" })).toHaveTextContent("วิธีทำ");
     expect(within(offlineMethod).queryByRole("link")).toBeNull();
+    // no site header in the offline file, so the sticky nav and anchor offsets use a zero header height
+    expect(offlineMethod.closest<HTMLElement>("[style]")!.style.getPropertyValue("--header-h")).toBe("0px");
     expect(within(offlineMethod).getByText(/ไม่ใช่คำแนะนำทางการแพทย์/)).toBeInTheDocument();
   });
 
@@ -308,6 +313,21 @@ describe("mobile source drawer", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(cell).toHaveFocus();
     expect(document.body.style.overflow).not.toBe("hidden");
+  });
+
+  it("returns focus to the tapped trigger when the tap left focus on body (Safari)", async () => {
+    stubNarrowViewport();
+    render(<Report review={reviewFixture} />);
+    const cell = screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ });
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    // fireEvent does not move focus, like a tap in Safari
+    fireEvent.pointerDown(cell);
+    fireEvent.click(cell);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(cell).toHaveFocus();
   });
 
   it("closes on backdrop click", async () => {

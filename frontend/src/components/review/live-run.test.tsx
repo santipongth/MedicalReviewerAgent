@@ -25,6 +25,7 @@ describe("LiveRun", () => {
     expect(screen.getAllByTestId("well-cap")).toHaveLength(8);
     expect(screen.getByText("Cohort study")).toBeInTheDocument();
     expect(screen.getByText(/สองโมเดลอ่านต่างกัน/)).toBeInTheDocument();
+    expect(screen.getByText("P1")).not.toHaveClass("num-verified"); // a ref label, not a verified number
     expect(screen.getByText(/42 วินาที/)).toBeInTheDocument();
     expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("สังเคราะห์");
   });
@@ -60,6 +61,12 @@ describe("TerminalState", () => {
     expect(screen.getByRole("heading")).toHaveTextContent(/ไม่สำเร็จ/);
     rerender(<TerminalState status="cancelled" topic="t" />);
     expect(screen.getByRole("heading")).toHaveTextContent(/หยุดก่อนเสร็จ/);
+    expect(screen.queryByText("รายละเอียดทางเทคนิค")).toBeNull();
+  });
+
+  it("keeps a cancellation's message in the technical details", () => {
+    render(<TerminalState status="cancelled" message="cancelled by admin" topic="t" />);
+    expect(screen.getByText("cancelled by admin").closest("details")).toHaveTextContent("รายละเอียดทางเทคนิค");
   });
 });
 

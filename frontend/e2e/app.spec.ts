@@ -163,6 +163,9 @@ test("landing on a phone: recent reviews read topic first, share on the right", 
   const topic = await row.getByText("เมตฟอร์มินกับมะเร็งลำไส้ใหญ่").boundingBox();
   const share = await row.getByText("86%").boundingBox();
   expect(topic!.x).toBeLessThan(share!.x);
+  // the column label sits over the share column, not over the topics
+  const label = await page.locator('[aria-hidden="true"]', { hasText: "ตรวจผ่าน" }).getByText("ตรวจผ่าน", { exact: true }).boundingBox();
+  expect(label!.x + label!.width).toBeGreaterThan(share!.x);
   await noHorizontalScroll(page);
 });
 
@@ -249,6 +252,31 @@ test("report: the section nav jumps to the papers", async ({ page }) => {
   await expect(page.locator("#h-papers")).toBeInViewport();
 });
 
+test("report on a phone: the section nav sticks below the wrapped site header and jumps clear of it", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockApi(page);
+  await page.goto(`/r/${RID}`);
+  const nav = page.getByRole("navigation", { name: "ในรายงานนี้" });
+  await expect(nav).toBeVisible();
+  // nothing covers the given point: the topmost element there belongs to the expected element
+  const uncovered = (selector: string, y: "centre" | "top") => page.evaluate(([sel, at]) => {
+    const el = document.querySelector(sel)!;
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + Math.min(r.width / 2, 40), at === "top" ? r.top + 2 : r.top + r.height / 2);
+    return !!hit && (el === hit || el.contains(hit));
+  }, [selector, y] as const);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
+  await expect(nav).toBeInViewport();
+  expect(await uncovered('nav[aria-label="ในรายงานนี้"]', "centre")).toBe(true);
+  const header = await page.locator("header").first().boundingBox();
+  const navBox = await nav.boundingBox();
+  expect(navBox!.y).toBeGreaterThanOrEqual(header!.y + header!.height - 1);
+  await nav.getByRole("link", { name: "งานวิจัยที่อ่าน" }).click();
+  await expect(page).toHaveURL(/#h-papers$/);
+  await expect(page.locator("#h-papers")).toBeInViewport();
+  await expect.poll(() => uncovered("#h-papers", "top")).toBe(true);
+});
+
 test("report on a phone: a glossary term opens on tap and closes on Esc", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await mockApi(page);
@@ -270,8 +298,9 @@ test("axe: landing at 375px in light and dark", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByLabel(/^หัวข้อ/)).toBeVisible();
   await noSeriousA11y(page);
-  await page.emulateMedia({ colorScheme: "dark" });
-  await page.waitForTimeout(400); // let the 150ms colour transitions finish; axe would otherwise sample mid-fade colours
+  // Reduced motion switches the colour transitions off, so axe never samples mid-fade colours.
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(20, 39, 31)"); // dark ground
   await noSeriousA11y(page);
 });
 

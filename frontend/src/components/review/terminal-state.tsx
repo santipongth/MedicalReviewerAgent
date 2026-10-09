@@ -32,7 +32,7 @@ export function TerminalState({
           {message}
         </p>
       )}
-      {message && status === "error" && (
+      {message && status !== "rejected" && (
         <details className="rounded-sm bg-rail px-4 py-3 text-[0.92rem]">
           <summary className="cursor-pointer">รายละเอียดทางเทคนิค</summary>
           <p className="mt-2 break-words font-code">{message}</p>

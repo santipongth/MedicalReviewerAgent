@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resultFixture, legacyReviewFixture } from "@/test/fixtures";
-import { designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
+import { designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
 
 const papers = resultFixture.papers!;
 
@@ -72,5 +72,7 @@ describe("directionTally", () => {
     expect(tally.positive).toBeGreaterThan(0);
     expect(hasPooledPapers(papers)).toBe(true);
     expect(hasPooledPapers(papers.filter((p) => p.ref === "P1"))).toBe(false);
+    expect(papers.filter(isPooled).length).toBeGreaterThan(0);
+    expect(isPooled(papers.find((p) => p.ref === "P1")!)).toBe(false);
   });
 });

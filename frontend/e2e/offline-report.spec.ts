@@ -19,5 +19,10 @@ test("the single-file HTML report works offline", async ({ page }) => {
   await expect(page.getByRole("complementary", { name: "ต้นฉบับ" })).toContainText("Metformin use was associated");
   // there is no page to link to in a file on disk, so the copy-link button is not rendered
   await expect(page.getByRole("button", { name: "คัดลอกลิงก์" })).toHaveCount(0);
+  // with no site header in the file, the section nav sticks to the very top
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
+  const nav = page.getByRole("navigation", { name: "ในรายงานนี้" });
+  await expect(nav).toBeInViewport();
+  expect((await nav.boundingBox())!.y).toBeLessThanOrEqual(1);
   expect(requests.filter((u) => !u.includes("fonts.g"))).toEqual([]); // only the optional web fonts were attempted
 });

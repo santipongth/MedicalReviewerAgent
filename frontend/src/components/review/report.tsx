@@ -1,21 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { exportUrl } from "@/lib/api";
-import { emptyFilters, filterPapers, type Filters } from "@/lib/charts-data";
+import { emptyFilters, filterPapers, isPooled, type Filters } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
 import { Charts } from "./charts";
 import { FilterBar, FilterStatus } from "./filter-bar";
 import { ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, QualityNote, QuestionDetails } from "./report-parts";
-import { ReportNav, type NavItem } from "./report-nav";
+import { ReportNav, SECTION_H2 as H2, type NavItem } from "./report-nav";
 import { RailDrawer } from "./rail-drawer";
 import { SourceRail } from "./source-rail";
 import { L } from "./text";
 
-const H2 = "scroll-mt-28 text-lg font-semibold";
 const DL = "inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
 
 type Selection = { ref: string; outcome?: string };
@@ -44,8 +43,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const papers = useMemo(() => result.papers ?? [], [result.papers]);
   const byRef = useMemo(() => new Map(papers.map((p) => [p.ref, p])), [papers]);
   const refs = useMemo(() => new Set(papers.map((p) => p.ref)), [papers]);
-  const pooledRefs = useMemo(() => new Set(papers.filter((p) => (p.card_en ?? p.card)?.design_category?.startsWith("sr_ma"))
-    .map((p) => p.ref)), [papers]);
+  const pooledRefs = useMemo(() => new Set(papers.filter(isPooled).map((p) => p.ref)), [papers]);
   const rows = useMemo(() => (synthesis.comparison?.length ? synthesis.comparison : showEn ? result.synthesis?.comparison ?? [] : []), [synthesis.comparison, showEn, result.synthesis?.comparison]);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const visible = useMemo(() => filterPapers(papers, filters), [papers, filters]);
@@ -58,9 +56,17 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
 
   const railHeading = useId();
   const returnFocus = useRef<HTMLElement | null>(null);
+  const pressed = useRef<HTMLElement | null>(null);
+
+  /** Safari (iOS and macOS) does not focus a tapped button, so remember what was pressed as the fallback trigger. */
+  function notePress(e: { target: EventTarget | null }) {
+    const el = e.target instanceof Element ? e.target.closest("button,a,[tabindex]") : null;
+    pressed.current = el instanceof HTMLElement ? el : null;
+  }
 
   function select(ref: string, outcome?: string) {
-    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focused = document.activeElement;
+    returnFocus.current = focused instanceof HTMLElement && focused !== document.body ? focused : pressed.current;
     setSelection({ ref, outcome });
     setDrawerOpen(true);
   }
@@ -80,7 +86,8 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const filterBar = papers.length > 1
     ? <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} /> : null;
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 pt-8">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 pt-8" onPointerDownCapture={notePress} onClickCapture={notePress}
+      style={offline ? ({ "--header-h": "0px" } as CSSProperties) : undefined}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="label break-words">{review.topic}</span>
         {original === "th" && result.synthesis_en && (
@@ -158,7 +165,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           )}
 
           <section aria-labelledby="h-method" className="grid gap-4">
-            <h2 id="h-method" className={H2}>{L(lang, "วิธีทำและดาวน์โหลด", "Method and downloads")}</h2>
+            <h2 id="h-method" className={H2}>{offline ? L(lang, "วิธีทำ", "Method") : L(lang, "วิธีทำและดาวน์โหลด", "Method and downloads")}</h2>
             <QualityNote quality={result.quality} stats={result.stats} lang={lang} preset={result.llm_preset} />
             {!!result.external_context?.length && (
               <div className="grid gap-2 text-[0.9rem]">

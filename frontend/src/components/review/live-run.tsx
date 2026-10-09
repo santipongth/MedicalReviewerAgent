@@ -139,11 +139,11 @@ export function LiveRun({ run, topic, connection, queuePosition, startedAt }: {
               <ul className="mt-2 border-t border-rule">
                 {run.reading.map((r) => (
                   <li key={r.ref} className="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-baseline gap-3 border-b border-rule py-2 text-[0.92rem]">
-                    <span className="num-verified !font-medium after:hidden">{r.ref}</span>
+                    <span className="font-code font-medium">{r.ref}</span>
                     <span className="min-w-0 break-words">{r.title}</span>
                     <span className={r.state === "failed" ? "text-err" : r.state === "ok" ? "text-ok" : "text-muted"}>
                       {r.state === "reading" ? "กำลังอ่าน…" : r.state === "failed" ? "อ่านไม่สำเร็จ" : r.uncertain ? (
-                        <>เสร็จ · <Term k="uncertain"><UncertainFlag label="สองโมเดลอ่านต่างกัน" /></Term></>
+                        <>เสร็จ · <Term k="uncertain"><UncertainFlag /></Term></>
                       ) : "เสร็จ"}
                     </span>
                   </li>
