@@ -19,7 +19,7 @@ import { useWide } from "./use-wide";
 
 const SYNTH_CAPTION = ["กำลังเทียบผลและเขียนสรุป", "(ขั้นนี้ไม่มีความคืบหน้าให้ดู)"];
 
-function countFor(s: Scene, id: AgentId): string | undefined {
+export function countFor(s: Scene, id: AgentId): string | undefined {
   const c = s.counts;
   switch (id) {
     case "search": return c.found > 0 ? String(c.found) : undefined;
