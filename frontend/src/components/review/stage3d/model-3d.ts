@@ -2,10 +2,14 @@
 // reader-pool summary. The components in this folder stay thin wrappers around these, so jsdom can test the logic.
 // Attribution: see NOTICE.md (AI-Agent-observatory by sakshigupta372, used with permission).
 import {
-  currentAgent, planDots, type AgentId, type AgentStatus, type EdgeState, type PulseKind, type Scene,
+  currentAgent, planDots, readDone, type AgentId, type AgentStatus, type EdgeState, type PulseKind, type Scene,
   type SlotState,
 } from "@/lib/agent-scene";
-import type { Layout3D, Seg3, Vec3 } from "@/lib/agent-layout-3d";
+import {
+  PILE_LABEL_DROP, PILE_LABEL_FORWARD, POOL_LABEL_GAP, SLOT_HALF, type Layout3D, type Seg3, type Vec3,
+} from "@/lib/agent-layout-3d";
+import { DIRECTION_ORDER } from "@/lib/i18n";
+import type { Direction } from "@/lib/types";
 import type { Token3D } from "./tokens-3d";
 
 // --- status -> visual --------------------------------------------------------------------------------------------
@@ -46,6 +50,46 @@ export const SLOT_SCALE: Record<SlotState, readonly [number, number, number]> = 
 export const PACKET_COLOR: Record<PulseKind, Token3D> = {
   query: "ink", paper: "ink", kept: "primary", card: "primary", failed: "err", signal: "muted",
 };
+
+/** Edge tube radius (world units): idle and visited thin, live thicker. */
+export const EDGE_RADIUS: Record<EdgeState, number> = { idle: 0.012, visited: 0.012, live: 0.02 };
+
+// --- evidence piles ----------------------------------------------------------------------------------------------
+
+export type PileShape = "sphere" | "octahedron" | "bar" | "dome" | "torus";
+/**
+ * Pile token silhouette per direction, matching the 2D `Glyph` (evidence.tsx / globals.css .g-*): positive a filled
+ * circle -> sphere, negative the harm diamond -> octahedron (a vertex up reads as ◆), "null" (no association) the flat
+ * bar -> flat box, mixed the half-filled circle -> dome, unclear the dashed ring -> thin upright torus. Colour is never
+ * the only cue: none and unclear share a colour and differ by shape.
+ */
+export const PILE_SHAPE: Record<Direction, PileShape> = {
+  positive: "sphere", negative: "octahedron", null: "bar", mixed: "dome", unclear: "torus",
+};
+export const PILE_COLOR: Record<Direction, Token3D> = {
+  positive: "sup", negative: "harm", null: "none", mixed: "mixed", unclear: "unclear",
+};
+/** The flat "no association" bar (x, y, z). */
+export const PILE_BAR: readonly [number, number, number] = [0.22, 0.06, 0.1];
+
+export const ARRIVAL_STAGGER_MS = 60;
+export interface Arrival<T> { item: T; delayMs: number }
+
+/**
+ * Burst/replay collapse for pile tokens: only the newest `cap` items with key > `seenKey` fly in (oldest first, 60ms
+ * apart); everything else (seen at mount, or older than the newest `cap`) appears in place.
+ */
+export function planArrivals<T extends { key: number }>(
+  items: readonly T[], seenKey: number, cap: number,
+): { animate: Arrival<T>[]; snap: T[] } {
+  const fresh = items.filter((it) => it.key > seenKey).sort((a, b) => a.key - b.key);
+  const flying = fresh.slice(Math.max(0, fresh.length - Math.max(0, cap)));
+  const set = new Set(flying);
+  return {
+    animate: flying.map((item, i) => ({ item, delayMs: i * ARRIVAL_STAGGER_MS })),
+    snap: items.filter((it) => !set.has(it)),
+  };
+}
 
 /** True while any visible node shows the rotating working ring (the frame loop must keep running). */
 export function anySpinning(scene: Scene, layout: Layout3D): boolean {
@@ -104,21 +148,109 @@ export function packetScale(t: number): number {
 
 // --- camera ------------------------------------------------------------------------------------------------------
 
-// Framing (Plan 12 final review): a lower, closer camera with a small pan keeps both lane ends legible (a bigger pan
-// pushed the far end into perspective crowding) and uses more of the stage's height.
-export const CAMERA_BASE: Vec3 = [0, 3.1, 7];
+// Framing: the camera keeps a fixed elevation (the Plan 12 view direction, from [0, 3.1, 7] toward [0, -1.1, 0]) and
+// backs off along it just far enough that the whole layout (lane, labels' room, pool, full piles, thought headroom)
+// fits the 960/330 wrapper with an 8% margin, plus a small pan toward the current agent.
+export const CAMERA_BASE: Vec3 = [0, 3.1, 7]; // initial Canvas camera only; the rig places the fitted camera at once
+const VIEW_UP = 4.2; // camera offset direction from the look-at point (y, z), i.e. ~31 degrees above the horizon
+const VIEW_BACK = 7;
+const VIEW_LEN = Math.hypot(VIEW_UP, VIEW_BACK);
+const DIR_Y = VIEW_UP / VIEW_LEN;
+const DIR_Z = VIEW_BACK / VIEW_LEN;
+export const STAGE_ASPECT = 960 / 330;
+export const STAGE_FOV = 45;
+export const FIT_MARGIN = 0.08;
 const PAN = 0.1; // fraction of the way from the lane centre toward the current agent (keeps the whole lane framed)
-const LOOK_Y = -1.1; // look-at height: between the lane (y 0) and the reader pool (y -2.3)
+const NEAR_MIN = 0.5;
 
-/** Camera position + look-at for the current agent (lane centre when none). Writes into `out` (6 numbers). */
+const boundsCorners = (b: { min: Vec3; max: Vec3 }): Vec3[] =>
+  Array.from({ length: 8 }, (_, c) => [(c & 1) ? b.max[0] : b.min[0], (c & 2) ? b.max[1] : b.min[1], (c & 4) ? b.max[2] : b.min[2]] as Vec3);
+
+/** Smallest camera distance along the fixed view direction that keeps `points` inside tanH/tanV of target t. */
+function fitDistance(points: readonly Vec3[], t: Vec3, tanH: number, tanV: number, padX: number): number {
+  let d = NEAR_MIN;
+  for (const p of points) {
+    const qx = p[0] - t[0];
+    const qy = p[1] - t[1];
+    const qz = p[2] - t[2];
+    // view basis for a camera at t + d * (0, DIR_Y, DIR_Z): right +x, up (0, DIR_Z, -DIR_Y), forward -(0, DIR_Y, DIR_Z)
+    const depth0 = -DIR_Y * qy - DIR_Z * qz; // the point's depth is depth0 + d
+    const vy = DIR_Z * qy - DIR_Y * qz;
+    d = Math.max(d, (Math.abs(qx) + padX) / tanH - depth0, Math.abs(vy) / tanV - depth0, NEAR_MIN - depth0);
+  }
+  return d;
+}
+
+const fitTarget: Vec3 = [0, 0, 0];
+
+/**
+ * Camera position + look-at (6 numbers into `out`) at the fixed elevation, as close as possible while every one of
+ * `points` (default: the 8 corners of `bounds`) stays within (1 - FIT_MARGIN) of the frustum edges (pinhole
+ * projection, vertical `fovDeg`, `aspect` = width / height). The look-at starts at the bounds centre and is re-centred
+ * in view space so the points' projected extent is centred (a perspective view of a deep box is not symmetric).
+ * `padX` reserves room for a later sideways pan of that many world units.
+ */
+export function fitCamera(
+  bounds: { min: Vec3; max: Vec3 }, aspect = STAGE_ASPECT, fovDeg = STAGE_FOV, out: number[] = new Array(6).fill(0),
+  points: readonly Vec3[] | null = null, padX = 0,
+): number[] {
+  const { min, max } = bounds;
+  let ok = true;
+  for (let k = 0; k < 3; k++) if (!Number.isFinite(min[k]) || !Number.isFinite(max[k])) ok = false;
+  const t = fitTarget;
+  t[0] = ok ? (min[0] + max[0]) / 2 : 0;
+  t[1] = ok ? (min[1] + max[1]) / 2 : 0;
+  t[2] = ok ? (min[2] + max[2]) / 2 : 0;
+  const lim = 1 - FIT_MARGIN;
+  const tanV = Math.tan((fovDeg * Math.PI) / 360) * lim;
+  const tanH = tanV * aspect;
+  let d = NEAR_MIN;
+  if (ok) {
+    const pts = points && points.length > 0 ? points : boundsCorners(bounds);
+    for (let iter = 0; iter < 6; iter++) {
+      d = fitDistance(pts, t, tanH, tanV, padX);
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const p of pts) {
+        const qx = p[0] - t[0], qy = p[1] - t[1], qz = p[2] - t[2];
+        const depth = -DIR_Y * qy - DIR_Z * qz + d;
+        const nx = qx / (depth * tanH);
+        const ny = (DIR_Z * qy - DIR_Y * qz) / (depth * tanV);
+        if (nx < x0) x0 = nx;
+        if (nx > x1) x1 = nx;
+        if (ny < y0) y0 = ny;
+        if (ny > y1) y1 = ny;
+      }
+      const mx = (x0 + x1) / 2;
+      const my = (y0 + y1) / 2;
+      if (Math.abs(mx) < 1e-4 && Math.abs(my) < 1e-4) break;
+      // move the look-at along the view's right / up axes by the projected offset at the look-at distance
+      t[0] += mx * d * tanH;
+      t[1] += my * d * tanV * DIR_Z;
+      t[2] -= my * d * tanV * DIR_Y;
+    }
+    d = fitDistance(pts, t, tanH, tanV, padX);
+  }
+  out[0] = t[0]; out[1] = t[1] + d * DIR_Y; out[2] = t[2] + d * DIR_Z;
+  out[3] = t[0]; out[4] = t[1]; out[5] = t[2];
+  return out;
+}
+
+/**
+ * Camera position + look-at for the current agent (framed centre when none). Writes into `out` (6 numbers). Fits the
+ * layout's frame points (what must stay visible: nodes and their labels' room, thought headroom, pool, full piles,
+ * tray, captions) with room reserved for the largest pan, so panning toward an end node never crops the far end.
+ */
 export function cameraGoal(layout: Layout3D, agent: AgentId | null, out: number[] = new Array(6).fill(0)): number[] {
   const { min, max } = layout.bounds;
-  const cx = Number.isFinite(min[0] + max[0]) ? (min[0] + max[0]) / 2 : 0;
-  const cz = Number.isFinite(min[2] + max[2]) ? (min[2] + max[2]) / 2 : 0;
+  const finite = Number.isFinite(min[0] + max[0]);
+  const cx = finite ? (min[0] + max[0]) / 2 : 0;
+  let reach = 0;
+  for (const id of Object.keys(layout.nodes) as AgentId[]) reach = Math.max(reach, Math.abs(layout.nodes[id]![0] - cx) * PAN);
+  fitCamera(layout.bounds, STAGE_ASPECT, STAGE_FOV, out, layout.frame, reach);
   const node = agent ? layout.nodes[agent] : undefined;
-  const tx = node ? cx + (node[0] - cx) * PAN : cx;
-  out[0] = tx; out[1] = CAMERA_BASE[1]; out[2] = CAMERA_BASE[2];
-  out[3] = tx; out[4] = LOOK_Y; out[5] = cz / 2;
+  const pan = node ? (node[0] - cx) * PAN : 0;
+  out[0] += pan;
+  out[3] += pan;
   return out;
 }
 
@@ -144,23 +276,18 @@ export function easeToward(cur: number[], goal: number[], dtSec: number, jump = 
 
 // --- labels ------------------------------------------------------------------------------------------------------
 
-export interface PoolSummary { reading: string[]; more: number; ok: number; failed: number; uncertain: number; total: number }
+export interface PoolSummary { pending: number; ok: number; failed: number; uncertain: number; total: number }
 
-const MAX_REFS = 4;
-
-/** One summary line for the reader pool (never 30 labels). ok excludes uncertain, which shows as a flag. */
+/**
+ * One summary for the reader pool (never 30 labels). Every `reading` event arrives together at fan-out, so unfinished
+ * papers are only a count ("กำลังอ่านหรือรอคิว"), never refs presented as being read now. ok excludes uncertain, which
+ * shows as a flag.
+ */
 export function poolSummary(scene: Scene): PoolSummary {
-  const refs: string[] = [];
-  let reading = 0;
-  for (const sl of scene.slots) {
-    if (sl.state !== "reading") continue;
-    reading++;
-    if (sl.ref && refs.length < MAX_REFS) refs.push(sl.ref);
-  }
   const c = scene.counts;
   return {
-    reading: refs, more: reading - refs.length, ok: Math.max(0, c.readOk - c.uncertain), failed: c.readFailed,
-    uncertain: c.uncertain, total: scene.slots.length,
+    pending: Math.max(0, scene.slots.length - readDone(scene)), ok: Math.max(0, c.readOk - c.uncertain),
+    failed: c.readFailed, uncertain: c.uncertain, total: scene.slots.length,
   };
 }
 
@@ -171,15 +298,65 @@ export function visibleAgents(layout: Layout3D, pipeline: readonly AgentId[]): A
   return out;
 }
 
-/** Pool summary label anchor: just in front of the pool's front row, centred on the drawn slots. */
+/**
+ * Pool summary label anchor: the label's right edge, just left of the pool (the piles take the space to its right and
+ * their labels the space below), at the pool's middle depth.
+ */
 export function poolLabelAt(layout: Layout3D): Vec3 | null {
   const s = layout.slots;
   if (s.length === 0) return null;
-  let x = 0;
+  let xMin = Infinity;
+  let zMin = Infinity;
   let zMax = -Infinity;
   for (const p of s) {
-    x += p[0];
+    if (p[0] < xMin) xMin = p[0];
+    if (p[2] < zMin) zMin = p[2];
     if (p[2] > zMax) zMax = p[2];
   }
-  return [x / s.length, s[0][1] - 0.3, zMax + 0.35];
+  return [xMin - SLOT_HALF - POOL_LABEL_GAP, s[0][1], (zMin + zMax) / 2];
+}
+
+/** Anchor of one pile's count label: under its base (top-centre of the label). */
+export function pileLabelAt(layout: Layout3D, dir: Direction): Vec3 | null {
+  const b = layout.piles?.[dir];
+  return b ? [b[0], b[1] - PILE_LABEL_DROP, b[2] + PILE_LABEL_FORWARD] : null;
+}
+
+/**
+ * Anchor of the piles' caption ("ทิศทางผลตามที่เอเจนต์อ่าน"): top-centre at the pile labels' row; the label pushes
+ * itself down a fixed number of pixels (CSS) so it always clears the pile labels whatever the zoom.
+ */
+export function pileCaptionAt(layout: Layout3D): Vec3 | null {
+  const p = layout.piles;
+  if (!p) return null;
+  const first = p[DIRECTION_ORDER[0]];
+  const last = p[DIRECTION_ORDER[DIRECTION_ORDER.length - 1]];
+  return [(first[0] + last[0]) / 2, first[1] - PILE_LABEL_DROP, first[2] + PILE_LABEL_FORWARD];
+}
+
+// --- floating thought label --------------------------------------------------------------------------------------
+
+export const THOUGHT_LIFT = 0.85;
+const RING_TOP = 0.47; // node ring radius 0.42, x1.12 when active
+const LABEL_HALF = 0.3; // about half a one-line label's height (~11px) in world units at the fitted distance
+
+/**
+ * Centre of the floating thought label: THOUGHT_LIFT above the agent's node; for `read` while the external node is
+ * shown (it sits right above read), above the external node instead. Null when the agent is not drawn.
+ */
+export function thoughtAnchor(layout: Layout3D, agent: AgentId | null): Vec3 | null {
+  if (!agent) return null;
+  const node = agent === "read" && layout.nodes.external ? layout.nodes.external : layout.nodes[agent];
+  return node ? [node[0], node[1] + THOUGHT_LIFT, node[2]] : null;
+}
+
+/**
+ * Leader line from the label down to its own node's ring. None when the label sits over the external node for `read`
+ * (a line through the external node would read as that node's thought).
+ */
+export function thoughtLeader(layout: Layout3D, agent: AgentId | null): [Vec3, Vec3] | null {
+  if (!agent || (agent === "read" && layout.nodes.external)) return null;
+  const n = layout.nodes[agent];
+  if (!n) return null;
+  return [[n[0], n[1] + RING_TOP, n[2]], [n[0], n[1] + THOUGHT_LIFT - LABEL_HALF, n[2]]];
 }

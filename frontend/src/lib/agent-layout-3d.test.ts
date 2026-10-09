@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { initialScene, reduceScene, type EdgeId } from "./agent-scene";
 import type { ReviewEvent } from "./types";
-import { arc3, arc3X, arc3Y, arc3Z, layout3dFor } from "./agent-layout-3d";
+import {
+  PILE_CAP, PILE_HALF, PILE_PITCH, PILE_RISE, PILE_STACK_DZ, POOL_Y, SLOT_HALF, arc3, arc3X, arc3Y, arc3Z, layout3dFor, pileSpot,
+  type Layout3D, type Vec3,
+} from "./agent-layout-3d";
+import { DIRECTION_ORDER } from "./i18n";
 
 const base = { showLocalize: true, showExternal: true, slots: 0 };
 
@@ -44,11 +48,11 @@ describe("layout3dFor", () => {
       }
     }
   });
-  it("slot count is min(n, 30) and slots keep a 0.35 pitch on the y=-2.3 plane", () => {
+  it("slot count is min(n, 30) and slots keep a 0.35 pitch on the y=POOL_Y plane", () => {
     for (const n of [0, 1, 7, 30, 99, -3, Number.NaN]) {
       const l = layout3dFor({ ...base, slots: n });
       expect(l.slots).toHaveLength(Number.isFinite(n) ? Math.max(0, Math.min(n, 30)) : 0);
-      for (const s of l.slots) expect(s[1]).toBe(-2.3);
+      for (const s of l.slots) expect(s[1]).toBe(POOL_Y);
     }
     const l = layout3dFor({ ...base, slots: 30 });
     expect(l.slots[1][0] - l.slots[0][0]).toBeCloseTo(0.35, 6);
@@ -65,6 +69,104 @@ describe("layout3dFor", () => {
     for (const p of [...Object.values(l.nodes), ...l.slots]) inB(p![0], p![1], p![2]);
     for (const e of l.edges) for (let k = 0; k <= 10; k++) inB(arc3X(e.seg, k / 10), arc3Y(e.seg, k / 10), arc3Z(e.seg, k / 10));
   });
+  const inBounds = (l: Layout3D, p: Vec3) => {
+    const { min, max } = l.bounds;
+    for (let k = 0; k < 3; k++) {
+      expect(p[k]).toBeGreaterThanOrEqual(min[k]);
+      expect(p[k]).toBeLessThanOrEqual(max[k]);
+    }
+  };
+
+  it("centres the reader pool under read", () => {
+    const l = layout3dFor({ ...base, slots: 30 });
+    const xs = l.slots.map((p) => p[0]);
+    expect((Math.min(...xs) + Math.max(...xs)) / 2).toBeCloseTo(l.nodes.read![0], 6);
+  });
+
+  it("has no piles or tray without slots", () => {
+    const l = layout3dFor({ ...base, slots: 0 });
+    expect(l.piles).toBeNull();
+    expect(l.tray).toBeNull();
+    expect(pileSpot(l, "positive", 0, [0, 0, 0])).toBeNull();
+  });
+
+  for (const [lane, showLocalize] of [["Thai", true], ["English", false]] as const) {
+    it(`piles: five bases in direction order on the pool plane, clear of the pool (${lane} lane)`, () => {
+      const l = layout3dFor({ showLocalize, showExternal: true, slots: 30 });
+      const piles = l.piles!;
+      const xs = DIRECTION_ORDER.map((d) => piles[d][0]);
+      for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeCloseTo(PILE_PITCH, 6);
+      for (const d of DIRECTION_ORDER) expect(piles[d][1]).toBe(POOL_Y);
+      expect(xs[0]).toBeGreaterThanOrEqual(l.nodes.synth![0] - 0.6 - 1e-9);
+      expect(xs[0]).toBeLessThan(l.nodes.synth![0]);
+      const poolRight = Math.max(...l.slots.map((p) => p[0])) + SLOT_HALF;
+      const pileLeft = xs[0] - PILE_HALF;
+      expect(pileLeft - poolRight).toBeGreaterThanOrEqual(0.2 - 1e-9);
+    });
+  }
+
+  it("pileSpot stacks 10 high at PILE_RISE, then starts stacks further back, without allocating", () => {
+    const l = layout3dFor({ ...base, slots: 30 });
+    const b = l.piles!.negative;
+    const out: Vec3 = [0, 0, 0];
+    expect(pileSpot(l, "negative", 0, out)).toBe(out);
+    expect(out).toEqual([b[0], b[1], b[2]]);
+    pileSpot(l, "negative", 9, out);
+    expect(out[1]).toBeCloseTo(b[1] + 9 * PILE_RISE, 6);
+    expect(out[2]).toBe(b[2]);
+    pileSpot(l, "negative", 10, out);
+    expect(out[1]).toBeCloseTo(b[1], 6);
+    expect(out[2]).toBeCloseTo(b[2] - PILE_STACK_DZ, 6);
+    pileSpot(l, "negative", 25, out);
+    expect(out[1]).toBeCloseTo(b[1] + 5 * PILE_RISE, 6);
+    expect(out[2]).toBeCloseTo(b[2] - 2 * PILE_STACK_DZ, 6);
+    pileSpot(l, "negative", 99, out); // clamped to the last token
+    expect(out[1]).toBeCloseTo(b[1] + 9 * PILE_RISE, 6);
+  });
+
+  it("bounds contain every pile spot, the tray, and thought headroom above the highest node", () => {
+    for (const showExternal of [true, false]) {
+      const l = layout3dFor({ ...base, showExternal, slots: 30 });
+      const out: Vec3 = [0, 0, 0];
+      for (const d of DIRECTION_ORDER) for (let i = 0; i < PILE_CAP; i++) inBounds(l, pileSpot(l, d, i, out)!);
+      const t = l.tray!;
+      inBounds(l, [t.x0, t.y, t.z0]);
+      inBounds(l, [t.x1, t.y, t.z1]);
+      const top = Math.max(...Object.values(l.nodes).map((p) => p![1]));
+      expect(l.bounds.max[1]).toBeGreaterThanOrEqual(top + 0.9);
+    }
+  });
+
+  it("bounds are the box around the frame points, which include every node, slot and pile spot", () => {
+    for (const showExternal of [true, false]) {
+      const l = layout3dFor({ ...base, showExternal, slots: 30 });
+      for (const p of l.frame) inBounds(l, p);
+      const has = (p: Vec3) => l.frame.some((q) => q[0] === p[0] && q[1] === p[1] && q[2] === p[2]);
+      for (const p of [...Object.values(l.nodes), ...l.slots]) expect(has(p!)).toBe(true);
+      expect(has(pileSpot(l, "unclear", 29, [0, 0, 0])!)).toBe(true);
+    }
+  });
+
+  it("the tray lies under the pool and the piles", () => {
+    const l = layout3dFor({ ...base, slots: 30 });
+    const t = l.tray!;
+    expect(t.y).toBeCloseTo(POOL_Y - 0.2, 6);
+    for (const p of l.slots) {
+      expect(p[0]).toBeGreaterThan(t.x0);
+      expect(p[0]).toBeLessThan(t.x1);
+      expect(p[2]).toBeGreaterThan(t.z0);
+      expect(p[2]).toBeLessThan(t.z1);
+    }
+    const out: Vec3 = [0, 0, 0];
+    for (const d of DIRECTION_ORDER) {
+      for (const i of [0, 29]) {
+        pileSpot(l, d, i, out);
+        expect(out[0]).toBeLessThan(t.x1);
+        expect(out[2]).toBeGreaterThan(t.z0);
+      }
+    }
+  });
+
   it("drops localize and adds synth>finish when localize is hidden", () => {
     const l = layout3dFor({ ...base, showLocalize: false });
     expect(l.edges.some((e) => e.id === "synth>finish")).toBe(true);

@@ -3,10 +3,13 @@ import {
   MAX_DOTS, PACKET_CAP, PIPELINE, emptySlot, initialScene, planDots, reduceScene, takeFreshPulses, type AgentStatus, type Pulse,
   type Scene,
 } from "@/lib/agent-scene";
-import { layout3dFor } from "@/lib/agent-layout-3d";
+import { layout3dFor, type Vec3 } from "@/lib/agent-layout-3d";
+import { DIRECTION_ORDER } from "@/lib/i18n";
 import {
-  CAMERA_BASE, EDGE_COLOR, FLIGHT_MS, NODE_VISUAL, PACKET_COLOR, SLOT_COLOR, SLOT_SCALE, anySpinning, cameraAgent, cameraGoal,
-  easeInOut, easeToward, flightT, makeFlights, packetScale, poolLabelAt, poolSummary, schedulePackets, visibleAgents,
+  ARRIVAL_STAGGER_MS, EDGE_COLOR, EDGE_RADIUS, FIT_MARGIN, FLIGHT_MS, NODE_VISUAL, PACKET_COLOR, PILE_COLOR, PILE_SHAPE,
+  SLOT_COLOR, SLOT_SCALE, STAGE_ASPECT, STAGE_FOV, THOUGHT_LIFT, anySpinning, cameraAgent, cameraGoal, easeInOut,
+  easeToward, fitCamera, flightT, makeFlights, packetScale, pileCaptionAt, pileLabelAt, planArrivals, poolLabelAt,
+  poolSummary, schedulePackets, thoughtAnchor, thoughtLeader, visibleAgents,
 } from "./model-3d";
 
 const layout = layout3dFor({ showLocalize: true, showExternal: false, slots: 12 });
@@ -111,16 +114,22 @@ describe("packet scheduling", () => {
 });
 
 describe("camera", () => {
-  it("frames the lane centre with no current agent and pans part-way toward the current one", () => {
+  it("frames the layout with no current agent and pans part-way toward the current one", () => {
     const centre = cameraGoal(layout, null);
-    const cx = (layout.bounds.min[0] + layout.bounds.max[0]) / 2;
-    expect(centre[0]).toBeCloseTo(cx);
-    expect(centre.slice(1, 3)).toEqual([CAMERA_BASE[1], CAMERA_BASE[2]]);
+    const cx = centre[0];
+    const { min, max } = layout.bounds;
+    expect(cx).toBeGreaterThan(min[0]);
+    expect(cx).toBeLessThan(max[0]);
+    expect(centre[4]).toBeGreaterThan(min[1]);
+    expect(centre[4]).toBeLessThan(max[1]);
+    expect(centre[1]).toBeGreaterThan(centre[4]); // above, looking down at the fixed elevation
     const g = cameraGoal(layout, "guard");
     const gx = layout.nodes.guard![0];
     expect(g[0]).toBeLessThan(cx);
     expect(g[0]).toBeGreaterThan(gx); // partial pan keeps the lane framed
+    expect(g[0] - cx).toBeCloseTo((gx - (min[0] + max[0]) / 2) * 0.1, 6);
     expect(g[3]).toBe(g[0]);
+    expect(g.slice(1, 3)).toEqual(centre.slice(1, 3));
   });
 
   it("writes into the provided buffer", () => {
@@ -158,7 +167,7 @@ describe("camera", () => {
 });
 
 describe("labels", () => {
-  it("summarises the pool: reading refs (capped), ok without uncertain, failed, uncertain", () => {
+  it("summarises the pool as counts only: unfinished (reading or queued), ok without uncertain, failed, uncertain", () => {
     const s: Scene = {
       ...initialScene(),
       slots: [
@@ -168,20 +177,185 @@ describe("labels", () => {
       ],
     };
     s.counts = { ...s.counts, readOk: 2, uncertain: 1, readFailed: 1 };
-    expect(poolSummary(s)).toEqual({ reading: ["P1", "P2", "P3", "P4"], more: 1, ok: 1, failed: 1, uncertain: 1, total: 9 });
+    const sum = poolSummary(s);
+    expect(sum).toEqual({ pending: 6, ok: 1, failed: 1, uncertain: 1, total: 9 });
+    expect(JSON.stringify(sum)).not.toMatch(/P\d/); // no refs presented as "being read now"
   });
 
-  it("anchors the pool label in front of the pool, none without slots", () => {
+  it("anchors the pool label left of the pool, none without slots", () => {
     expect(poolLabelAt(layout3dFor({ showLocalize: false, showExternal: false, slots: 0 }))).toBeNull();
     const at = poolLabelAt(layout)!;
-    const zMax = Math.max(...layout.slots.map((p) => p[2]));
-    expect(at[2]).toBeGreaterThan(zMax);
-    expect(at[1]).toBeLessThan(layout.slots[0][1]);
+    expect(at[0]).toBeLessThan(Math.min(...layout.slots.map((p) => p[0])));
+    expect(at[1]).toBe(layout.slots[0][1]);
+  });
+
+  it("pile labels hang under their bases, the caption centred on their row; none without slots", () => {
+    const l = layout3dFor({ showLocalize: true, showExternal: false, slots: 30 });
+    for (const d of DIRECTION_ORDER) {
+      const at = pileLabelAt(l, d)!;
+      expect(at[0]).toBe(l.piles![d][0]);
+      expect(at[1]).toBeLessThan(l.piles![d][1]);
+      expect(at[1]).toBe(pileCaptionAt(l)![1]); // the caption shares the row; CSS pushes it below the labels
+    }
+    const empty = layout3dFor({ showLocalize: true, showExternal: false, slots: 0 });
+    expect(pileLabelAt(empty, "positive")).toBeNull();
+    expect(pileCaptionAt(empty)).toBeNull();
   });
 
   it("visible agents follow the pipeline, external last", () => {
     expect(visibleAgents(layout, PIPELINE)).toEqual(PIPELINE);
     const en = layout3dFor({ showLocalize: false, showExternal: true, slots: 0 });
     expect(visibleAgents(en, PIPELINE)).toEqual([...PIPELINE.filter((id) => id !== "localize"), "external"]);
+  });
+});
+
+describe("evidence piles", () => {
+  it("maps all five directions to a distinct glyph-matching shape and a finding colour", () => {
+    expect(Object.keys(PILE_SHAPE).sort()).toEqual([...DIRECTION_ORDER].sort());
+    expect(PILE_SHAPE).toEqual({ positive: "sphere", negative: "octahedron", null: "bar", mixed: "dome", unclear: "torus" });
+    expect(new Set(Object.values(PILE_SHAPE)).size).toBe(5);
+    expect(PILE_COLOR).toEqual({ positive: "sup", negative: "harm", null: "none", mixed: "mixed", unclear: "unclear" });
+  });
+
+  it("edges: idle and visited thin, live thicker", () => {
+    expect(EDGE_RADIUS).toEqual({ idle: 0.012, visited: 0.012, live: 0.02 });
+  });
+
+  it("planArrivals: items seen at mount snap, a burst animates only the newest `cap` with a 60ms stagger", () => {
+    const items = Array.from({ length: 30 }, (_, i) => ({ key: i + 1 }));
+    const replay = planArrivals(items, 30, PACKET_CAP);
+    expect(replay.animate).toEqual([]);
+    expect(replay.snap).toHaveLength(30);
+
+    const burst = planArrivals(items, 0, PACKET_CAP);
+    expect(burst.animate.map((a) => a.item.key)).toEqual(Array.from({ length: 12 }, (_, i) => 19 + i));
+    expect(burst.animate.map((a) => a.delayMs)).toEqual(Array.from({ length: 12 }, (_, i) => i * ARRIVAL_STAGGER_MS));
+    expect(burst.snap).toHaveLength(18);
+
+    const two = planArrivals([{ key: 9 }, { key: 3 }, { key: 7 }], 5, PACKET_CAP);
+    expect(two.animate.map((a) => [a.item.key, a.delayMs])).toEqual([[7, 0], [9, 60]]);
+    expect(two.snap).toEqual([{ key: 3 }]);
+  });
+});
+
+describe("thought label", () => {
+  const withExt = layout3dFor({ showLocalize: true, showExternal: true, slots: 30 });
+  it("floats THOUGHT_LIFT (0.85) above the agent's node", () => {
+    const at = thoughtAnchor(layout, "screen")!;
+    const n = layout.nodes.screen!;
+    expect(at).toEqual([n[0], n[1] + 0.85, n[2]]);
+    expect(THOUGHT_LIFT).toBe(0.85);
+  });
+  it("goes above the external node for read while external is shown, without a leader line", () => {
+    const ext = withExt.nodes.external!;
+    expect(thoughtAnchor(withExt, "read")).toEqual([ext[0], ext[1] + 0.85, ext[2]]);
+    expect(thoughtLeader(withExt, "read")).toBeNull();
+    expect(thoughtAnchor(layout, "read")![1]).toBeCloseTo(layout.nodes.read![1] + 0.85);
+  });
+  it("leader runs from the node's ring up to the label; nothing for an undrawn or missing agent", () => {
+    const [a, b] = thoughtLeader(layout, "search")!;
+    const n = layout.nodes.search!;
+    expect(a[0]).toBe(n[0]);
+    expect(a[1]).toBeGreaterThan(n[1]);
+    expect(b[1]).toBeGreaterThan(a[1]);
+    expect(b[1]).toBeLessThan(n[1] + 0.85);
+    expect(thoughtAnchor(layout, null)).toBeNull();
+    expect(thoughtAnchor(layout, "external")).toBeNull(); // not in this layout
+    expect(thoughtLeader(layout, "external")).toBeNull();
+  });
+  it("stays inside the bounds' headroom", () => {
+    for (const l of [layout, withExt]) {
+      for (const id of Object.keys(l.nodes) as (keyof typeof l.nodes)[]) {
+        expect(thoughtAnchor(l, id)![1]).toBeLessThanOrEqual(l.bounds.max[1]);
+      }
+    }
+  });
+});
+
+/** Pinhole projection of `p` for a camera at pos looking at target (world up +y), vertical fov, aspect = w/h. */
+function project(cam: number[], p: Vec3, fovDeg: number, aspect: number): [number, number, number] {
+  const f = [cam[3] - cam[0], cam[4] - cam[1], cam[5] - cam[2]];
+  const fl = Math.hypot(f[0], f[1], f[2]);
+  for (let k = 0; k < 3; k++) f[k] /= fl;
+  let r = [f[1] * 0 - f[2] * 1, f[2] * 0 - f[0] * 0, f[0] * 1 - f[1] * 0]; // f x up(0,1,0)
+  const rl = Math.hypot(r[0], r[1], r[2]);
+  r = r.map((v) => v / rl);
+  const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+  const q = [p[0] - cam[0], p[1] - cam[1], p[2] - cam[2]];
+  const depth = q[0] * f[0] + q[1] * f[1] + q[2] * f[2];
+  const x = q[0] * r[0] + q[1] * r[1] + q[2] * r[2];
+  const y = q[0] * u[0] + q[1] * u[1] + q[2] * u[2];
+  const t = Math.tan((fovDeg * Math.PI) / 360);
+  return [x / (depth * t * aspect), y / (depth * t), depth];
+}
+
+const corners = (b: { min: Vec3; max: Vec3 }): Vec3[] =>
+  Array.from({ length: 8 }, (_, c) => [(c & 1) ? b.max[0] : b.min[0], (c & 2) ? b.max[1] : b.min[1], (c & 4) ? b.max[2] : b.min[2]] as Vec3);
+
+describe("fitted framing", () => {
+  const cases = [
+    layout3dFor({ showLocalize: true, showExternal: true, slots: 30 }),
+    layout3dFor({ showLocalize: false, showExternal: false, slots: 30 }),
+    layout3dFor({ showLocalize: true, showExternal: false, slots: 0 }),
+  ];
+  it("projects every bounds corner within NDC +-0.95 (8% margin), and at least one corner touches the margin", () => {
+    for (const l of cases) {
+      const cam = fitCamera(l.bounds);
+      let edge = 0;
+      for (const p of corners(l.bounds)) {
+        const [x, y, depth] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
+        expect(depth).toBeGreaterThan(0);
+        expect(Math.abs(x)).toBeLessThanOrEqual(0.95);
+        expect(Math.abs(y)).toBeLessThanOrEqual(0.95);
+        edge = Math.max(edge, Math.abs(x), Math.abs(y));
+      }
+      expect(edge).toBeCloseTo(1 - FIT_MARGIN, 3); // fills the wrapper: not further away than needed
+    }
+  });
+  it("keeps the fixed elevation and centres the projected extent", () => {
+    for (const l of cases) {
+      for (const pts of [null, l.frame]) {
+        const cam = fitCamera(l.bounds, STAGE_ASPECT, STAGE_FOV, undefined, pts);
+        expect(Math.atan2(cam[1] - cam[4], cam[2] - cam[5])).toBeCloseTo(Math.atan2(4.2, 7), 6);
+        expect(cam[0]).toBe(cam[3]);
+        const ys = (pts ?? corners(l.bounds)).map((p) => project(cam, p, STAGE_FOV, STAGE_ASPECT)[1]);
+        expect(Math.min(...ys) + Math.max(...ys)).toBeCloseTo(0, 2);
+      }
+    }
+  });
+  it("fits the frame points (not the deep bounding box) so the layout fills the wrapper", () => {
+    for (const l of cases) {
+      const cam = fitCamera(l.bounds, STAGE_ASPECT, STAGE_FOV, undefined, l.frame);
+      let edge = 0;
+      for (const p of l.frame) {
+        const [x, y, depth] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
+        expect(depth).toBeGreaterThan(0);
+        expect(Math.abs(x)).toBeLessThanOrEqual(0.95);
+        expect(Math.abs(y)).toBeLessThanOrEqual(0.95);
+        edge = Math.max(edge, Math.abs(x), Math.abs(y));
+      }
+      expect(edge).toBeCloseTo(1 - FIT_MARGIN, 2);
+      const box = fitCamera(l.bounds);
+      const dist = (c: number[]) => Math.hypot(c[0] - c[3], c[1] - c[4], c[2] - c[5]);
+      expect(dist(cam)).toBeLessThan(dist(box)); // closer than fitting the box corners
+    }
+  });
+  it("cameraGoal keeps every frame point inside the view even when panned toward an end node", () => {
+    for (const l of cases) {
+      for (const id of [null, "guard", "finish", "read"] as const) {
+        const cam = cameraGoal(l, id);
+        for (const p of l.frame) {
+          const [x, y] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
+          expect(Math.abs(x)).toBeLessThanOrEqual(0.95);
+          expect(Math.abs(y)).toBeLessThanOrEqual(0.95);
+        }
+      }
+    }
+  });
+  it("falls back to a finite camera for empty bounds and writes into `out`", () => {
+    const out = new Array(6).fill(0);
+    const cam = fitCamera({ min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }, STAGE_ASPECT, STAGE_FOV, out);
+    expect(cam).toBe(out);
+    expect(cam.every(Number.isFinite)).toBe(true);
   });
 });
