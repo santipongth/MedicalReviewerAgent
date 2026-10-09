@@ -23,7 +23,7 @@ export function Charts({ result, papers, lang, onSelect }: {
   return (
     <section aria-labelledby="h-charts" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-8">
       <div>
-        <h2 id="h-charts" className="text-lg font-semibold">{L(lang, "แผนภาพหลักฐาน", "Evidence charts")}</h2>
+        <h2 id="h-charts" className="scroll-mt-28 text-lg font-semibold">{L(lang, "แผนภาพหลักฐาน", "Evidence charts")}</h2>
         <MatrixLegend lang={lang} />
       </div>
       <ForestFigure data={forest} tokens={tokens} lang={lang} onSelect={onSelect} />

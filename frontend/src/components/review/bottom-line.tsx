@@ -26,7 +26,7 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
       <QuestionTitle question={question} topic={topic} lang={lang} />
       {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} />}
       <div className="grid gap-2">
-        <h2 id="h-summary" className="text-lg font-semibold">{L(lang, "สรุป", "Summary")}</h2>
+        <h2 id="h-summary" className="scroll-mt-28 text-lg font-semibold">{L(lang, "สรุป", "Summary")}</h2>
         <p className="max-w-[65ch] text-[1.02rem] leading-[1.75]">
           <CitedText text={synthesis.executive_summary || result.summary || ""} onSelect={onSelect} refs={refs} />
         </p>

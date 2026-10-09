@@ -3,7 +3,7 @@ export type TermKey =
   | "rct" | "nonRandomized" | "cohort" | "caseControl" | "crossSectional" | "caseSeries"
   | "mendelian" | "srma" | "narrativeReview"
   | "hr" | "or" | "rr" | "md" | "smd" | "rd" | "ci95"
-  | "logScale" | "prisma" | "relevance" | "notVerified" | "uncertain" | "directionTally";
+  | "logScale" | "prisma" | "relevance" | "notVerified" | "uncertain" | "directionTally" | "studyDesign";
 
 type Bi = { th: string; en: string };
 
@@ -182,6 +182,13 @@ export const GLOSSARY: Record<TermKey, { label: Bi; body: Bi }> = {
     body: {
       th: "นับจำนวนงานวิจัยตามทิศทางผลโดยรวมที่เอเจนต์อ่าน ไม่ใช่ผลรวมทางสถิติ",
       en: "A count of studies by the overall direction of effect the agent read. It is not a statistical pooled result.",
+    },
+  },
+  studyDesign: {
+    label: { th: "รูปแบบการศึกษา", en: "study design" },
+    body: {
+      th: "วิธีที่งานวิจัยเก็บข้อมูล เช่น ทดลองแบบสุ่ม ติดตามกลุ่ม หรือรวบรวมงานวิจัยอื่น รูปแบบต่างกันน่าเชื่อถือไม่เท่ากัน",
+      en: "How a study gathered its data, for example a randomised trial, a cohort follow-up or a review of other studies. Designs differ in how much weight they can bear.",
     },
   },
 };

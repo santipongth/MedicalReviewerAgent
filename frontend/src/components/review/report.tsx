@@ -2,15 +2,20 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { exportUrl } from "@/lib/api";
 import { emptyFilters, filterPapers, type Filters } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
 import { Charts } from "./charts";
-import { FilterBar } from "./filter-bar";
+import { FilterBar, FilterStatus } from "./filter-bar";
 import { ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, QualityNote, QuestionDetails } from "./report-parts";
+import { ReportNav, type NavItem } from "./report-nav";
 import { SourceRail } from "./source-rail";
 import { L } from "./text";
+
+const H2 = "scroll-mt-28 text-lg font-semibold";
+const DL = "inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
 
 type Selection = { ref: string; outcome?: string };
 
@@ -56,6 +61,19 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   }
 
   const hasPapers = papers.length > 0;
+  const hasClaims = !!(synthesis.consensus?.length || synthesis.conflicts?.length);
+  const navItems: NavItem[] = [
+    { id: "h-summary", label: L(lang, "สรุป", "Summary") },
+    ...(hasClaims ? [{ id: "h-claims", label: L(lang, "จุดตรงกัน/ขัดกัน", "Agree/conflict") }] : []),
+    ...(rows.length > 0 ? [{ id: "h-matrix", label: L(lang, "ผลแต่ละการศึกษา", "Findings") }] : []),
+    ...(hasPapers ? [{ id: "h-charts", label: L(lang, "แผนภาพ", "Charts") }] : []),
+    ...(synthesis.research_gaps?.length ? [{ id: "h-gaps", label: L(lang, "สิ่งที่ยังไม่รู้", "Gaps") }] : []),
+    ...(hasPapers ? [{ id: "h-papers", label: L(lang, "งานวิจัยที่อ่าน", "Papers") }] : []),
+    { id: "h-method", label: offline ? L(lang, "วิธีทำ", "Method") : L(lang, "ดาวน์โหลด", "Downloads") },
+  ];
+  const filterStatus = <FilterStatus filters={filters} onChange={setFilters} shown={visible.length} total={papers.length} lang={lang} />;
+  const filterBar = papers.length > 1
+    ? <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} /> : null;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 pt-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -74,13 +92,14 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
 
       <div className={`grid grid-cols-[minmax(0,1fr)] rounded-sm border border-rule bg-surface ${hasPapers ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : ""}`}>
         <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8 p-5 sm:p-8 ${hasPapers ? "lg:border-r lg:border-rule" : ""}`}>
+          {hasPapers && <ReportNav items={navItems} label={L(lang, "ในรายงานนี้", "In this report")} />}
           <BottomLine id={review.id} question={result.question} topic={review.topic} synthesis={synthesis} result={result}
             papers={papers} lang={lang} offline={offline} onSelect={select} refs={refs} />
           <QuestionDetails question={result.question} lang={lang} />
 
           {!hasPapers && (
             <section aria-labelledby="h-next" className="grid gap-3">
-              <h2 id="h-next" className="text-lg font-semibold">{L(lang, "ลองแบบนี้", "Try this")}</h2>
+              <h2 id="h-next" className={H2}>{L(lang, "ลองแบบนี้", "Try this")}</h2>
               <ul className="grid list-disc gap-1.5 pl-5 text-[0.95rem]">
                 <li>{L(lang, "ใช้ชื่อยาหรือโรคเป็นภาษาอังกฤษ เช่น metformin, colorectal cancer", "Use the English drug or disease name, e.g. metformin, colorectal cancer")}</li>
                 <li>{L(lang, "ถามให้กว้างขึ้น หรือเอาเงื่อนไขปีและชนิดงานวิจัยออก", "Ask a broader question, or remove the year and study-type filters")}</li>
@@ -91,13 +110,19 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
             </section>
           )}
 
-          {papers.length > 1 && (
-            <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} />
+          {hasClaims && (
+            <section aria-labelledby="h-claims" className="grid gap-4">
+              <h2 id="h-claims" className={H2}>{L(lang, "จุดที่ตรงกันและขัดกัน", "Where studies agree and conflict")}</h2>
+              <ClaimsPanel consensus={synthesis.consensus ?? []} conflicts={synthesis.conflicts ?? []} lang={lang} onSelect={select} refs={refs} />
+            </section>
           )}
 
+          {rows.length === 0 && filterBar}
+
           {rows.length > 0 && (
-            <section aria-labelledby="h-matrix">
-              <h2 id="h-matrix" className="mb-3 text-lg font-semibold">{L(lang, "ผลแต่ละการศึกษา", "Findings by study")}</h2>
+            <section aria-labelledby="h-matrix" className="grid gap-3">
+              <h2 id="h-matrix" className={H2}>{L(lang, "ผลแต่ละการศึกษา", "Findings by study")}</h2>
+              {filterBar}
               {visibleRows.length ? <ComparisonMatrix rows={visibleRows} refs={matrixRefs} lang={lang} onSelect={select} selected={active ?? undefined}
                 pooledRefs={pooledRefs}
                 outcomeOf={(row, ref) => outcomeFor(byRef.get(ref), row, ref)} /> : <p className="text-[0.9rem] text-muted">{L(lang, "ไม่มีงานวิจัยที่ตรงกับตัวกรอง", "No studies match the filters")}</p>}
@@ -105,37 +130,51 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
             </section>
           )}
 
-          <ClaimsPanel consensus={synthesis.consensus ?? []} conflicts={synthesis.conflicts ?? []} lang={lang} onSelect={select} refs={refs} />
-
-          {hasPapers && <Charts result={result} papers={visible} lang={lang} onSelect={select} />}
+          {hasPapers && (
+            <div className="grid gap-3">
+              {filterStatus}
+              <Charts result={result} papers={visible} lang={lang} onSelect={select} />
+            </div>
+          )}
 
           {!!synthesis.research_gaps?.length && (
             <section aria-labelledby="h-gaps" className="grid gap-2">
-              <h2 id="h-gaps" className="text-lg font-semibold">{L(lang, "สิ่งที่ยังไม่รู้", "Research gaps")}</h2>
+              <h2 id="h-gaps" className={H2}>{L(lang, "สิ่งที่ยังไม่รู้", "Research gaps")}</h2>
               <ul className="list-disc pl-5 text-[0.95rem]">{synthesis.research_gaps.map((g) => <li key={g}>{g}</li>)}</ul>
             </section>
           )}
 
           {hasPapers && (
-            <section aria-labelledby="h-papers">
-              <h2 id="h-papers" className="mb-2 text-lg font-semibold">{L(lang, "งานวิจัยที่อ่าน", "Papers read")}</h2>
+            <section aria-labelledby="h-papers" className="grid gap-2">
+              <h2 id="h-papers" className={H2}>{L(lang, "งานวิจัยที่อ่าน", "Papers read")}</h2>
+              {filterStatus}
               <PaperList papers={visible} lang={lang} onSelect={select} selectedRef={active?.ref} />
             </section>
           )}
 
-          {!!result.external_context?.length && (
-            <section aria-labelledby="h-external" className="grid gap-2 text-[0.9rem]">
-              <h2 id="h-external" className="text-lg font-semibold">{L(lang, "ข้อมูลประกอบจากเครื่องมือภายนอก", "Background from external tools")}</h2>
-              <ul className="grid gap-2">
-                {result.external_context.map((e, i) => (
-                  <li key={i} className="rounded-sm bg-ground p-3"><b className="font-display">{e.tool}</b> <span className="text-muted">{e.ok ? "" : L(lang, "(ล้มเหลว)", "(failed)")}</span><p className="break-words">{e.preview}</p></li>
+          <section aria-labelledby="h-method" className="grid gap-4">
+            <h2 id="h-method" className={H2}>{L(lang, "วิธีทำและดาวน์โหลด", "Method and downloads")}</h2>
+            <QualityNote quality={result.quality} stats={result.stats} lang={lang} preset={result.llm_preset} />
+            {!!result.external_context?.length && (
+              <div className="grid gap-2 text-[0.9rem]">
+                <h3 className="font-semibold">{L(lang, "ข้อมูลประกอบจากเครื่องมือภายนอก", "Background from external tools")}</h3>
+                <ul className="grid gap-2">
+                  {result.external_context.map((e, i) => (
+                    <li key={i} className="rounded-sm bg-ground p-3"><b className="font-display">{e.tool}</b> <span className="text-muted">{e.ok ? "" : L(lang, "(ล้มเหลว)", "(failed)")}</span><p className="break-words">{e.preview}</p></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {!offline && (
+              <ul aria-label={L(lang, "ดาวน์โหลดรีวิว", "Download this review")} className="flex flex-wrap gap-x-4 gap-y-1 text-[0.9rem]">
+                <li><a href={`/r/${encodeURIComponent(review.id)}/report.html`} download className={DL}>{L(lang, "HTML (เปิดได้ออฟไลน์)", "HTML (works offline)")}</a></li>
+                {([["md", "Markdown"], ["csv", "CSV"], ["json", "JSON"]] as const).map(([fmt, name]) => (
+                  <li key={fmt}><a href={exportUrl(review.id, fmt)} download className={DL}>{name}</a></li>
                 ))}
               </ul>
-            </section>
-          )}
-
-          <QualityNote quality={result.quality} stats={result.stats} lang={lang} preset={result.llm_preset} />
-          <p className="text-[0.8rem] text-muted">{L(lang, "การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์", "Automated rapid literature review; not medical advice.")}</p>
+            )}
+            <p className="text-[0.8rem] text-muted">{L(lang, "การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์", "Automated rapid literature review; not medical advice.")}</p>
+          </section>
         </div>
 
         {hasPapers && (

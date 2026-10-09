@@ -3,9 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { emptyReviewFixture, legacyReviewFixture, reviewFixture } from "@/test/fixtures";
 
-vi.mock("./charts", () => ({ Charts: () => <div data-testid="charts" /> }));
+vi.mock("./charts", () => ({ Charts: () => <section aria-labelledby="h-charts"><h2 id="h-charts">แผนภาพหลักฐาน</h2><div data-testid="charts" /></section> }));
 
 import { Report } from "./report";
+
+async function openFilters() {
+  await userEvent.click(screen.getByRole("button", { name: /^กรอง \(แสดง/ }));
+}
 
 function rail() {
   return within(screen.getByRole("complementary", { name: /ต้นฉบับ/ }));
@@ -65,6 +69,7 @@ describe("Report", () => {
 
   it("filters by study-design category and shows the category with the paper's own description", async () => {
     render(<Report review={reviewFixture} />);
+    await openFilters();
     await userEvent.click(screen.getByLabelText("Case-control"));
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
     expect(within(table).queryByRole("columnheader", { name: "P1" })).toBeNull();
@@ -83,7 +88,7 @@ describe("Report", () => {
     render(<Report review={reviewFixture} />);
     const id = reviewFixture.id;
     for (const [name, fmt] of [["Markdown", "md"], ["CSV", "csv"], ["JSON", "json"]]) {
-      const href = screen.getByRole("link", { name: new RegExp(name) }).getAttribute("href") ?? "";
+      const href = screen.getAllByRole("link", { name: new RegExp(name) })[0].getAttribute("href") ?? "";
       expect(href.endsWith(`/api/v1/reviews/${id}/export?format=${fmt}`)).toBe(true);
     }
   });
@@ -105,6 +110,11 @@ describe("Report", () => {
 
   it("filters narrow the matrix and the paper list", async () => {
     render(<Report review={reviewFixture} />);
+    const toggle = screen.getByRole("button", { name: "กรอง (แสดง 5 จาก 5 ฉบับ)" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText(/ความเกี่ยวข้องขั้นต่ำ/)).toBeNull();
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
     const slider = screen.getByLabelText(/ความเกี่ยวข้องขั้นต่ำ/);
     // fireEvent-style change: user-event cannot drag range inputs in jsdom
     const { fireEvent } = await import("@testing-library/react");
@@ -112,9 +122,56 @@ describe("Report", () => {
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
     expect(within(table).queryByRole("columnheader", { name: /^P4/ })).not.toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: "P3" })).toBeInTheDocument();
-    expect(screen.getByText("แสดง 2 จาก 5 ฉบับ")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "ล้างตัวกรอง" }));
-    expect(within(table).getByRole("columnheader", { name: /^P4/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "กรอง (แสดง 2 จาก 5 ฉบับ)" })).toBeInTheDocument();
+  });
+
+  it("while filtering, a status line above the charts and the paper list clears the filters", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(<Report review={reviewFixture} />);
+    expect(screen.queryByText(/กำลังกรอง/)).toBeNull();
+    await openFilters();
+    fireEvent.change(screen.getByLabelText(/ความเกี่ยวข้องขั้นต่ำ/), { target: { value: "90" } });
+    const statuses = screen.getAllByText("กำลังกรอง: แสดง 2 จาก 5 ฉบับ");
+    expect(statuses).toHaveLength(2);
+    const chartsWrap = screen.getByTestId("charts").closest("section")!.parentElement!;
+    expect(within(chartsWrap).getByText(/กำลังกรอง/).compareDocumentPosition(screen.getByTestId("charts")))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    expect(within(papers).getByText(/กำลังกรอง/)).toBeInTheDocument();
+    await userEvent.click(within(papers).getByRole("button", { name: "ล้างตัวกรอง" }));
+    expect(screen.queryByText(/กำลังกรอง/)).toBeNull();
+    expect(screen.getByRole("button", { name: "กรอง (แสดง 5 จาก 5 ฉบับ)" })).toBeInTheDocument();
+  });
+
+  it("the section nav links exactly the section headings present, in reading order", () => {
+    const { container } = render(<Report review={reviewFixture} />);
+    const nav = screen.getByRole("navigation", { name: "ในรายงานนี้" });
+    const links = within(nav).getAllByRole("link");
+    const ids = links.map((a) => a.getAttribute("href")!.slice(1));
+    for (const id of ids) expect(container.querySelector(`h2#${id}`)).not.toBeNull();
+    const h2ids = [...container.querySelectorAll("h2[id^='h-']")].map((h) => h.id);
+    expect(h2ids).toEqual(ids);
+    expect(ids[0]).toBe("h-summary");
+    expect(ids.at(-1)).toBe("h-method");
+    expect(links.map((a) => a.textContent)).toContain("ดาวน์โหลด");
+  });
+
+  it("a review with no papers has no section nav", () => {
+    render(<Report review={emptyReviewFixture} />);
+    expect(screen.queryByRole("navigation", { name: "ในรายงานนี้" })).toBeNull();
+  });
+
+  it("the method section repeats the downloads and holds the disclaimer; offline it has neither link", () => {
+    const { unmount } = render(<Report review={reviewFixture} />);
+    const method = screen.getByRole("heading", { name: "วิธีทำและดาวน์โหลด" }).closest("section")!;
+    expect(within(method).getByRole("link", { name: /HTML/ })).toBeInTheDocument();
+    expect(within(method).getByRole("link", { name: "CSV" })).toBeInTheDocument();
+    expect(within(method).getByText(/ไม่ใช่คำแนะนำทางการแพทย์/)).toBeInTheDocument();
+    unmount();
+    render(<Report review={reviewFixture} offline />);
+    const offlineMethod = screen.getByRole("heading", { name: "วิธีทำและดาวน์โหลด" }).closest("section")!;
+    expect(within(offlineMethod).queryByRole("link")).toBeNull();
+    expect(within(offlineMethod).getByText(/ไม่ใช่คำแนะนำทางการแพทย์/)).toBeInTheDocument();
   });
 
   it("a review with no papers shows the explicit message and no matrix", () => {
@@ -146,7 +203,7 @@ describe("Report", () => {
   it("copy link and downloads are hidden offline; downloads and copy link are present online", () => {
     const { unmount } = render(<Report review={reviewFixture} />);
     expect(screen.getByRole("button", { name: "คัดลอกลิงก์" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /HTML/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /HTML/ }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "พิมพ์" })).toBeInTheDocument();
     unmount();
     render(<Report review={reviewFixture} offline />);
