@@ -125,7 +125,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           {rows.length === 0 && filterBar}
 
           {rows.length > 0 && (
-            <section aria-labelledby="h-matrix" className="grid gap-3">
+            <section aria-labelledby="h-matrix" className="grid grid-cols-[minmax(0,1fr)] gap-3">
               <h2 id="h-matrix" className={H2}>{L(lang, "ผลแต่ละการศึกษา", "Findings by study")}</h2>
               {filterBar}
               {visibleRows.length ? <ComparisonMatrix rows={visibleRows} refs={matrixRefs} papers={papers} lang={lang} onSelect={select} selected={active ?? undefined}
