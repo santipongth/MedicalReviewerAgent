@@ -5,6 +5,7 @@ import { HighlightedQuote } from "@/components/ui/quote";
 import { designLabel } from "@/lib/charts-data";
 import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, safeHref } from "@/lib/evidence";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
+import { showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
 import { Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
@@ -25,8 +26,8 @@ function MaskedText({ text, lang }: { text: string; lang: Lang }) {
   return <>{parts.map((p, i) => <span key={i}>{p}{i < parts.length - 1 && <Hole lang={lang} />}</span>)}</>;
 }
 
-function OutcomeEvidence({ paper, o, en, lang, selected, visible }: {
-  paper: Paper; o: OutcomeResult; en?: OutcomeResult; lang: Lang; selected: boolean; visible: boolean;
+function OutcomeEvidence({ paper, o, en, lang, selected, visible, direction }: {
+  paper: Paper; o: OutcomeResult; en?: OutcomeResult; lang: Lang; selected: boolean; visible: boolean; direction: boolean;
 }) {
   const item = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -41,9 +42,9 @@ function OutcomeEvidence({ paper, o, en, lang, selected, visible }: {
   return (
     <li ref={item} className={`grid gap-2 border-t border-rule pt-3 ${selected ? "-mx-2 rounded-sm bg-surface px-2 pb-2" : ""}`} aria-current={selected || undefined}>
       <div className="flex flex-wrap items-center gap-2">
-        <Glyph direction={o.direction} lang={lang} />
+        {direction && <Glyph direction={o.direction} lang={lang} />}
         <b className="font-display text-[0.95rem]">{o.outcome}</b>
-        <span className="text-sm text-muted">{DIRECTION_LABEL[lang][o.direction]}</span>
+        {direction && <span className="text-sm text-muted">{DIRECTION_LABEL[lang][o.direction]}</span>}
       </div>
       <p className="text-[0.92rem]"><MaskedText text={o.result} lang={lang} /></p>
       <p className="text-[0.92rem]">
@@ -70,7 +71,7 @@ function OutcomeEvidence({ paper, o, en, lang, selected, visible }: {
   );
 }
 
-function Facts({ paper, card, cardEn, lang }: { paper: Paper; card: PaperCard; cardEn?: PaperCard | null; lang: Lang }) {
+function Facts({ paper, card, cardEn, lang, riskOfBias }: { paper: Paper; card: PaperCard; cardEn?: PaperCard | null; lang: Lang; riskOfBias: boolean }) {
   const n = card.sample_size;
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 text-[0.88rem]">
@@ -83,7 +84,7 @@ function Facts({ paper, card, cardEn, lang }: { paper: Paper; card: PaperCard; c
           : isBlankedSampleSize(paper) ? <Hole lang={lang} /> : <span className="text-muted">{L(lang, "ไม่ได้รายงาน", "not reported")}</span>}
       </dd>
       <dt className="text-muted">{L(lang, "ประชากร", "Population")}</dt><dd className="break-words">{card.population}</dd>
-      <dt className="text-muted"><Term k="riskOfBias" lang={lang}>{L(lang, "ความเสี่ยงอคติ", "Risk of bias")}</Term></dt><dd>{ROB_LABEL[lang][card.risk_of_bias] ?? card.risk_of_bias}</dd>
+      {riskOfBias && <><dt className="text-muted"><Term k="riskOfBias" lang={lang}>{L(lang, "ความเสี่ยงอคติ", "Risk of bias")}</Term></dt><dd>{ROB_LABEL[lang][card.risk_of_bias] ?? card.risk_of_bias}</dd></>}
       <dt className="text-muted">{L(lang, "ที่มาของข้อความ", "Text read")}</dt>
       <dd>{(paper.fulltext_source ? SOURCE_LABEL[paper.fulltext_source] ?? ["–", "–"] : ["บทคัดย่อ", "Abstract"])[lang === "th" ? 0 : 1]}</dd>
     </dl>
@@ -109,8 +110,10 @@ function Links({ paper, lang }: { paper: Paper; lang: Lang }) {
 }
 
 /** The paper behind whatever the reader selected: facts, each outcome's number and the exact sentence it came from. */
-export function SourceRail({ paper, outcome, lang, onClose, headingId, visible = true }: {
+export function SourceRail({ paper, outcome, lang, onClose, headingId, visible = true, type = "legacy" }: {
   paper: Paper | null; outcome?: string; lang: Lang; onClose?: () => void;
+  /** review type: scoping shows no direction and no risk of bias. */
+  type?: ReviewTypeOrLegacy;
   /** id of the heading (the drawer's accessible name and initial focus target). */
   headingId?: string;
   /** false while the rail is hidden (closed drawer): the selected outcome scrolls into view once it shows. */
@@ -143,10 +146,10 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
           {paper.journal && <p className="-mt-3 text-sm text-muted">{paper.journal}</p>}
           {card ? (
             <>
-              <Facts paper={paper} card={card} cardEn={cardEn} lang={lang} />
+              <Facts paper={paper} card={card} cardEn={cardEn} lang={lang} riskOfBias={showsRiskOfBias(type)} />
               <ul className="grid gap-3">
                 {card.outcomes.map((o, i) => (
-                  <OutcomeEvidence key={`${o.outcome}-${i}`} paper={paper} o={o} en={cardEn?.outcomes[i]} lang={lang}
+                  <OutcomeEvidence key={`${o.outcome}-${i}`} paper={paper} o={o} en={cardEn?.outcomes[i]} lang={lang} direction={showsDirection(type)}
                     selected={outcome != null && (cardEn?.outcomes[i]?.outcome ?? o.outcome) === outcome} visible={visible} />
                 ))}
               </ul>

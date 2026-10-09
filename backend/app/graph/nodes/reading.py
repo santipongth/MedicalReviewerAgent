@@ -60,7 +60,7 @@ def make_read_paper(deps):
         text = source_text[: spec.extraction_chars]
         outcomes = ((payload.get("question_detail") or {}).get("outcomes")
                     or (payload.get("plan") or {}).get("outcomes") or [])
-        system = prompts.extract_system()
+        system = prompts.extract_system(payload.get("review_type") or "slr")
         user = prompts.extract_user(question=payload["question"], outcomes=outcomes, candidate=paper["candidate"],
                                     source="abstract", text=text)
         threshold = spec.quote_match_threshold
@@ -124,10 +124,13 @@ def make_read_paper(deps):
         quality = {"stage": "read", "ref": paper["ref"], "source": "abstract",
                    **{k: v for k, v in entry["verification"].items() if k != "unverified"},
                    "seconds": round(time.perf_counter() - started, 3)}
-        writer({"type": "extracted", "ref": paper["ref"], "ok": entry["card"] is not None,
-                "verified": verified, "uncertain": uncertain,
-                "direction": entry["card"]["overall_direction"] if entry["card"] else None,
-                "design": entry["card"]["design_category"] if entry["card"] else None})
+        extracted = {"type": "extracted", "ref": paper["ref"], "ok": entry["card"] is not None,
+                     "verified": verified, "uncertain": uncertain,
+                     "direction": entry["card"]["overall_direction"] if entry["card"] else None,
+                     "design": entry["card"]["design_category"] if entry["card"] else None}
+        if (payload.get("review_type") or "slr") == "scoping":  # a scoping review shows no direction anywhere
+            del extracted["direction"]
+        writer(extracted)
         return {"papers": [entry], "cost_usd": cost, "errors": errors, "quality": [quality]}
 
     return read_paper

@@ -278,3 +278,12 @@ D:\MedicalReviewerAgent\
   - แหล่งข้อความของทุก paper คือ "บทคัดย่อ"
   - ผลเก่าที่มี `fulltext_*` ยังแสดงได้
 - **ข้อจำกัดที่ต้องบอกผู้ใช้:** รายละเอียดที่มีเฉพาะในฉบับเต็ม เช่น การปรับ confounder หรือ subgroup อาจไม่ปรากฏใน abstract จึงอาจทำให้ "ไม่ได้รายงาน" บ่อยขึ้น
+
+## Revision 2026-10-10: review types, literature matrix, concept map (Plan 14a)
+
+- **ชนิดการทบทวน:** `options.review_type` = `narrative` | `slr` (ค่าเริ่มต้น) | `scoping` เป็นส่วนหนึ่งของ cache key และอยู่ใน `result.review_type` (ผลเก่าที่ไม่มีคือ legacy และแสดงเหมือนเดิม)
+  - `slr`: prompt เดิมทุกตัว (ล็อกด้วย sha256 pin) เพิ่มเพียง `exclusion_reason` ตอนคัดกรอง
+  - `narrative`: กรอบ PICO, รับบทความทบทวนด้วย, สรุปเชิงบรรยาย ไม่ให้เกรด (`evidence_strength` เป็น null)
+  - `scoping`: กรอบ PCC (`concept`, `context`), คิวรีกว้าง, ไม่ให้เกรด ไม่สรุปทิศทาง/RoB ไม่มี consensus/conflicts
+- **มุมมองใหม่ในรายงาน:** ตารางงานวิจัย (Literature Review Matrix, ตัวเลขผ่าน `VerifiedNumber`/`Hole` เท่านั้น, CSV เพิ่มคอลัมน์), แผนที่ความรู้ (concept map แบบต้นไม้ พร้อม outline ที่เข้าถึงได้), แผนที่หลักฐานสำหรับ scoping (นับตามประเด็น/ปี × ชนิดงานวิจัย) และตารางเหตุผลที่คัดออกใน PRISMA/PRISMA-ScR
+- **การบอกผู้ใช้อย่างตรงไปตรงมา:** ป้ายชนิดมีคำว่า "อัตโนมัติ · อ่านเฉพาะบทคัดย่อ"; ทิศทางเป็นการอ่านของเอเจนต์เสมอ

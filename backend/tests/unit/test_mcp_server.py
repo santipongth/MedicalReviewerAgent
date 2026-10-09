@@ -115,3 +115,14 @@ def test_capacity_errors_keep_reason_and_retry_time():
     from app.services.review_service import Unavailable
     msg = str(_error(Unavailable("the review queue is full", 60, "queue_full")))
     assert "queue_full" in msg and "retry after 60 seconds" in msg
+
+
+async def test_start_review_passes_review_type_through(mcp, client):
+    async with Client(mcp) as c:
+        rid = data(await c.call_tool("start_review", {"topic": "statins and dementia risk", "language": "en",
+                                                      "review_type": "scoping"}))["review_id"]
+        default = data(await c.call_tool("start_review", {"topic": "aspirin and colorectal adenoma"}))["review_id"]
+        with pytest.raises(ToolError):
+            await c.call_tool("start_review", {"topic": "statins and stroke", "review_type": "umbrella"})
+    assert (await client.get(f"/api/v1/reviews/{rid}")).json()["options"]["review_type"] == "scoping"
+    assert (await client.get(f"/api/v1/reviews/{default}")).json()["options"]["review_type"] == "slr"

@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-05.2`, API/MCP version 0.7.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-10.1`, API/MCP version 0.7.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It refines your question, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.
@@ -71,13 +71,14 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 
 ```json
 {"topic": "metformin and colorectal cancer", "language": "th",
- "options": {"max_papers": 30, "candidate_limit": 60, "year_from": 2015, "study_types": ["RCT"]},
+ "options": {"review_type": "slr", "max_papers": 30, "candidate_limit": 60, "year_from": 2015, "study_types": ["RCT"]},
  "callback_url": "https://your-app.example.org/hooks/review"}
 ```
 
 Field rules:
 - `topic`: 3–300 characters, with at least one letter or digit.
 - `language`: `th` (default) or `en`.
+- `review_type`: `slr` (default, systematic review), `narrative` or `scoping`. Anything else gets 422. It is part of the cache key. The allowed values are in `GET /api/v1/status → limits.review_types`.
 - `max_papers`: 5–30, default 30.
 - `candidate_limit`: 20–100, default 60. Must be at least `max_papers`.
 - `year_from`: 1950–2100.
@@ -102,13 +103,18 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `progress` is reserved and always `null`. Live progress comes from the event stream.
 - `status` is one of `queued`, `running`, `done`, `error`, `rejected` or `cancelled`.
 
-`result` has these keys: `topic, english_topic, language, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context`.
+`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context`.
 
 **Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`.
 - `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, other`.
-- Narrative reviews are listed, but they never count as evidence.
+- Narrative reviews are listed, but they never count as evidence, except in scoping reviews, which count them. A narrative-type review also gives them to the synthesis and can cite them, but keeps them out of the comparison table.
 
-**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`.
+**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). `excluded_selection` is `{narrative_excluded, over_limit}`. Results stored before Plan 14a have none of these keys.
+
+**Review type (Plan 14a).** `result.review_type` is `narrative`, `slr` or `scoping`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
+- `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`; `null` when the question was not refined), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
+- `synthesis.evidence_strength` and `synthesis.grade_baseline` are nullable. They are `null` for `narrative` and `scoping`, which are not graded; clients must not read `null` as "very low".
+- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. The cards still carry `overall_direction`, `risk_of_bias`, `outcomes[].direction` and `synthesis.comparison[].cells[].direction` as raw agent extraction. The report and the CSV do not show them (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present these fields as findings.
 
 **Synthesis.** `synthesis.consensus` explanations name any dissenting minority. Consensus needs at least 70 % of at least 3 studies to agree. `synthesis.conflicts` lists real splits, each with its likely reasons.
 
@@ -120,8 +126,8 @@ The web app also serves the whole interactive report as one HTML file that works
 
 | Format | Contents |
 |---|---|
-| `md` | The Markdown report. This is the same file as the MCP resource `review://{id}/report.md`. |
-| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`. Only verified numbers appear; blanked values are empty. The file starts with a UTF-8 BOM for spreadsheets. |
+| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). This is the same file as the MCP resource `review://{id}/report.md`. |
+| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty). Only verified numbers appear; blanked values are empty. The file starts with a UTF-8 BOM for spreadsheets. |
 | `json` | `{review_id, topic, language, created_at, finished_at, result}` |
 
 ### `GET /api/v1/status`
@@ -130,6 +136,7 @@ The web app also serves the whole interactive report as one HTML file that works
 {"accepting": true, "reason": null, "retry_after": null, "queue_depth": 0, "running": 3, "reviews_today": 41,
  "turnstile_site_key": null,
  "limits": {"review_rate_limit": "5/hour", "api_key_rate_limit": "60/hour", "paper_search_rate_limit": "30/minute",
+            "review_types": ["narrative", "slr", "scoping"],
             "max_papers": {"min": 5, "max": 30, "default": 30}, "candidate_limit": {"min": 20, "max": 100, "default": 60},
             "max_queued_reviews": 50, "sse_max_per_ip": 5}}
 ```
@@ -199,7 +206,7 @@ The server name is `medical-reviewer-agent`, version 0.7.0. The `Host` header mu
 | Tool | Returns | Notes |
 |---|---|---|
 | `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | `limit` is clamped to 1–25; shares the paper-search limit |
-| `start_review(topic, language="th", max_papers=30)` | `{review_id, status, cached, status_url}` | `max_papers` is clamped to 5–30; capacity errors include the reason and the wait time |
+| `start_review(topic, language="th", max_papers=30, review_type="slr")` | `{review_id, status, cached, status_url}` | `max_papers` is clamped to 5–30; `review_type` is `narrative`, `slr` or `scoping` (an unknown value is a tool error); capacity errors include the reason and the wait time |
 | `get_review_status(review_id)` | `{review_id, status, error, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled` |
 | `get_review_result(review_id)` | `{review_id, status, result}` | if the review is not done: `{…, result: null, message, error}` |
 

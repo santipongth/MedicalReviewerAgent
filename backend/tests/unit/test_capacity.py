@@ -109,3 +109,8 @@ async def test_admission_release_never_deletes_a_lock_taken_over_after_expiry(re
     async with cap.admission():
         pass
     assert await redis.get(capacity.ADMISSION_KEY) is None  # our own lock is released
+
+
+async def test_status_lists_review_types(client):
+    s = (await client.get("/api/v1/status")).json()
+    assert s["limits"]["review_types"] == ["narrative", "slr", "scoping"]

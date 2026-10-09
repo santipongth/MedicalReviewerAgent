@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { buildStandaloneHtml } from "../src/lib/standalone-html";
-import { reviewFixture } from "../src/test/fixtures";
+import { reviewFixture, scopingReviewFixture } from "../src/test/fixtures";
 
 // The downloaded report must work with no network at all: every request is blocked.
 test("the single-file HTML report works offline", async ({ page }) => {
@@ -25,4 +25,14 @@ test("the single-file HTML report works offline", async ({ page }) => {
   await expect(nav).toBeInViewport();
   expect((await nav.boundingBox())!.y).toBeLessThanOrEqual(1);
   expect(requests.filter((u) => !u.includes("fonts.g"))).toEqual([]); // only the optional web fonts were attempted
+});
+
+test("the offline report renders the literature matrix and the concept-map outline", async ({ page }) => {
+  const js = readFileSync("standalone-dist/report.js", "utf8");
+  const css = readFileSync("standalone-dist/report.css", "utf8");
+  await page.route("**/*", (route) => route.abort());
+  await page.setContent(buildStandaloneHtml(scopingReviewFixture, { js, css }), { waitUntil: "load" });
+  await expect(page.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
+  await page.locator("section[aria-labelledby=h-map]").getByRole("button", { name: "ดูเป็นตาราง" }).click();
+  await expect(page.getByRole("list", { name: "โครงร่างแผนที่ความรู้" })).toBeVisible();
 });

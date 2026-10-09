@@ -77,3 +77,20 @@ def test_new_settings_defaults():
                    for n in type(s).model_fields)  # abstract-only: no full-text settings remain
 
 
+
+
+def test_review_type_defaults_validates_and_clamps():
+    from pydantic import ValidationError
+
+    from app.schemas.review import CreateReviewRequest, ReviewOptions, compute_cache_key
+    assert ReviewOptions().review_type == "slr"
+    assert ReviewOptions(review_type="scoping").review_type == "scoping"
+    with pytest.raises(ValidationError):
+        CreateReviewRequest(topic="metformin cancer", options={"review_type": "umbrella"})
+    assert ReviewOptions.clamped(None).review_type == "slr"
+    assert ReviewOptions.clamped({"review_type": "bogus"}).review_type == "slr"
+    assert ReviewOptions.clamped({"review_type": "narrative"}).review_type == "narrative"
+    key = lambda o: compute_cache_key("metformin", "en", o.model_dump(), "v")
+    assert key(ReviewOptions()) == key(ReviewOptions(review_type="slr"))
+    assert key(ReviewOptions()) != key(ReviewOptions(review_type="scoping"))
+    assert key(ReviewOptions(review_type="narrative")) != key(ReviewOptions(review_type="scoping"))

@@ -280,7 +280,8 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
     assert r["papers"][0]["card_en"]["population"] == "adults with T2D"
     assert r["papers"][0]["verification"]["numbers_total"] == 4
     assert r["stats"] == {"found": 40, "unique": 25, "with_abstract": 22, "candidates": 20, "screened": 20, "selected": 2,
-                          "extracted": 2}
+                          "extracted": 2, "non_research": 0, "excluded_screening": {},
+                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 0}}
     assert r["question"]["refined_question"] == "คำถาม?" and r["question"]["english"]["refined_question"] == "RQ?"
     assert r["question"]["pico"]["population"] == "adults" and r["question"]["original_topic"] == "เมตฟอร์มิน"
     assert r["question"]["ambiguities"] == ["b"] and r["question"]["refined"] is True
@@ -401,3 +402,73 @@ def test_dissent_counts_distinct_studies_when_one_paper_reports_two_directions()
 def test_narrative_prompt_prefers_pooled_estimates():
     from app.graph.prompts import NARRATIVE_SYSTEM
     assert "pooled" in NARRATIVE_SYSTEM and "independent" in NARRATIVE_SYSTEM
+
+
+async def test_finalize_carries_review_type():
+    base = {"topic": "t", "english_topic": "T", "language": "en", "papers": [], "question": None,
+            "synthesis": {"executive_summary": "none"}}
+    r = (await make_finalize(deps())({**base, "options": {"review_type": "scoping"}}))["result"]
+    assert r["review_type"] == "scoping"
+    assert (await make_finalize(deps())(base))["result"]["review_type"] == "slr"
+
+
+# ---- review types ---------------------------------------------------------------------------
+def test_scoping_skips_conflict_explanation_and_counts_narrative_reviews():
+    from app.graph.nodes.synthesis import _evidence
+    papers = [paper("P1", card()), paper("P2", {**card(direction="negative"), "design_category": "narrative_review"})]
+    matrix = {"rows": [], "consensus": [], "conflicts": [
+        {"outcome": "x", "refs": ["P1", "P2"], "directions": {"positive": ["P1"], "negative": ["P2"]}}]}
+    scoping = state(papers, matrix=matrix, options={"review_type": "scoping"})
+    assert route_conflicts(scoping) == "write_synthesis"
+    assert [p["ref"] for p in _evidence(scoping)] == ["P1", "P2"]
+    assert [p["ref"] for p in _evidence(state(papers, options={"review_type": "narrative"}))] == ["P1"]
+    assert isinstance(route_conflicts(state(papers, matrix=matrix, options={"review_type": "narrative"})), list)
+
+
+@pytest.mark.parametrize("rt", ["narrative", "scoping"])
+async def test_ungraded_synthesis_has_no_strength_and_a_fixed_rationale(rt):
+    from app.graph.schemas import NarrativeNoGrade
+    papers = [paper("P1", card())]
+    synth = FakeStructuredLLM("ds", lambda s, u: NarrativeNoGrade(executive_summary="Themes [P1].",
+                                                                  research_gaps=["RCTs"]))
+    out = await make_write_synthesis(deps(synthesizer=synth))(
+        state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en", options={"review_type": rt}))
+    s = out["synthesis"]
+    assert s["evidence_strength"] is None and s["grade_baseline"] is None
+    assert s["evidence_rationale"] == f"Certainty of evidence is not graded in a {rt} review."
+    assert s["research_gaps"] == ["RCTs"] and s["comparison"][0]["outcome"] == "CRC incidence"
+    assert "override any conflicting rule" in synth.calls[0][0]
+
+
+async def test_ungraded_synthesis_citation_check_and_fallback():
+    from app.graph.schemas import NarrativeNoGrade
+    papers = [paper("P1", card())]
+    answers = iter([NarrativeNoGrade(executive_summary="x [P9].", research_gaps=[]),
+                    NarrativeNoGrade(executive_summary="x [P1, P9].", research_gaps=["g [P9]"])])
+    synth = FakeStructuredLLM("ds", lambda s, u: next(answers))
+    st = state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en", options={"review_type": "scoping"})
+    out = await make_write_synthesis(deps(synthesizer=synth))(st)
+    assert "unknown citation P9" in synth.calls[1][1]
+    assert out["synthesis"]["executive_summary"] == "x [P1]." and out["synthesis"]["research_gaps"] == ["g"]
+    out = await make_write_synthesis(deps(synthesizer=FakeStructuredLLM("ds", lambda s, u: LLMError("x"))))(st)
+    assert out["synthesis"]["evidence_strength"] is None and "failed" in out["synthesis"]["executive_summary"]
+
+
+async def test_ungraded_no_papers_message_is_not_very_low():
+    out = await make_write_synthesis(deps(synthesizer=unexpected("ds")))(
+        state([], matrix={"rows": [], "consensus": [], "conflicts": []}, conflict_notes=[],
+              options={"review_type": "scoping"}))
+    assert out["synthesis"]["evidence_strength"] is None
+
+
+@pytest.mark.parametrize("rt", ["narrative", "scoping"])
+async def test_non_slr_narrative_prompt_has_no_grade_text(rt):
+    from app.graph.schemas import NarrativeNoGrade
+    papers = [paper("P1", card())]
+    synth = FakeStructuredLLM("ds", lambda s, u: NarrativeNoGrade(executive_summary="A [P1].", research_gaps=[]))
+    out = await make_write_synthesis(deps(synthesizer=synth))(
+        state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en", options={"review_type": rt}))
+    system, user = synth.calls[0]
+    assert "GRADE" not in user and "evidence_strength" not in user and "one level" not in user
+    assert "evidence_rationale" not in system.split("override any conflicting rule")[1]
+    assert (out["synthesis"]["consensus"] == []) == (rt == "scoping")

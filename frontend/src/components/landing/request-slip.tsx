@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ApiError, createReview, getStatus } from "@/lib/api";
 import { TYPICAL_DURATION_TH } from "@/lib/copy";
-import type { ServiceStatus } from "@/lib/types";
+import type { ReviewType, ServiceStatus } from "@/lib/types";
+import { ReviewTypePicker } from "./review-type-picker";
 
 type Turnstile = { render: (el: HTMLElement, opts: Record<string, unknown>) => string; reset: (id?: string) => void };
 declare global {
@@ -65,6 +66,7 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
   const [maxPapers, setMaxPapers] = useState(30);
   const [yearFrom, setYearFrom] = useState("");
   const [types, setTypes] = useState<string[]>([]);
+  const [reviewType, setReviewType] = useState<ReviewType>("slr");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<ServiceStatus | null>(null);
@@ -113,7 +115,7 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
     setBusy(true);
     setError(null);
     try {
-      const options: Record<string, unknown> = { max_papers: maxPapers };
+      const options: Record<string, unknown> = { max_papers: maxPapers, review_type: reviewType };
       if (yearFrom) options.year_from = Number(yearFrom);
       if (types.length) options.study_types = types;
       const body = { topic: topic.trim(), language, options };
@@ -156,11 +158,12 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
             <label className="flex items-center gap-1.5"><input type="radio" name="lang" checked={language === "en"}
               onChange={() => setLanguage("en")} className="size-4 accent-primary" />English</label>
           </fieldset>
+          <ReviewTypePicker value={reviewType} onChange={setReviewType} available={status?.limits?.review_types} />
           <details className="grid gap-4 border-t border-rule pt-3">
             <summary className="cursor-pointer text-[0.92rem]"><span className="font-display font-medium">ตัวเลือกเพิ่มเติม</span> <span className="text-muted">{summary}</span></summary>
             <div className="mt-4 grid gap-4">
             <fieldset className="flex flex-wrap gap-x-5 gap-y-2 text-[0.92rem]">
-              <legend className="label mb-1.5">ชนิดงานวิจัยที่ต้องการ (ไม่เลือก = ทุกชนิด)</legend>
+              <legend className="label mb-1.5">ชนิดงานวิจัยที่จะรวม (ไม่เลือก = ทุกชนิด)</legend>
               {STUDY_TYPES.map(([value, label]) => (
                 <label key={value} className="flex items-center gap-1.5">
                   <input type="checkbox" checked={types.includes(value)} onChange={() => toggleType(value)} className="size-4 accent-primary" />

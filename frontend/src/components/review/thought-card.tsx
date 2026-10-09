@@ -22,7 +22,7 @@ function Detail({ d }: { d: NonNullable<Thought["detail"]> }) {
       {d.ok && (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
           {d.direction && <Glyph direction={d.direction} lang="th" />}
-          <span className="text-muted">{lines.finding}</span>
+          {lines.finding && <span className="text-muted">{lines.finding}</span>}
           {lines.verified && <span className="font-display tabular-nums text-muted">{lines.verified}</span>}
           {d.uncertain && <UncertainFlag />}
         </p>
@@ -32,8 +32,8 @@ function Detail({ d }: { d: NonNullable<Thought["detail"]> }) {
 }
 
 /** "What the agent is doing now", from the scene only. A labelled region, never a live region. */
-export function ThoughtCard({ scene }: { scene: Scene }) {
-  const thought = thoughtFor(scene);
+export function ThoughtCard({ scene, framework }: { scene: Scene; framework?: "PICO" | "PCC" }) {
+  const thought = thoughtFor(scene, { framework });
   if (!thought) return null;
   return (
     <div role="group" aria-labelledby="h-thought" className="min-w-0 flex-1 rounded-sm bg-rail px-3 py-2.5">

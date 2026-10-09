@@ -13,15 +13,19 @@ def _cell(text: Any) -> str:
     return " ".join(str(text if text is not None else "").split()).replace("|", "\\|")
 
 
-def _comparison(rows: list[dict[str, Any]]) -> list[str]:
+TYPE_LABEL = {"narrative": "Narrative review", "slr": "Systematic review", "scoping": "Scoping review"}
+
+
+def _comparison(rows: list[dict[str, Any]], directions: bool = True) -> list[str]:
+    """`directions=False` (scoping review) leaves the direction words out: a scoping review does not judge effects."""
     refs = sorted({c["ref"] for r in rows for c in r["cells"]}, key=lambda r: int(r[1:]) if r[1:].isdigit() else 0)
     if not rows or not refs:
         return []
     lines = ["| Outcome | " + " | ".join(refs) + " |", "|---|" + "---|" * len(refs)]
     for row in rows:
         by_ref = {c["ref"]: c for c in row["cells"]}
-        cells = [f"{_cell(by_ref[r]['finding'])} ({DIRECTION.get(by_ref[r]['direction'], by_ref[r]['direction'])})"
-                 if r in by_ref else "" for r in refs]
+        cells = [(f"{_cell(by_ref[r]['finding'])} ({DIRECTION.get(by_ref[r]['direction'], by_ref[r]['direction'])})"
+                  if directions else _cell(by_ref[r]["finding"])) if r in by_ref else "" for r in refs]
         lines.append(f"| {_cell(row['outcome'])} | " + " | ".join(cells) + " |")
     return lines
 
@@ -36,13 +40,19 @@ def render_markdown(review) -> str:
     s = result.get("synthesis") or {}
     if q.get("refined_question"):
         out += [f"**Question:** {q['refined_question']}", ""]
+    review_type = result.get("review_type")
+    if review_type and review_type != "slr":  # SLR Markdown stays as before
+        out += [f"**Review type:** {TYPE_LABEL.get(review_type, review_type)} (automated, abstracts only)", ""]
     out += ["## Summary", "", result.get("summary") or s.get("executive_summary", ""), ""]
-    out += [f"**Evidence strength:** {s.get('evidence_strength', 'n/a')} — {s.get('evidence_rationale', '')}", ""]
-    table = _comparison(s.get("comparison") or [])
+    if "evidence_strength" in s and s["evidence_strength"] is None:
+        out += [f"**Evidence strength:** not assessed ({s.get('evidence_rationale', '')})", ""]
+    else:
+        out += [f"**Evidence strength:** {s.get('evidence_strength', 'n/a')} — {s.get('evidence_rationale', '')}", ""]
+    table = _comparison(s.get("comparison") or [], directions=review_type != "scoping")
     if table:
         out += ["## Comparison", "", *table, ""]
     for title, key in (("Consensus", "consensus"), ("Conflicts", "conflicts")):
-        items = s.get(key) or []
+        items = [] if review_type == "scoping" else s.get(key) or []  # a scoping review makes no claims
         if items:
             out += [f"## {title}", ""]
             for c in items:
@@ -71,7 +81,9 @@ def render_markdown(review) -> str:
 
 CSV_FIELDS = ["ref", "title", "year", "journal", "doi", "pmid", "design_category", "study_design", "sample_size",
               "outcome", "direction", "effect_measure", "effect_value", "ci_lower", "ci_upper", "p_value",
-              "evidence_quote", "error"]
+              "evidence_quote", "error",
+              "population", "intervention_or_exposure", "comparator", "risk_of_bias", "overall_direction",
+              "key_findings", "limitations"]
 
 
 FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
@@ -88,6 +100,8 @@ def _cell_value(value: Any) -> Any:
 def render_csv(result: dict[str, Any] | None) -> str:
     """One row per paper × outcome, from the English cards. Values the verifier blanked are already null and stay
     empty here: nothing is estimated. A paper without a card gets one row carrying its error."""
+    # A scoping review judges neither direction nor bias: those columns stay in the header but are left empty.
+    scoping = (result or {}).get("review_type") == "scoping"
     out = io.StringIO()
     writer = csv.DictWriter(out, fieldnames=CSV_FIELDS, extrasaction="ignore", lineterminator="\n")
     writer.writeheader()
@@ -99,9 +113,14 @@ def render_csv(result: dict[str, Any] | None) -> str:
             writer.writerow({k: _cell_value(v) for k, v in base.items()})
             continue
         base |= {"design_category": card.get("design_category"), "study_design": card.get("study_design"),
-                 "sample_size": card.get("sample_size")}
+                 "sample_size": card.get("sample_size"),
+                 **{k: card.get(k) for k in ("population", "intervention_or_exposure", "comparator", "risk_of_bias",
+                                             "overall_direction")},
+                 **{k: " | ".join(str(x) for x in card.get(k) or []) for k in ("key_findings", "limitations")}}
         for o in card.get("outcomes") or [{}]:
             row = base | {k: o.get(k) for k in ("outcome", "direction", "effect_measure", "effect_value",
                                                 "ci_lower", "ci_upper", "p_value", "evidence_quote")}
+            if scoping:
+                row |= {"direction": None, "overall_direction": None, "risk_of_bias": None}
             writer.writerow({k: _cell_value(v) for k, v in row.items()})
     return "\ufeff" + out.getvalue()  # BOM: spreadsheet apps then read Thai/unicode titles correctly

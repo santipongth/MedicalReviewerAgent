@@ -3,6 +3,7 @@ export type TermKey =
   | "rct" | "nonRandomized" | "cohort" | "caseControl" | "crossSectional" | "caseSeries"
   | "mendelian" | "srma" | "narrativeReview"
   | "hr" | "or" | "rr" | "md" | "smd" | "rd" | "ci95"
+  | "pcc" | "slr" | "scopingReview"
   | "logScale" | "prisma" | "relevance" | "notVerified" | "uncertain" | "directionTally" | "studyDesign";
 
 type Bi = { th: string; en: string };
@@ -14,6 +15,27 @@ export const GLOSSARY: Record<TermKey, { label: Bi; body: Bi }> = {
     body: {
       th: "กรอบแบ่งคำถามวิจัยเป็น 4 ส่วน คือ ผู้ป่วย การรักษา สิ่งที่เทียบ และผลลัพธ์ที่สนใจ",
       en: "A frame that splits a clinical question into Population, Intervention, Comparator and Outcome.",
+    },
+  },
+  pcc: {
+    label: { th: "PCC", en: "PCC" },
+    body: {
+      th: "กรอบแบ่งคำถามของการทบทวนขอบเขตเป็น 3 ส่วน คือ ประชากร แนวคิดที่สนใจ และบริบท ใช้สำรวจว่ามีงานวิจัยอะไรบ้าง",
+      en: "A frame for scoping-review questions: Population, Concept and Context. It is used to map what research exists.",
+    },
+  },
+  slr: {
+    label: { th: "การทบทวนอย่างเป็นระบบ", en: "systematic review" },
+    body: {
+      th: "ค้นและคัดกรองงานวิจัยตามเกณฑ์ที่กำหนดไว้ล่วงหน้า รายงานขั้นตอนแบบ PRISMA และประเมินความแข็งแรงของหลักฐาน รายงานนี้ทำโดยเอเจนต์อัตโนมัติจากบทคัดย่อเท่านั้น",
+      en: "Searches and screens studies by criteria set in advance, reports the steps as PRISMA and grades the evidence. This one is done automatically by an agent from abstracts only.",
+    },
+  },
+  scopingReview: {
+    label: { th: "การทบทวนขอบเขต", en: "scoping review" },
+    body: {
+      th: "สำรวจว่ามีงานวิจัยอะไร ชนิดใด ปีใด ในหัวข้อหนึ่ง ไม่ประเมินคุณภาพของแต่ละงาน และไม่สรุปว่าได้ผลหรือไม่",
+      en: "Maps what research exists on a topic, of which kinds and from which years. It does not appraise quality or conclude whether something works.",
     },
   },
   evidenceStrength: {

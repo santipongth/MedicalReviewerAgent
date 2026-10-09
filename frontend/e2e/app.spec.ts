@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { reviewFixture } from "../src/test/fixtures";
+import { narrativeReviewFixture, reviewFixture, scopingReviewFixture, slrReviewFixture } from "../src/test/fixtures";
 import { json, LIVE_EVENTS, mockApi, RID, sse, OPEN_STATUS } from "./mock-api";
 
 const shots = (name: string) => `test-results/screens/${name}.png`;
@@ -319,4 +319,116 @@ test("axe: report with the source drawer open at 375px", async ({ page }) => {
   await page.getByRole("button", { name: /^P1: / }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await noSeriousA11y(page);
+});
+
+test("phone width: the literature matrix scrolls inside its own container, not the page", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, narrativeReviewFixture) });
+  await page.goto(`/r/${RID}`);
+  const table = page.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
+  await expect(table).toBeVisible();
+  await noHorizontalScroll(page);
+  const scroller = await table.evaluate((t) => ({ box: t.parentElement!.clientWidth, content: t.parentElement!.scrollWidth }));
+  expect(scroller.box).toBeLessThanOrEqual(390);
+  expect(scroller.content).toBeGreaterThan(scroller.box);
+  const first = await table.getByRole("rowheader").first().boundingBox();
+  await table.evaluate((t) => { t.parentElement!.scrollLeft = 400; });
+  const after = await table.getByRole("rowheader").first().boundingBox();
+  expect(Math.abs(after!.x - first!.x)).toBeLessThan(2);
+});
+
+// ---- Plan 14a: review types, literature matrix, concept map ----
+
+const typeFixtures = { slr: slrReviewFixture, narrative: narrativeReviewFixture, scoping: scopingReviewFixture };
+
+async function openReport(page: Page, fixture: typeof reviewFixture) {
+  await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, fixture) });
+  await page.goto(`/r/${RID}`);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
+}
+
+test("landing: the request slip sends the chosen review_type", async ({ page }) => {
+  let body: { options?: { review_type?: string } } = {};
+  await mockApi(page, {
+    "POST /api/v1/reviews": (route) => { body = route.request().postDataJSON(); return json(route, 202, { review_id: RID, status: "queued", cached: false }); },
+  });
+  await page.goto("/");
+  const group = page.getByRole("group", { name: "รูปแบบการทบทวน" });
+  await expect(group.getByRole("radio", { name: "การทบทวนวรรณกรรมอย่างเป็นระบบ" })).toBeChecked();
+  await group.getByRole("radio", { name: "การทบทวนขอบเขต" }).check();
+  await page.getByLabel(/^หัวข้อ/).fill("metformin colorectal cancer");
+  await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
+  await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
+  expect(body.options?.review_type).toBe("scoping");
+});
+
+test("report per review type: badge, sections and nav", async ({ page }) => {
+  const nav = () => page.getByRole("navigation", { name: "ในรายงานนี้" });
+  await openReport(page, scopingReviewFixture);
+  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ").first()).toContainText("การทบทวนขอบเขต");
+  await expect(page.getByRole("heading", { name: "แผนที่หลักฐาน" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "แผนที่หลักฐาน" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ตารางงานวิจัย" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "แผนที่ความรู้" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "จุดที่ตรงกันและขัดกัน" })).toHaveCount(0);
+  await expect(page.getByRole("img", { name: /^Forest plot/ })).toHaveCount(0);
+  await expect(nav().getByRole("link", { name: "จุดตรงกัน/ขัดกัน" })).toHaveCount(0);
+
+  await openReport(page, narrativeReviewFixture);
+  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ").first()).toContainText("การทบทวนแบบบรรยาย");
+  await expect(nav().getByRole("link", { name: "ตารางงานวิจัย" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "แผนที่ความรู้" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "แผนที่หลักฐาน" })).toHaveCount(0);
+  await expect(page.getByRole("table", { name: "เหตุผลที่คัดออก" })).toHaveCount(0);
+
+  await openReport(page, slrReviewFixture);
+  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ").first()).toContainText("การทบทวนวรรณกรรมอย่างเป็นระบบ");
+  await expect(nav().getByRole("link", { name: "จุดตรงกัน/ขัดกัน" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "แผนภาพ" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "แผนที่หลักฐาน" })).toHaveCount(0);
+});
+
+test("scoping report: PRISMA lists the exclusion reasons; the concept map toggles to its outline", async ({ page }) => {
+  await openReport(page, scopingReviewFixture);
+  const reasons = page.getByRole("table", { name: "เหตุผลที่คัดออก" });
+  await expect(reasons).toBeAttached();
+  const section = page.locator("#h-map").locator("xpath=ancestor::section[1]");
+  await section.scrollIntoViewIfNeeded();
+  await expect(section.getByRole("img", { name: /^แผนที่ความรู้/ })).toBeVisible();
+  await section.getByRole("button", { name: "ดูเป็นตาราง" }).click();
+  const outline = section.getByRole("list", { name: "โครงร่างแผนที่ความรู้" });
+  await expect(outline).toBeVisible();
+  await expect(outline.getByRole("button").first()).toBeVisible();
+  await section.getByRole("button", { name: "ดูเป็นแผนภาพ" }).click();
+  await expect(section.getByRole("img", { name: /^แผนที่ความรู้/ })).toBeVisible();
+});
+
+for (const [type, fixture] of Object.entries(typeFixtures)) {
+  for (const width of [1440, 390]) {
+    test(`axe: ${type} report at ${width}px, light and dark`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openReport(page, fixture);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await noHorizontalScroll(page);
+      await noSeriousA11y(page);
+      await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+      await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(20, 39, 31)");
+      await noSeriousA11y(page);
+    });
+  }
+}
+
+test("axe: landing with the review-type picker at 1440 and 390, light and dark", async ({ page }) => {
+  await mockApi(page);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await expect(page.getByRole("group", { name: "รูปแบบการทบทวน" })).toBeVisible();
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+    await noSeriousA11y(page);
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(20, 39, 31)");
+    await noSeriousA11y(page);
+  }
 });

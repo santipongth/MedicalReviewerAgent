@@ -102,15 +102,22 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
 
     @mcp.tool()
     async def start_review(topic: str, ctx: Context, language: Literal["th", "en"] = "th",
-                           max_papers: int = 30) -> dict[str, Any]:
+                           max_papers: int = 30,
+                           review_type: Literal["narrative", "slr", "scoping"] = "slr") -> dict[str, Any]:
         """Start a literature review of a disease, drug or chemical (e.g. "metformin and colorectal cancer").
         The agent refines the question, screens ~60 papers that have abstracts, analyses the abstracts of the best
-        `max_papers` (clamped into 5-30, default 30) and compares their findings. Returns review_id, status, cached
+        `max_papers` (clamped into 5-30, default 30) and compares their findings.
+        `review_type` picks the kind of review:
+        - "slr" (default): systematic review, PICO question, PRISMA flow and an evidence-strength grade.
+        - "narrative": thematic overview across study types including narrative reviews; no evidence grade.
+        - "scoping": maps what research exists (types, years) with a PCC question; no quality or effect judgement.
+        Returns review_id, status, cached
         and status_url. The same topic, language and options within 24 hours (or still running) return that review
         (cached=true). Fails with a reason and a wait time when the service is busy."""
         try:
             req = CreateReviewRequest(topic=topic, language=language,
-                                      options=ReviewOptions.clamped({"max_papers": max_papers}))
+                                      options=ReviewOptions.clamped({"max_papers": max_papers,
+                                                                             "review_type": review_type}))
             created = await get_deps().service.create(req, identity=await identity(ctx), human_check=False)
         except (ServiceError, ValueError) as exc:
             raise _error(exc) from exc

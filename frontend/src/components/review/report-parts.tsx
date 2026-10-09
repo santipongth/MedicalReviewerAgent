@@ -4,6 +4,7 @@ import { Fragment, type ReactNode } from "react";
 import { designKey, designLabel } from "@/lib/charts-data";
 import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
+import { isGraded, REVIEW_TYPE_LABEL, showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, QuestionBlock, Quality, Synthesis } from "@/lib/types";
 import { Glyph, UncertainFlag } from "../ui/evidence";
 import { Term } from "../ui/term";
@@ -51,18 +52,33 @@ export function QuestionTitle({ question, topic, lang }: { question?: QuestionBl
 }
 
 /** How the agent read the question: interpretation, PICO, sub-questions, assumptions. One disclosure, no nesting. */
-export function QuestionDetails({ question, lang }: { question?: QuestionBlock; lang: Lang }) {
+export function QuestionDetails({ question, lang, type = "legacy" }: { question?: QuestionBlock; lang: Lang; type?: ReviewTypeOrLegacy }) {
   const text = lang === "en" && question?.english ? question.english : question;
   const pico = question?.pico;
   const hasMore = !!text?.sub_questions?.length || !!text?.assumptions?.length || !!question?.ambiguities?.length;
-  if (!text?.interpretation && !pico && !hasMore) return null;
+  const isPcc = question?.framework === "PCC";
+  const keyTerms = type === "legacy" ? [] : question?.key_terms ?? []; // legacy reports stay as they were
+  if (!text?.interpretation && !pico && !isPcc && !keyTerms.length && !hasMore) return null;
   return (
     <details className="grid gap-3 text-[0.92rem]">
       <summary className="cursor-pointer font-display font-semibold">{L(lang, "เอเจนต์ตีความคำถามอย่างไร", "How the agent interpreted the question")}</summary>
       <div className="mt-3 grid gap-3">
         {text?.interpretation && <p className="max-w-[65ch] text-[0.95rem] text-muted">{text.interpretation}</p>}
-        {pico && <p className="label"><Term k="pico" lang={lang}>PICO</Term></p>}
-        {pico && (
+        {isPcc && <p className="label"><Term k="pcc" lang={lang}>PCC</Term></p>}
+        {isPcc && (
+          <dl className="grid gap-px overflow-hidden rounded-sm border border-rule bg-rule sm:grid-cols-3">
+            {([["P", L(lang, "ประชากร", "Population"), pico?.population], ["C", L(lang, "แนวคิด", "Concept"), question?.concept],
+              ["C", L(lang, "บริบท", "Context"), question?.context]] as const)
+              .map(([k, label, v]) => (
+                <div key={label} className="bg-surface px-4 py-2.5">
+                  <dt className="label">{k} · {label}</dt>
+                  <dd className="text-[0.92rem] break-words">{v || "–"}</dd>
+                </div>
+              ))}
+          </dl>
+        )}
+        {!isPcc && pico && <p className="label"><Term k="pico" lang={lang}>PICO</Term></p>}
+        {!isPcc && pico && (
           <dl className="grid gap-px overflow-hidden rounded-sm border border-rule bg-rule sm:grid-cols-2">
             {([["P", L(lang, "ประชากร", "Population"), pico.population], ["I", L(lang, "สิ่งที่ศึกษา", "Intervention / exposure"), pico.intervention_or_exposure],
               ["C", L(lang, "ตัวเปรียบเทียบ", "Comparator"), pico.comparator], ["O", L(lang, "ผลลัพธ์", "Outcomes"), pico.outcomes?.join(", ")]] as const)
@@ -73,6 +89,19 @@ export function QuestionDetails({ question, lang }: { question?: QuestionBlock; 
                 </div>
               ))}
           </dl>
+        )}
+        {!!keyTerms.length && (
+          <div>
+            <p className="label">{L(lang, "คำสำคัญที่ใช้ค้น", "Key terms searched")}</p>
+            <ul className="mt-1 flex flex-wrap gap-1.5">
+              {keyTerms.map((k) => (
+                <li key={k.term} className="rounded-sm border border-rule bg-ground px-2 py-0.5 text-[0.85rem] break-words">
+                  <b className="font-display font-semibold">{k.term}</b>
+                  {!!k.synonyms?.length && <span className="text-muted"> · {k.synonyms.join(", ")}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         {!!text?.sub_questions?.length && (
           <div>
@@ -89,18 +118,29 @@ export function QuestionDetails({ question, lang }: { question?: QuestionBlock; 
 
 const LEVELS: EvidenceStrength[] = ["very_low", "low", "moderate", "high"];
 
-export function StrengthLine({ synthesis, lang, quality }: { synthesis: Synthesis; lang: Lang; quality?: Quality }) {
+export function StrengthLine({ synthesis, lang, quality, type = "legacy" }: {
+  synthesis: Synthesis; lang: Lang; quality?: Quality; type?: ReviewTypeOrLegacy;
+}) {
+  // A typed result with no grade must never read as "very low": only legacy results keep that fallback.
+  const ungraded = type !== "legacy" && (!isGraded(type) || synthesis.evidence_strength == null);
   const level = synthesis.evidence_strength ?? "very_low";
   const idx = LEVELS.indexOf(level);
+  const typeName = type === "legacy" ? "" : REVIEW_TYPE_LABEL[type][lang];
   return (
     <div className="grid gap-1.5">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.92rem]">
+        {ungraded ? (
+          <p className="font-display font-semibold">
+            {L(lang, `ไม่ได้ประเมินความแข็งแรงของหลักฐาน (${typeName})`, `Evidence strength not assessed (${typeName})`)}
+          </p>
+        ) : (
         <p className="flex items-center gap-2 font-display font-semibold">
           <Term k="evidenceStrength" lang={lang}>{L(lang, "ความแข็งแรงของหลักฐาน", "Evidence strength")}</Term>: <b>{STRENGTH_LABEL[lang][level]}</b>
           <span aria-hidden="true" className="inline-flex gap-0.5">
             {LEVELS.map((l, i) => <i key={l} className={`h-2 w-[18px] ${i <= idx ? "bg-ink" : "bg-rule"}`} />)}
           </span>
         </p>
+        )}
         {quality?.numbers_total ? (
           <p className="text-muted">
             {L(lang, "ตัวเลขตรวจผ่าน", "numbers verified")}{" "}
@@ -108,7 +148,7 @@ export function StrengthLine({ synthesis, lang, quality }: { synthesis: Synthesi
           </p>
         ) : null}
       </div>
-      {synthesis.evidence_rationale && <p className="max-w-[65ch] text-[0.88rem] text-muted">{synthesis.evidence_rationale}</p>}
+      {!ungraded && synthesis.evidence_rationale && <p className="max-w-[65ch] text-[0.88rem] text-muted">{synthesis.evidence_rationale}</p>}
     </div>
   );
 }
@@ -237,7 +277,9 @@ export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs }: {
   );
 }
 
-export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Paper[]; lang: Lang; onSelect: Select; selectedRef?: string }) {
+export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy" }: {
+  papers: Paper[]; lang: Lang; onSelect: Select; selectedRef?: string; type?: ReviewTypeOrLegacy;
+}) {
   return (
     <ul className="border-t border-rule">
       {papers.map((p) => {
@@ -255,8 +297,8 @@ export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Pap
                   {card ? (
                     <>
                       <span>{designLabel(designKey(card), lang)}</span>
-                      <span className="inline-flex items-center gap-1.5"><Glyph direction={card.overall_direction} lang={lang} />{DIRECTION_LABEL[lang][card.overall_direction]}</span>
-                      <span>{L(lang, "อคติ", "Bias")}: {ROB_LABEL[lang][card.risk_of_bias]}</span>
+                      {showsDirection(type) && <span className="inline-flex items-center gap-1.5"><Glyph direction={card.overall_direction} lang={lang} />{DIRECTION_LABEL[lang][card.overall_direction]}</span>}
+                      {showsRiskOfBias(type) && <span>{L(lang, "อคติ", "Bias")}: {ROB_LABEL[lang][card.risk_of_bias]}</span>}
                     </>
                   ) : (
                     <span className="text-err">{L(lang, "อ่านไม่สำเร็จ", "Could not be read")}{p.error ? ` · ${p.error}` : ""}</span>

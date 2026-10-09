@@ -1,7 +1,7 @@
 // Chart data built only from verified values. Nothing here estimates, converts or recomputes a number from a paper.
 import { asReported, ciLabel, effectLabel, isBlankedEffect, isVerifiedEffect } from "./evidence";
 import { DESIGN_LABEL, type Lang } from "./i18n";
-import type { DesignCategory, Direction, Paper, PaperCard, RiskOfBias, Stats } from "./types";
+import type { DesignCategory, Direction, ExclusionReason, Paper, PaperCard, RiskOfBias, Stats } from "./types";
 
 /** The design a paper is filtered by: its fixed category, or (results stored before categories) its free text. */
 export function designKey(card: PaperCard): string {
@@ -40,11 +40,13 @@ export function filterPapers(papers: Paper[], f: Filters): Paper[] {
   });
 }
 
-/** Papers that have a card, counted by the card's overall direction. A count of papers, not a number from a paper. */
-export function directionTally(papers: Paper[]): Record<Direction, number> {
+/** Papers that have a card, counted by the card's overall direction. A count of papers, not a number from a paper.
+ * `skipReviews` leaves narrative-review articles out (they restate other studies; the matrix and map skip them too). */
+export function directionTally(papers: Paper[], skipReviews = false): Record<Direction, number> {
   const tally: Record<Direction, number> = { positive: 0, negative: 0, null: 0, mixed: 0, unclear: 0 };
   for (const p of papers) {
     const card = p.card_en ?? p.card;
+    if (skipReviews && card?.design_category === "narrative_review") continue;
     if (card && card.overall_direction in tally) tally[card.overall_direction] += 1;
   }
   return tally;
@@ -152,6 +154,45 @@ export function prismaStages(stats: Stats | undefined, lang: Lang): Stage[] {
   return (["found", "unique", "with_abstract", "screened", "selected", "with_fulltext", "extracted"] as const)
     .filter((k) => typeof stats[k] === "number")
     .map((k) => ({ key: k, label: STAGE_LABEL[k][lang === "th" ? 0 : 1], value: stats[k] as number }));
+}
+
+/** Thai/English labels for the screening exclusion reasons (ExclusionReason). */
+export const EXCLUSION_REASON_LABEL: Record<ExclusionReason, { th: string; en: string }> = {
+  off_topic: { th: "ไม่เกี่ยวกับหัวข้อ", en: "Off topic" },
+  population: { th: "กลุ่มประชากรไม่ตรง", en: "Population does not match" },
+  intervention_exposure: { th: "การรักษาหรือปัจจัยที่ศึกษาไม่ตรง", en: "Intervention or exposure does not match" },
+  outcome: { th: "ผลลัพธ์ไม่ตรง", en: "Outcome does not match" },
+  study_design: { th: "รูปแบบการศึกษาไม่ตรงเกณฑ์", en: "Study design does not match" },
+  publication_type: { th: "ชนิดสิ่งตีพิมพ์ไม่ตรง (เช่น บทบรรณาธิการ)", en: "Publication type does not match (e.g. editorial)" },
+  other: { th: "เหตุผลอื่น", en: "Other reason" },
+};
+
+const REASON_ORDER = Object.keys(EXCLUSION_REASON_LABEL) as ExclusionReason[];
+
+export interface ExclusionRow {
+  key: string;
+  label: string;
+  value: number;
+}
+
+/**
+ * The "why records were left out" rows for the PRISMA figure. Null when the result carries none of the data
+ * (older results). Counts are exactly what the result recorded: technical screening failures are deliberately
+ * not counted, so no remainder or "other" total is derived here.
+ */
+export function exclusionRows(stats: Stats | undefined, lang: Lang): { reasons: ExclusionRow[]; extra: ExclusionRow[] } | null {
+  if (!stats) return null;
+  const reasons = REASON_ORDER
+    .filter((k) => (stats.excluded_screening?.[k] ?? 0) > 0)
+    .map((k) => ({ key: k, label: EXCLUSION_REASON_LABEL[k][lang], value: stats.excluded_screening![k] as number }));
+  const extra: ExclusionRow[] = [];
+  const add = (key: string, th: string, en: string, value: number | undefined) => {
+    if (typeof value === "number" && value > 0) extra.push({ key, label: lang === "th" ? th : en, value });
+  };
+  add("non_research", "ไม่ใช่งานวิจัย", "Not research", stats.non_research);
+  add("over_limit", "เกินจำนวนที่วิเคราะห์", "Over the analysis limit", stats.excluded_selection?.over_limit);
+  add("narrative_excluded", "บทความทบทวนแบบไม่เป็นระบบ", "Narrative reviews", stats.excluded_selection?.narrative_excluded);
+  return reasons.length || extra.length ? { reasons, extra } : null;
 }
 
 export interface StudyPoint {

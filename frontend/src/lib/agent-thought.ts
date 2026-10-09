@@ -11,7 +11,7 @@ export type ThoughtDetail =
   | { kind: "queries"; items: string[]; more: number }
   | {
     kind: "paper"; ref: string; title: string | null; ok: boolean; direction: Direction | null;
-    design: DesignCategory | null; uncertain: boolean; verified: number | null;
+    design: DesignCategory | null; uncertain: boolean; verified: number | null; directionless?: boolean;
   };
 export interface Thought {
   key: string; agent: AgentId | null; status: AgentStatus | null; heading: string; body: string; short: string;
@@ -39,9 +39,11 @@ export function paperLines(d: Extract<ThoughtDetail, { kind: "paper" }>): {
 } {
   if (!d.ok) return { lead: `อ่าน ${d.ref} ไม่สำเร็จ`, finding: null, verified: null, flag: null };
   const dir = d.direction ? `${DIRECTION_LABEL.th[d.direction]} ${AS_READ_TH}` : NO_DIRECTION_TH;
+  // A scoping review reports no direction at all (not even "no direction"): only the design, when known.
+  const finding = d.directionless ? (d.design ? DESIGN_LABEL.th[d.design] : null) : d.design ? `${dir} · ${DESIGN_LABEL.th[d.design]}` : dir;
   return {
     lead: `อ่านเสร็จล่าสุด ${d.ref}`,
-    finding: d.design ? `${dir} · ${DESIGN_LABEL.th[d.design]}` : dir,
+    finding,
     verified: d.verified !== null && d.verified > 0 ? `ตรวจตัวเลขผ่าน ${d.verified} ค่า` : null,
     flag: d.uncertain ? "สองโมเดลอ่านต่างกัน" : null,
   };
@@ -68,7 +70,7 @@ function make(
 }
 
 /** The thought for the current state; null once the review is terminal (done/error/rejected/cancelled). */
-export function thoughtFor(s: Scene): Thought | null {
+export function thoughtFor(s: Scene, opts: { framework?: "PICO" | "PCC" } = {}): Thought | null {
   if (s.status === "waiting") return make("waiting", null, null, "รอคิว", "เอเจนต์จะเริ่มทำงานเมื่อถึงคิว", null);
   if (s.status === "paused") return make("paused", null, null, "หยุดชั่วคราว", "เซิร์ฟเวอร์หยุดชั่วคราว จะทำงานต่อเอง", null);
   if (s.status !== "running") return null;
@@ -84,7 +86,8 @@ export function thoughtFor(s: Scene): Thought | null {
     make(id, id, st, STEP_TITLE[id], body, shortBody, { since, ...extra });
   switch (id) {
     case "guard": return t("ตรวจว่าเป็นคำถามทางการแพทย์ก่อนเริ่มค้น", null);
-    case "refine": return t("แปลงคำถามให้ชัดแบบ PICO: ใคร ทำอะไร เทียบกับอะไร วัดผลอะไร", null);
+    case "refine": return t(
+      opts.framework === "PCC" ? "แปลงคำถามให้ชัดแบบ PCC: ประชากร แนวคิด บริบท" : "แปลงคำถามให้ชัดแบบ PICO: ใคร ทำอะไร เทียบกับอะไร วัดผลอะไร", null);
     case "plan": return t(AGENT_LABEL.plan.role, null);
     case "search": {
       const n = c.queries;
@@ -119,6 +122,7 @@ export function thoughtFor(s: Scene): Thought | null {
         kind: "paper", ref: latest.ref, title: latest.title, ok,
         direction: ok ? latest.direction : null, design: ok ? latest.design : null,
         uncertain: latest.state === "uncertain", verified: ok ? latest.verified : null,
+        ...(s.directionless ? { directionless: true } : {}),
       };
       return t(`อ่านเสร็จ ${d} จาก ${n} ฉบับ`, `อ่านเสร็จ ${d}/${n}`, { detail });
     }

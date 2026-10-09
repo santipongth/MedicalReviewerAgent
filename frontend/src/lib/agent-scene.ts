@@ -76,6 +76,7 @@ export interface Scene {
   expectLocalize: boolean; // from review.language === "th"
   elapsed: number;
   spans: Partial<Record<AgentId, StepSpan>>;
+  directionless?: boolean; // scoping: the view shows no direction anywhere (set by LiveRun on a derived scene)
 }
 export type SceneAction = { kind: "event"; ev: ReviewEvent } | { kind: "lang"; language: string };
 

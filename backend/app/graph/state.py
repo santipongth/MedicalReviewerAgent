@@ -20,6 +20,7 @@ class ReviewState(TypedDict, total=False):
     # Send fan-out branches append to these; reducers merge them.
     screened: Annotated[list[dict[str, Any]], operator.add]  # {key, relevance, include, reason}
     selected: list[dict[str, Any]]  # {ref, relevance, reason, candidate}
+    selection_stats: dict[str, Any]  # {excluded_screening: {reason: n}, narrative_excluded, over_limit}
     external_context: Annotated[list[dict[str, Any]], operator.add]  # results of external MCP tool calls
     papers: Annotated[list[dict[str, Any]], operator.add]  # {ref, candidate, relevance, card, error}
     started_at: float  # epoch seconds when the review started (total time in quality.timings)

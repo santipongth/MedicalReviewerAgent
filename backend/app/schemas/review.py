@@ -8,8 +8,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
+ReviewType = Literal["narrative", "slr", "scoping"]
+REVIEW_TYPES: tuple[str, ...] = ("narrative", "slr", "scoping")
+
 
 class ReviewOptions(BaseModel):
+    review_type: ReviewType = "slr"
     # Abstract-only: up to 60 candidates with abstracts are screened and the 30 most relevant are analysed.
     max_papers: int = Field(30, ge=5, le=30)
     candidate_limit: int = Field(60, ge=20, le=100)
@@ -27,6 +31,8 @@ class ReviewOptions(BaseModel):
         """Options pulled into the current ranges instead of rejected: for MCP arguments and for graph state
         stored under older ranges (e.g. max_papers 3, candidate_limit 10), which must not crash a resumed review."""
         data = dict(raw or {})
+        if data.get("review_type") not in REVIEW_TYPES:
+            data["review_type"] = "slr"  # missing/unknown (older state) never crashes a resumed review
         bounds = {name: (f.metadata) for name, f in cls.model_fields.items()}
         for name in ("max_papers", "candidate_limit"):
             if isinstance(data.get(name), int):

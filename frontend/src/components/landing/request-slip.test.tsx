@@ -38,7 +38,7 @@ describe("RequestSlip", () => {
     await userEvent.click(screen.getByLabelText(/RCT/));
     await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith({
-      topic: "statins and dementia", language: "en", options: { max_papers: 30, study_types: ["RCT"] },
+      topic: "statins and dementia", language: "en", options: { max_papers: 30, review_type: "slr", study_types: ["RCT"] },
     });
     expect(push).toHaveBeenCalledWith("/r/r-1");
   });
@@ -162,7 +162,7 @@ describe("RequestSlip", () => {
     await userEvent.click(screen.getByLabelText(/Systematic review/));
     await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({
-      options: { max_papers: 30, study_types: ["Cohort", "Systematic review"] },
+      options: { max_papers: 30, review_type: "slr", study_types: ["Cohort", "Systematic review"] },
     }));
   });
 });

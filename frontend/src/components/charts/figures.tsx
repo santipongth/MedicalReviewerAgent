@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { forestAxis, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
+import type { ConceptTree, MapNode } from "@/lib/concept-map";
+import { forestAxis, type exclusionRows, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
 import { L } from "../review/text";
@@ -175,7 +176,40 @@ export function ForestFigure({ data, tokens, lang, onSelect }: { data: ForestDat
   );
 }
 
-export function PrismaFigure({ stages, tokens, lang }: { stages: Stage[]; tokens: ChartTokens; lang: Lang }) {
+/** Why records were left out: reason labels with plain counts (not paper numbers). */
+function ExclusionTable({ data, lang }: { data: NonNullable<ReturnType<typeof exclusionRows>>; lang: Lang }) {
+  const rows = [...data.reasons, ...data.extra];
+  return (
+    <div className="grid gap-1.5">
+      <div className="overflow-x-auto">
+        <table aria-label={L(lang, "เหตุผลที่คัดออก", "Reasons for exclusion")} className="w-full border-collapse text-[0.88rem]">
+          <caption className="pb-1 text-left label">{L(lang, "เหตุผลที่คัดออก", "Reasons for exclusion")}</caption>
+          <thead><tr>
+            <th scope="col"><span className="sr-only">{L(lang, "เหตุผล", "Reason")}</span></th>
+            <th scope="col"><span className="sr-only">{L(lang, "จำนวน", "Count")}</span></th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key} className="border-b border-rule">
+                <th scope="row" className="py-1.5 pr-3 text-left font-normal break-words">{r.label}</th>
+                <td className="py-1.5 font-display tabular-nums">{r.value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data.reasons.length > 0 && (
+        <p className="text-[0.82rem] text-muted">
+          {L(lang, "นับเฉพาะบทความที่ระบบบันทึกเหตุผลไว้ ผลรวมอาจน้อยกว่าจำนวนที่ไม่ได้เลือก", "Counts only records with a recorded reason; the sum may be below the number not selected")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function PrismaFigure({ stages, tokens, lang, exclusions = null, scoping = false }: {
+  stages: Stage[]; tokens: ChartTokens; lang: Lang; exclusions?: ReturnType<typeof exclusionRows>; scoping?: boolean;
+}) {
   const option = useMemo<EChartsOption>(() => ({
     animation: !tokens.reducedMotion,
     animationDuration: 600,
@@ -191,17 +225,25 @@ export function PrismaFigure({ stages, tokens, lang }: { stages: Stage[]; tokens
     }],
   }), [stages, tokens]);
   if (!stages.length) return null;
-  return (
-    <Figure lang={lang} title={<>{L(lang, "ขั้นตอนการคัดเลือก", "Selection flow")} (<Term k="prisma" lang={lang}>PRISMA</Term>)</>}
+  const figure = (
+    <Figure lang={lang} title={<>{L(lang, "ขั้นตอนการคัดเลือก", "Selection flow")} (<Term k="prisma" lang={lang}>{scoping ? "PRISMA-ScR" : "PRISMA"}</Term>)</>}
       caption={L(lang, "จำนวนงานวิจัยในแต่ละขั้นของรีวิวนี้", "Number of records at each step of this review")}
       chart={<EChart option={option} height={stages.length * 34 + 16} label={stages.map((s) => `${s.label} ${s.value}`).join(", ")} />}
       table={
-        <table className="w-full border-collapse text-[0.88rem]"><tbody>
-          {stages.map((s) => <tr key={s.key} className="border-b border-rule"><td className="py-1.5 pr-3">{s.label}</td><td className="py-1.5 font-display tabular-nums">{s.value}</td></tr>)}
-        </tbody></table>
+        <table aria-label={L(lang, "ขั้นตอนการคัดเลือก", "Selection flow")} className="w-full border-collapse text-[0.88rem]">
+          <thead><tr>
+            <th scope="col"><span className="sr-only">{L(lang, "ขั้นตอน", "Step")}</span></th>
+            <th scope="col"><span className="sr-only">{L(lang, "จำนวน", "Count")}</span></th>
+          </tr></thead>
+          <tbody>
+            {stages.map((s) => <tr key={s.key} className="border-b border-rule"><th scope="row" className="py-1.5 pr-3 text-left font-normal">{s.label}</th><td className="py-1.5 font-display tabular-nums">{s.value}</td></tr>)}
+          </tbody>
+        </table>
       }
     />
   );
+  if (!exclusions) return figure;
+  return <div className="grid min-w-0 gap-4">{figure}<ExclusionTable data={exclusions} lang={lang} /></div>;
 }
 
 export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
@@ -250,6 +292,105 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
             </tr>
           ))}
         </tbody></table>
+      }
+    />
+  );
+}
+
+const CONCEPT_CAPTION = ["เส้นเชื่อมมาจากตารางผลแต่ละการศึกษาเท่านั้น ไม่ได้แสดงตัวแปรคั่นกลาง (mediator)",
+  "Links come only from the per-study results table; no mediating variables (mediators) are shown"];
+
+type TreeDatum = { name: string; ref?: string; value: string; tip?: string; symbol: string; symbolSize: number; itemStyle: Record<string, unknown>; label?: Record<string, unknown>; children?: TreeDatum[] };
+
+function treeData(n: MapNode, t: ChartTokens, lang: Lang): TreeDatum {
+  const leaf = n.kind === "group";
+  const colour = leaf && n.direction ? t.direction[n.direction] : t.muted;
+  return {
+    name: n.kind === "root" ? L(lang, "คำถาม", "Question") : n.label, value: n.text, ref: n.refs?.[0],
+    tip: leaf && n.refs?.length ? L(lang, `คลิกเพื่อเปิด ${n.refs[0]} · ดูทั้งหมดในโครงร่าง`, `Click to open ${n.refs[0]} · see all in the outline`) : undefined,
+    // Shapes no direction glyph uses (circle, diamond, rect, triangle, empty circle): rounded square for structure, pin for design groups.
+    symbol: leaf ? (n.direction ? SYMBOL[n.direction] : "pin") : "roundRect",
+    symbolSize: leaf ? 12 : 10,
+    itemStyle: leaf ? { color: colour, borderColor: t.surface, borderWidth: 1 } : { color: t.muted, borderColor: t.surface, borderWidth: 1 },
+    // Only study groups label to the right; a childless element or term keeps its label above, clear of the level after it.
+    ...(!leaf && !n.children.length ? { label: { ...CONCEPT_LABEL_TOP, color: t.ink, backgroundColor: t.surface, fontFamily: t.fontDisplay } } : {}),
+    ...(n.children.length ? { children: n.children.map((c) => treeData(c, t, lang)) } : {}),
+  };
+}
+
+const CONCEPT_LABEL_TOP = { position: "top", distance: 6, verticalAlign: "bottom", align: "center", fontSize: 12, width: 150, overflow: "truncate", padding: [1, 3] };
+
+function conceptOption(tree: ConceptTree, t: ChartTokens, lang: Lang): EChartsOption {
+  const label = { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, overflow: "truncate", backgroundColor: t.surface, padding: [1, 3] };
+  return {
+    animation: !t.reducedMotion,
+    animationDuration: 400,
+    aria: { enabled: false },
+    tooltip: {
+      trigger: "item", triggerOn: "mousemove", backgroundColor: t.surface, borderColor: t.rule,
+      textStyle: { color: t.ink, fontFamily: t.fontDisplay },
+      formatter: (p: { data: { value: string; tip?: string } }) =>
+        encodeHTML(p.data.value) + (p.data.tip ? `<br/><span style="color:${t.muted}">${encodeHTML(p.data.tip)}</span>` : ""),
+    },
+    series: [{
+      type: "tree", data: [treeData(tree.root, t, lang)], layout: "orthogonal", orient: "LR",
+      initialTreeDepth: 3, expandAndCollapse: true, roam: false, top: 28, bottom: 8, left: 34, right: 196,
+      lineStyle: { color: t.muted, width: 1.5, curveness: 0 },
+      label: { ...label, position: "top", distance: 6, verticalAlign: "bottom", align: "center", width: 150 },
+      leaves: { label: { ...label, position: "right", distance: 8, verticalAlign: "middle", align: "left", width: 180 } },
+      emphasis: { focus: "descendant" },
+      animationDurationUpdate: t.reducedMotion ? 0 : 300,
+    }],
+  };
+}
+
+/** The outline twin: every node with its full text; each paper ref is a button that opens the source rail. */
+function ConceptOutline({ node, lang, onSelect }: { node: MapNode; lang: Lang; onSelect: Select }) {
+  return (
+    <li className="grid gap-1">
+      <span className="break-words">
+        {node.kind === "group" ? (
+          <>
+            {node.direction && <><Glyph direction={node.direction} lang={lang} />{" "}</>}
+            {node.text} <span className="font-display tabular-nums">({node.count})</span>
+            {node.refs?.map((r) => (
+              <button key={r} type="button" onClick={() => onSelect(r)}
+                className="ml-1 inline-flex min-h-11 min-w-11 items-center justify-center font-display font-semibold text-primary underline underline-offset-2">
+                {r}
+              </button>
+            ))}
+          </>
+        ) : node.text}
+      </span>
+      {node.children.length > 0 && (
+        <ul className="grid list-disc gap-1 pl-5">
+          {node.children.map((c) => <ConceptOutline key={c.id} node={c} lang={lang} onSelect={onSelect} />)}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+export function ConceptMapFigure({ tree, tokens, lang, onSelect }: { tree: ConceptTree; tokens: ChartTokens; lang: Lang; onSelect: Select }) {
+  const option = useMemo(() => conceptOption(tree, tokens, lang), [tree, tokens, lang]);
+  const note = tree.byDirection ? L(lang, "ทิศทางตามที่เอเจนต์อ่านจากบทคัดย่อ", "Directions as the agent read them in the abstracts") : null;
+  return (
+    <Figure lang={lang} title={L(lang, "แผนที่ความรู้: คำถาม ผลลัพธ์ และงานวิจัยที่รายงาน", "Concept map: question, outcomes and the studies that report them")}
+      caption={<>{L(lang, CONCEPT_CAPTION[0], CONCEPT_CAPTION[1])}{note && <> · {note}</>}</>}
+      chart={
+        <div className="@container overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, "แผนที่ความรู้ (เลื่อนดูได้)", "Concept map (scrollable)")}>
+          {/* Fills the column; only a container narrower than 600px keeps a 720px canvas and scrolls inside this region. */}
+          <div className="@max-[600px]:min-w-[720px]">
+            <EChart option={option} height={Math.max(260, tree.drawnLeaves * 34)}
+              label={L(lang, `แผนที่ความรู้ ${tree.leaves} กลุ่มงานวิจัย`, `Concept map with ${tree.leaves} study groups`)}
+              onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />
+          </div>
+        </div>
+      }
+      table={
+        <ul aria-label={L(lang, "โครงร่างแผนที่ความรู้", "Concept map outline")} className="grid list-none gap-1 text-[0.9rem]">
+          <ConceptOutline node={tree.root} lang={lang} onSelect={onSelect} />
+        </ul>
       }
     />
   );

@@ -138,3 +138,14 @@ async def test_new_pipeline_version_does_not_reuse_an_old_review(client, app, qu
     app.state.deps.service.settings.prompt_version = "next-version"
     again = (await client.post("/api/v1/reviews", json=payload)).json()
     assert again["cached"] is False and again["review_id"] != first["review_id"]
+
+
+async def test_review_type_option_is_stored_and_validated(client):
+    ok = await client.post("/api/v1/reviews", json={"topic": "colchicine after myocardial infarction",
+                                                    "language": "en", "options": {"review_type": "narrative"}})
+    assert ok.status_code == 202
+    got = (await client.get(f"/api/v1/reviews/{ok.json()['review_id']}")).json()
+    assert got["options"]["review_type"] == "narrative"
+    bad = await client.post("/api/v1/reviews", json={"topic": "colchicine after myocardial infarction",
+                                                     "options": {"review_type": "umbrella"}})
+    assert bad.status_code == 422

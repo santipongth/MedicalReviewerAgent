@@ -13,13 +13,14 @@ COMPARATIVE_TYPES = {"therapy", "prevention"}
 
 def _english_fields(q: ReviewQuestion) -> list[str]:
     texts = [q.interpretation, q.refined_question, q.population, q.intervention_or_exposure, q.comparator,
-             *q.outcomes, *q.study_designs, *q.sub_questions, *q.assumptions, *q.ambiguities, q.timeframe or ""]
+             q.concept or "", q.context or "", *q.outcomes, *q.study_designs, *q.sub_questions, *q.assumptions, *q.ambiguities, q.timeframe or ""]
     for kt in q.key_terms:
         texts += [kt.term, *kt.synonyms, kt.mesh or ""]
     return texts
 
 
-def question_problems(q: ReviewQuestion, options: dict[str, Any]) -> list[str]:
+def question_problems(q: ReviewQuestion, options: dict[str, Any], review_type: str = "slr") -> list[str]:
+    scoping = review_type == "scoping"
     problems: list[str] = []
     rq = q.refined_question.strip()
     if not rq.endswith("?"):
@@ -32,7 +33,12 @@ def question_problems(q: ReviewQuestion, options: dict[str, Any]) -> list[str]:
         problems.append("intervention_or_exposure must not be empty")
     if not 1 <= len([o for o in q.outcomes if o.strip()]) <= 6:
         problems.append("outcomes must list 1-6 measurable outcomes, primary outcome first")
-    if q.question_type in COMPARATIVE_TYPES and not q.comparator.strip():
+    if scoping:  # PCC: the concept is the intervention_or_exposure; a comparator is optional
+        if not (q.concept or "").strip():
+            problems.append("concept must not be empty (the phenomenon being mapped)")
+        if not (q.context or "").strip():
+            problems.append("context must not be empty (setting, geography or care level)")
+    elif q.question_type in COMPARATIVE_TYPES and not q.comparator.strip():
         problems.append("comparator must be stated for therapy/prevention questions (e.g. placebo, usual care)")
     if not 1 <= len(q.sub_questions) <= 4:
         problems.append("sub_questions must contain 1-4 questions that together cover the topic")

@@ -4,6 +4,7 @@ import { exportUrl } from "@/lib/api";
 import { directionTally, hasPooledPapers } from "@/lib/charts-data";
 import { POOLED_OVERLAP_TH } from "@/lib/copy";
 import { DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "@/lib/i18n";
+import { reviewTypeOf, showsDirection } from "@/lib/review-type";
 import type { Paper, QuestionBlock, ReviewResult, Synthesis } from "@/lib/types";
 import { CopyLinkButton } from "../ui/copy-link";
 import { Glyph } from "../ui/evidence";
@@ -20,20 +21,25 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
   lang: Lang; offline: boolean; onSelect: Select; refs: Set<string>;
 }) {
   const hasPapers = papers.length > 0;
-  const tally = directionTally(papers);
-  const shown = DIRECTION_ORDER.filter((d) => tally[d] > 0);
+  const type = reviewTypeOf(result);
+  const tally = directionTally(papers, type === "narrative");
+  // Scoping maps what exists; it never tallies a direction of effect.
+  const shown = showsDirection(type) ? DIRECTION_ORDER.filter((d) => tally[d] > 0) : [];
   return (
     <section aria-labelledby="h-summary" className="grid gap-4">
       <QuestionTitle question={question} topic={topic} lang={lang} />
-      {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} />}
+      {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} />}
       <div className="grid gap-2">
         <h2 id="h-summary" className={SECTION_H2}>{L(lang, "สรุป", "Summary")}</h2>
         <p className="max-w-[65ch] text-[1.02rem] leading-[1.75]">
           <CitedText text={synthesis.executive_summary || result.summary || ""} onSelect={onSelect} refs={refs} />
         </p>
         {hasPapers && <p className="text-[0.8rem] text-muted">
-          {L(lang, "สรุปเขียนโดยโมเดลจากข้อมูลที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะช่องในตารางผลแต่ละการศึกษา) และในมุมมองตารางของแผนภาพ",
-            "The summary is written by a model from verified data. Numbers checked against the papers carry a striped underline; see them in the source rail (select a cell in the findings table) and in the table view of the charts.")}
+          {type === "scoping"
+            ? L(lang, "สรุปเขียนโดยโมเดลจากข้อมูลที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะรหัสงานวิจัยในรายการ)",
+              "The summary is written by a model from verified data. Numbers checked against the papers carry a striped underline; see them in the source rail (select a paper in the list).")
+            : L(lang, "สรุปเขียนโดยโมเดลจากข้อมูลที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะช่องในตารางผลแต่ละการศึกษา) และในมุมมองตารางของแผนภาพ",
+              "The summary is written by a model from verified data. Numbers checked against the papers carry a striped underline; see them in the source rail (select a cell in the findings table) and in the table view of the charts.")}
         </p>}
       </div>
       {shown.length > 0 && (

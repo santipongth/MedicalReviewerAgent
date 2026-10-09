@@ -49,6 +49,32 @@ describe("LiveRun", () => {
     expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("สังเคราะห์");
   });
 
+  const directionEvents: [string, Record<string, unknown>][] = [
+    ["started", {}], ["screened", { kept: 2, total: 5 }],
+    ["reading", { ref: "P1", title: "Cohort study" }], ["extracted", { ref: "P1", ok: true, verified: 1, direction: "positive", design: "cohort" }],
+    ["reading", { ref: "P2", title: "Registry" }], ["extracted", { ref: "P2", ok: true, verified: 1, direction: "negative", design: "cohort", uncertain: true }],
+  ];
+
+  it("shows the evidence board and direction glyphs for a systematic review", () => {
+    const { run, scene } = statesOf(directionEvents);
+    render(<LiveRun run={run} scene={scene} topic="x" connection="open" reviewType="slr" />);
+    expect(screen.getByRole("heading", { name: "กระดานหลักฐานสด" })).toBeInTheDocument();
+    expect(screen.getByText("Cohort study").closest("li")!.querySelector('[role="img"]')).not.toBeNull();
+    expect(screen.getAllByText(/ตามที่เอเจนต์อ่าน/).length).toBeGreaterThan(0);
+  });
+
+  it("shows no direction anywhere in a scoping review (board, ledger glyphs, thought card)", () => {
+    const { run, scene } = statesOf(directionEvents);
+    render(<LiveRun run={run} scene={scene} topic="x" connection="open" reviewType="scoping" />);
+    expect(screen.queryByRole("heading", { name: "กระดานหลักฐานสด" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/ตามที่เอเจนต์อ่าน/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ไม่มีข้อมูลทิศทาง/)).not.toBeInTheDocument();
+    const row = screen.getByText("Cohort study").closest("li")!;
+    expect(row).toHaveTextContent("เสร็จ");
+    expect(row.querySelector('[role="img"]')).toBeNull(); // no direction glyph
+    expect(screen.getByText("Registry").closest("li")).toHaveTextContent("สองโมเดลอ่านต่างกัน"); // uncertainty is not a direction
+  });
+
   it("tells the reader when the stream is reconnecting", () => {
     render(<LiveRun run={initialRun()} scene={initialScene()} topic="x" connection="reconnecting" />);
     expect(screen.getByText(/กำลังเชื่อมต่อใหม่/)).toHaveAttribute("role", "status");
@@ -107,6 +133,15 @@ describe("LiveRun progress details", () => {
     const panel = screen.getByRole("region", { name: "เวทีเอเจนต์" });
     expect(panel).toContainElement(document.getElementById("h-thought"));
     expect(panel.querySelector("svg[role=img]")).not.toBeNull();
+  });
+
+  it("names PCC in the live thought of a scoping review only", () => {
+    const { run, scene } = statesOf([["started", {}], ["refining", {}]]);
+    const first = render(<LiveRun run={run} scene={scene} topic="x" connection="open" reviewType="scoping" />);
+    expect(document.getElementById("h-thought")?.closest("[role=group]")).toHaveTextContent("แบบ PCC");
+    first.unmount();
+    render(<LiveRun run={run} scene={scene} topic="x" connection="open" reviewType="slr" />);
+    expect(document.getElementById("h-thought")?.closest("[role=group]")).toHaveTextContent("แบบ PICO");
   });
 
   it("makes the queue a real step and the current one while queued", () => {

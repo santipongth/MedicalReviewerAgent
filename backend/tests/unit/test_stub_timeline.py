@@ -60,7 +60,7 @@ async def test_event_types_arrive_in_pipeline_order():
     assert seq.index("synthesizing") > max(i for i, t in enumerate(seq) if t == "extracted")
     assert last_reading < seq.index("synthesizing")
     assert final.values["result"]["summary"].startswith("Stub review for:")
-    assert final.values["result"]["papers"] == []
+    assert len(final.values["result"]["papers"]) == 6 and final.values["result"]["review_type"] == "slr"
 
 
 async def test_payload_keys_match_the_real_events():
@@ -134,3 +134,19 @@ async def test_read_phase_tracks_its_share_when_kept_is_below_concurrency():
     share = StubTimeline(delay).read * delay
     # one round behind the pool: each paper sleeps share * U(0.7, 1.3)
     assert 0.65 * share <= last_extracted - first_reading <= 1.35 * share + 0.05
+
+
+async def test_timed_stub_result_is_representative_and_carries_review_type():
+    _, _, final = await run(options={"review_type": "scoping"}, delay=0.1)
+    r = final.values["result"]
+    assert r["review_type"] == "scoping"
+    assert len(r["papers"]) == 6 and len(r["synthesis"]["comparison"]) == 2
+    assert sum(r["stats"]["excluded_screening"].values()) == 28 and r["stats"]["non_research"] == 4
+    assert r["stats"]["excluded_selection"] == {"narrative_excluded": 0, "over_limit": 2}
+    assert r["question"]["key_terms"][0].keys() == {"term", "synonyms", "mesh"}
+    card = r["papers"][0]["card"]
+    assert {"population", "intervention_or_exposure", "comparator", "key_findings", "limitations",
+            "risk_of_bias"} <= set(card)
+    assert r["synthesis"]["comparison"][0]["cells"][0]["direction"] in get_args(Direction)
+    again = (await run(options={"review_type": "scoping"}, delay=0.1))[2].values["result"]
+    assert again == r  # deterministic

@@ -77,8 +77,16 @@ class KeyTerm(BaseModel):
     mesh: str | None
 
 
+def _require_pcc(schema: dict) -> None:
+    for name in ("concept", "context"):  # required-nullable: PICO reviews return null
+        schema.setdefault("required", []).append(name)
+        schema["properties"][name].pop("default", None)  # strict tool schemas reject "default"
+
+
 class ReviewQuestion(BaseModel):
     """The user's topic interpreted and rewritten as an answerable research question (English)."""
+
+    model_config = ConfigDict(json_schema_extra=_require_pcc)
 
     question_type: QuestionType
     interpretation: str
@@ -93,6 +101,8 @@ class ReviewQuestion(BaseModel):
     key_terms: list[KeyTerm]
     assumptions: list[str]
     ambiguities: list[str]
+    concept: str | None = None  # PCC (scoping) only; PICO reviews return null
+    context: str | None = None
 
 
 class QuestionCritique(BaseModel):
@@ -110,19 +120,25 @@ class QueryPlan(BaseModel):
     exclusion_criteria: list[str]
 
 
-def _require_design_guess(schema: dict) -> None:
-    schema.setdefault("required", []).append("design_guess")
-    schema["properties"]["design_guess"].pop("default", None)  # strict tool schemas reject "default"
+ExclusionReason = Literal["off_topic", "population", "intervention_exposure", "outcome", "study_design",
+                          "publication_type", "other"]
+
+
+def _require_nullable(schema: dict) -> None:
+    for name in ("design_guess", "exclusion_reason"):
+        schema.setdefault("required", []).append(name)
+        schema["properties"][name].pop("default", None)  # strict tool schemas reject "default"
 
 
 class ScreenDecision(BaseModel):
-    model_config = ConfigDict(json_schema_extra=_require_design_guess)
+    model_config = ConfigDict(json_schema_extra=_require_nullable)
 
     ref: str
     relevance: int
     include: bool
     reason: str
     design_guess: DesignCategory | None = None  # from title/abstract; lets select_top keep narrative reviews out
+    exclusion_reason: ExclusionReason | None = None  # why an excluded paper was dropped (PRISMA); null when included
 
 
 class ScreenBatch(BaseModel):
@@ -214,7 +230,7 @@ class Synthesis(BaseModel):
     comparison: list[ComparisonRow]
     consensus: list[EvidenceCluster]
     conflicts: list[EvidenceCluster]
-    evidence_strength: Literal["high", "moderate", "low", "very_low"]
+    evidence_strength: Literal["high", "moderate", "low", "very_low"] | None = None  # None: not graded (narrative, scoping)
     evidence_rationale: str
     research_gaps: list[str]
     grade_baseline: str | None = None
@@ -246,6 +262,12 @@ class SynthesisNarrative(BaseModel):
     executive_summary: str
     evidence_strength: Literal["high", "moderate", "low", "very_low"]
     evidence_rationale: str
+    research_gaps: list[str]
+
+
+class NarrativeNoGrade(BaseModel):
+    """Narrative and scoping reviews are not graded: the model writes only the summary and the gaps."""
+    executive_summary: str
     research_gaps: list[str]
 
 

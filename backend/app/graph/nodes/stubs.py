@@ -9,6 +9,7 @@ from typing import Any
 from langgraph.config import get_stream_writer
 from langgraph.types import Send
 
+from app.graph.nodes.stub_result import stub_result
 from app.graph.progress import progress_writer
 from app.graph.state import ReviewState
 from app.schemas.review import ReviewOptions
@@ -37,6 +38,7 @@ async def finalize(state: ReviewState) -> dict:
         "result": {
             "summary": f"Stub review for: {state['topic']}",
             "language": state["language"],
+            "review_type": ReviewOptions.clamped(state.get("options")).review_type,
             "papers": [],
             "comparison": [],
         }
@@ -150,7 +152,8 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
         selected = state.get("selected") or []
         if not selected:
             return "normalize_outcomes"
-        common = {"review_id": state.get("review_id", ""), "topic": state["topic"], "kept": len(selected)}
+        common = {"review_id": state.get("review_id", ""), "topic": state["topic"], "kept": len(selected),
+                  "review_type": ReviewOptions.clamped(state.get("options")).review_type}
         return [Send("read_paper", {"index": i + 1, **common}) for i in range(len(selected))]
 
     async def read_paper(payload: dict[str, Any]) -> dict:
@@ -165,10 +168,12 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
         async with pool:
             await asyncio.sleep(per_paper * rng.uniform(0.7, 1.3))
         ok = i % 11 != 0
-        progress_writer()({"type": "extracted", "ref": ref, "ok": ok, "verified": (i % 4) if ok else 0,
-                           "uncertain": i % 7 == 0,
-                           "direction": STUB_DIRECTIONS[i % 7] if ok else None,
-                           "design": STUB_DESIGNS[i % 5] if ok else None})
+        extracted = {"type": "extracted", "ref": ref, "ok": ok, "verified": (i % 4) if ok else 0,
+                     "uncertain": i % 7 == 0, "direction": STUB_DIRECTIONS[i % 7] if ok else None,
+                     "design": STUB_DESIGNS[i % 5] if ok else None}
+        if payload.get("review_type") == "scoping":  # same as the real reader: no direction for scoping
+            del extracted["direction"]
+        progress_writer()(extracted)
         return {"papers": [{"ref": ref, "ok": ok}]}
 
     async def normalize_outcomes(state: ReviewState) -> dict:
@@ -186,8 +191,8 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
     async def finalize_timed(state: ReviewState) -> dict:
         progress_writer()({"type": "finalizing"})
         await asyncio.sleep(timeline.seconds("finalize", _rng(state, "finalize")))
-        return {"result": {"summary": f"Stub review for: {state['topic']}", "language": state["language"],
-                           "papers": [], "comparison": []}}
+        review_type = ReviewOptions.clamped(state.get("options")).review_type
+        return {"result": stub_result(state["topic"], state["language"], review_type)}
 
     return {
         "topic_guard": make_phase("guard", timeline, lambda s: [{"type": "checking_topic"}]),

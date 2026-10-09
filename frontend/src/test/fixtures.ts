@@ -145,3 +145,53 @@ export const legacyReviewFixture: Review = {
     stats: { found: 41, unique: 26, candidates: 20, screened: 20, selected: 5, with_fulltext: 3, extracted: 4 },
   },
 };
+
+function stripAppraisal(c: PaperCard): PaperCard {
+  return {
+    ...c, risk_of_bias: "unclear", overall_direction: "unclear",
+    outcomes: c.outcomes.map((o) => ({ ...o, effect_size: null, effect_measure: "none", effect_value: null, ci_lower: null,
+      ci_upper: null, p_value: null, direction: "unclear" })),
+  };
+}
+
+/** A Plan 14a scoping result: PCC question, no grade, no consensus/conflicts, PRISMA exclusion reasons. */
+export const scopingReviewFixture: Review = {
+  ...reviewFixture,
+  result: {
+    ...resultFixture,
+    review_type: "scoping",
+    question: {
+      ...resultFixture.question,
+      framework: "PCC", concept: "การใช้เมตฟอร์มิน", context: "การดูแลผู้ป่วยนอก",
+      key_terms: [{ term: "metformin", synonyms: ["biguanide"], mesh: "Metformin" }],
+    },
+    synthesis: { ...resultFixture.synthesis!, consensus: [], conflicts: [], evidence_strength: null, evidence_rationale: "" },
+    synthesis_en: undefined,
+    // A scoping card carries no effect, direction or quality judgement; two of the papers are shaped that way.
+    papers: resultFixture.papers!.map((p) => (p.ref === "P1" || p.ref === "P3") ? {
+      ...p,
+      card: p.card && stripAppraisal(p.card), card_en: p.card_en && stripAppraisal(p.card_en),
+    } : p),
+    stats: {
+      ...resultFixture.stats, non_research: 3,
+      excluded_screening: { off_topic: 7, study_design: 2, other: 1 },
+      excluded_selection: { narrative_excluded: 0, over_limit: 4 },
+    },
+  },
+};
+
+export const narrativeReviewFixture: Review = {
+  ...reviewFixture,
+  result: {
+    ...resultFixture,
+    review_type: "narrative",
+    synthesis: { ...resultFixture.synthesis!, evidence_strength: null, evidence_rationale: "" },
+    synthesis_en: undefined,
+  },
+};
+
+/** An explicit Plan 14a systematic review (the plain reviewFixture has no review_type, so it renders as legacy). */
+export const slrReviewFixture: Review = {
+  ...reviewFixture,
+  result: { ...resultFixture, review_type: "slr" },
+};

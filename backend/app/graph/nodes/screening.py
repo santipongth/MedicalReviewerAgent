@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
 from typing import Any
 
 from langgraph.types import Send
@@ -20,7 +21,8 @@ def route_to_screening(state: ReviewState, batch_size: int = 10) -> list[Send] |
     if not cands:
         return "normalize_outcomes"
     common = {"plan": state.get("plan") or {}, "question": review_question(state),
-              "language": state.get("language", "th")}
+              "language": state.get("language", "th"),
+              "review_type": ReviewOptions.clamped(state.get("options")).review_type}
     return [Send("screen_batch", {"batch": cands[i : i + batch_size], **common})
             for i in range(0, len(cands), batch_size)]
 
@@ -39,8 +41,9 @@ def _decisions(batch: ScreenBatch | None, refs: list[str]) -> dict[str, dict[str
     out: dict[str, dict[str, Any]] = {}
     for d in (batch.decisions if batch else []):
         if d.ref in refs and d.ref not in out:
+            reason = None if d.include else (d.exclusion_reason or "other")
             out[d.ref] = {"relevance": max(0, min(100, d.relevance)), "include": d.include, "reason": d.reason,
-                          "design": d.design_guess}
+                          "design": d.design_guess, "exclusion_reason": reason}
     return out
 
 
@@ -49,6 +52,7 @@ def make_screen_batch(deps):
         started = time.perf_counter()
         batch = payload["batch"]
         spec, runner = harness_spec(deps), harness_runner(deps)
+        system = prompts.screen_system(payload.get("review_type") or "slr")
         writer = progress_writer()
         writer({"type": "screening", "batch": len(batch)})
         items = {f"C{i + 1}": c for i, c in enumerate(batch)}
@@ -62,7 +66,7 @@ def make_screen_batch(deps):
         quality: dict[str, Any] = {"stage": "screen", "batch": len(batch), "borderline": 0, "disagreements": 0,
                                    "escalated": 0, "repaired": False}
         try:
-            res = await runner.call(deps.llms.screener, prompts.SCREEN_SYSTEM, user_for(refs),
+            res = await runner.call(deps.llms.screener, system, user_for(refs),
                                     schema=ScreenBatch, validate=_coverage(refs), trigger="screen")
             cost += res.cost
             quality["repaired"] = res.repaired
@@ -78,7 +82,7 @@ def make_screen_batch(deps):
         if borderline and secondary is not None:
             quality["borderline"] = len(borderline)
             try:
-                second = await runner.call(secondary, prompts.SCREEN_SYSTEM, user_for(borderline),
+                second = await runner.call(secondary, system, user_for(borderline),
                                            schema=ScreenBatch, validate=_coverage(borderline), trigger="screen")
                 cost += second.cost
                 votes = _decisions(second.value, borderline)
@@ -95,7 +99,7 @@ def make_screen_batch(deps):
                     disputed.append(r)
             quality["disagreements"] = len(disputed)
             if disputed:
-                esc = await runner.escalate(prompts.SCREEN_SYSTEM, user_for(disputed), schema=ScreenBatch,
+                esc = await runner.escalate(system, user_for(disputed), schema=ScreenBatch,
                                             validate=_coverage(disputed), reason="disagreement")
                 resolved = _decisions(esc.value, disputed) if esc and esc.ok else {}
                 if esc:
@@ -106,10 +110,13 @@ def make_screen_batch(deps):
                         decisions[r] = resolved[r]
                     else:  # unresolved disagreement: keep the paper (recall first) and flag it
                         decisions[r]["include"] = True
+                        decisions[r]["exclusion_reason"] = None
                         uncertain.add(r)
 
         screened = [{"key": c["key"], **decisions.get(ref, {"relevance": 0, "include": False,
-                                                              "reason": "not screened"}),
+                                                              "reason": "not screened",
+                                                              "exclusion_reason": "other",
+                                                              "screen_failed": True}),
                      "uncertain": ref in uncertain}
                     for ref, c in items.items()]
         quality["seconds"] = round(time.perf_counter() - started, 3)
@@ -124,6 +131,7 @@ MIN_PRIMARY_FOR_NO_REVIEWS = 3
 def make_select_top(deps):
     async def select_top(state: ReviewState) -> dict:
         options = ReviewOptions.clamped(state.get("options"))
+        keep_narrative = options.review_type != "slr"  # narrative and scoping reviews welcome narrative reviews
         best: dict[str, dict[str, Any]] = {}
         for d in state.get("screened") or []:
             if d["key"] not in best or d["relevance"] > best[d["key"]]["relevance"]:
@@ -132,14 +140,25 @@ def make_select_top(deps):
         included = [d for d in best.values() if d["include"] and d["key"] in by_key]
         primary = [d for d in included if d.get("design") != "narrative_review"]
         # Narrative reviews restate other studies: leave them out when enough original or pooled evidence exists.
-        narrative_excluded = len(included) - len(primary) if len(primary) >= MIN_PRIMARY_FOR_NO_REVIEWS else 0
+        narrative_excluded = (len(included) - len(primary)
+                              if not keep_narrative and len(primary) >= MIN_PRIMARY_FOR_NO_REVIEWS else 0)
         pool = primary if narrative_excluded else included
-        chosen = sorted(pool, key=lambda d: -d["relevance"])[: options.max_papers]
+        ranked = sorted(pool, key=lambda d: -d["relevance"])
+        chosen = ranked[: options.max_papers]
+        # Technical failures are not exclusion decisions: keep them out of the PRISMA reason tallies.
+        excluded_screening = Counter(d.get("exclusion_reason") or "other" for d in best.values()
+                                     if not d["include"] and not d.get("screen_failed"))
+        screening_failed = sum(1 for d in best.values() if d.get("screen_failed") and not d["include"])
         selected = [{"ref": f"P{i + 1}", "relevance": d["relevance"], "reason": d["reason"],
                      "uncertain": d.get("uncertain", False), "candidate": by_key[d["key"]]}
                     for i, d in enumerate(chosen)]
         progress_writer()({"type": "screened", "kept": len(selected), "total": len(best)})
-        return {"selected": selected, "quality": [{"stage": "select", "narrative_excluded": narrative_excluded}]}
+        stats = {"excluded_screening": dict(excluded_screening), "narrative_excluded": narrative_excluded,
+                 "over_limit": len(ranked) - len(chosen)}
+        if screening_failed:
+            stats["screening_failed"] = screening_failed
+        return {"selected": selected, "selection_stats": stats,
+                "quality": [{"stage": "select", "narrative_excluded": narrative_excluded}]}
 
     return select_top
 
@@ -151,7 +170,8 @@ def route_to_reading(state: ReviewState, external_enabled=None) -> list[Send] | 
     if not selected:
         return "normalize_outcomes"
     common = {"plan": state.get("plan") or {}, "question": review_question(state),
-              "question_detail": state.get("question"), "language": state.get("language", "th")}
+              "question_detail": state.get("question"), "language": state.get("language", "th"),
+              "review_type": ReviewOptions.clamped(state.get("options")).review_type}
     sends = [Send("read_paper", {"paper": s, **common}) for s in selected]
     if external_enabled is not None and external_enabled():
         sends.append(Send("external_enrich", {"question": common["question"], "plan": common["plan"]}))
