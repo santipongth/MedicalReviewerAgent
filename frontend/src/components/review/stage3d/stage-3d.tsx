@@ -4,7 +4,7 @@
 // Adapts the node/arc/packet/camera ideas of AI-Agent-observatory by sakshigupta372, used with the author's permission.
 // See NOTICE.md at the repo root.
 import { Canvas, useThree } from "@react-three/fiber";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PIPELINE, sceneSummary, type Scene } from "@/lib/agent-scene";
 import { layout3dFor, type Layout3D } from "@/lib/agent-layout-3d";
 import { CameraRig } from "./camera-rig";
@@ -24,6 +24,11 @@ function InvalidateOn({ scene, tokens }: { scene: Scene; tokens: Tokens3D }) {
 }
 
 function World({ scene, layout, tokens }: { scene: Scene; layout: Layout3D; tokens: Tokens3D }) {
+  // drei's Html drops the first label's content when it mounts in the Canvas's very first commit (the first agent's
+  // label stayed empty in a real browser), so the labels mount one commit later.
+  const [labelsReady, setLabelsReady] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate one-commit deferral, see above
+  useEffect(() => { setLabelsReady(true); }, []);
   return (
     <>
       <color attach="background" args={[tokens.surface]} />
@@ -38,7 +43,7 @@ function World({ scene, layout, tokens }: { scene: Scene; layout: Layout3D; toke
       ))}
       <ReaderPool3D slots={scene.slots} layout={layout} tokens={tokens} />
       <Packets3D scene={scene} layout={layout} tokens={tokens} />
-      <Labels3D scene={scene} layout={layout} />
+      {labelsReady && <Labels3D scene={scene} layout={layout} />}
       <CameraRig layout={layout} agent={cameraAgent(scene)} />
     </>
   );

@@ -16,7 +16,7 @@ export interface Layout3DOpts { showLocalize: boolean; showExternal: boolean; sl
 
 const MAX_SLOTS = 30;
 const STEP = 2.2; // spacing between lane agents along x
-const CURVE = 0.08; // z = -CURVE * x^2
+const CURVE = 0.025; // z = -CURVE * x^2
 const EXTERNAL_Y = 1.6;
 const POOL_Y = -1.6;
 const POOL_COLS = 6;

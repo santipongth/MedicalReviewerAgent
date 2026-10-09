@@ -95,7 +95,7 @@ export function packetScale(t: number): number {
 
 // --- camera ------------------------------------------------------------------------------------------------------
 
-export const CAMERA_BASE: Vec3 = [0, 4, 11];
+export const CAMERA_BASE: Vec3 = [0, 4, 9.5];
 const PAN = 0.3; // fraction of the way from the lane centre toward the current agent (keeps the whole lane framed)
 
 /** Camera position + look-at for the current agent (lane centre when none). Writes into `out` (6 numbers). */

@@ -63,7 +63,7 @@ describe("layout3dFor", () => {
       expect(z).toBeGreaterThanOrEqual(min[2]); expect(z).toBeLessThanOrEqual(max[2]);
     };
     for (const p of [...Object.values(l.nodes), ...l.slots]) inB(p![0], p![1], p![2]);
-    for (const e of l.edges) for (let t = 0; t <= 1.0001; t += 0.1) inB(arc3X(e.seg, t), arc3Y(e.seg, t), arc3Z(e.seg, t));
+    for (const e of l.edges) for (let k = 0; k <= 10; k++) inB(arc3X(e.seg, k / 10), arc3Y(e.seg, k / 10), arc3Z(e.seg, k / 10));
   });
   it("drops localize and adds synth>finish when localize is hidden", () => {
     const l = layout3dFor({ ...base, showLocalize: false });
