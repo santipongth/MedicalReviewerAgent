@@ -35,6 +35,15 @@ describe("Charts", () => {
     expect(within(row).getByText("0.71–0.90")).toHaveClass("num-verified");
   });
 
+  it("explains chart terms and does not repeat the matrix legend", () => {
+    render(<Charts result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
+    expect(screen.getByRole("heading", { name: "Evidence charts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "what is a log scale" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PRISMA" })).toBeInTheDocument();
+    expect(screen.getByText("Abbreviations in the chart").closest("dl")).toHaveTextContent("HR");
+    expect(screen.queryByText("Positive")).toBeNull();
+  });
+
   it("explains when nothing can be plotted", () => {
     render(<Charts result={{}} papers={[resultFixture.papers![1]]} lang="en" onSelect={() => {}} />);
     expect(screen.getByText("No verified effect sizes to plot")).toBeInTheDocument();

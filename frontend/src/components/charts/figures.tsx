@@ -2,9 +2,11 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { forestAxis, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
+import type { TermKey } from "@/lib/glossary";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
 import { L } from "../review/text";
 import { Glyph, VerifiedNumber } from "../ui/evidence";
+import { Term } from "../ui/term";
 import { EChart, encodeHTML, type EChartsOption } from "./echart";
 import { SYMBOL, type ChartTokens } from "./tokens";
 
@@ -12,7 +14,7 @@ type Select = (ref: string, outcome?: string) => void;
 
 /** A figure with a title, the chart, and a table-view twin (the accessible equivalent). */
 function Figure({ title, caption, lang, chart, table }: {
-  title: string; caption?: ReactNode; lang: Lang; chart: ReactNode; table: ReactNode;
+  title: ReactNode; caption?: ReactNode; lang: Lang; chart: ReactNode; table: ReactNode;
 }) {
   const [asTable, setAsTable] = useState(false);
   return (
@@ -35,6 +37,19 @@ const MEASURE_NOTE: Record<string, [string, string]> = {
   difference: ["ผลต่าง (MD, SMD, RD) · เส้นตั้งที่ 0 = ไม่มีผล", "Differences (MD, SMD, RD) · line at 0 = no effect"],
   correlation: ["สหสัมพันธ์ (r) · เส้นตั้งที่ 0 = ไม่มีความสัมพันธ์", "Correlation (r) · line at 0 = no association"],
 };
+
+const MEASURE_TERM: Record<string, TermKey> = { HR: "hr", OR: "or", RR: "rr", MD: "md", SMD: "smd", RD: "rd" };
+
+function MeasureGlossary({ measures, lang }: { measures: string[]; lang: Lang }) {
+  const known = measures.filter((m) => MEASURE_TERM[m]);
+  if (!known.length) return null;
+  return (
+    <dl className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+      <dt className="label">{L(lang, "คำย่อในแผนภาพ", "Abbreviations in the chart")}</dt>
+      {known.map((m) => <dd key={m}><Term k={MEASURE_TERM[m]} lang={lang}>{m}</Term></dd>)}
+    </dl>
+  );
+}
 
 function forestOption(g: ForestGroup, t: ChartTokens, lang: Lang): EChartsOption {
   const [min, max] = forestAxis(g);
@@ -124,7 +139,12 @@ export function ForestFigure({ data, tokens, lang, onSelect }: { data: ForestDat
       {data.groups.map((g, gi) => (
         <Figure key={g.family} lang={lang}
           title={`${L(lang, "ขนาดผล", "Effect sizes")} · ${g.measures.join(", ")}`}
-          caption={<>{MEASURE_NOTE[g.family][lang === "th" ? 0 : 1]}{gi === 0 && unverifiedNote}</>}
+          caption={<>
+            {MEASURE_NOTE[g.family][lang === "th" ? 0 : 1]}
+            {g.family === "ratio" && <> (<Term k="logScale" lang={lang}>{L(lang, "สเกล log คืออะไร", "what is a log scale")}</Term>)</>}
+            <MeasureGlossary measures={g.measures} lang={lang} />
+            {gi === 0 && unverifiedNote}
+          </>}
           chart={
             <EChart option={options[gi]} height={Math.max(160, g.rows.length * 34 + 56)}
               label={L(lang, `Forest plot ของ ${g.rows.length} ผลลัพธ์`, `Forest plot of ${g.rows.length} effects`)}
@@ -172,7 +192,7 @@ export function PrismaFigure({ stages, tokens, lang }: { stages: Stage[]; tokens
   }), [stages, tokens]);
   if (!stages.length) return null;
   return (
-    <Figure lang={lang} title={L(lang, "ขั้นตอนการคัดเลือก (PRISMA)", "Selection flow (PRISMA)")}
+    <Figure lang={lang} title={<>{L(lang, "ขั้นตอนการคัดเลือก", "Selection flow")} (<Term k="prisma" lang={lang}>PRISMA</Term>)</>}
       caption={L(lang, "จำนวนงานวิจัยในแต่ละขั้นของรีวิวนี้", "Number of records at each step of this review")}
       chart={<EChart option={option} height={stages.length * 34 + 16} label={stages.map((s) => `${s.label} ${s.value}`).join(", ")} />}
       table={

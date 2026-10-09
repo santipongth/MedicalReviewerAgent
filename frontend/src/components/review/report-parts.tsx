@@ -4,7 +4,7 @@ import { Fragment, type ReactNode } from "react";
 import { designKey, designLabel } from "@/lib/charts-data";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
 import type { ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, QuestionBlock, Quality, Synthesis } from "@/lib/types";
-import { Glyph } from "../ui/evidence";
+import { Glyph, UncertainFlag } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { L } from "./text";
 
@@ -113,29 +113,44 @@ export function StrengthLine({ synthesis, lang, quality }: { synthesis: Synthesi
 }
 
 /** Outcome × paper; every cell is a glyph button that opens its source in the rail. */
-export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcomeOf, pooledRefs }: {
-  rows: ComparisonRow[]; refs: string[]; lang: Lang; onSelect: Select; selected?: { ref: string; outcome?: string };
+export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcomeOf, pooledRefs, papers }: {
+  rows: ComparisonRow[]; refs: string[]; papers?: Paper[]; lang: Lang; onSelect: Select; selected?: { ref: string; outcome?: string };
   outcomeOf: (row: ComparisonRow, ref: string) => string | undefined;
   pooledRefs?: Set<string>; // systematic reviews / meta-analyses: may already include the primary studies
 }) {
+  const byRef = new Map((papers ?? []).map((p) => [p.ref, p]));
+  let selectedLine = "";
+  if (selected?.outcome !== undefined) {
+    for (const row of rows) {
+      const cell = row.cells.find((c) => c.ref === selected.ref);
+      if (cell && outcomeOf(row, selected.ref) === selected.outcome) { selectedLine = `${selected.ref} · ${row.outcome}: ${cell.finding}`; break; }
+    }
+  }
   return (
+    <div>
     <div className="overflow-x-auto rounded-sm border border-rule">
       <table aria-label={L(lang, "ผลแต่ละการศึกษา", "Findings by study")} className="w-full border-collapse text-[0.88rem] sm:min-w-[620px]">
         <thead>
           <tr className="bg-ground">
             <th scope="col" className="left-0 z-10 min-w-[9rem] bg-ground px-2.5 py-2 text-left label sm:sticky sm:min-w-[190px]">{L(lang, "ผลลัพธ์", "Outcome")}</th>
-            {refs.map((r) => (
-              <th key={r} scope="col" className="px-2 py-2 text-center label">
-                {r}
-                {pooledRefs?.has(r) && (
-                  <span className="mt-0.5 block text-[0.68rem] font-semibold text-muted"
-                    title={L(lang, "ผลรวมจาก systematic review/meta-analysis อาจรวมงานต้นฉบับในตารางนี้ไว้แล้ว",
-                      "Pooled result from a systematic review/meta-analysis; may already include primary studies in this table")}>
-                    SR/MA
-                  </span>
-                )}
-              </th>
-            ))}
+            {refs.map((r) => {
+              const paper = byRef.get(r);
+              const surname = paper?.authors?.[0]?.trim().split(/\s+/).pop();
+              const byline = [surname, paper?.year].filter(Boolean).join(" ");
+              return (
+                <th key={r} scope="col" className="px-2 py-2 text-center label">
+                  <abbr title={paper?.title} className="no-underline">
+                    <span className="block">{r}</span>{" "}
+                    {byline && <span className="block text-[0.68rem] font-normal normal-case text-muted">{byline}</span>}
+                  </abbr>
+                  {pooledRefs?.has(r) && (
+                    <span className="mt-0.5 block text-[0.68rem] font-semibold">
+                      <Term k="srma" lang={lang}>SR/MA</Term>
+                    </span>
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -163,15 +178,18 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
         </tbody>
       </table>
     </div>
+    <p aria-live="polite" className="mt-2 min-h-[1.4em] text-[0.85rem] break-words">{selectedLine}</p>
+    </div>
   );
 }
 
 export function MatrixLegend({ lang }: { lang: Lang }) {
   return (
-    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[0.82rem] text-muted">
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[0.82rem] text-muted">
       {(["positive", "negative", "null", "mixed", "unclear"] as const).map((d) => (
         <span key={d} className="inline-flex items-center gap-1.5"><Glyph direction={d} lang={lang} />{DIRECTION_LABEL[lang][d]}</span>
       ))}
+      <UncertainFlag lang={lang} label={L(lang, "สองโมเดลอ่านผลต่างกัน", "the two models read the result differently")} />
     </div>
   );
 }
@@ -242,7 +260,7 @@ export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Pap
                   ) : (
                     <span className="text-err">{L(lang, "อ่านไม่สำเร็จ", "Could not be read")}{p.error ? ` · ${p.error}` : ""}</span>
                   )}
-                  {p.verification?.uncertain && <span className="text-warn">◆ {L(lang, "ไม่แน่นอน", "Uncertain")}</span>}
+                  {p.verification?.uncertain && <UncertainFlag lang={lang} />}
                 </span>
               </span>
             </button>

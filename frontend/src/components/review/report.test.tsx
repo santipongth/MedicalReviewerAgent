@@ -72,7 +72,7 @@ describe("Report", () => {
     await openFilters();
     await userEvent.click(screen.getByLabelText("Case-control"));
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
-    expect(within(table).queryByRole("columnheader", { name: "P1" })).toBeNull();
+    expect(within(table).queryByRole("columnheader", { name: /^P1\b/ })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /^P2: / }));
     expect(rail().getByText("Case-control · nested case-control")).toBeInTheDocument();
   });
@@ -98,7 +98,31 @@ describe("Report", () => {
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
     const p4 = within(table).getByRole("columnheader", { name: /P4/ });
     expect(p4).toHaveTextContent("SR/MA");
-    expect(within(table).getByRole("columnheader", { name: /^P1$/ })).not.toHaveTextContent("SR/MA");
+    expect(within(table).getByRole("columnheader", { name: /^P1\b/ })).not.toHaveTextContent("SR/MA");
+  });
+
+  it("shows the selected cell as a visible line below the matrix", async () => {
+    render(<Report review={reviewFixture} />);
+    const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
+    const live = table.parentElement!.parentElement!.querySelector("p[aria-live=polite]")!;
+    expect(live).toHaveTextContent("");
+    await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
+    expect(live).toHaveTextContent(/^P3 · .*อุบัติการณ์.*:/);
+  });
+
+  it("renders one legend that includes the uncertain flag, and no diamond marker", () => {
+    render(<Report review={reviewFixture} />);
+    expect(screen.getAllByText("สองโมเดลอ่านผลต่างกัน")).toHaveLength(1);
+    expect(screen.getAllByText("สองโมเดลอ่านต่างกัน").length).toBeGreaterThan(0); // paper list flag
+    expect(screen.queryByText(/◆ ไม่แน่นอน/)).toBeNull();
+  });
+
+  it("column headers carry the first author and year, with the full title as the tooltip", () => {
+    render(<Report review={reviewFixture} />);
+    const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
+    const abbr = within(table).getByRole("columnheader", { name: /^P3\b/ }).querySelector("abbr")!;
+    expect(abbr.getAttribute("title")).toContain("Metformin use and colorectal cancer risk");
+    expect(abbr).toHaveTextContent("Lindqvist 2021");
   });
 
   it("switches to the English original", async () => {
@@ -121,7 +145,7 @@ describe("Report", () => {
     fireEvent.change(slider, { target: { value: "90" } });
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
     expect(within(table).queryByRole("columnheader", { name: /^P4/ })).not.toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "P3" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /^P3\b/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "กรอง (แสดง 2 จาก 5 ฉบับ)" })).toBeInTheDocument();
   });
 
