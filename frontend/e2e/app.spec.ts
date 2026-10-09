@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { reviewFixture } from "../src/test/fixtures";
+import { narrativeReviewFixture, reviewFixture } from "../src/test/fixtures";
 import { json, LIVE_EVENTS, mockApi, RID, sse, OPEN_STATUS } from "./mock-api";
 
 const shots = (name: string) => `test-results/screens/${name}.png`;
@@ -319,4 +319,20 @@ test("axe: report with the source drawer open at 375px", async ({ page }) => {
   await page.getByRole("button", { name: /^P1: / }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await noSeriousA11y(page);
+});
+
+test("phone width: the literature matrix scrolls inside its own container, not the page", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, narrativeReviewFixture) });
+  await page.goto(`/r/${RID}`);
+  const table = page.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
+  await expect(table).toBeVisible();
+  await noHorizontalScroll(page);
+  const scroller = await table.evaluate((t) => ({ box: t.parentElement!.clientWidth, content: t.parentElement!.scrollWidth }));
+  expect(scroller.box).toBeLessThanOrEqual(390);
+  expect(scroller.content).toBeGreaterThan(scroller.box);
+  const first = await table.getByRole("rowheader").first().boundingBox();
+  await table.evaluate((t) => { t.parentElement!.scrollLeft = 400; });
+  const after = await table.getByRole("rowheader").first().boundingBox();
+  expect(Math.abs(after!.x - first!.x)).toBeLessThan(2);
 });

@@ -275,7 +275,7 @@ describe("Report per review type", () => {
   it("scoping: badge, PCC, evidence map; no claims, findings matrix, forest or direction tally", () => {
     const { container } = render(<Report review={scopingReviewFixture} />);
     expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การทบทวนขอบเขต");
-    expect(navIds(container)).toEqual(["h-summary", "h-evidence-map", "h-charts", "h-gaps", "h-papers", "h-method"]);
+    expect(navIds(container)).toEqual(["h-summary", "h-evidence-map", "h-litmatrix", "h-charts", "h-gaps", "h-papers", "h-method"]);
     expect(container.querySelector("#h-claims")).toBeNull();
     expect(container.querySelector("#h-matrix")).toBeNull();
     expect(screen.queryByRole("table", { name: /ผลแต่ละการศึกษา/ })).toBeNull();
@@ -340,8 +340,24 @@ describe("Report per review type", () => {
     const { container } = render(<Report review={narrativeReviewFixture} />);
     expect(screen.getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนแบบบรรยาย\)/)).toBeInTheDocument();
     expect(screen.queryByText("ต่ำมาก")).toBeNull();
-    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-gaps", "h-papers", "h-method"]);
+    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-litmatrix", "h-charts", "h-gaps", "h-papers", "h-method"]);
     expect(screen.getByTestId("charts")).toBeInTheDocument();
+  });
+
+  it("lit matrix: shown for narrative, slr and scoping, never for legacy; scoping drops direction and bias columns", () => {
+    const table = () => screen.queryByRole("table", { name: "ตารางสรุปงานวิจัย" });
+    const legacy = render(<Report review={legacyReviewFixture} />);
+    expect(table()).toBeNull();
+    legacy.unmount();
+    const slr = render(<Report review={{ ...reviewFixture, result: { ...reviewFixture.result!, review_type: "slr" as const } }} />);
+    expect(table()).not.toBeNull();
+    expect(slr.container.querySelector("#h-litmatrix")).not.toBeNull();
+    slr.unmount();
+    const sc = render(<Report review={scopingReviewFixture} />);
+    expect(within(table()!).queryByRole("columnheader", { name: "ทิศทาง" })).toBeNull();
+    sc.unmount();
+    render(<Report review={narrativeReviewFixture} />);
+    expect(within(table()!).getByRole("columnheader", { name: "ทิศทาง" })).toBeInTheDocument();
   });
 
   it("slr with a null strength says it was not assessed, never 'very low'", () => {
