@@ -35,6 +35,21 @@ describe("AgentNode", () => {
     expect(p.querySelector("rect")?.getAttribute("class")).toContain("fill-warn-bg");
   });
 
+  it.each(["below", "right"] as const)("count clears the last label line (%s)", (labelAt) => {
+    const { container } = render(
+      <StageMotion>
+        <svg>
+          <AgentNode id="read" at={{ x: 0, y: 0 }} status="active" label={["ตีความ", "คำถาม"]} count="30/60" labelAt={labelAt} />
+        </svg>
+      </StageMotion>,
+    );
+    const label = container.querySelector("text")!;
+    const lastBaseline = Number(label.getAttribute("y")) + 12 * (label.querySelectorAll("tspan").length - 1);
+    const cy = Number(container.querySelector("[data-count]")?.getAttribute("y"));
+    expect(cy).toBeGreaterThanOrEqual(lastBaseline + 10);
+    if (labelAt === "right") expect(cy).toBeLessThan(20); // narrow zone starts at node y + 20
+  });
+
   it("shows the count and never uses num-verified", () => {
     const { container } = node("active", "30/60");
     expect(container.querySelector("[data-count]")?.textContent).toBe("30/60");

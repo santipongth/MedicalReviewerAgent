@@ -15,8 +15,8 @@ import { StageMotion } from "./motion";
 const layout = layoutFor("wide", { showLocalize: true, showExternal: false, slots: 0, batches: 0, queries: 0 });
 const edge = layout.edges[0].id;
 
-function sceneWith(n: number, from = 1): Scene {
-  const pulses: Pulse[] = Array.from({ length: n }, (_, i) => ({ key: from + i, edge, kind: "paper", n: 1 }));
+function sceneWith(n: number, from = 1, per = 1): Scene {
+  const pulses: Pulse[] = Array.from({ length: n }, (_, i) => ({ key: from + i, edge, kind: "paper", n: per }));
   return { ...initialScene(), pulses, lastSeq: n ? from + n - 1 : 0 };
 }
 const ui = (s: Scene) => (
@@ -46,6 +46,16 @@ describe("PacketLayer", () => {
     expect(c).toBeGreaterThan(0);
     expect(c).toBeLessThanOrEqual(24);
     expect(container.querySelectorAll("circle").length).toBe(24);
+  });
+
+  it("round-robin overwrites in-flight dots without exceeding the pool", () => {
+    const { container, rerender } = render(ui(initialScene()));
+    act(() => { rerender(ui(sceneWith(12, 1, 8))); }); // 96 dots -> planDots caps to 24
+    expect(count(container)).toBeLessThanOrEqual(24);
+    act(() => { rerender(ui(sceneWith(12, 13, 8))); }); // reuses dots that are still in flight
+    const c = count(container);
+    expect(c).toBeGreaterThan(0);
+    expect(c).toBeLessThanOrEqual(24);
   });
 
   it("renders nothing under reduced motion", () => {

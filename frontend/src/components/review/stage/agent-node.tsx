@@ -35,8 +35,11 @@ export function AgentNode({ id, at, status, label, count, labelAt = "below" }: A
   const textCls = dim ? "fill-muted" : "fill-ink";
   const right = labelAt === "right";
   const lx = right ? HALF + 8 : 0;
-  const ly = right ? -((label.length - 1) * 6) + 3 : HALF + 12;
-  const cy = ly + label.length * 12 + (right ? -6 : 0);
+  const hasCount = count != null && count !== "";
+  // right: the label block (plus count line) is centred on the tile; count sits one line below the last label line
+  const lines = label.length + (hasCount ? 1 : 0);
+  const ly = right ? -((lines - 1) * 6) + 3 : HALF + 12;
+  const cy = ly + label.length * 12;
   return (
     <g data-agent={id} data-status={status} transform={`translate(${at.x} ${at.y})`}>
       <m.g animate={{ scale: status === "active" ? 1.06 : 1 }} transition={{ duration: 0.2, ease: "easeOut" }}>
@@ -65,7 +68,7 @@ export function AgentNode({ id, at, status, label, count, labelAt = "below" }: A
           <tspan key={i} x={lx} dy={i === 0 ? 0 : 12}>{line}</tspan>
         ))}
       </text>
-      {count != null && count !== "" && (
+      {hasCount && (
         <text x={lx} y={cy} textAnchor={right ? "start" : "middle"} className="font-display fill-muted" style={NUM} fontSize={10} data-count>
           {count}
         </text>

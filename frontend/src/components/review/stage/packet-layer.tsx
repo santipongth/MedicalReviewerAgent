@@ -1,6 +1,6 @@
 "use client";
 import { animate, m, useMotionValue, useReducedMotion, useTransform, type AnimationPlaybackControls } from "motion/react";
-import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { planDots, takeFreshPulses, type PulseKind, type Scene } from "@/lib/agent-scene";
 import { segX, segY, type Seg, type StageLayout } from "@/lib/agent-layout";
 
@@ -49,6 +49,8 @@ export function PacketLayer({ scene, layout }: { scene: Scene; layout: StageLayo
   const seen = useRef(scene.lastSeq);
   const next = useRef(0);
   const dots = useRef<(DotHandle | null)[]>([]);
+  const [setters] = useState(() =>
+    Array.from({ length: MAX_DOTS }, (_, i) => (h: DotHandle | null) => { dots.current[i] = h; }));
   const latest = useRef({ scene, layout });
   useEffect(() => { latest.current = { scene, layout }; });
   const seq = scene.lastSeq;
@@ -68,7 +70,7 @@ export function PacketLayer({ scene, layout }: { scene: Scene; layout: StageLayo
   return (
     <g aria-hidden="true" pointerEvents="none">
       {Array.from({ length: MAX_DOTS }, (_, i) => (
-        <PacketDot key={i} handle={(h) => { dots.current[i] = h; }} />
+        <PacketDot key={i} handle={setters[i]} />
       ))}
     </g>
   );
