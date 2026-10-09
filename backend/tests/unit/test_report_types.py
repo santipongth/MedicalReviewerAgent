@@ -22,7 +22,7 @@ def review(review_type, strength):
 
 def test_markdown_per_type():
     slr = render_markdown(review("slr", "low"))
-    assert "Systematic review" in slr and "**Evidence strength:** low — Why." in slr
+    assert "Review type" not in slr and "**Evidence strength:** low — Why." in slr
     assert "less pain (supports)" in slr and "## Consensus" in slr
     narr = render_markdown(review("narrative", None))
     assert "Narrative review" in narr and "**Evidence strength:** not assessed (Why.)" in narr

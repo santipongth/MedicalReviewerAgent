@@ -41,7 +41,7 @@ def render_markdown(review) -> str:
     if q.get("refined_question"):
         out += [f"**Question:** {q['refined_question']}", ""]
     review_type = result.get("review_type")
-    if review_type:
+    if review_type and review_type != "slr":  # SLR Markdown stays as before
         out += [f"**Review type:** {TYPE_LABEL.get(review_type, review_type)} (automated, abstracts only)", ""]
     out += ["## Summary", "", result.get("summary") or s.get("executive_summary", ""), ""]
     if "evidence_strength" in s and s["evidence_strength"] is None:

@@ -102,13 +102,14 @@ _EXTRACT_SCOPING_BLOCK = OVERRIDE_LEAD + """
 _NARRATIVE_NARRATIVE_BLOCK = OVERRIDE_LEAD + """
 Review type: narrative review. Write a thematic synthesis: group the papers by theme, describe where they agree or
 differ, and cite the papers inline. This review is not graded: do not describe the evidence as strong or weak in the
-summary; evidence_rationale is one neutral sentence about the mix of designs (evidence_strength is not shown)."""
+summary. Certainty of evidence is not graded: ignore any GRADE-lite baseline and output only executive_summary and
+research_gaps."""
 
 _NARRATIVE_SCOPING_BLOCK = OVERRIDE_LEAD + """
 Review type: scoping review. Write an evidence-map narrative: describe what kinds of studies exist (designs, years,
 populations, settings), which aspects of the concept are covered and where the gaps are. Do not judge whether the
-intervention works and do not grade the evidence; evidence_rationale is one neutral sentence about the mix of
-designs (evidence_strength is not shown)."""
+intervention works and do not grade the evidence. Certainty of evidence is not graded: ignore any GRADE-lite
+baseline and output only executive_summary and research_gaps."""
 
 
 def refine_system(review_type: str = "slr") -> str:
@@ -310,7 +311,7 @@ Use only the information given; never invent papers, numbers or citations."""
 
 def narrative_user(*, question: str, sub_questions: list[str], papers: list[dict[str, Any]],
                    matrix: dict[str, Any], conflict_notes: list[dict[str, Any]], baseline: dict[str, Any],
-                   external_context: list[dict[str, Any]] | None = None) -> str:
+                   external_context: list[dict[str, Any]] | None = None, review_type: str = "slr") -> str:
     evidence = {"papers": papers, "comparison": matrix.get("rows", []), "consensus": matrix.get("consensus", []),
                 "conflicts": conflict_notes}
     subs = "\n".join(f"- {s}" for s in sub_questions) or "- (none)"
@@ -322,6 +323,11 @@ def narrative_user(*, question: str, sub_questions: list[str], papers: list[dict
             external = ("<external_context>\n" + json.dumps(items, ensure_ascii=False) + "\n</external_context>\n"
                         "(Background from the operator's external tools: may inform context, is not a paper and is "
                         "never cited as [Pn].)\n\n")
+    if review_type != "slr":  # not graded: no baseline, no strength checklist item
+        return (f"{DATA_NOTICE}\n<evidence>\n{json.dumps(evidence, ensure_ascii=False)}\n</evidence>\n\n{external}"
+                f"Review question: {question}\nSub-questions:\n{subs}\n\n"
+                "Checklist before answering:\n- cite only refs that appear in the evidence (P1, P2, ...)\n"
+                "- the summary answers the question and every sub-question\n- all text is in English")
     return (f"{DATA_NOTICE}\n<evidence>\n{json.dumps(evidence, ensure_ascii=False)}\n</evidence>\n\n{external}"
             f"Review question: {question}\nSub-questions:\n{subs}\n"
             f"GRADE-lite baseline: {baseline.get('level', 'very_low')} "

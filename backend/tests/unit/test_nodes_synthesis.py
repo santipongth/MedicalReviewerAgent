@@ -459,3 +459,16 @@ async def test_ungraded_no_papers_message_is_not_very_low():
         state([], matrix={"rows": [], "consensus": [], "conflicts": []}, conflict_notes=[],
               options={"review_type": "scoping"}))
     assert out["synthesis"]["evidence_strength"] is None
+
+
+@pytest.mark.parametrize("rt", ["narrative", "scoping"])
+async def test_non_slr_narrative_prompt_has_no_grade_text(rt):
+    from app.graph.schemas import NarrativeNoGrade
+    papers = [paper("P1", card())]
+    synth = FakeStructuredLLM("ds", lambda s, u: NarrativeNoGrade(executive_summary="A [P1].", research_gaps=[]))
+    out = await make_write_synthesis(deps(synthesizer=synth))(
+        state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en", options={"review_type": rt}))
+    system, user = synth.calls[0]
+    assert "GRADE" not in user and "evidence_strength" not in user and "one level" not in user
+    assert "evidence_rationale" not in system.split("override any conflicting rule")[1]
+    assert (out["synthesis"]["consensus"] == []) == (rt == "scoping")

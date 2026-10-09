@@ -315,7 +315,7 @@ def make_write_synthesis(deps):
                                       sub_questions=question.get("sub_questions") or [],
                                       papers=[_brief(p) for p in papers], matrix=matrix, conflict_notes=notes,
                                       baseline=matrix.get("grade") or {},
-                                      external_context=state.get("external_context") or [])
+                                      external_context=state.get("external_context") or [], review_type=review_type)
         narrative_call = harness_runner(deps).call(
             deps.llms.synthesizer, prompts.narrative_system(review_type), user,
             schema=SynthesisNarrative if graded else NarrativeNoGrade, validate=validate, trigger="narrative")
@@ -335,6 +335,8 @@ def make_write_synthesis(deps):
         entry: dict[str, Any] = {"stage": "narrative", "repaired": False, "escalated": False, "citation_fixes": 0,
                                  "fallback": False}
         consensus, conflicts = _clusters(matrix, notes)
+        if review_type == "scoping":  # a scoping review makes no claims
+            consensus, conflicts = [], []
         narrative: SynthesisNarrative | NarrativeNoGrade | None = None
         if isinstance(res, BaseException):
             if not isinstance(res, LLMError):
