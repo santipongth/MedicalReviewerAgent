@@ -28,7 +28,23 @@ export const LIVE_EVENTS: [string, Record<string, unknown>][] = [
   ["planning", { queries: ["metformin colorectal cancer"], elapsed_s: 6 }], ["searching", { found: 41, elapsed_s: 9 }],
   ["enriching", { candidates: 60, elapsed_s: 11 }], ["screening", { batch: 10, elapsed_s: 12 }], ["screened", { kept: 30, total: 60, elapsed_s: 16 }],
   ["reading", { ref: "P1", title: "Metformin and incident colorectal cancer in a national diabetes cohort", elapsed_s: 17 }],
-  ["extracted", { ref: "P1", ok: true, verified: 2, uncertain: false, elapsed_s: 30 }],
+  ["extracted", { ref: "P1", ok: true, verified: 2, uncertain: false, direction: "positive", design: "cohort", elapsed_s: 30 }],
+];
+
+/**
+ * Eight finished reads (P1..P8) with mixed directions, to follow the 30 `reading` events: positive x2, negative, the
+ * string "null" (no association), mixed (an SR/MA), unclear + uncertain, a failed read, and an ok read with no direction.
+ * Board counts: positive 2, negative 1, null 1, mixed 1, unclear 1; no direction 1; failed 1; read 8.
+ */
+export const DIRECTION_EVENTS: [string, Record<string, unknown>][] = [
+  ["extracted", { ref: "P1", ok: true, verified: 2, uncertain: false, direction: "positive", design: "cohort", elapsed_s: 21 }],
+  ["extracted", { ref: "P2", ok: true, verified: 1, uncertain: false, direction: "negative", design: "rct", elapsed_s: 22 }],
+  ["extracted", { ref: "P3", ok: true, verified: 2, uncertain: false, direction: "null", design: "case_control", elapsed_s: 23 }],
+  ["extracted", { ref: "P4", ok: true, verified: 3, uncertain: false, direction: "mixed", design: "sr_ma_rct", elapsed_s: 24 }],
+  ["extracted", { ref: "P5", ok: true, verified: 0, uncertain: true, direction: "unclear", design: "cohort", elapsed_s: 25 }],
+  ["extracted", { ref: "P6", ok: false, verified: 0, uncertain: false, direction: null, design: null, elapsed_s: 26 }],
+  ["extracted", { ref: "P7", ok: true, verified: 1, uncertain: false, direction: null, design: null, elapsed_s: 27 }],
+  ["extracted", { ref: "P8", ok: true, verified: 2, uncertain: false, direction: "positive", design: "rct", elapsed_s: 28 }],
 ];
 
 /** Intercept every call to the fake API origin. `overrides` win over the defaults below. */

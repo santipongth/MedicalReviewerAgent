@@ -52,7 +52,8 @@ def make_read_paper(deps):
                                  "screen_reason": paper.get("reason"), "card": None, "error": None}
         source_text = paper_text(cand)
         if source_text is None:
-            writer({"type": "extracted", "ref": paper["ref"], "ok": False, "verified": 0, "uncertain": False})
+            writer({"type": "extracted", "ref": paper["ref"], "ok": False, "verified": 0, "uncertain": False,
+                    "direction": None, "design": None})
             return {"papers": [{**entry, "error": "no abstract"}], "errors": [f"no abstract for {paper['ref']}"],
                     "quality": [{"stage": "read", "ref": paper["ref"], "source": "abstract", "skipped": "no abstract",
                                  "seconds": round(time.perf_counter() - started, 3)}]}
@@ -124,7 +125,9 @@ def make_read_paper(deps):
                    **{k: v for k, v in entry["verification"].items() if k != "unverified"},
                    "seconds": round(time.perf_counter() - started, 3)}
         writer({"type": "extracted", "ref": paper["ref"], "ok": entry["card"] is not None,
-                "verified": verified, "uncertain": uncertain})
+                "verified": verified, "uncertain": uncertain,
+                "direction": entry["card"]["overall_direction"] if entry["card"] else None,
+                "design": entry["card"]["design_category"] if entry["card"] else None})
         return {"papers": [entry], "cost_usd": cost, "errors": errors, "quality": [quality]}
 
     return read_paper

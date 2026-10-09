@@ -78,8 +78,10 @@ export function AgentStage({ scene, connection }: { scene: Scene; connection?: C
           ))}
           <PacketLayer scene={scene} layout={layout} />
         </svg>
-        <StageLegend />
-        {caption && <figcaption className="text-xs text-muted">{caption}</figcaption>}
+        <div className="grid gap-2 border-t border-rule pt-3">
+          <StageLegend />
+          {caption && <figcaption className="text-xs text-muted">{caption}</figcaption>}
+        </div>
       </figure>
     </StageMotion>
   );

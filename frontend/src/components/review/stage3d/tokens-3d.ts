@@ -3,15 +3,20 @@
 // and the theme stay one source of truth. Read once on mount and again whenever the theme changes.
 import { useMemo, useSyncExternalStore } from "react";
 
-export type Token3D = "primary" | "ink" | "rule" | "muted" | "ok" | "err" | "warn" | "surface";
+export type Token3D =
+  | "primary" | "ink" | "rule" | "muted" | "ok" | "err" | "warn" | "surface" | "rail"
+  | "sup" | "harm" | "none" | "mixed" | "unclear"; // finding colours: always drawn with their glyph silhouette
 export type Tokens3D = Record<Token3D, string>;
 
-export const TOKEN_NAMES: readonly Token3D[] = ["primary", "ink", "rule", "muted", "ok", "err", "warn", "surface"];
+export const TOKEN_NAMES: readonly Token3D[] = [
+  "primary", "ink", "rule", "muted", "ok", "err", "warn", "surface", "rail", "sup", "harm", "none", "mixed", "unclear",
+];
 
 /** Day-theatre values from globals.css; used only when a property is missing or unparsable. */
 export const TOKEN_FALLBACK: Tokens3D = {
   primary: "#0e5a47", ink: "#10241e", rule: "#bccac1", muted: "#4a5e57",
-  ok: "#0e5a47", err: "#a33a12", warn: "#8a5a00", surface: "#f8faf9",
+  ok: "#0e5a47", err: "#a33a12", warn: "#8a5a00", surface: "#f8faf9", rail: "#dce6e0",
+  sup: "#0072b2", harm: "#d55e00", none: "#5f6b73", mixed: "#8e3b7e", unclear: "#5f6b73",
 };
 
 const hex2 = (n: number): string => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");

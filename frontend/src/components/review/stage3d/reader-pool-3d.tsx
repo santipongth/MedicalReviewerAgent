@@ -40,7 +40,7 @@ export function ReaderPool3D({ slots, layout, tokens }: { slots: ReaderSlot[]; l
   return (
     <instancedMesh ref={mesh} args={[undefined, undefined, MAX_SLOTS]} frustumCulled={false}>
       <sphereGeometry args={[R, 16, 12]} />
-      <meshStandardMaterial roughness={1} metalness={0} />
+      <meshStandardMaterial flatShading roughness={1} metalness={0} />
     </instancedMesh>
   );
 }

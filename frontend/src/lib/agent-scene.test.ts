@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  type AgentId, type Pulse, type Scene, MAX_DOTS, PACKET_CAP, SYNTH_CAPTION, countFor, currentAgent, formatElapsed, initialScene,
-  planDots, readDone, reduceScene, sceneSummary, showSynthCaption, stageCaption, takeFreshPulses,
+  type AgentId, type Pulse, type Scene, MAX_DOTS, PACKET_CAP, SYNTH_CAPTION, countFor, currentAgent, emptySlot, formatElapsed,
+  initialScene, planDots, readDone, reduceScene, sceneSummary, showSynthCaption, stageCaption, takeFreshPulses, traceAgent,
 } from "./agent-scene";
 import type { ReviewEvent } from "./types";
 
@@ -87,7 +87,7 @@ describe("reduceScene: LIVE_EVENTS walk", () => {
   });
   it("reading/extracted fill the first slot; read stays active", () => {
     const s = run(live(12));
-    expect(s.slots[0]).toEqual({ ref: "P1", state: "ok" });
+    expect(s.slots[0]).toEqual({ ref: "P1", state: "ok", title: "t", direction: null, design: null, verified: 2, doneKey: 12 });
     expect(s.agents.read).toBe("active");
     expect(s.counts).toMatchObject({ readOk: 1, readFailed: 0 });
     expect(s.pulses.at(-1)).toMatchObject({ edge: "read>synth", kind: "card", n: 1 });
@@ -142,7 +142,7 @@ describe("reduceScene: dedupe and replay", () => {
 describe("reader slots", () => {
   it("assigns by ref, then first free, then appends", () => {
     let s = run([...live(10), ev(30, "reading", { ref: "P7" }), ev(31, "reading", { ref: "P2" })]);
-    expect(s.slots.slice(0, 2)).toEqual([{ ref: "P7", state: "reading" }, { ref: "P2", state: "reading" }]);
+    expect(s.slots.slice(0, 2)).toMatchObject([{ ref: "P7", state: "reading" }, { ref: "P2", state: "reading" }]);
     s = run([ev(32, "reading", { ref: "P7" })], s);
     expect(s.slots.filter((x) => x.ref === "P7")).toHaveLength(1);
   });
@@ -183,7 +183,7 @@ describe("reader slots", () => {
   });
   it("extracted without screened appends and still finalises", () => {
     const s = run([ev(1, "extracted", { ref: "P1", ok: true })]);
-    expect(s.slots).toEqual([{ ref: "P1", state: "ok" }]);
+    expect(s.slots).toEqual([{ ref: "P1", state: "ok", title: null, direction: null, design: null, verified: null, doneKey: 1 }]);
     expect(s.agents.synth).toBe("working");
   });
 });
@@ -410,5 +410,79 @@ describe("shared stage helpers (2D and 3D)", () => {
     expect(countFor(s, "guard")).toBeUndefined();
     expect(countFor(initialScene(), "search")).toBeUndefined();
     expect([MAX_DOTS, PACKET_CAP]).toEqual([24, 12]);
+  });
+});
+
+describe("plan 13: slot details, trace agents, step spans", () => {
+  it("reading sets a trimmed, capped title; extracted sets direction, design, verified and doneKey", () => {
+    const long = "x".repeat(300);
+    let s = run([ev(1, "screened", { kept: 2, total: 4 }), ev(2, "reading", { ref: "P1", title: "  A title  " }),
+      ev(3, "reading", { ref: "P2", title: long })]);
+    expect(s.slots[0].title).toBe("A title");
+    expect(s.slots[1].title).toHaveLength(200);
+    s = run([ev(4, "extracted", { ref: "P1", ok: true, direction: "null", design: "sr_ma_rct", verified: 3 }),
+      ev(5, "extracted", { ref: "P2", ok: false, direction: "positive", design: "rct", verified: 2 })], s);
+    expect(s.slots[0]).toEqual({ ref: "P1", state: "ok", title: "A title", direction: "null", design: "sr_ma_rct", verified: 3, doneKey: 4 });
+    expect(s.slots[1]).toMatchObject({ state: "failed", direction: null, design: null, verified: null, doneKey: 5 });
+  });
+  it("unknown or JSON-null direction/design -> null", () => {
+    const s = run([ev(1, "extracted", { ref: "P1", ok: true, direction: null, design: null }),
+      ev(2, "extracted", { ref: "P2", ok: true, direction: "benefit", design: "meta" })]);
+    expect(s.slots.map((x) => [x.direction, x.design])).toEqual([[null, null], [null, null]]);
+  });
+  it("doneKey moves only when state or direction changes (resume re-emits do not re-trigger)", () => {
+    const a = run([ev(1, "extracted", { ref: "P1", ok: true, direction: "positive" })]);
+    const b = run([ev(2, "extracted", { ref: "P1", ok: true, direction: "positive" })], a);
+    expect(b.slots[0].doneKey).toBe(1);
+    const c = run([ev(3, "extracted", { ref: "P1", ok: true, direction: "mixed" })], b);
+    expect(c.slots[0].doneKey).toBe(3);
+    const d = run([ev(4, "extracted", { ref: "P1", ok: true, uncertain: true, direction: "mixed" })], c);
+    expect(d.slots[0].doneKey).toBe(4);
+  });
+  it("screened creates empty slots", () => {
+    expect(run([ev(1, "screened", { kept: 1, total: 2 })]).slots).toEqual([emptySlot(null)]);
+  });
+  it("traceAgent maps event types and trace rows carry the agent", () => {
+    const map: [string, AgentId | null][] = [["checking_topic", "guard"], ["refining", "refine"], ["question_refined", "refine"],
+      ["planning", "plan"], ["searching", "search"], ["enriching", "enrich"], ["screening", "screen"], ["screened", "screen"],
+      ["external_lookup", "external"], ["reading", "read"], ["extracted", "read"], ["synthesizing", "synth"],
+      ["localizing", "localize"], ["finalizing", "finish"], ["queued", null], ["started", null], ["done", null],
+      ["interrupted", null], ["mystery", null], ["toString", null]];
+    for (const [t, a] of map) expect(traceAgent(t)).toBe(a);
+    const s = run(live(12));
+    expect(s.trace.map((r) => r.agent)).toEqual([null, null, "guard", "refine", "refine", "plan", "search", "enrich", "screen",
+      "screen", "read", "read"]);
+  });
+  it("spans for a full walk: plan starts when refine ends; search runs from planning to searching", () => {
+    const s = run([...live(12), ev(13, "synthesizing", { papers: 1, elapsed_s: 31 }), ev(14, "localizing", { elapsed_s: 40 }),
+      ev(15, "finalizing", { elapsed_s: 45 }), ev(16, "done", { elapsed_s: 47 })]);
+    expect(s.spans).toEqual({
+      guard: { start: 0.5, end: 0.8 }, refine: { start: 0.8, end: 4 }, plan: { start: 4, end: 6 },
+      search: { start: 6, end: 9 }, enrich: { start: 9, end: 11 }, screen: { start: 11, end: 16 },
+      read: { start: 16, end: 31 }, synth: { start: 31, end: 40 }, localize: { start: 40, end: 45 },
+      finish: { start: 45, end: 47 },
+    });
+  });
+  it("interrupted / resume keeps the start", () => {
+    let s = run([...live(7), ev(50, "interrupted", { elapsed_s: 10 })]);
+    expect(s.spans.enrich).toEqual({ start: 9, end: null });
+    s = run([ev(51, "started", { resume: true, elapsed_s: 20 })], s);
+    expect(s.spans.enrich).toEqual({ start: 9, end: null });
+    s = run([ev(52, "enriching", { candidates: 5, elapsed_s: 25 })], s);
+    expect(s.spans.enrich).toEqual({ start: 9, end: 25 });
+  });
+  it("missing elapsed_s leaves the span field null", () => {
+    const s = run([ev(1, "checking_topic", { elapsed_s: 1 }), ev(2, "refining"), ev(3, "question_refined", { elapsed_s: 5 })]);
+    expect(s.spans.guard).toEqual({ start: 1, end: null });
+    expect(s.spans.refine?.start ?? null).toBeNull();
+    expect(s.spans.refine?.end).toBe(5);
+  });
+  it("spans are copy-on-write", () => {
+    const a = run(live(5));
+    const b = run([ev(6, "mystery", { elapsed_s: 5 })], a);
+    expect(b.spans).toBe(a.spans);
+    const c = run([ev(7, "planning", { queries: ["a"], elapsed_s: 6 })], b);
+    expect(c.spans).not.toBe(b.spans);
+    expect(b.spans.plan).toBeUndefined();
   });
 });

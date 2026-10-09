@@ -47,6 +47,8 @@ async def finalize(state: ReviewState) -> dict:
 
 MAX_CANDIDATES = 60
 MAX_KEPT = 30
+STUB_DIRECTIONS = ("positive", "positive", "null", "negative", "mixed", "unclear", "positive")
+STUB_DESIGNS = ("rct", "cohort", "sr_ma_rct", "case_control", "cohort")
 
 
 @dataclass(frozen=True)
@@ -164,7 +166,9 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
             await asyncio.sleep(per_paper * rng.uniform(0.7, 1.3))
         ok = i % 11 != 0
         progress_writer()({"type": "extracted", "ref": ref, "ok": ok, "verified": (i % 4) if ok else 0,
-                           "uncertain": i % 7 == 0})
+                           "uncertain": i % 7 == 0,
+                           "direction": STUB_DIRECTIONS[i % 7] if ok else None,
+                           "design": STUB_DESIGNS[i % 5] if ok else None})
         return {"papers": [{"ref": ref, "ok": ok}]}
 
     async def normalize_outcomes(state: ReviewState) -> dict:

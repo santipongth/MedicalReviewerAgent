@@ -10,7 +10,7 @@ function Sample({ children }: { children: ReactNode }) {
 /** Key to the stage's status shapes (HTML, so it is readable text, not part of the svg image). */
 export function StageLegend() {
   return (
-    <ul aria-label="สัญลักษณ์" className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+    <ul aria-label="สัญลักษณ์" className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted">
       <li className="inline-flex items-center gap-1.5">
         <Sample><rect x={-8} y={-6} width={16} height={12} rx={2} fill="none" className="stroke-primary" strokeWidth={2} /></Sample>กำลังทำ
       </li>

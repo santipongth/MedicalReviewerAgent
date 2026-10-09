@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialScene, reduceScene } from "@/lib/agent-scene";
 import { initialRun, reduceRun } from "@/lib/progress";
 import type { ReviewEvent } from "@/lib/types";
-import { LiveRun } from "./live-run";
+import { clockElapsed, LiveRun } from "./live-run";
 import { TerminalState } from "./terminal-state";
 
 // Resolve the lazy stage synchronously so the test does not depend on chunk-load timing.
@@ -45,7 +45,7 @@ describe("LiveRun", () => {
     expect(screen.getByText("Registry").closest("li")).toHaveTextContent("กำลังอ่านหรือรอคิว");
     expect(screen.queryByText("กำลังอ่าน…")).not.toBeInTheDocument();
     expect(screen.getByText("P1")).not.toHaveClass("num-verified"); // a ref label, not a verified number
-    expect(screen.getByText(/42 วินาที/)).toBeInTheDocument();
+    expect(screen.getByText(/ผ่านไป/).closest("p")).toHaveTextContent(/ผ่านไป 0:42 · ปกติใช้ 1–3 นาที/);
     expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("สังเคราะห์");
   });
 
@@ -100,6 +100,15 @@ describe("LiveRun queue", () => {
 describe("LiveRun progress details", () => {
   afterEach(() => vi.useRealTimers());
 
+  it("puts the thought card and the stage in the labelled stage panel", () => {
+    const run = stateOf([["started", {}], ["checking_topic", {}]]);
+    const scene = statesOf([["started", {}], ["checking_topic", {}]]).scene;
+    render(<LiveRun run={run} scene={scene} topic="x" connection="open" />);
+    const panel = screen.getByRole("region", { name: "เวทีเอเจนต์" });
+    expect(panel).toContainElement(document.getElementById("h-thought"));
+    expect(panel.querySelector("svg[role=img]")).not.toBeNull();
+  });
+
   it("makes the queue a real step and the current one while queued", () => {
     const run = { ...initialRun(), status: "queued" as const };
     render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" />);
@@ -109,7 +118,7 @@ describe("LiveRun progress details", () => {
   it("says it is connecting instead of counting 0 seconds", () => {
     render(<LiveRun run={initialRun()} scene={initialScene()} topic="x" connection="connecting" />);
     expect(screen.getByText("กำลังเชื่อมต่อ…")).toBeInTheDocument();
-    expect(screen.queryByText(/0 วินาที/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ผ่านไป/)).not.toBeInTheDocument();
   });
 
   it("ticks a local clock from startedAt and shows the typical duration", () => {
@@ -117,9 +126,74 @@ describe("LiveRun progress details", () => {
     vi.setSystemTime(new Date("2026-10-09T10:00:10Z"));
     const run = stateOf([["started", {}], ["searching", { found: 5 }]]);
     render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" startedAt="2026-10-09T10:00:00Z" />);
-    expect(screen.getByText(/ผ่านไป 10 วินาที · ปกติใช้ 1–3 นาที/)).toBeInTheDocument();
+    expect(screen.getByText(/ผ่านไป/).closest("p")).toHaveTextContent("ผ่านไป 0:10 · ปกติใช้ 1–3 นาที");
     act(() => { vi.advanceTimersByTime(3000); });
-    expect(screen.getByText(/ผ่านไป 13 วินาที/)).toBeInTheDocument();
+    expect(screen.getByText(/ผ่านไป/).closest("p")).toHaveTextContent("ผ่านไป 0:13");
+  });
+
+  it("keeps the ticking clock out of any live region", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-09T10:00:10Z"));
+    const run = stateOf([["started", {}], ["searching", { found: 5 }]]);
+    render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" startedAt="2026-10-09T10:00:00Z" />);
+    const clock = screen.getByText("0:10");
+    expect(clock).toHaveClass("tabular-nums");
+    expect(clock.closest("[aria-live]")).toBeNull();
+    expect(screen.getByText(/ผ่านไป/).closest("[aria-live]")).toBeNull();
+  });
+
+  it("still announces the queue text", () => {
+    const run = { ...initialRun(), status: "queued" as const };
+    render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" queuePosition={2} />);
+    expect(screen.getByText(/ลำดับที่ 2/).closest("[aria-live]")).not.toBeNull();
+  });
+
+  it("falls back to the event elapsed when startedAt is implausible", () => {
+    expect(clockElapsed("2026-10-09T10:00:00Z", Date.parse("2026-10-09T10:00:10Z"), 3)).toBe(10);
+    expect(clockElapsed("2026-10-09T10:00:00Z", Date.parse("2026-10-09T09:59:00Z"), 3)).toBe(3); // in the future
+    expect(clockElapsed("2026-10-01T10:00:00Z", Date.parse("2026-10-09T10:00:00Z"), 3)).toBe(3); // days ago
+    expect(clockElapsed("not a date", 0, 3)).toBe(3);
+    expect(clockElapsed(null, 0, 3)).toBe(3);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-09T10:00:00Z"));
+    const run = stateOf([["started", {}], ["searching", { found: 5, elapsed_s: 7 }]]);
+    render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" startedAt="2026-10-10T10:00:00Z" />);
+    expect(screen.getByText(/ผ่านไป/).closest("p")).toHaveTextContent("ผ่านไป 0:07");
+  });
+
+  it("folds unfinished papers into one toggle row below lg and labels directions as read", () => {
+    const run = stateOf([
+      ["screened", { kept: 4, total: 4 }],
+      ["reading", { ref: "P1", title: "A" }], ["reading", { ref: "P2", title: "B" }],
+      ["reading", { ref: "P3", title: "C" }], ["reading", { ref: "P4", title: "D" }],
+      ["extracted", { ref: "P1", ok: true, direction: "positive", design: "rct" }],
+      ["extracted", { ref: "P2", ok: true, direction: "null", uncertain: true }],
+    ]);
+    render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" />);
+    const rows = (s: string) => [...document.querySelectorAll(`li[data-reading-state="${s}"]`)];
+    expect(rows("ok")).toHaveLength(2);
+    expect(rows("ok").every((li) => !li.classList.contains("hidden"))).toBe(true);
+    expect(rows("reading")).toHaveLength(2);
+    expect(rows("reading").every((li) => li.classList.contains("hidden") && li.classList.contains("lg:grid"))).toBe(true);
+    const toggle = screen.getByRole("button", { name: "อีก 2 ฉบับกำลังอ่านหรือรอคิว" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveClass("min-h-11", "lg:hidden");
+    expect(document.getElementById(toggle.getAttribute("aria-controls") as string)).toContainElement(rows("reading")[0] as HTMLElement);
+    act(() => { toggle.click(); });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(rows("reading").some((li) => li.classList.contains("hidden"))).toBe(false);
+    // the ledger's directions carry the same "as the agent read it" label as the board; uncertain rows keep their glyph
+    expect(screen.getByText(/ตามที่เอเจนต์อ่าน/)).toBeInTheDocument();
+    const p2 = screen.getByText("B").closest("li") as HTMLElement;
+    expect(p2.querySelector('[role="img"]')).not.toBeNull();
+    expect(p2).toHaveTextContent("สองโมเดลอ่านต่างกัน");
+  });
+
+  it("shows no direction note or toggle when nothing applies", () => {
+    const run = stateOf([["screened", { kept: 1, total: 1 }], ["reading", { ref: "P1", title: "A" }], ["extracted", { ref: "P1", ok: true }]]);
+    render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" />);
+    expect(screen.queryByText(/ตามที่เอเจนต์อ่าน/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /ฉบับกำลังอ่านหรือรอคิว/ })).toBeNull();
   });
 
   it("lists the first three search queries and folds the rest", () => {

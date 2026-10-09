@@ -69,3 +69,18 @@ describe("readCounts", () => {
     expect(STEPS[0]).toBe("queue");
   });
 });
+
+describe("reduceRun: extracted direction and design", () => {
+  it("keeps direction/design only when ok and known; no source field", () => {
+    const s = run([
+      ["reading", { ref: "P1", title: "a" }], ["extracted", { ref: "P1", ok: true, direction: "null", design: "sr_ma_rct", source: "x" }],
+      ["extracted", { ref: "P2", ok: true, direction: null, design: "meta" }],
+      ["extracted", { ref: "P3", ok: false, direction: "positive", design: "rct" }],
+    ]);
+    expect(s.reading[0]).toMatchObject({ ref: "P1", state: "ok", direction: "null", design: "sr_ma_rct" });
+    expect(s.reading[0]).not.toHaveProperty("source");
+    expect(s.reading[1]).not.toHaveProperty("direction");
+    expect(s.reading[1]).not.toHaveProperty("design");
+    expect(s.reading[2]).not.toHaveProperty("direction");
+  });
+});

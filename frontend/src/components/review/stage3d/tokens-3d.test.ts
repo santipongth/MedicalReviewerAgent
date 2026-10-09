@@ -34,6 +34,17 @@ describe("tokens3dFrom", () => {
     expect(t.err).toBe(TOKEN_FALLBACK.err);
     expect(t.surface).toBe(TOKEN_FALLBACK.surface);
   });
+
+  it("includes the finding colours and the rail, with the day-theatre fallbacks from globals.css", () => {
+    for (const k of ["sup", "harm", "none", "mixed", "unclear", "rail"] as const) expect(TOKEN_NAMES).toContain(k);
+    expect(TOKEN_FALLBACK).toMatchObject({
+      sup: "#0072b2", harm: "#d55e00", none: "#5f6b73", mixed: "#8e3b7e", unclear: "#5f6b73", rail: "#dce6e0",
+    });
+    const t = tokens3dFrom((p) => (p === "--sup" ? "#3b98d4" : p === "--rail" ? "rgb(34, 57, 47)" : ""));
+    expect(t.sup).toBe("#3b98d4");
+    expect(t.rail).toBe("#22392f");
+    expect(t.harm).toBe(TOKEN_FALLBACK.harm);
+  });
 });
 
 describe("readTokens3D / useTokens3D", () => {

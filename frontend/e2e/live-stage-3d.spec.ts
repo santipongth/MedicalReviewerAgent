@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { reviewFixture } from "../src/test/fixtures";
-import { json, mockApi, RID, streamSse, type SseFrame } from "./mock-api";
+import { DIRECTION_EVENTS, json, mockApi, RID, streamSse, type SseFrame } from "./mock-api";
 
 type Ev = [string, Record<string, unknown>];
 
@@ -19,7 +19,7 @@ const PRE_READ: Ev[] = [
   ["screened", { kept: 30, total: 60, elapsed_s: 16 }],
 ];
 const READING: Ev[] = Array.from({ length: 30 }, (_, i): Ev => ["reading", { ref: `P${i + 1}`, title: `Paper ${i + 1}`, elapsed_s: 17 }]);
-const extracted = (i: number): Ev => ["extracted", { ref: `P${i}`, ok: true, verified: 2, uncertain: false, elapsed_s: 20 + i }];
+const extracted = (i: number): Ev => ["extracted", { ref: `P${i}`, ok: true, verified: 2, uncertain: false, direction: "positive", design: "cohort", elapsed_s: 20 + i }];
 
 const allAtOnce = (): SseFrame[] => [{ delayMs: 0, events: [...PRE_READ, ...READING, ...[1, 2, 3, 4, 5].map(extracted)] }];
 
@@ -162,4 +162,25 @@ test("a stored 3D preference is ignored where 3D is not allowed (reduced motion)
   await open(page, allAtOnce());
   await expect(toggle(page)).toHaveCount(0);
   await expect(stage3d(page)).toHaveCount(0);
+});
+
+test("3D: thought label and direction piles follow the same events as the board", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await open(page, [{ delayMs: 0, events: [...PRE_READ, ...READING, ...DIRECTION_EVENTS] }]);
+  if (!(await browserHasWebGL(page))) test.skip(true, "this browser has no WebGL context");
+  const boardCount = async (dir: string) =>
+    Number(await page.locator(`section[aria-labelledby="h-evidence"] [data-evidence-dir="${dir}"]`).getAttribute("data-count"));
+  await enable3d(page);
+  const thought = stage3d(page).locator('[data-label3d="thought"]');
+  await expect(thought).toBeAttached({ timeout: 15_000 });
+  expect((await thought.textContent())!.trim()).not.toBe("");
+  for (const dir of ["positive", "negative", "null", "mixed", "unclear"]) {
+    const pile = stage3d(page).locator(`[data-label3d="pile-${dir}"]`);
+    await expect(pile, dir).toBeAttached({ timeout: 15_000 });
+    await expect(pile.locator("[data-count]"), dir).toHaveText(String(await boardCount(dir)));
+  }
+  await expect(stage3d(page).locator('[data-label3d="piles"]')).toContainText("ตามที่เอเจนต์อ่าน");
+  // parity: no 3D label is ever empty
+  const texts = await stage3d(page).locator("[data-label3d]").evaluateAll((els) => els.map((e) => (e.textContent ?? "").trim()));
+  expect(texts.filter((t) => t === "")).toEqual([]);
 });

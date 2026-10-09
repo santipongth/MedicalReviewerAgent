@@ -9,11 +9,13 @@ import { PIPELINE, sceneSummary, type Scene } from "@/lib/agent-scene";
 import { layout3dFor, type Layout3D } from "@/lib/agent-layout-3d";
 import { CameraRig } from "./camera-rig";
 import { Edge3D } from "./edge-3d";
+import { EvidencePiles3D, Tray3D } from "./evidence-piles-3d";
 import { Labels3D } from "./labels-3d";
-import { anySpinning, cameraAgent, CAMERA_BASE, visibleAgents } from "./model-3d";
+import { anySpinning, cameraAgent, CAMERA_BASE, STAGE_FOV, visibleAgents } from "./model-3d";
 import { Node3D } from "./node-3d";
 import { Packets3D } from "./packets-3d";
 import { ReaderPool3D } from "./reader-pool-3d";
+import { ThoughtLabel3D } from "./thought-label-3d";
 import { useTokens3D, type Tokens3D } from "./tokens-3d";
 
 /** Requests one frame whenever the scene or the theme changes (frameloop="demand"). */
@@ -50,8 +52,9 @@ function World({ scene, layout, tokens }: { scene: Scene; layout: Layout3D; toke
   return (
     <>
       <color attach="background" args={[tokens.surface]} />
-      <ambientLight intensity={0.75} />
-      <directionalLight position={[4, 8, 6]} intensity={1.1} />
+      {/* DESIGN.md: one ambient + one directional light, flat colours; no shadows, emissive, fog or post-processing */}
+      <ambientLight intensity={0.65} />
+      <directionalLight position={[-3, 9, 7]} intensity={1.0} />
       <InvalidateOn scene={scene} tokens={tokens} />
       <SpinTicker spinning={anySpinning(scene, layout)} />
       {layout.edges.map((e) => (
@@ -60,9 +63,12 @@ function World({ scene, layout, tokens }: { scene: Scene; layout: Layout3D; toke
       {visibleAgents(layout, PIPELINE).map((id) => (
         <Node3D key={id} at={layout.nodes[id]!} status={scene.agents[id]} tokens={tokens} />
       ))}
+      <Tray3D layout={layout} tokens={tokens} />
       <ReaderPool3D slots={scene.slots} layout={layout} tokens={tokens} />
+      <EvidencePiles3D scene={scene} layout={layout} tokens={tokens} />
       <Packets3D scene={scene} layout={layout} tokens={tokens} />
       {labelsReady && <Labels3D scene={scene} layout={layout} />}
+      {labelsReady && <ThoughtLabel3D scene={scene} layout={layout} tokens={tokens} />}
       <CameraRig layout={layout} agent={cameraAgent(scene)} />
     </>
   );
@@ -92,7 +98,7 @@ export function Stage3D({ scene }: { scene: Scene }) {
   return (
     <div role="img" aria-label={sceneSummary(scene)} className="aspect-[960/330] w-full max-w-[960px] rounded-sm border border-rule" data-stage3d>
       <Canvas
-        aria-hidden="true" frameloop="demand" dpr={[1, 2]} camera={{ position: CAMERA_BASE, fov: 45 }}
+        aria-hidden="true" frameloop="demand" dpr={[1, 2]} camera={{ position: CAMERA_BASE, fov: STAGE_FOV }}
         gl={{ antialias: true, powerPreference: "low-power" }} onCreated={onCreated}
       >
         <World scene={scene} layout={layout} tokens={tokens} />

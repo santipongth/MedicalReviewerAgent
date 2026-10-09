@@ -1,6 +1,7 @@
 // Pure reducer: review events (SSE) → what the live-run screen shows. Replayed events (seq ≤ lastSeq) are ignored so
 // a reconnect with Last-Event-ID never double-applies anything.
-import type { ReviewEvent } from "./types";
+import { asDesign, asDirection } from "./live-evidence";
+import type { DesignCategory, Direction, ReviewEvent } from "./types";
 
 export type StepKey = "queue" | "refine" | "search" | "screen" | "read" | "synthesize" | "done";
 export const STEPS: StepKey[] = ["queue", "refine", "search", "screen", "read", "synthesize"];
@@ -10,9 +11,10 @@ export interface ReadingItem {
   ref: string;
   title: string;
   state: "reading" | "ok" | "failed";
-  source?: string;
   verified?: number;
   uncertain?: boolean;
+  direction?: Direction; // the reading model's judgement; absent when failed, missing or unknown
+  design?: DesignCategory;
 }
 
 export interface RunState {
@@ -108,9 +110,13 @@ export function reduceRun(state: RunState, ev: ReviewEvent): RunState {
       const ref = str(p.ref) ?? "?";
       const prev = s.reading.find((r) => r.ref === ref);
       const item: ReadingItem = {
-        ref, title: prev?.title ?? "", state: p.ok ? "ok" : "failed", source: str(p.source),
+        ref, title: prev?.title ?? "", state: p.ok ? "ok" : "failed",
         verified: typeof p.verified === "number" ? p.verified : undefined, uncertain: Boolean(p.uncertain),
       };
+      const direction = p.ok ? asDirection(p.direction) : null;
+      const design = p.ok ? asDesign(p.design) : null;
+      if (direction) item.direction = direction;
+      if (design) item.design = design;
       s.reading = prev ? s.reading.map((r) => (r.ref === ref ? item : r)) : [...s.reading, item];
       break;
     }

@@ -67,7 +67,10 @@ test("live run shows the refined question and the agent stage while reading", as
   await expect(page.getByTestId("reader-ok")).toHaveCount(1);
   await expect(page.getByTestId("reader-waiting")).toHaveCount(29);
   await expect(page.getByRole("region", { name: "บันทึกการทำงาน" })).toContainText("ผ่านคัดกรอง 30 จาก 60 ฉบับ");
-  await expect(page.getByText("Metformin and incident colorectal cancer in a national diabetes cohort")).toBeVisible();
+  // the title shows in the reading list and (as the latest finished paper) in the thought card: scope to the list
+  await expect(page.getByRole("listitem").filter({ hasText: "P1" }).getByText("Metformin and incident colorectal cancer in a national diabetes cohort")).toBeVisible();
+  await expect(page.locator('section[aria-labelledby="h-evidence"]')).toContainText("กระดานหลักฐานสด");
+  await expect(page.locator('[aria-labelledby="h-thought"]')).toContainText("อ่านเสร็จล่าสุด P1");
   await page.screenshot({ path: shots("live-run"), fullPage: true });
   await noSeriousA11y(page);
 });

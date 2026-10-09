@@ -2,8 +2,9 @@
 
 import { exportUrl } from "@/lib/api";
 import { directionTally, hasPooledPapers } from "@/lib/charts-data";
-import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
-import type { Direction, Paper, QuestionBlock, ReviewResult, Synthesis } from "@/lib/types";
+import { POOLED_OVERLAP_TH } from "@/lib/copy";
+import { DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "@/lib/i18n";
+import type { Paper, QuestionBlock, ReviewResult, Synthesis } from "@/lib/types";
 import { CopyLinkButton } from "../ui/copy-link";
 import { Glyph } from "../ui/evidence";
 import { Term } from "../ui/term";
@@ -11,7 +12,6 @@ import { CitedText, QuestionTitle, StrengthLine, type Select } from "./report-pa
 import { SECTION_H2 } from "./report-nav";
 import { L } from "./text";
 
-const ORDER: Direction[] = ["positive", "negative", "null", "mixed", "unclear"];
 const LINK = "inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
 
 /** The answer first: question, evidence strength, summary, how the papers split, and what to do with the report. */
@@ -21,7 +21,7 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
 }) {
   const hasPapers = papers.length > 0;
   const tally = directionTally(papers);
-  const shown = ORDER.filter((d) => tally[d] > 0);
+  const shown = DIRECTION_ORDER.filter((d) => tally[d] > 0);
   return (
     <section aria-labelledby="h-summary" className="grid gap-4">
       <QuestionTitle question={question} topic={topic} lang={lang} />
@@ -51,7 +51,7 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
           </ul>
           {hasPooledPapers(papers) && (
             <p className="text-[0.82rem] text-muted">
-              {L(lang, "งานทบทวน/วิเคราะห์อภิมานอาจซ้อนกับงานวิจัยหลักที่นับรวม", "Reviews and meta-analyses may overlap with the primary studies counted here")}
+              {L(lang, POOLED_OVERLAP_TH, "Reviews and meta-analyses may overlap with the primary studies counted here")}
             </p>
           )}
         </div>
