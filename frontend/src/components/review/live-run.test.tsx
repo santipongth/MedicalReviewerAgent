@@ -6,6 +6,12 @@ import type { ReviewEvent } from "@/lib/types";
 import { LiveRun } from "./live-run";
 import { TerminalState } from "./terminal-state";
 
+// Resolve the lazy stage synchronously so the test does not depend on chunk-load timing.
+vi.mock("next/dynamic", async () => {
+  const { AgentStage } = await import("./stage/agent-stage");
+  return { default: () => AgentStage };
+});
+
 function statesOf(events: [string, Record<string, unknown>][]) {
   const evs = events.map(([type, payload], i) => ({ seq: i + 1, type, payload }) as ReviewEvent);
   return {
@@ -16,7 +22,7 @@ function statesOf(events: [string, Record<string, unknown>][]) {
 const stateOf = (events: [string, Record<string, unknown>][]) => statesOf(events).run;
 
 describe("LiveRun", () => {
-  it("shows the refined question, the agent stage and paper-by-paper progress", async () => {
+  it("shows the refined question, the agent stage and paper-by-paper progress", () => {
     const { run, scene } = statesOf([
       ["started", {}],
       ["question_refined", { refined_question: "In adults with T2D, does metformin reduce CRC?", interpretation: "i",
@@ -26,7 +32,7 @@ describe("LiveRun", () => {
       ["reading", { ref: "P2", title: "Registry" }], ["synthesizing", { elapsed_s: 42.2 }],
     ]);
     render(<LiveRun run={run} scene={scene} topic="metformin" connection="open" />);
-    expect(await screen.findByRole("img", { name: /สังเคราะห์/ }, { timeout: 12000 })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /สังเคราะห์/ })).toBeInTheDocument();
     // P1 finished uncertain, P2 is still reading (the scene is at synthesizing, so the label names that step).
     expect(document.querySelectorAll('[data-testid="reader-uncertain"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-testid="reader-reading"]')).toHaveLength(1);
@@ -37,7 +43,7 @@ describe("LiveRun", () => {
     expect(screen.getByText("P1")).not.toHaveClass("num-verified"); // a ref label, not a verified number
     expect(screen.getByText(/42 วินาที/)).toBeInTheDocument();
     expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("สังเคราะห์");
-  }, 15000);
+  });
 
   it("tells the reader when the stream is reconnecting", () => {
     render(<LiveRun run={initialRun()} scene={initialScene()} topic="x" connection="reconnecting" />);

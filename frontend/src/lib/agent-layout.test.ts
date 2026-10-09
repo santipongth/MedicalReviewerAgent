@@ -109,17 +109,19 @@ describe.each(["wide", "narrow"] as LayoutKind[])("edges avoid zones (%s)", (kin
         for (let slots = 0; slots <= 30; slots++) {
           const l = layoutFor(kind, { showLocalize, showExternal, slots, batches: 10, queries: 12 });
           const rects = [...Object.values(l.zone), ...l.queryChips, ...l.batchChips];
+          const bad: string[] = [];
           for (const e of l.edges) {
             for (let t = 0.1; t <= 0.901; t += 0.05) {
               const x = segX(e.seg, t);
               const y = segY(e.seg, t);
               for (const r of rects) {
                 const hit = x >= r!.x && x <= r!.x + r!.w && y >= r!.y && y <= r!.y + r!.h;
-                expect(hit, `${kind} ${e.id} t=${t.toFixed(2)} in rect ${JSON.stringify(r)}`).toBe(false);
+                if (hit) bad.push(`${kind} ${e.id} t=${t.toFixed(2)} in rect ${JSON.stringify(r)}`);
               }
-              for (const p of l.slots) expect(Math.hypot(x - p.x, y - p.y)).toBeGreaterThan(8);
+              for (const p of l.slots) if (Math.hypot(x - p.x, y - p.y) <= 8) bad.push(`${kind} ${e.id} t=${t.toFixed(2)} near slot ${JSON.stringify(p)}`);
             }
           }
+          expect(bad).toEqual([]);
         }
       }
     }

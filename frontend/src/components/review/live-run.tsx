@@ -8,12 +8,13 @@ import { TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
 import type { Connection } from "@/lib/use-review";
 import { MilestoneStatus } from "./stage/milestone-status";
+import { StagePlaceholder } from "./stage/stage-placeholder";
 import { TraceLog } from "./stage/trace-log";
 
 // Client-only chunk (motion lives here); the placeholder reserves the stage's aspect so nothing shifts on load.
 const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.AgentStage), {
   ssr: false,
-  loading: () => <div aria-hidden className="aspect-[960/420] w-full rounded-sm border border-rule bg-surface" />,
+  loading: () => <StagePlaceholder />,
 });
 
 const STEP_LABEL: Record<StepKey, string> = {
