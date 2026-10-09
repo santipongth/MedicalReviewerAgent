@@ -18,7 +18,7 @@ const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.Age
 // three.js / R3F / drei live only in this lazily loaded chunk.
 const Stage3D = dynamic(() => import("./stage3d/stage-3d"), {
   ssr: false,
-  loading: () => <div aria-hidden data-placeholder="3d" className="mx-auto aspect-[960/330] w-full max-w-[960px] rounded-sm border border-rule bg-surface" />,
+  loading: () => <div aria-hidden data-placeholder="3d" className="mx-auto aspect-[960/226] w-full rounded-sm border border-rule bg-surface" />,
 });
 
 const STORAGE_KEY = "mra.stage3d";
@@ -108,11 +108,16 @@ export function StageView({ scene, connection, heading, lead }: {
         // One header row: section heading · step indicator, the 3D toggle right-aligned. min-h-11 keeps the row the
         // same height whether or not the toggle shows (it can appear only after hydration).
         <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1" data-stage-header>
-          {heading}
-          {step && (
-            <span className="font-display text-xs tabular-nums text-muted" data-stage-step>
-              {heading && <span aria-hidden="true" className="mr-3">·</span>}ขั้น {step.n} จาก {step.of}
-            </span>
+          {(heading || step) && (
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              {heading}
+              {step && (
+                // quieter than the section label: regular weight, no tracking
+                <span className="font-display text-xs font-normal tabular-nums text-muted" data-stage-step>
+                  {heading && <span aria-hidden="true">· </span>}ขั้น {step.n} จาก {step.of}
+                </span>
+              )}
+            </div>
           )}
           {can3d && (
             <button

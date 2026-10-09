@@ -70,7 +70,17 @@ test.describe("3D stage view", () => {
     }
     await expect(page.locator("svg[role=img]")).toBeVisible();
     const label2d = await page.locator("svg[role=img]").getAttribute("aria-label");
+    const box2d = (await page.locator("svg[role=img]").boundingBox())!;
+    const toggle2d = (await toggle(page).boundingBox())!;
     await enable3d(page);
+    // parity: the 3D view takes the 2D stage's box and the toggle stays put in the shared header row
+    const box3d = (await stage3d(page).boundingBox())!;
+    for (const k of ["x", "y", "width", "height"] as const) expect(Math.abs(box3d[k] - box2d[k]), `3D ${k}`).toBeLessThan(2);
+    const toggle3d = (await toggle(page).boundingBox())!;
+    expect(Math.abs(toggle3d.x + toggle3d.width - toggle2d.x - toggle2d.width)).toBeLessThan(2);
+    expect(Math.abs(toggle3d.y - toggle2d.y)).toBeLessThan(2);
+    await expect(page.getByRole("list", { name: "ขั้นตอน" })).toBeVisible(); // the shared legend groups
+    await expect(page.getByRole("list", { name: "งานวิจัย" })).toBeVisible();
     await expect(page.locator("svg[role=img]")).toHaveCount(0);
     await expect(stage3d(page)).toHaveAttribute("role", "img");
     await expect(stage3d(page)).toHaveAttribute("aria-label", label2d!);

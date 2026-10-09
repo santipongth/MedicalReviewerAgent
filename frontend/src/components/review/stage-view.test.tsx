@@ -61,7 +61,7 @@ describe("StageView", () => {
       <StageView scene={sceneOf(...STARTED)} heading={<h2 data-testid="heading">h</h2>} lead={<div data-testid="lead" />} />,
     );
     await act(async () => {});
-    const row = screen.getByTestId("heading").parentElement!;
+    const row = screen.getByTestId("heading").closest("[data-stage-header]")!;
     const toggle = screen.getByRole("button", { name: "มุมมอง 3D" });
     expect(row).toContainElement(toggle);
     expect(toggle).toHaveClass("ml-auto", "min-h-11"); // right-aligned, 44px target

@@ -36,6 +36,8 @@ import type { ReviewEvent } from "@/lib/types";
 import { Labels3D, PILES_CAPTION } from "./labels-3d";
 import { ThoughtLabel3D } from "./thought-label-3d";
 import { TOKEN_FALLBACK } from "./tokens-3d";
+import { STAGE_ASPECT } from "./model-3d";
+import { PLACEHOLDER_SIZE } from "../stage/stage-placeholder";
 
 class Catch extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null };
@@ -55,8 +57,12 @@ describe("Stage3D wrapper", () => {
     render(<Stage3D scene={scene} />);
     const fig = screen.getByRole("img");
     expect(fig).toHaveAttribute("aria-label", sceneSummary(scene));
-    expect(fig.className).toContain("aspect-[960/330]");
-    expect(fig.className).toContain("max-w-[960px]");
+    // the same full-width, centred box as the 2D stage, so toggling 2D/3D never shifts the page
+    const w = PLACEHOLDER_SIZE.wide;
+    expect(fig.className).toContain(`aspect-[${w.width}/${w.height}]`);
+    expect(fig).toHaveClass("mx-auto", "w-full");
+    expect(fig.className).not.toMatch(/max-w-/);
+    expect(STAGE_ASPECT).toBeCloseTo(w.width / w.height, 9);
     const canvas = screen.getByTestId("canvas");
     expect(canvas).toHaveAttribute("aria-hidden", "true");
     expect(canvas).toHaveAttribute("data-frameloop", "demand");

@@ -420,6 +420,24 @@ describe("shared stage helpers (2D and 3D)", () => {
     expect(stageStep(run([...live(12), ev(50, "synthesizing", { papers: 1 })]))).toEqual({ n: 8, of: 10 });
     expect(stageStep(run([...live(12), ev(50, "done", {})]))).toBeNull();
   });
+
+  it("stageStep: paused keeps the step; error, cancelled and rejected clear it", () => {
+    const paused = run([...live(7), ev(50, "interrupted")]);
+    expect(paused.status).toBe("paused");
+    expect(stageStep(paused)).toEqual({ n: 5, of: 10 }); // enrich, paused
+    expect(stageStep(run([...live(9), ev(60, "error", {})]))).toBeNull();
+    expect(stageStep(run([...live(9), ev(60, "cancelled")]))).toBeNull();
+    expect(stageStep(run([...live(3), ev(4, "rejected", { reason: "x" })]))).toBeNull();
+  });
+
+  it("stageStep: localize running in a lane that does not draw it keeps the last drawn step (synth)", () => {
+    const s = run([...live(12), ev(50, "synthesizing", { papers: 1 }), ev(51, "localizing")], initialScene({ language: "en" }));
+    expect(s.expectLocalize).toBe(false);
+    expect(currentAgent(s)).toBe("localize");
+    expect(stageStep(s)).toEqual({ n: 8, of: 9 });
+    // a Thai lane counts localize itself
+    expect(stageStep(run([...live(12), ev(50, "synthesizing", { papers: 1 }), ev(51, "localizing")]))).toEqual({ n: 9, of: 10 });
+  });
 });
 
 describe("plan 13: slot details, trace agents, step spans", () => {
