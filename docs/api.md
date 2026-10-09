@@ -153,13 +153,13 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 | `checking_topic` | `{}` | |
 | `refining` | `{}` | |
 | `question_refined` | `{interpretation, refined_question, sub_questions[], assumptions[]}` | in the review language; skipped if refinement fails |
-| `planning` | `{queries[]}` | |
-| `searching` | `{found, queries, failed}` | |
-| `enriching` | `{candidates}` | |
+| `planning` | `{queries[]}` | marks the end of the planning step |
+| `searching` | `{found, queries, failed}` | marks the end of the search step |
+| `enriching` | `{candidates}` | marks the end of the enrich step |
 | `screening` | `{batch}` | once per batch of 10 |
-| `screened` | `{kept, total}` | |
+| `screened` | `{kept, total}` | marks the end of screening |
 | `external_lookup` | `{}` | only when external MCP servers are configured |
-| `reading` | `{ref, title}` | once per paper |
+| `reading` | `{ref, title}` | once per paper; sent when the paper's read starts, and all arrive together at fan-out start (papers then wait for the LLM concurrency limit) |
 | `extracted` | `{ref, ok, verified, uncertain}` | once per paper |
 | `synthesizing` | `{papers}` | skipped when no paper was extracted |
 | `localizing` | `{}` | Thai reviews only |
@@ -169,6 +169,8 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 | `error` | `{message}` | terminal |
 | `rejected` | `{reason}` | terminal: the topic is not a biomedical question |
 | `cancelled` | `{by: "owner" \| "admin"}` | terminal; sent by the API |
+
+With `GRAPH_MODE=stub` and `STUB_DELAY_SECONDS>0` the stub emits the same sequence on a scaled timeline.
 
 ## Webhooks
 

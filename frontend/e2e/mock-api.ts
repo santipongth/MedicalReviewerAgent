@@ -53,3 +53,44 @@ export async function mockApi(page: Page, overrides: Record<string, Handler> = {
 }
 
 export { json };
+
+export interface SseFrame { delayMs: number; events: [string, Record<string, unknown>][] }
+
+/**
+ * Serve `/reviews/${RID}/events` as a stream that releases each frame `delayMs` after the previous one (same SSE
+ * wire format and seq numbering as `sse()`). The stream stays open after the last frame, like a running review.
+ * Installed as an init script around window.fetch, so it also works when the page clock is faked; every other
+ * request passes through to the real fetch (and so to `page.route`).
+ */
+export async function streamSse(page: Page, frames: SseFrame[]) {
+  let seq = 0;
+  const wire = frames.map((f) => ({
+    delayMs: f.delayMs,
+    text: f.events.map(([type, payload]) => { seq += 1; return `id: ${seq}\nevent: ${type}\ndata: ${JSON.stringify(payload)}\n\n`; }).join(""),
+  }));
+  await page.addInitScript(({ wire, rid }) => {
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (!url.endsWith(`/reviews/${rid}/events`)) return realFetch(input, init);
+      (window as unknown as { __sseStart: number }).__sseStart = Date.now(); // lets a test line itself up with the first frame
+      const enc = new TextEncoder();
+      const timers: number[] = [];
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          let at = 0;
+          for (const f of wire) {
+            at += f.delayMs;
+            timers.push(window.setTimeout(() => { try { c.enqueue(enc.encode(f.text)); } catch { /* closed */ } }, at));
+          }
+          init?.signal?.addEventListener("abort", () => {
+            timers.forEach((t) => window.clearTimeout(t));
+            try { c.error(new DOMException("aborted", "AbortError")); } catch { /* closed */ }
+          });
+        },
+        cancel() { timers.forEach((t) => window.clearTimeout(t)); },
+      });
+      return Promise.resolve(new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } }));
+    };
+  }, { wire, rid: RID });
+}

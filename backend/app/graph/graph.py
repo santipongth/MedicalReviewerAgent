@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from functools import partial
+from itertools import pairwise
 from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -37,7 +38,33 @@ def initial_state(
     )
 
 
-def build_stub_graph(checkpointer: BaseCheckpointSaver | None = None, delay_seconds: float = 0.0):
+def _build_timed_stub_graph(checkpointer: BaseCheckpointSaver | None, delay_seconds: float, settings: Settings):
+    """Mirrors the real graph's shape and events on a scaled timeline (no model calls). Every phase is its own
+    node, so a worker restart resumes at the checkpointed node."""
+    nodes = stubs.make_timed_nodes(stubs.StubTimeline(delay_seconds), settings)
+    b = StateGraph(ReviewState)
+    chain = ["topic_guard", "refine_question", "plan_queries", "search", "enrich"]
+    for name in [*chain, "screen_batch", "select_top", "read_paper", "normalize_outcomes", "write_synthesis",
+                 "localize", "finalize"]:
+        b.add_node(name, nodes[name])
+    b.add_edge(START, chain[0])
+    for a, c in pairwise(chain):
+        b.add_edge(a, c)
+    b.add_conditional_edges("enrich", nodes["route_to_screening"], ["screen_batch", "normalize_outcomes"])
+    b.add_edge("screen_batch", "select_top")
+    b.add_conditional_edges("select_top", nodes["route_to_reading"], ["read_paper", "normalize_outcomes"])
+    b.add_edge("read_paper", "normalize_outcomes")
+    b.add_edge("normalize_outcomes", "write_synthesis")
+    b.add_edge("write_synthesis", "localize")
+    b.add_edge("localize", "finalize")
+    b.add_edge("finalize", END)
+    return b.compile(checkpointer=checkpointer)
+
+
+def build_stub_graph(checkpointer: BaseCheckpointSaver | None = None, delay_seconds: float = 0.0,
+                     settings: Settings | None = None):
+    if delay_seconds > 0 and settings is not None:
+        return _build_timed_stub_graph(checkpointer, delay_seconds, settings)
     builder = StateGraph(ReviewState)
     builder.add_node("plan_queries", stubs.plan_queries)
     builder.add_node("finalize", stubs.finalize)
@@ -57,7 +84,7 @@ def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None
     → read_paper* → normalize_outcomes → explain_conflict* → write_synthesis → localize → finalize
     (* = Send fan-out, run in parallel)."""
     if deps.llms is None:
-        return build_stub_graph(checkpointer, deps.settings.stub_delay_seconds)
+        return build_stub_graph(checkpointer, deps.settings.stub_delay_seconds, deps.settings)
     b = StateGraph(ReviewState)
     b.add_node("topic_guard", intake.make_topic_guard(deps))
     b.add_node("refine_question", intake.make_refine_question(deps))

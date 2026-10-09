@@ -9,7 +9,7 @@ import { Report } from "./report";
 import { TerminalState } from "./terminal-state";
 
 export function ReviewScreen({ id }: { id: string }) {
-  const { review, run, phase, connection, retry } = useReview(id);
+  const { review, run, scene, phase, connection, retry } = useReview(id);
   const topic = review?.topic ?? "";
   const [polledPosition, setPolledPosition] = useState<number | null | undefined>(undefined);
   const knownTopic = review?.topic;
@@ -62,5 +62,5 @@ export function ReviewScreen({ id }: { id: string }) {
   if (phase === "report" && review) {
     return <Report review={review} />;
   }
-  return <LiveRun run={run} topic={topic} connection={connection} queuePosition={queuePosition} startedAt={review?.started_at} />;
+  return <LiveRun run={run} scene={scene} topic={topic} connection={connection} queuePosition={queuePosition} startedAt={review?.started_at} />;
 }

@@ -229,6 +229,20 @@ h4 {
   }
 }
 
+/* Agent stage loops (disabled by the reduced-motion block above). */
+@keyframes stage-march {
+  to { stroke-dashoffset: -14; }
+}
+@keyframes stage-pulse {
+  50% { opacity: 0.45; }
+}
+.stage-march {
+  animation: stage-march 1.2s linear infinite;
+}
+.stage-pulse {
+  animation: stage-pulse 1.6s ease-in-out infinite;
+}
+
 /* Finding-direction glyphs (DESIGN.md): shape + color, never color alone. */
 .g {
   display: inline-block;

@@ -41,13 +41,16 @@ export function Hole({ lang, className = "", explain = false }: { lang: Lang; cl
   );
 }
 
+/** SVG path data of the uncertain flag (12x12 box), shared with the live stage reader pool. */
+export const FLAG_PATHS = ["M2 1h1.5v10H2z", "M3.5 1.5h6l-1.8 2.5 1.8 2.5h-6z"] as const;
+
 /** Marks a study whose direction the two models read differently. Warning flag, not the harm glyph. */
 export function UncertainFlag({ lang = "th", label }: { lang?: Lang; label?: string }) {
   return (
     <span className="inline-flex items-center gap-1 text-warn">
       <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-        <path d="M2 1h1.5v10H2z" />
-        <path d="M3.5 1.5h6l-1.8 2.5 1.8 2.5h-6z" />
+        <path d={FLAG_PATHS[0]} />
+        <path d={FLAG_PATHS[1]} />
       </svg>
       <span>{label ?? L(lang, "สองโมเดลอ่านต่างกัน", "models disagree")}</span>
     </span>

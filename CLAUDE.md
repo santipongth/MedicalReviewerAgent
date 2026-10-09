@@ -12,7 +12,7 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
 - Graph nodes report progress only via `app.graph.progress.progress_writer()` (no-op outside a graph); `EventSink` is the only writer to `review_events` / Redis Streams (the worker emits progress; the API emits `queued` and `cancelled`).
 - Repositories never commit; callers use `async with session.begin()`.
 - Structured LLM calls go through `app/services/llm.py` and the harness runner (`app/harness/runner.py`: validate → repair → escalate), never raw provider clients in nodes. Prompts are English; translation happens last (`app/harness/localize.py`, numbers must survive unchanged).
-- Models, presets and per-role tuning live in `backend/config/llm.yaml` (default provider OpenRouter, preset `budget`; `LLM_PRESET` env overrides); `python -m app.cli.models list|check`. `GRAPH_MODE=stub` runs the Plan 1 placeholder graph.
+- Models, presets and per-role tuning live in `backend/config/llm.yaml` (default provider OpenRouter, preset `budget`; `LLM_PRESET` env overrides); `python -m app.cli.models list|check`. `GRAPH_MODE=stub` runs the Plan 1 placeholder graph; with `STUB_DELAY_SECONDS>0` the stub emits the real event sequence on a scaled timeline (manual QA of the live run, load tests).
 - Abstract only (2026-10-05): no full-text fetching or crawling of any kind; papers are read from title + abstract (candidates need ≥ 150 abstract chars) and numbers are verified against the abstract. ~60 candidates are screened, up to 30 analysed.
 - Every role's LLM calls share one per-process semaphore (`LimitedLLM`, `LLM_CONCURRENCY`); localization runs in parallel 15-item chunks (bigger batches overflow `max_tokens` in Thai).
 - Numbers shown to users must be verified against the paper text (`app/harness/verify.py`); unverifiable numbers are nulled, never guessed.
@@ -28,4 +28,4 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
   `sse_slots.py`), so any number of API processes behave as one; per-review LLM spend is capped by a contextvar budget
   charged in `LimitedLLM` (`app/services/budget.py`). Public limits come from `GET /api/v1/status`; never hard-code them
   in docs or UI. Reference docs: `docs/api.md` (keep it in step with routes, events, MCP tools and limits).
-- Load test: `scripts/loadtest.py` against the Caddy front (`:8088`) with `GRAPH_MODE=stub STUB_DELAY_SECONDS=20`.
+- Load test: `scripts/loadtest.py` against the Caddy front (`:8088`) with `GRAPH_MODE=stub STUB_DELAY_SECONDS=20` (the stub now emits ~80 events per review).

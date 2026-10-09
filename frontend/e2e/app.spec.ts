@@ -54,7 +54,7 @@ test("landing: receipt from a real verified number, then submit opens the live r
   await expect(page.getByRole("table", { name: "ผลแต่ละการศึกษา" })).toBeVisible();
 });
 
-test("live run shows the refined question and the specimen tray while reading", async ({ page }) => {
+test("live run shows the refined question and the agent stage while reading", async ({ page }) => {
   await mockApi(page, {
     [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, { ...reviewFixture, status: "running", result: null }),
     [`GET /api/v1/reviews/${RID}/events`]: (route) => route.fulfill({ status: 200,
@@ -62,8 +62,11 @@ test("live run shows the refined question and the specimen tray while reading", 
   });
   await page.goto(`/r/${RID}`);
   await expect(page.getByText("เอเจนต์เข้าใจคำถามของคุณว่า")).toBeVisible();
-  await expect(page.getByTestId("well-cap")).toHaveCount(30);
-  await expect(page.getByTestId("well-out")).toHaveCount(30);
+  await expect(page.getByRole("img", { name: /เอเจนต์/ })).toBeVisible();
+  await expect(page.locator('[data-agent="read"][data-status="active"]')).toBeVisible();
+  await expect(page.getByTestId("reader-ok")).toHaveCount(1);
+  await expect(page.getByTestId("reader-waiting")).toHaveCount(29);
+  await expect(page.getByRole("region", { name: "บันทึกการทำงาน" })).toContainText("ผ่านคัดกรอง 30 จาก 60 ฉบับ");
   await expect(page.getByText("Metformin and incident colorectal cancer in a national diabetes cohort")).toBeVisible();
   await page.screenshot({ path: shots("live-run"), fullPage: true });
   await noSeriousA11y(page);
@@ -96,7 +99,7 @@ test("report: matrix cell opens the verbatim sentence; charts and filters work; 
   await noSeriousA11y(page);
 });
 
-test("live wells fit phone: 60 candidates without horizontal scroll", async ({ page }) => {
+test("live stage fits phone: 30 reader slots without horizontal scroll", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page, {
     [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, { ...reviewFixture, status: "running", result: null }),
@@ -104,7 +107,9 @@ test("live wells fit phone: 60 candidates without horizontal scroll", async ({ p
       headers: { "content-type": "text/event-stream", "access-control-allow-origin": "*" }, body: sse(LIVE_EVENTS) }),
   });
   await page.goto(`/r/${RID}`);
-  await expect(page.getByTestId("well-cap")).toHaveCount(30);
+  await expect(page.getByTestId("reader-ok")).toHaveCount(1);
+  await expect(page.getByTestId("reader-waiting")).toHaveCount(29);
+  await expect(page.getByTestId("reader-waiting").first()).toBeVisible();
   await noHorizontalScroll(page);
   await page.screenshot({ path: shots("live-run-phone"), fullPage: true });
 });

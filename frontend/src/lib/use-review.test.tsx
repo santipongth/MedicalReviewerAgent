@@ -42,6 +42,39 @@ describe("useReview", () => {
     expect(result.current.review?.result?.summary).toBe("final");
   });
 
+  it("advances the scene with events and dedupes replays", async () => {
+    getReview
+      .mockResolvedValueOnce({ ...base, status: "running", result: null })
+      .mockResolvedValue({ ...base, status: "done", result: { summary: "x" } });
+    followReview.mockImplementation(async (_id: string, opts: FollowOptions) => {
+      opts.onEvent({ seq: 1, type: "planning", payload: { queries: ["a", "b"] } });
+      opts.onEvent({ seq: 2, type: "searching", payload: { found: 9, queries: 2 } });
+      opts.onEvent({ seq: 2, type: "searching", payload: { found: 99, queries: 2 } });
+      opts.onEvent({ seq: 1, type: "error", payload: {} });
+      return "terminal";
+    });
+    const { result } = renderHook(() => useReview("r1", { pollMs: 5 }));
+    await waitFor(() => expect(result.current.phase).toBe("report"));
+    expect(result.current.scene.counts.found).toBe(9);
+    expect(result.current.scene.agents.enrich).toBe("working");
+    expect(result.current.scene.expectLocalize).toBe(true);
+    expect(result.current.scene.lastSeq).toBe(2);
+  });
+
+  it("does not add a second terminal row when polling confirms an SSE error", async () => {
+    getReview
+      .mockResolvedValueOnce({ ...base, status: "running", result: null })
+      .mockResolvedValue({ ...base, status: "error", error: "boom", result: null });
+    followReview.mockImplementation(async (_id: string, opts: FollowOptions) => {
+      opts.onEvent({ seq: 1, type: "reading", payload: { ref: "P1" } });
+      opts.onEvent({ seq: 2, type: "error", payload: { message: "boom" } });
+      return "terminal";
+    });
+    const { result } = renderHook(() => useReview("r1", { pollMs: 5 }));
+    await waitFor(() => expect(result.current.phase).toBe("terminal"));
+    expect(result.current.scene.trace.filter((r) => r.type === "error")).toHaveLength(1);
+  });
+
   it("falls back to polling when the stream cannot be kept open", async () => {
     getReview
       .mockResolvedValueOnce({ ...base, status: "running", result: null })
@@ -52,6 +85,8 @@ describe("useReview", () => {
     await waitFor(() => expect(result.current.phase).toBe("terminal"));
     expect(result.current.run.status).toBe("rejected");
     expect(result.current.run.message).toBe("not a medical topic");
+    expect(result.current.scene.status).toBe("rejected");
+    expect(result.current.scene.agents.guard).toBe("failed");
     expect(result.current.connection).toBe("polling");
   });
 

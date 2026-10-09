@@ -2,8 +2,6 @@
 // a reconnect with Last-Event-ID never double-applies anything.
 import type { ReviewEvent } from "./types";
 
-export const WELL_COUNT = 60;
-export type Well = "empty" | "found" | "out" | "cap";
 export type StepKey = "queue" | "refine" | "search" | "screen" | "read" | "synthesize" | "done";
 export const STEPS: StepKey[] = ["queue", "refine", "search", "screen", "read", "synthesize"];
 export type RunStatus = "connecting" | "queued" | "running" | "done" | "error" | "rejected" | "cancelled";
@@ -21,7 +19,6 @@ export interface RunState {
   status: RunStatus;
   step: StepKey;
   terminal: boolean;
-  wells: Well[];
   found: number;
   candidates: number;
   kept: number;
@@ -41,7 +38,7 @@ export interface RunState {
 
 export function initialRun(): RunState {
   return {
-    status: "connecting", step: "queue", terminal: false, wells: Array(WELL_COUNT).fill("empty"), found: 0,
+    status: "connecting", step: "queue", terminal: false, found: 0,
     candidates: 0, kept: 0, queries: [], reading: [], externalLookup: false, elapsed: 0, lastSeq: 0,
   };
 }
@@ -60,14 +57,6 @@ function num(v: unknown): number {
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
-}
-
-/** Spread `kept` caps evenly over the `total` filled wells so the tray reads as a selection, not a prefix. */
-function screenedWells(total: number, kept: number): Well[] {
-  const n = Math.min(WELL_COUNT, Math.max(total, kept));
-  const capIdx = new Set<number>();
-  for (let i = 0; i < Math.min(kept, n); i++) capIdx.add(Math.floor((i * n) / Math.max(kept, 1)));
-  return Array.from({ length: WELL_COUNT }, (_, i) => (i >= n ? "empty" : capIdx.has(i) ? "cap" : "out"));
 }
 
 export function reduceRun(state: RunState, ev: ReviewEvent): RunState {
@@ -104,14 +93,11 @@ export function reduceRun(state: RunState, ev: ReviewEvent): RunState {
     case "searching":
       s.found = num(p.found);
       break;
-    case "enriching": {
-      s.candidates = Math.min(num(p.candidates), WELL_COUNT);
-      s.wells = Array.from({ length: WELL_COUNT }, (_, i) => (i < s.candidates ? "found" : "empty"));
+    case "enriching":
+      s.candidates = num(p.candidates);
       break;
-    }
     case "screened":
       s.kept = num(p.kept);
-      s.wells = screenedWells(num(p.total) || s.candidates, s.kept);
       break;
     case "reading": {
       const ref = str(p.ref) ?? "?";
