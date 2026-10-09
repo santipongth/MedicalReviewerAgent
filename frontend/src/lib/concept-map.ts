@@ -135,7 +135,7 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
       const paper = papers.get(cell.ref);
       if (!paper || seen.has(cell.ref)) continue;
       seen.add(cell.ref);
-      const design = designOf(paper, cell.design_category);
+      const design = designOf(paper, cell.design_category ?? undefined);
       if (byDirection && design === NARRATIVE) continue;
       const key = byDirection ? (DIRECTION_ORDER.includes(cell.direction) ? cell.direction : "unclear") : design;
       buckets.set(key, [...(buckets.get(key) ?? []), cell.ref]);

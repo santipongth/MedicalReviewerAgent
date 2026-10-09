@@ -78,7 +78,7 @@ export interface ComparisonCell {
   ref: string;
   finding: string;
   direction: Direction;
-  design_category?: string;
+  design_category?: string | null;
   pooled?: boolean;
   effect_measure?: string | null;
   effect_value?: number | null;
@@ -130,7 +130,7 @@ export type ExclusionReason =
   | "off_topic" | "population" | "intervention_exposure" | "outcome" | "study_design" | "publication_type" | "other";
 
 export interface QuestionBlock extends QuestionText {
-  framework?: "PICO" | "PCC";
+  framework?: "PICO" | "PCC" | null;
   concept?: string | null;
   context?: string | null;
   key_terms?: KeyTerm[];

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { exportUrl } from "@/lib/api";
 import { DIRECTION_LABEL, LIT_COLUMN_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import { litColumns, litRows, type LitColumn, type LitRow } from "@/lib/lit-matrix";
@@ -62,9 +63,10 @@ function Cell({ col, row, lang }: { col: LitColumn; row: LitRow; lang: Lang }) {
 export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSelect, reviewId, offline = false }: {
   papers: Paper[]; allPapers?: Paper[]; lang: Lang; type: ReviewTypeOrLegacy; onSelect: (ref: string) => void; reviewId: string; offline?: boolean;
 }) {
-  const rows = litRows(papers, lang);
+  const rows = useMemo(() => litRows(papers, lang), [papers, lang]);
+  const allRows = useMemo(() => (allPapers === papers ? rows : litRows(allPapers, lang)), [allPapers, papers, rows, lang]);
   // The column set follows the whole review, so it does not change while the reader filters.
-  const cols = litColumns(type, allPapers === papers ? rows : litRows(allPapers, lang));
+  const cols = litColumns(type, allRows);
   const others = cols.slice(1);
   return (
     <section aria-labelledby="h-litmatrix" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
@@ -101,6 +103,8 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
                       <span className="font-display font-semibold">{row.ref}</span>
                       {row.byline && <span className="text-[0.75rem] font-normal text-muted no-underline">{row.byline}</span>}
                     </button>
+                    {/* the direction column is dropped (scoping), so the uncertain flag lives next to the ref */}
+                    {!cols.includes("direction") && row.uncertain && <UncertainFlag lang={lang} />}
                   </th>
                   {row.failed ? (
                     <td colSpan={others.length} className={`${TD} text-err`}>{L(lang, "สกัดข้อมูลไม่สำเร็จ", "Extraction failed")}</td>

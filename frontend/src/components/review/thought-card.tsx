@@ -22,7 +22,7 @@ function Detail({ d }: { d: NonNullable<Thought["detail"]> }) {
       {d.ok && (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
           {d.direction && <Glyph direction={d.direction} lang="th" />}
-          <span className="text-muted">{lines.finding}</span>
+          {lines.finding && <span className="text-muted">{lines.finding}</span>}
           {lines.verified && <span className="font-display tabular-nums text-muted">{lines.verified}</span>}
           {d.uncertain && <UncertainFlag />}
         </p>

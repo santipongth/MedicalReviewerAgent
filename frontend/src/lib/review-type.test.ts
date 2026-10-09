@@ -26,7 +26,7 @@ describe("review-type", () => {
     expect(SECTIONS_BY_TYPE.scoping).not.toContain("forest");
     expect(SECTIONS_BY_TYPE.narrative).not.toContain("prisma");
     expect(SECTIONS_BY_TYPE.narrative).toContain("claims");
-    expect(SECTIONS_BY_TYPE.slr).toEqual(["summary", "claims", "findings", "forest", "lit_matrix", "concept_map", "prisma"]);
+    expect(SECTIONS_BY_TYPE.slr).toEqual(["summary", "claims", "findings", "forest", "prisma", "lit_matrix", "concept_map"]);
     expect(SECTIONS_BY_TYPE.legacy).toEqual(["summary", "claims", "findings", "forest", "prisma"]);
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DESIGN_LABEL } from "./i18n";
 import { type Scene, initialScene, reduceScene } from "./agent-scene";
 import { type Thought, latestFinished, moreQueriesText, paperLines, thoughtFor } from "./agent-thought";
 import type { ReviewEvent } from "./types";
@@ -127,5 +128,14 @@ describe("thoughtFor", () => {
     for (let i = 1; i <= WALK.length; i++) texts.push(...allText(thoughtFor(upTo(i))));
     expect(texts.length).toBeGreaterThan(30);
     for (const x of texts) expect(x).not.toMatch(/กำลังอ่าน P\d/);
+  });
+});
+
+describe("paperLines for a directionless (scoping) scene", () => {
+  it("names the design only, never a direction or its absence", () => {
+    const detail = { kind: "paper", ref: "P1", title: "t", ok: true, direction: null, design: "cohort", uncertain: false, verified: 1, directionless: true } as const;
+    expect(paperLines(detail).finding).toBe(DESIGN_LABEL.th.cohort);
+    expect(paperLines({ ...detail, design: null }).finding).toBeNull();
+    expect(paperLines({ ...detail, directionless: false }).finding).toContain("ไม่มีข้อมูลทิศทาง");
   });
 });

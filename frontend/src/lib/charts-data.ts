@@ -40,11 +40,13 @@ export function filterPapers(papers: Paper[], f: Filters): Paper[] {
   });
 }
 
-/** Papers that have a card, counted by the card's overall direction. A count of papers, not a number from a paper. */
-export function directionTally(papers: Paper[]): Record<Direction, number> {
+/** Papers that have a card, counted by the card's overall direction. A count of papers, not a number from a paper.
+ * `skipReviews` leaves narrative-review articles out (they restate other studies; the matrix and map skip them too). */
+export function directionTally(papers: Paper[], skipReviews = false): Record<Direction, number> {
   const tally: Record<Direction, number> = { positive: 0, negative: 0, null: 0, mixed: 0, unclear: 0 };
   for (const p of papers) {
     const card = p.card_en ?? p.card;
+    if (skipReviews && card?.design_category === "narrative_review") continue;
     if (card && card.overall_direction in tally) tally[card.overall_direction] += 1;
   }
   return tally;

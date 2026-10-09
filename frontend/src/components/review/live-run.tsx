@@ -1,10 +1,11 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { CopyLinkButton } from "@/components/ui/copy-link";
 import { Term } from "@/components/ui/term";
 import { Glyph, UncertainFlag } from "@/components/ui/evidence";
 import { DESIGN_LABEL } from "@/lib/i18n";
 import { EvidenceBoard } from "./evidence-board";
 import { formatElapsed, type Scene } from "@/lib/agent-scene";
+import { isReviewType, showsDirection } from "@/lib/review-type";
 import { AS_READ_TH, READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
 import type { Connection } from "@/lib/use-review";
@@ -52,7 +53,13 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
   const elapsed = clockElapsed(startedAt, clock, run.elapsed);
   const waiting = run.status === "connecting" || run.status === "queued";
   const pending = run.reading.filter((r) => r.state === "reading").length;
-  const anyDirection = run.reading.some((r) => r.state === "ok" && r.direction);
+  // A scoping review never shows a direction: not on the board, the ledger, the thought card or the 3D piles.
+  const directions = showsDirection(isReviewType(reviewType) ? reviewType : "legacy");
+  const anyDirection = directions && run.reading.some((r) => r.state === "ok" && r.direction);
+  const viewScene = useMemo<Scene>(
+    () => (directions ? scene : { ...scene, directionless: true, slots: scene.slots.map((sl) => (sl.direction ? { ...sl, direction: null } : sl)) }),
+    [scene, directions],
+  );
   const activeIdx = STEPS.indexOf(waiting ? "queue" : run.step);
   const counts = readCounts(run);
   const shownQueries = run.queries.slice(0, SHOWN_QUERIES);
@@ -84,12 +91,12 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
         <section aria-labelledby="h-stage" className="grid gap-4 rounded-sm md:border md:border-rule md:bg-surface md:p-4 xl:p-5">
           <h2 id="h-stage" className="label">เวทีเอเจนต์</h2>
           <StageLocalize.Provider value={scene.expectLocalize}>
-            <StageView scene={scene} connection={connection} lead={<ThoughtCard scene={scene} framework={reviewType === "scoping" ? "PCC" : "PICO"} />} />
+            <StageView scene={viewScene} connection={connection} lead={<ThoughtCard scene={viewScene} framework={reviewType === "scoping" ? "PCC" : "PICO"} />} />
           </StageLocalize.Provider>
           <MilestoneStatus scene={scene} />
         </section>
 
-        <EvidenceBoard scene={scene} />
+        {directions && <EvidenceBoard scene={scene} />}
       </div>
 
       <div className="grid gap-8 lg:grid-cols-2">
@@ -169,9 +176,9 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
                     <span className="font-code font-medium">{r.ref}</span>
                     <span className="min-w-0 break-words">{r.title}</span>
                     <span className={`max-w-[9.5rem] text-right sm:max-w-none ${r.state === "failed" ? "text-err" : r.state === "ok" ? "text-ok" : "text-muted"}`}>
-                      {r.state === "reading" ? READING_OR_QUEUED : r.state === "failed" ? "อ่านไม่สำเร็จ" : r.direction || r.uncertain ? (
+                      {r.state === "reading" ? READING_OR_QUEUED : r.state === "failed" ? "อ่านไม่สำเร็จ" : (directions && r.direction) || r.uncertain || (!directions && r.design) ? (
                         <span className="inline-flex flex-wrap items-center justify-end gap-x-1.5">
-                          {r.direction && <Glyph direction={r.direction} lang="th" />}
+                          {directions && r.direction && <Glyph direction={r.direction} lang="th" />}
                           {r.design && <span className="hidden text-xs text-muted sm:inline">{DESIGN_LABEL.th[r.design]}</span>}
                           เสร็จ
                           {r.uncertain && <><span aria-hidden="true">·</span><span className="whitespace-nowrap"><Term k="uncertain"><UncertainFlag /></Term></span></>}

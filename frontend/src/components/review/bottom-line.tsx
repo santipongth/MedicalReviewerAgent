@@ -22,7 +22,7 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
 }) {
   const hasPapers = papers.length > 0;
   const type = reviewTypeOf(result);
-  const tally = directionTally(papers);
+  const tally = directionTally(papers, type === "narrative");
   // Scoping maps what exists; it never tallies a direction of effect.
   const shown = showsDirection(type) ? DIRECTION_ORDER.filter((d) => tally[d] > 0) : [];
   return (

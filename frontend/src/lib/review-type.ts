@@ -42,10 +42,11 @@ export function isGraded(type: ReviewTypeOrLegacy): boolean {
 export type SectionId =
   | "summary" | "claims" | "findings" | "evidence_map" | "lit_matrix" | "concept_map" | "forest" | "prisma";
 
-/** Report sections per type, in display order (Task 6 consumes this). Legacy = today's report exactly. */
+/** Report sections per type, in display order; report.tsx renders and numbers its nav from this list (forest and
+ * prisma are drawn together by Charts, at the position of whichever comes first). Legacy = today's report exactly. */
 export const SECTIONS_BY_TYPE: Record<ReviewTypeOrLegacy, SectionId[]> = {
   narrative: ["summary", "claims", "findings", "lit_matrix", "concept_map", "forest"],
-  slr: ["summary", "claims", "findings", "forest", "lit_matrix", "concept_map", "prisma"],
+  slr: ["summary", "claims", "findings", "forest", "prisma", "lit_matrix", "concept_map"],
   scoping: ["summary", "evidence_map", "lit_matrix", "concept_map", "prisma"],
   // The study map renders with forest/prisma exactly as it does today (charts.tsx).
   legacy: ["summary", "claims", "findings", "forest", "prisma"],

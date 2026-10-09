@@ -91,6 +91,14 @@ describe("exclusionRows", () => {
 });
 
 describe("directionTally", () => {
+  it("can leave narrative-review articles out of the tally", () => {
+    const review = { ...papers[0], card_en: { ...papers[0].card_en!, design_category: "narrative_review" as const, overall_direction: "unclear" as const } };
+    const withReview = [...papers, { ...review, ref: "P9" }];
+    expect(directionTally(withReview).unclear).toBe(directionTally(papers).unclear + 1);
+    expect(directionTally(withReview, true)).toEqual(directionTally(papers.filter((p) => (p.card_en ?? p.card)?.design_category !== "narrative_review"), true));
+    expect(directionTally(withReview, true).unclear).toBe(directionTally(papers).unclear);
+  });
+
   it("counts papers that have a card by overall direction and flags pooled SR/MA papers", () => {
     const tally = directionTally(papers);
     const withCard = papers.filter((p) => p.card_en ?? p.card);

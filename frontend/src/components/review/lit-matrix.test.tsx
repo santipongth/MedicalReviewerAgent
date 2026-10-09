@@ -28,6 +28,16 @@ describe("LitMatrixSection", () => {
     expect(headers()).not.toContain("ความเสี่ยงอคติ");
   });
 
+  it("scoping drops the direction column but keeps the uncertain flag next to the ref", () => {
+    const ps = scopingReviewFixture.result!.papers!.map((p, i) => (i === 0 ? { ...p, verification: { ...p.verification!, uncertain: true } } : p));
+    show(ps, "scoping");
+    expect(headers()).not.toContain("ทิศทาง");
+    const first = within(screen.getByRole("row", { name: new RegExp(ps[0].ref) })).getAllByRole("rowheader")[0];
+    expect(first).toHaveTextContent("สองโมเดลอ่านต่างกัน");
+    const second = within(screen.getByRole("row", { name: new RegExp(ps[1].ref) })).getAllByRole("rowheader")[0];
+    expect(second).not.toHaveTextContent("สองโมเดลอ่านต่างกัน");
+  });
+
   it("verified effect and sample size render as num-verified; direction has an accessible glyph", () => {
     show(papers);
     const row = screen.getByRole("row", { name: /P3/ });

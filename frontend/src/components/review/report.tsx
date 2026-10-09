@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { exportUrl } from "@/lib/api";
 import { conceptTree } from "@/lib/concept-map";
 import { emptyFilters, filterPapers, isPooled, type Filters } from "@/lib/charts-data";
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
 import type { TermKey } from "@/lib/glossary";
 import type { Lang } from "@/lib/i18n";
-import { REVIEW_TYPE_LABEL, reviewTypeOf, showsRiskOfBias, showsSection } from "@/lib/review-type";
+import { REVIEW_TYPE_LABEL, SECTIONS_BY_TYPE, reviewTypeOf, showsRiskOfBias, showsSection } from "@/lib/review-type";
 import { Term } from "../ui/term";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
@@ -99,23 +99,34 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const hasConceptMapSection = !!tree && tree.leaves > 0;
   const conceptMap = tree && hasConceptMapSection && <ConceptMapSection tree={tree} lang={lang} onSelect={select} />;
   const hasEvidenceMap = showsSection(type, "evidence_map") && (map.byConcept.rows.length > 0 || map.byYear.rows.length > 0);
-  const litNav = { id: "h-litmatrix", label: L(lang, "ตารางงานวิจัย", "Literature matrix") };
-  const mapNav = { id: "h-map", label: L(lang, "แผนที่ความรู้", "Concept map") };
+  const filterStatus = <FilterStatus filters={filters} onChange={setFilters} shown={visible.length} total={papers.length} lang={lang} />;
+  // Sections after the findings, in the order SECTIONS_BY_TYPE declares them (forest and prisma share Charts).
+  const tail: Record<"evidence_map" | "lit_matrix" | "concept_map" | "charts", { nav: NavItem; show: boolean; node: ReactNode }> = {
+    evidence_map: { nav: { id: "h-evidence-map", label: L(lang, "แผนที่หลักฐาน", "Evidence map") }, show: hasEvidenceMap,
+      node: hasEvidenceMap && <EvidenceMapSection map={map} lang={lang} /> },
+    lit_matrix: { nav: { id: "h-litmatrix", label: L(lang, "ตารางงานวิจัย", "Literature matrix") }, show: hasLitMatrix, node: litMatrix },
+    concept_map: { nav: { id: "h-map", label: L(lang, "แผนที่ความรู้", "Concept map") }, show: hasConceptMapSection, node: conceptMap },
+    charts: { nav: { id: "h-charts", label: L(lang, "แผนภาพ", "Charts") }, show: hasCharts,
+      node: hasCharts && (
+        <div className="grid gap-3">
+          {filterStatus}
+          <Charts result={result} papers={visible} lang={lang} onSelect={select} />
+        </div>
+      ) },
+  };
+  const tailOrder = [...new Set(SECTIONS_BY_TYPE[type].flatMap((id) =>
+    id === "forest" || id === "prisma" ? ["charts" as const]
+      : id === "evidence_map" || id === "lit_matrix" || id === "concept_map" ? [id] : []))];
+  const tailShown = tailOrder.filter((k) => tail[k].show);
   const navItems: NavItem[] = [
     { id: "h-summary", label: L(lang, "สรุป", "Summary") },
     ...(hasClaims ? [{ id: "h-claims", label: L(lang, "จุดตรงกัน/ขัดกัน", "Agree/conflict") }] : []),
     ...(hasMatrix ? [{ id: "h-matrix", label: L(lang, "ผลแต่ละการศึกษา", "Findings") }] : []),
-    ...(hasEvidenceMap ? [{ id: "h-evidence-map", label: L(lang, "แผนที่หลักฐาน", "Evidence map") }] : []),
-    ...(hasLitMatrix && type !== "slr" ? [litNav] : []),
-    ...(hasConceptMapSection && type !== "slr" ? [mapNav] : []),
-    ...(hasCharts ? [{ id: "h-charts", label: L(lang, "แผนภาพ", "Charts") }] : []),
-    ...(hasLitMatrix && type === "slr" ? [litNav] : []),
-    ...(hasConceptMapSection && type === "slr" ? [mapNav] : []),
+    ...tailShown.map((k) => tail[k].nav),
     ...(synthesis.research_gaps?.length ? [{ id: "h-gaps", label: L(lang, "สิ่งที่ยังไม่รู้", "Gaps") }] : []),
     ...(hasPapers ? [{ id: "h-papers", label: L(lang, "งานวิจัยที่อ่าน", "Papers") }] : []),
     { id: "h-method", label: offline ? L(lang, "วิธีทำ", "Method") : L(lang, "ดาวน์โหลด", "Downloads") },
   ];
-  const filterStatus = <FilterStatus filters={filters} onChange={setFilters} shown={visible.length} total={papers.length} lang={lang} />;
   const filterBar = papers.length > 1
     ? <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} showRisk={showsRiskOfBias(type)} /> : null;
   return (
@@ -172,8 +183,6 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
 
           {!hasMatrix && filterBar}
 
-          {hasEvidenceMap && <EvidenceMapSection map={map} lang={lang} />}
-
           {hasMatrix && (
             <section aria-labelledby="h-matrix" className="grid grid-cols-[minmax(0,1fr)] gap-3">
               <h2 id="h-matrix" className={H2}>{L(lang, "ผลแต่ละการศึกษา", "Findings by study")}</h2>
@@ -185,18 +194,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
             </section>
           )}
 
-          {type !== "slr" && litMatrix}
-          {type !== "slr" && conceptMap}
-
-          {hasCharts && (
-            <div className="grid gap-3">
-              {filterStatus}
-              <Charts result={result} papers={visible} lang={lang} onSelect={select} />
-            </div>
-          )}
-
-          {type === "slr" && litMatrix}
-          {type === "slr" && conceptMap}
+          {tailShown.map((k) => <Fragment key={k}>{tail[k].node}</Fragment>)}
 
           {!!synthesis.research_gaps?.length && (
             <section aria-labelledby="h-gaps" className="grid gap-2">
