@@ -110,11 +110,13 @@ def make_screen_batch(deps):
                         decisions[r] = resolved[r]
                     else:  # unresolved disagreement: keep the paper (recall first) and flag it
                         decisions[r]["include"] = True
+                        decisions[r]["exclusion_reason"] = None
                         uncertain.add(r)
 
         screened = [{"key": c["key"], **decisions.get(ref, {"relevance": 0, "include": False,
                                                               "reason": "not screened",
-                                                              "exclusion_reason": "other"}),
+                                                              "exclusion_reason": "other",
+                                                              "screen_failed": True}),
                      "uncertain": ref in uncertain}
                     for ref, c in items.items()]
         quality["seconds"] = round(time.perf_counter() - started, 3)
@@ -143,14 +145,18 @@ def make_select_top(deps):
         pool = primary if narrative_excluded else included
         ranked = sorted(pool, key=lambda d: -d["relevance"])
         chosen = ranked[: options.max_papers]
+        # Technical failures are not exclusion decisions: keep them out of the PRISMA reason tallies.
         excluded_screening = Counter(d.get("exclusion_reason") or "other" for d in best.values()
-                                     if not d["include"])
+                                     if not d["include"] and not d.get("screen_failed"))
+        screening_failed = sum(1 for d in best.values() if d.get("screen_failed") and not d["include"])
         selected = [{"ref": f"P{i + 1}", "relevance": d["relevance"], "reason": d["reason"],
                      "uncertain": d.get("uncertain", False), "candidate": by_key[d["key"]]}
                     for i, d in enumerate(chosen)]
         progress_writer()({"type": "screened", "kept": len(selected), "total": len(best)})
         stats = {"excluded_screening": dict(excluded_screening), "narrative_excluded": narrative_excluded,
                  "over_limit": len(ranked) - len(chosen)}
+        if screening_failed:
+            stats["screening_failed"] = screening_failed
         return {"selected": selected, "selection_stats": stats,
                 "quality": [{"stage": "select", "narrative_excluded": narrative_excluded}]}
 

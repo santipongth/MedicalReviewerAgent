@@ -247,3 +247,30 @@ async def test_screen_batch_uses_the_review_types_system_prompt():
 def test_screen_decision_schema_requires_nullable_exclusion_reason():
     schema = ScreenBatch.model_json_schema()["$defs"]["ScreenDecision"]
     assert "exclusion_reason" in schema["required"] and "default" not in schema["properties"]["exclusion_reason"]
+
+
+async def test_unresolved_disagreement_clears_exclusion_reason_on_forced_include():
+    first = ScreenBatch(decisions=[ScreenDecision(ref="C1", relevance=50, include=False, reason="x",
+                                                  exclusion_reason="outcome")])
+    second = ScreenBatch(decisions=[ScreenDecision(ref="C1", relevance=50, include=True, reason="y")])
+    out = await make_screen_batch(deps(FakeStructuredLLM("s", lambda s, u: first),
+                                       secondary=FakeStructuredLLM("s2", lambda s, u: second)))(payload(1))
+    d = out["screened"][0]
+    assert d["include"] is True and d["uncertain"] is True and d["exclusion_reason"] is None
+
+
+async def test_failed_screening_stays_out_of_prisma_other_tally():
+    candidates = cands(3)
+    screened = [{"key": candidates[0]["key"], "relevance": 5, "include": False, "reason": "no", "uncertain": False,
+                 "design": None, "exclusion_reason": "population"},
+                {"key": candidates[1]["key"], "relevance": 0, "include": False, "reason": "not screened",
+                 "uncertain": False, "exclusion_reason": "other", "screen_failed": True},
+                {"key": candidates[2]["key"], "relevance": 90, "include": True, "reason": "ok", "uncertain": False,
+                 "design": "rct", "exclusion_reason": None}]
+    out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": screened, "options": {}})
+    assert out["selection_stats"]["excluded_screening"] == {"population": 1}
+    assert out["selection_stats"]["screening_failed"] == 1
+    out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": [screened[0], screened[2]], "options": {}})
+    assert "screening_failed" not in out["selection_stats"]

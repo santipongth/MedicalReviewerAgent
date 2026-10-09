@@ -84,12 +84,16 @@ in the context. Exclusion criteria: off-topic papers, editorials and protocols w
 
 _SCREEN_NARRATIVE_BLOCK = OVERRIDE_LEAD + """
 Review type: narrative review. Narrative reviews, systematic reviews/meta-analyses and key primary studies are all
-acceptable; include what informs the topic and do not require a reported outcome. design_guess still applies."""
+acceptable; include what informs the topic and do not require a reported outcome. design_guess still applies.
+exclusion_reason (null when included): off_topic, population, intervention_exposure, outcome, study_design,
+publication_type (editorial, protocol, letter) or other."""
 
 _SCREEN_SCOPING_BLOCK = OVERRIDE_LEAD + """
 Review type: scoping review. Include any study design or review that addresses the concept in the context; a reported
 outcome or effect is not required and narrative reviews are acceptable. Exclude only off-topic papers, editorials and
-protocols without results."""
+protocols without results.
+exclusion_reason (null when included): off_topic for unrelated papers, publication_type for editorials and protocols
+without results, other otherwise."""
 
 _EXTRACT_SCOPING_BLOCK = OVERRIDE_LEAD + """
 - Scoping review: outcomes are the aspects of the concept that the abstract reports (not necessarily effects); effect
