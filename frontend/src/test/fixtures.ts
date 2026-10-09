@@ -189,3 +189,9 @@ export const narrativeReviewFixture: Review = {
     synthesis_en: undefined,
   },
 };
+
+/** An explicit Plan 14a systematic review (the plain reviewFixture has no review_type, so it renders as legacy). */
+export const slrReviewFixture: Review = {
+  ...reviewFixture,
+  result: { ...resultFixture, review_type: "slr" },
+};
