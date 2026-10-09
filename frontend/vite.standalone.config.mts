@@ -22,5 +22,6 @@ export default defineConfig({
     cssCodeSplit: false,
     lib: { entry: here("./src/standalone/main.tsx"), name: "MRAReport", formats: ["iife"], fileName: () => "report.js",
       cssFileName: "report" },
+    // The web app lazy-loads echarts (charts/echart.tsx); IIFE lib builds don't code-split, so it is inlined here.
   },
 });
