@@ -1,11 +1,13 @@
 """GRAPH_MODE=stub with STUB_DELAY_SECONDS>0 emits the real event sequence on a scaled timeline."""
 import time
+from typing import get_args
 
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.config import Settings
 from app.graph.graph import GraphDeps, build_graph, initial_state
 from app.graph.nodes.stubs import StubTimeline
+from app.graph.schemas import DesignCategory, Direction
 
 DELAY = 0.6
 
@@ -20,7 +22,7 @@ REAL_KEYS = {
     "screening": {"batch"},
     "screened": {"kept", "total"},
     "reading": {"ref", "title"},
-    "extracted": {"ref", "ok", "verified", "uncertain"},
+    "extracted": {"ref", "ok", "verified", "uncertain", "direction", "design"},
     "synthesizing": {"papers"},
     "localizing": set(),
     "finalizing": set(),
@@ -71,6 +73,17 @@ async def test_payload_keys_match_the_real_events():
     assert len(by["planning"]["queries"]) == 4
     assert len(by["question_refined"]["sub_questions"]) == 2 and len(by["question_refined"]["assumptions"]) == 1
     assert by["synthesizing"]["papers"] == sum(1 for _, e in events if e["type"] == "extracted" and e["ok"])
+
+
+async def test_extracted_carries_valid_direction_and_design_only_when_ok():
+    events, _, _ = await run(language="en")
+    extracted = [e for _, e in events if e["type"] == "extracted"]
+    assert extracted and any(e["ok"] for e in extracted) and any(not e["ok"] for e in extracted)
+    for e in extracted:
+        if e["ok"]:
+            assert e["direction"] in get_args(Direction) and e["design"] in get_args(DesignCategory), e
+        else:
+            assert e["direction"] is None and e["design"] is None, e
 
 
 async def test_localizing_only_for_thai():

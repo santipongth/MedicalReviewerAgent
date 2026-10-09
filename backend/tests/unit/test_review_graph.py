@@ -9,6 +9,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from app.config import Settings
 from app.graph.graph import GraphDeps, build_graph, initial_state
 from app.graph.schemas import (
+    DESIGN_CATEGORIES,
     Candidate,
     ConflictNote,
     KeyTerm,
@@ -181,6 +182,13 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
                      "reading", "extracted", "synthesizing", "localizing", "finalizing"):
         assert expected in types
     assert types.count("reading") == 8
+    extracted = [e for e in events if e["type"] == "extracted"]
+    assert len(extracted) == 8 and all(e["ok"] for e in extracted)
+    assert {e["direction"] for e in extracted} == {"positive", "negative"}  # the fake extractor's overall_direction
+    assert all(e["design"] in DESIGN_CATEGORIES for e in extracted)
+    by_ref = {p["ref"]: p for p in r["papers"]}
+    assert all(by_ref[e["ref"]]["card_en"]["overall_direction"] == e["direction"] for e in extracted)
+    assert all(by_ref[e["ref"]]["card_en"]["design_category"] == e["design"] for e in extracted)
 
 
 async def test_english_review_skips_localization():
@@ -213,10 +221,12 @@ async def test_one_failed_extraction_is_reported_not_fatal():
         return LLMOutputError("bad json") if "Paper 1 about" in user else extract(system, user)
 
     deps = make_deps(extractor=FakeStructuredLLM("ext", flaky))
-    values, _ = await run(deps)
+    values, events = await run(deps)
     r = values["result"]
     failed = [p for p in r["papers"] if p["card"] is None]
     assert len(failed) == 1 and "bad json" in failed[0]["error"]
+    ev = next(e for e in events if e["type"] == "extracted" and e["ref"] == failed[0]["ref"])
+    assert ev["ok"] is False and ev["direction"] is None and ev["design"] is None
     assert r["stats"]["extracted"] == 7
     assert f'"ref": "{failed[0]["ref"]}"' not in deps.llms.synthesizer.calls[0][1]
     assert any("extraction failed" in e for e in r["errors"])

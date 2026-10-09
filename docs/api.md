@@ -160,7 +160,7 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 | `screened` | `{kept, total}` | marks the end of screening |
 | `external_lookup` | `{}` | only when external MCP servers are configured |
 | `reading` | `{ref, title}` | once per paper; sent when the paper's read starts, and all arrive together at fan-out start (papers then wait for the LLM concurrency limit) |
-| `extracted` | `{ref, ok, verified, uncertain}` | once per paper |
+| `extracted` | `{ref, ok, verified, uncertain, direction, design}` | once per paper. `direction` is the reading model's overall direction (`positive\|negative\|null\|mixed\|unclear`; the string `"null"` means "no association"), a model judgement, not a pooled result. `design` is the design category (same enum as `card.design_category`). Both are JSON `null` when `ok` is false; events stored before this change lack both keys |
 | `synthesizing` | `{papers}` | skipped when no paper was extracted |
 | `localizing` | `{}` | Thai reviews only |
 | `finalizing` | `{}` | |
