@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { CopyLinkButton } from "@/components/ui/copy-link";
 import { Term } from "@/components/ui/term";
 import { UncertainFlag } from "@/components/ui/evidence";
-import type { Scene } from "@/lib/agent-scene";
+import { formatElapsed, type Scene } from "@/lib/agent-scene";
 import { READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
 import type { Connection } from "@/lib/use-review";
 import { MilestoneStatus } from "./stage/milestone-status";
 import { StageLocalize } from "./stage/stage-placeholder";
 import { StageView } from "./stage-view";
+import { ThoughtCard } from "./thought-card";
 import { TraceLog } from "./stage/trace-log";
 
 const STEP_LABEL: Record<StepKey, string> = {
@@ -42,28 +43,31 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
   const moreQueries = run.queries.slice(SHOWN_QUERIES);
   return (
     <section aria-labelledby="h-live" className="grid gap-8 pt-10">
-      <div className="grid gap-2">
-        <span className="label">กำลังทบทวน</span>
-        <h1 id="h-live" className="text-[clamp(1.6rem,3vw,2.25rem)] font-bold break-words">{topic}</h1>
-        <p className="text-sm text-muted" aria-live="polite">
-          {run.status === "connecting"
-            ? "กำลังเชื่อมต่อ…"
-            : run.status === "queued"
-              ? (queuePosition ? `อยู่ในคิวลำดับที่ ${queuePosition} จะเริ่มเมื่อถึงคิว` : "อยู่ในคิว จะเริ่มในไม่ช้า")
-              : `ผ่านไป ${Math.round(elapsed)} วินาที · ${TYPICAL_DURATION_TH}`}
-        </p>
-        {(connection === "reconnecting" || connection === "polling") && (
-          <p role="status" className="w-fit rounded-sm bg-warn-bg px-3 py-1.5 text-sm text-ink">
-            {connection === "reconnecting" ? "การเชื่อมต่อหลุด กำลังเชื่อมต่อใหม่…" : "ตรวจสถานะทุกไม่กี่วินาที (การเชื่อมต่อสดใช้ไม่ได้)"}
+      <div className="grid gap-6">
+        <div className="grid gap-2">
+          <span className="label">กำลังทบทวน</span>
+          <h1 id="h-live" className="text-[clamp(1.6rem,3vw,2.25rem)] font-bold break-words">{topic}</h1>
+          <p className="text-sm text-muted" aria-live="polite">
+            {run.status === "connecting"
+              ? "กำลังเชื่อมต่อ…"
+              : run.status === "queued"
+                ? (queuePosition ? `อยู่ในคิวลำดับที่ ${queuePosition} จะเริ่มเมื่อถึงคิว` : "อยู่ในคิว จะเริ่มในไม่ช้า")
+                : <>ผ่านไป <span className="font-display tabular-nums">{formatElapsed(elapsed)}</span> · {TYPICAL_DURATION_TH}</>}
           </p>
-        )}
-      </div>
+          {(connection === "reconnecting" || connection === "polling") && (
+            <p role="status" className="w-fit rounded-sm bg-warn-bg px-3 py-1.5 text-sm text-ink">
+              {connection === "reconnecting" ? "การเชื่อมต่อหลุด กำลังเชื่อมต่อใหม่…" : "ตรวจสถานะทุกไม่กี่วินาที (การเชื่อมต่อสดใช้ไม่ได้)"}
+            </p>
+          )}
+        </div>
 
-      <div className="grid gap-3">
-        <StageLocalize.Provider value={scene.expectLocalize}>
-          <StageView scene={scene} connection={connection} />
-        </StageLocalize.Provider>
-        <MilestoneStatus scene={scene} />
+        <section aria-labelledby="h-stage" className="grid gap-4 rounded-sm md:border md:border-rule md:bg-surface md:p-4 xl:p-5">
+          <h2 id="h-stage" className="label">เวทีเอเจนต์</h2>
+          <StageLocalize.Provider value={scene.expectLocalize}>
+            <StageView scene={scene} connection={connection} lead={<ThoughtCard scene={scene} />} />
+          </StageLocalize.Provider>
+          <MilestoneStatus scene={scene} />
+        </section>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-2">

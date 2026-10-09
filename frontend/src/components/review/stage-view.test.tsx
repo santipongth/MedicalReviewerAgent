@@ -56,6 +56,13 @@ describe("StageView", () => {
     expect(screen.getByRole("button", { name: "มุมมอง 3D" })).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("puts the toggle in the same row as the lead (thought card) slot", async () => {
+    render(<StageView scene={initialScene()} lead={<div data-testid="lead" />} />);
+    await act(async () => {});
+    const row = screen.getByTestId("lead").parentElement!;
+    expect(row).toContainElement(screen.getByRole("button", { name: "มุมมอง 3D" }));
+  });
+
   it.each([
     ["narrow", () => media({ wide: false, reduce: false })],
     ["no WebGL", () => { webgl.value = false; }],

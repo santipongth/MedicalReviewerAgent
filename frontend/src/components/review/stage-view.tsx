@@ -71,7 +71,7 @@ class Boundary extends Component<{ onError: () => void; children: ReactNode }, {
 }
 
 /** The agent stage: 2D by default; an opt-in 3D view on wide screens with WebGL and no reduced-motion preference. */
-export function StageView({ scene, connection }: { scene: Scene; connection?: Connection }) {
+export function StageView({ scene, connection, lead }: { scene: Scene; connection?: Connection; lead?: ReactNode }) {
   const wide = useWide();
   const reduce = useReduce();
   // Browser-only facts come from external stores whose server snapshot is false, so hydration renders 2D first.
@@ -99,16 +99,21 @@ export function StageView({ scene, connection }: { scene: Scene; connection?: Co
   }
   return (
     <>
-      {can3d && (
-        <button
-          ref={toggleRef}
-          type="button"
-          aria-pressed={is3d}
-          onClick={toggle}
-          className="w-fit cursor-pointer rounded-sm border border-rule bg-transparent px-3 py-1.5 font-display text-sm hover:text-primary"
-        >
-          {is3d ? "มุมมอง 2D" : "มุมมอง 3D"}
-        </button>
+      {(lead || can3d) && (
+        <div className="flex items-start gap-3">
+          {lead}
+          {can3d && (
+            <button
+              ref={toggleRef}
+              type="button"
+              aria-pressed={is3d}
+              onClick={toggle}
+              className="ml-auto w-fit flex-none cursor-pointer rounded-sm border border-rule bg-transparent px-3 py-1.5 font-display text-sm hover:text-primary"
+            >
+              {is3d ? "มุมมอง 2D" : "มุมมอง 3D"}
+            </button>
+          )}
+        </div>
       )}
       {failed && <p ref={note} tabIndex={-1} role="status" className="text-sm text-muted outline-none">แสดงแบบ 3D ไม่ได้บนเครื่องนี้ จึงแสดงแบบ 2D แทน</p>}
       {is3d ? (
@@ -120,8 +125,10 @@ export function StageView({ scene, connection }: { scene: Scene; connection?: Co
           {showSynthCaption(scene) && (
             <p className="font-display text-xs text-muted" data-caption="synth">{SYNTH_CAPTION.join(" ")}</p>
           )}
-          <StageLegend />
-          {caption && <figcaption className="text-xs text-muted">{caption}</figcaption>}
+          <div className="grid gap-2 border-t border-rule pt-3">
+            <StageLegend />
+            {caption && <figcaption className="text-xs text-muted">{caption}</figcaption>}
+          </div>
         </figure>
       ) : (
         <AgentStage scene={scene} connection={connection} />

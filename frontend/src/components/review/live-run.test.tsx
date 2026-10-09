@@ -45,7 +45,7 @@ describe("LiveRun", () => {
     expect(screen.getByText("Registry").closest("li")).toHaveTextContent("กำลังอ่านหรือรอคิว");
     expect(screen.queryByText("กำลังอ่าน…")).not.toBeInTheDocument();
     expect(screen.getByText("P1")).not.toHaveClass("num-verified"); // a ref label, not a verified number
-    expect(screen.getByText(/42 วินาที/)).toBeInTheDocument();
+    expect(screen.getByText(/ผ่านไป/).closest("p")).toHaveTextContent(/ผ่านไป 0:42 · ปกติใช้ 1–3 นาที/);
     expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("สังเคราะห์");
   });
 
@@ -100,6 +100,15 @@ describe("LiveRun queue", () => {
 describe("LiveRun progress details", () => {
   afterEach(() => vi.useRealTimers());
 
+  it("puts the thought card and the stage in the labelled stage panel", () => {
+    const run = stateOf([["started", {}], ["checking_topic", {}]]);
+    const scene = statesOf([["started", {}], ["checking_topic", {}]]).scene;
+    render(<LiveRun run={run} scene={scene} topic="x" connection="open" />);
+    const panel = screen.getByRole("region", { name: "เวทีเอเจนต์" });
+    expect(panel).toContainElement(document.getElementById("h-thought"));
+    expect(panel.querySelector("svg[role=img]")).not.toBeNull();
+  });
+
   it("makes the queue a real step and the current one while queued", () => {
     const run = { ...initialRun(), status: "queued" as const };
     render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" />);
@@ -109,7 +118,7 @@ describe("LiveRun progress details", () => {
   it("says it is connecting instead of counting 0 seconds", () => {
     render(<LiveRun run={initialRun()} scene={initialScene()} topic="x" connection="connecting" />);
     expect(screen.getByText("กำลังเชื่อมต่อ…")).toBeInTheDocument();
-    expect(screen.queryByText(/0 วินาที/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ผ่านไป/)).not.toBeInTheDocument();
   });
 
   it("ticks a local clock from startedAt and shows the typical duration", () => {
@@ -117,9 +126,9 @@ describe("LiveRun progress details", () => {
     vi.setSystemTime(new Date("2026-10-09T10:00:10Z"));
     const run = stateOf([["started", {}], ["searching", { found: 5 }]]);
     render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" startedAt="2026-10-09T10:00:00Z" />);
-    expect(screen.getByText(/ผ่านไป 10 วินาที · ปกติใช้ 1–3 นาที/)).toBeInTheDocument();
+    expect(screen.getByText(/ผ่านไป/).closest("p")).toHaveTextContent("ผ่านไป 0:10 · ปกติใช้ 1–3 นาที");
     act(() => { vi.advanceTimersByTime(3000); });
-    expect(screen.getByText(/ผ่านไป 13 วินาที/)).toBeInTheDocument();
+    expect(screen.getByText(/ผ่านไป/).closest("p")).toHaveTextContent("ผ่านไป 0:13");
   });
 
   it("lists the first three search queries and folds the rest", () => {
