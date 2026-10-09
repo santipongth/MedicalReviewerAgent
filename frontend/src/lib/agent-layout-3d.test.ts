@@ -44,11 +44,11 @@ describe("layout3dFor", () => {
       }
     }
   });
-  it("slot count is min(n, 30) and slots keep a 0.35 pitch on the y=-1.6 plane", () => {
+  it("slot count is min(n, 30) and slots keep a 0.35 pitch on the y=-2.1 plane", () => {
     for (const n of [0, 1, 7, 30, 99, -3, Number.NaN]) {
       const l = layout3dFor({ ...base, slots: n });
       expect(l.slots).toHaveLength(Number.isFinite(n) ? Math.max(0, Math.min(n, 30)) : 0);
-      for (const s of l.slots) expect(s[1]).toBe(-1.6);
+      for (const s of l.slots) expect(s[1]).toBe(-2.1);
     }
     const l = layout3dFor({ ...base, slots: 30 });
     expect(l.slots[1][0] - l.slots[0][0]).toBeCloseTo(0.35, 6);

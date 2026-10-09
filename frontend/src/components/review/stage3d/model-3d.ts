@@ -95,7 +95,7 @@ export function packetScale(t: number): number {
 
 // --- camera ------------------------------------------------------------------------------------------------------
 
-export const CAMERA_BASE: Vec3 = [0, 4, 9.5];
+export const CAMERA_BASE: Vec3 = [0, 4, 8.2];
 const PAN = 0.3; // fraction of the way from the lane centre toward the current agent (keeps the whole lane framed)
 
 /** Camera position + look-at for the current agent (lane centre when none). Writes into `out` (6 numbers). */
@@ -106,7 +106,7 @@ export function cameraGoal(layout: Layout3D, agent: AgentId | null, out: number[
   const node = agent ? layout.nodes[agent] : undefined;
   const tx = node ? cx + (node[0] - cx) * PAN : cx;
   out[0] = tx; out[1] = CAMERA_BASE[1]; out[2] = CAMERA_BASE[2];
-  out[3] = tx; out[4] = -0.3; out[5] = cz / 2;
+  out[3] = tx; out[4] = -0.7; out[5] = cz / 2;
   return out;
 }
 

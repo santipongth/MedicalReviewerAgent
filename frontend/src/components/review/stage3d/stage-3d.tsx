@@ -56,7 +56,7 @@ export function Stage3D({ scene }: { scene: Scene }) {
   const slots = scene.slots.length;
   const layout = useMemo(() => layout3dFor({ showLocalize, showExternal, slots }), [showLocalize, showExternal, slots]);
   return (
-    <div role="img" aria-label={sceneSummary(scene)} className="aspect-[16/7] w-full max-w-[960px] rounded-sm border border-rule" data-stage3d>
+    <div role="img" aria-label={sceneSummary(scene)} className="aspect-[960/330] w-full max-w-[960px] rounded-sm border border-rule" data-stage3d>
       <Canvas
         aria-hidden="true" frameloop="demand" dpr={[1, 2]} camera={{ position: CAMERA_BASE, fov: 45 }}
         gl={{ antialias: true, powerPreference: "low-power" }}

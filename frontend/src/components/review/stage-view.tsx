@@ -18,7 +18,7 @@ const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.Age
 // three.js / R3F / drei live only in this lazily loaded chunk.
 const Stage3D = dynamic(() => import("./stage3d/stage-3d"), {
   ssr: false,
-  loading: () => <div aria-hidden data-placeholder="3d" className="aspect-[16/7] w-full max-w-[960px] rounded-sm border border-rule bg-surface" />,
+  loading: () => <div aria-hidden data-placeholder="3d" className="aspect-[960/330] w-full max-w-[960px] rounded-sm border border-rule bg-surface" />,
 });
 
 const STORAGE_KEY = "mra.stage3d";

@@ -25,7 +25,7 @@ describe("Stage3D wrapper", () => {
     render(<Stage3D scene={scene} />);
     const fig = screen.getByRole("img");
     expect(fig).toHaveAttribute("aria-label", sceneSummary(scene));
-    expect(fig.className).toContain("aspect-[16/7]");
+    expect(fig.className).toContain("aspect-[960/330]");
     expect(fig.className).toContain("max-w-[960px]");
     const canvas = screen.getByTestId("canvas");
     expect(canvas).toHaveAttribute("aria-hidden", "true");

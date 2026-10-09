@@ -12,7 +12,7 @@ import { NODE_VISUAL, poolLabelAt, poolSummary, visibleAgents } from "./model-3d
 
 const NUM = { fontVariantNumeric: "tabular-nums" } as const;
 const Z_RANGE: [number, number] = [10, 0]; // keep labels below page chrome (drei's default is ~16.7M)
-const LABEL_DROP = 0.72; // world units below a node centre
+const LABEL_DROP = 0.62; // world units below a node centre: clears the ring (radius 0.42, 1.12x when active) so labels hang from there
 const BOX = "pointer-events-none select-none whitespace-nowrap rounded-sm bg-surface/85 px-1 text-center font-display text-xs leading-tight";
 
 function Mark({ d, cls }: { d: string; cls: string }) {
@@ -46,10 +46,10 @@ export function Labels3D({ scene, layout }: { scene: Scene; layout: Layout3D }) 
         const above = id === "external"; // the side node sits over the lane; its label goes on top
         return (
           <Html
-            key={id} position={[p[0], p[1] + (above ? LABEL_DROP : -LABEL_DROP), p[2]]} center pointerEvents="none"
+            key={id} position={[p[0], p[1] + (above ? LABEL_DROP + 0.35 : -LABEL_DROP), p[2]]} center={above} pointerEvents="none"
             zIndexRange={Z_RANGE}
           >
-            <div aria-hidden="true" data-label3d={id} data-status={st} className={`${BOX} ${v.dim ? "text-muted" : "text-ink"}`}>
+            <div aria-hidden="true" data-label3d={id} data-status={st} className={`${BOX} ${above ? "" : "-translate-x-1/2"} ${v.dim ? "text-muted" : "text-ink"}`}>
               {AGENT_LABEL[id].th.map((line, i) => (
                 <div key={i}>
                   {line}

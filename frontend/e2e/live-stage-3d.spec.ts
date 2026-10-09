@@ -75,6 +75,12 @@ test.describe("3D stage view", () => {
     await expect(stage3d(page)).toHaveAttribute("role", "img");
     await expect(stage3d(page)).toHaveAttribute("aria-label", label2d!);
     await expect(stage3d(page).locator("[aria-hidden=true] canvas")).toHaveCount(1); // the R3F wrapper around the canvas is aria-hidden
+    // Regression: drei's Html left the first label empty when mounted in the Canvas's first commit.
+    const labels = stage3d(page).locator("[data-label3d]");
+    await expect.poll(() => labels.count()).toBeGreaterThanOrEqual(10);
+    const texts = await labels.evaluateAll((els) => els.map((e) => (e.textContent ?? "").trim()));
+    expect(texts.filter((t) => t === "")).toEqual([]);
+    await expect(stage3d(page).locator('[data-label3d="guard"]')).toContainText("ตรวจหัวข้อ");
     await expect(page.getByRole("region", { name: "บันทึกการทำงาน" })).toBeVisible(); // the text ledger is untouched
 
     await toggle(page).click();
