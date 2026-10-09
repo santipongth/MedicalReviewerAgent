@@ -12,7 +12,7 @@ import { PACKET_CAP, type Scene } from "@/lib/agent-scene";
 import { arc3, arc3X, arc3Y, arc3Z, PILE_CAP, pileSpot, type Layout3D, type Seg3, type Vec3 } from "@/lib/agent-layout-3d";
 import { DIRECTION_ORDER, liveTally } from "@/lib/live-evidence";
 import type { Direction } from "@/lib/types";
-import { FLIGHT_MS, PILE_BAR, PILE_COLOR, PILE_SHAPE, easeInOut, planArrivals, type PileShape } from "./model-3d";
+import { FLIGHT_MS, PILE_BAR, PILE_COLOR, PILE_R, PILE_SHAPE, easeInOut, planArrivals, type PileShape } from "./model-3d";
 import type { Tokens3D } from "./tokens-3d";
 
 const ARC_BEND = 0.12;
@@ -31,11 +31,11 @@ const makeWork = (): Work => {
 
 function Geometry({ shape }: { shape: PileShape }) {
   switch (shape) {
-    case "sphere": return <sphereGeometry args={[0.065, 10, 8]} />;
-    case "octahedron": return <octahedronGeometry args={[0.08, 0]} />;
+    case "sphere": return <sphereGeometry args={[PILE_R.sphere, 12, 10]} />;
+    case "octahedron": return <octahedronGeometry args={[PILE_R.octahedron, 0]} />;
     case "bar": return <boxGeometry args={[PILE_BAR[0], PILE_BAR[1], PILE_BAR[2]]} />;
-    case "dome": return <sphereGeometry args={[0.08, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2]} />;
-    case "torus": return <torusGeometry args={[0.062, 0.014, 6, 20]} />;
+    case "dome": return <sphereGeometry args={[PILE_R.dome, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2]} />;
+    case "torus": return <torusGeometry args={[PILE_R.torus, PILE_R.torusTube, 8, 24]} />;
   }
 }
 

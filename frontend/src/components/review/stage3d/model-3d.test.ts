@@ -3,10 +3,10 @@ import {
   MAX_DOTS, PACKET_CAP, PIPELINE, emptySlot, initialScene, planDots, reduceScene, takeFreshPulses, type AgentStatus, type Pulse,
   type Scene,
 } from "@/lib/agent-scene";
-import { layout3dFor, type Vec3 } from "@/lib/agent-layout-3d";
+import { PILE_HALF, PILE_PITCH, PILE_STACK_DZ, layout3dFor, type Vec3 } from "@/lib/agent-layout-3d";
 import { DIRECTION_ORDER } from "@/lib/i18n";
 import {
-  ARRIVAL_STAGGER_MS, EDGE_COLOR, EDGE_RADIUS, FIT_MARGIN, FLIGHT_MS, NODE_VISUAL, PACKET_COLOR, PILE_COLOR, PILE_SHAPE,
+  ARRIVAL_STAGGER_MS, EDGE_COLOR, EDGE_RADIUS, FIT_MARGIN, FLIGHT_MS, NODE_VISUAL, PACKET_COLOR, PILE_BAR, PILE_COLOR, PILE_R, PILE_SHAPE,
   SLOT_COLOR, SLOT_SCALE, STAGE_ASPECT, STAGE_FOV, THOUGHT_LIFT, anySpinning, cameraAgent, cameraGoal, easeInOut,
   easeToward, fitCamera, flightT, makeFlights, packetScale, pileCaptionAt, pileLabelAt, planArrivals, poolLabelAt,
   poolSummary, schedulePackets, thoughtAnchor, thoughtLeader, visibleAgents,
@@ -215,6 +215,17 @@ describe("evidence piles", () => {
     expect(PILE_SHAPE).toEqual({ positive: "sphere", negative: "octahedron", null: "bar", mixed: "dome", unclear: "torus" });
     expect(new Set(Object.values(PILE_SHAPE)).size).toBe(5);
     expect(PILE_COLOR).toEqual({ positive: "sup", negative: "harm", null: "none", mixed: "mixed", unclear: "unclear" });
+  });
+
+  it("tokens are large enough to tell apart, yet stacks and neighbouring piles never touch", () => {
+    // half-extents across (x) and in depth (z) of each token
+    const half = [PILE_R.sphere, PILE_R.octahedron, PILE_R.dome, PILE_R.torus + PILE_R.torusTube, PILE_BAR[0] / 2];
+    expect(Math.min(PILE_R.sphere, PILE_R.octahedron, PILE_R.dome, PILE_R.torus)).toBeGreaterThanOrEqual(0.09);
+    expect(PILE_R.torusTube / PILE_R.torus).toBeGreaterThanOrEqual(0.25); // a thick ring, not a hairline
+    expect(Math.max(...half)).toBeCloseTo(PILE_HALF, 6); // the layout's clearance uses the real widest token
+    const depth = [PILE_R.sphere, PILE_R.octahedron, PILE_R.dome, PILE_R.torusTube, PILE_BAR[2] / 2];
+    expect(2 * Math.max(...depth, PILE_R.torus + PILE_R.torusTube)).toBeLessThan(PILE_STACK_DZ);
+    expect(2 * PILE_HALF).toBeLessThan(PILE_PITCH);
   });
 
   it("edges: idle and visited thin, live thicker", () => {

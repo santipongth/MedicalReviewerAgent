@@ -40,12 +40,14 @@ export const SLOT_HALF = 0.18;
 // 0.6, not 0.4: at the fitted distance (~45 px per unit) a 0.4 pitch put the per-pile DOM labels (glyph / count /
 // flag count) on top of each other.
 export const PILE_PITCH = 0.6;
-export const PILE_RISE = 0.13;
+// Tokens are ~0.2 tall (1.5x the first cut); a 0.15 rise keeps a stack reading as one column without growing a full
+// pile much taller.
+export const PILE_RISE = 0.15;
 export const PILE_STACK = 10;
-export const PILE_STACK_DZ = 0.3;
+export const PILE_STACK_DZ = 0.3; // deeper than the widest token (0.24), so stacks behind never intersect
 export const PILE_CAP = 30;
-/** Half-width of the widest pile token (the flat "no association" bar is 0.22 wide). */
-export const PILE_HALF = 0.11;
+/** Half-width of the widest pile token (the flat "no association" bar is 0.33 wide). */
+export const PILE_HALF = 0.165;
 const PILE_FROM_SYNTH = 0.6; // first base starts near synth.x - 0.6 ...
 const POOL_PILE_GAP = 0.2; // ... but never closer than this to the pool's silhouettes
 const TRAY_PAD = 0.3;

@@ -69,8 +69,10 @@ export const PILE_SHAPE: Record<Direction, PileShape> = {
 export const PILE_COLOR: Record<Direction, Token3D> = {
   positive: "sup", negative: "harm", null: "none", mixed: "mixed", unclear: "unclear",
 };
-/** The flat "no association" bar (x, y, z). */
-export const PILE_BAR: readonly [number, number, number] = [0.22, 0.06, 0.1];
+/** The flat "no association" bar (x, y, z); 1.5x the first cut, whose 4-6px tokens read as indistinct specks. */
+export const PILE_BAR: readonly [number, number, number] = [0.33, 0.09, 0.15];
+/** Radii of the round pile tokens (torus: ring radius and a thick tube, so the ring still reads at small sizes). */
+export const PILE_R = { sphere: 0.1, octahedron: 0.12, dome: 0.12, torus: 0.093, torusTube: 0.026 } as const;
 
 export const ARRIVAL_STAGGER_MS = 60;
 export interface Arrival<T> { item: T; delayMs: number }
