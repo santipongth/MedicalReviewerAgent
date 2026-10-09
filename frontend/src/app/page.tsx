@@ -6,7 +6,9 @@ import { Timeline } from "@/components/landing/timeline";
 import { publicApiUrl } from "@/lib/public-api";
 import { RequestSlip } from "@/components/landing/request-slip";
 
-export default async function Home() {
+export default async function Home(props: PageProps<"/">) {
+  const { q } = await props.searchParams;
+  const initialTopic = (Array.isArray(q) ? q[0] : q)?.trim().slice(0, 300) || undefined;
   return (
     <div className="grid gap-16">
       <section aria-labelledby="h-home" className="grid items-center gap-8 pt-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
@@ -15,11 +17,14 @@ export default async function Home() {
             <span className="nw">อย่าเพิ่งเชื่อเรา</span> <span className="nw">แตะที่ตัวเลข</span><span className="nw">ดูก่อน</span>
           </h1>
           <p className="mt-5 max-w-[52ch] text-[1.05rem] text-muted">
-            ด้านล่างคือรายงานจริงที่ระบบทำไว้ ตัวเลขที่มีเส้นเทปลายทแยงตรวจกับบทคัดย่อแล้ว แตะเพื่อดูประโยคต้นฉบับ
-            ส่วนช่องลายเส้นคือค่าที่ตรวจไม่ผ่าน ระบบเว้นว่างไว้ ไม่เดา ส่งคำถามของคุณเองได้ที่ใบส่งคำถาม ฟรี ไม่ต้องสมัคร
+            ส่งคำถามเรื่องโรค ยา หรือสาร เอเจนต์จะอ่านงานวิจัยที่เกี่ยวข้อง เทียบผลที่ตรงกันและขัดกัน
+            และให้คุณตรวจทุกตัวเลขกับประโยคต้นฉบับได้ ฟรี ไม่ต้องสมัคร
           </p>
+          <a href="#request" className="mt-5 inline-flex min-h-11 items-center rounded-sm border border-rule px-4 font-display font-medium text-primary hover:border-primary lg:hidden">
+            ส่งคำถามของคุณ ↓
+          </a>
         </div>
-        <RequestSlip />
+        <RequestSlip initialTopic={initialTopic} />
       </section>
       <SampleBench />
       <Anatomy />

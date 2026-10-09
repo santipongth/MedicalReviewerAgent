@@ -5,7 +5,7 @@ import type { ReviewEvent } from "./types";
 export const WELL_COUNT = 60;
 export type Well = "empty" | "found" | "out" | "cap";
 export type StepKey = "queue" | "refine" | "search" | "screen" | "read" | "synthesize" | "done";
-export const STEPS: StepKey[] = ["refine", "search", "screen", "read", "synthesize"];
+export const STEPS: StepKey[] = ["queue", "refine", "search", "screen", "read", "synthesize"];
 export type RunStatus = "connecting" | "queued" | "running" | "done" | "error" | "rejected" | "cancelled";
 
 export interface ReadingItem {
@@ -152,6 +152,14 @@ export function reduceRun(state: RunState, ev: ReviewEvent): RunState {
       break;
   }
   return s;
+}
+
+/** Pipeline counts for the live screen. `read` = papers whose read has finished (ok or failed). */
+export function readCounts(run: RunState): { found: number; candidates: number; kept: number; read: number } {
+  return {
+    found: run.found, candidates: run.candidates, kept: run.kept,
+    read: run.reading.filter((r) => r.state !== "reading").length,
+  };
 }
 
 export const TERMINAL_EVENTS = new Set(["done", "error", "rejected", "cancelled"]);

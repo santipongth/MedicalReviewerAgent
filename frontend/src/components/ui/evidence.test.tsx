@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Glyph, Hole, VerifiedNumber } from "./evidence";
+import userEvent from "@testing-library/user-event";
+import { Glyph, Hole, UncertainFlag, VerifiedNumber } from "./evidence";
 
 describe("evidence primitives", () => {
   it("VerifiedNumber uses the verified style and is a button when clickable", () => {
@@ -30,5 +31,26 @@ describe("evidence primitives", () => {
     }
     render(<Glyph direction="negative" lang="th" />);
     expect(screen.getByRole("img", { name: "ตรงข้าม/อันตราย" })).toBeInTheDocument();
+  });
+
+  it("Hole without explain has no Term; with explain it shows one outside the slot", async () => {
+    const { container, rerender } = render(<Hole lang="th" />);
+    expect(container.innerHTML).toBe('<span class="hole ">ไม่ยืนยัน</span>');
+    expect(screen.queryByRole("button")).toBeNull();
+    rerender(<Hole lang="th" explain />);
+    expect(container.querySelectorAll(".hole")).toHaveLength(1);
+    const btn = screen.getByRole("button", { name: "ทำไม?" });
+    expect(container.querySelector(".hole")).not.toContainElement(btn);
+    await userEvent.click(btn);
+    expect(screen.getByRole("note")).toHaveTextContent("ตรวจกับต้นฉบับไม่ผ่าน");
+  });
+
+  it("UncertainFlag renders its default and custom label", () => {
+    const { rerender } = render(<UncertainFlag />);
+    expect(screen.getByText("สองโมเดลอ่านต่างกัน")).toBeInTheDocument();
+    rerender(<UncertainFlag lang="en" />);
+    expect(screen.getByText("models disagree")).toBeInTheDocument();
+    rerender(<UncertainFlag label="custom" />);
+    expect(screen.getByText("custom")).toBeInTheDocument();
   });
 });

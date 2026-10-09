@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { HighlightedQuote } from "@/components/ui/quote";
 import { designLabel } from "@/lib/charts-data";
 import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, safeHref } from "@/lib/evidence";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
-import { Glyph, Hole, VerifiedNumber } from "../ui/evidence";
+import { Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
+import { Term } from "../ui/term";
 import { L } from "./text";
 
 // Results stored before abstract-only reading name the full text they read; new results are always the abstract.
@@ -23,15 +25,21 @@ function MaskedText({ text, lang }: { text: string; lang: Lang }) {
   return <>{parts.map((p, i) => <span key={i}>{p}{i < parts.length - 1 && <Hole lang={lang} />}</span>)}</>;
 }
 
-function OutcomeEvidence({ paper, o, en, lang, selected }: {
-  paper: Paper; o: OutcomeResult; en?: OutcomeResult; lang: Lang; selected: boolean;
+function OutcomeEvidence({ paper, o, en, lang, selected, visible }: {
+  paper: Paper; o: OutcomeResult; en?: OutcomeResult; lang: Lang; selected: boolean; visible: boolean;
 }) {
+  const item = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!selected || !visible || typeof item.current?.scrollIntoView !== "function") return;
+    const reduce = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    item.current.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [selected, visible]);
   const quote = en?.evidence_quote ?? o.evidence_quote;
   const blanked = isBlankedEffect(paper, en?.outcome ?? o.outcome);
   const hasEffect = o.effect_value != null && !blanked;
   const ci = hasEffect ? ciLabel({ ...o, evidence_quote: quote }) : null;
   return (
-    <li className={`grid gap-2 border-t border-rule pt-3 ${selected ? "-mx-2 rounded-sm bg-surface px-2 pb-2" : ""}`} aria-current={selected || undefined}>
+    <li ref={item} className={`grid gap-2 border-t border-rule pt-3 ${selected ? "-mx-2 rounded-sm bg-surface px-2 pb-2" : ""}`} aria-current={selected || undefined}>
       <div className="flex flex-wrap items-center gap-2">
         <Glyph direction={o.direction} lang={lang} />
         <b className="font-display text-[0.95rem]">{o.outcome}</b>
@@ -42,10 +50,10 @@ function OutcomeEvidence({ paper, o, en, lang, selected }: {
         {hasEffect ? (
           <>
             <VerifiedNumber value={effectLabel({ ...o, evidence_quote: quote })} />
-            {ci && <> <span className="text-muted">95% CI</span> <VerifiedNumber value={ci} /></>}
+            {ci && <> <Term k="ci95" lang={lang}><span className="text-muted">95% CI</span></Term> <VerifiedNumber value={ci} /></>}
           </>
         ) : blanked ? (
-          <><Hole lang={lang} /> <span className="text-sm text-muted">{L(lang, "ค่าที่โมเดลสกัดได้ไม่พบในข้อความต้นฉบับ จึงไม่แสดงและไม่ใช้ในกราฟ", "The extracted value was not found in the paper text, so it is not shown or plotted")}</span></>
+          <><Hole lang={lang} explain /> <span className="text-sm text-muted">{L(lang, "ค่าที่โมเดลสกัดได้ไม่พบในข้อความต้นฉบับ จึงไม่แสดงและไม่ใช้ในกราฟ", "The extracted value was not found in the paper text, so it is not shown or plotted")}</span></>
         ) : (
           <span className="text-sm text-muted">{L(lang, "งานวิจัยไม่ได้รายงานตัวเลขสำหรับผลนี้", "The paper reports no number for this outcome")}</span>
         )}
@@ -75,7 +83,7 @@ function Facts({ paper, card, cardEn, lang }: { paper: Paper; card: PaperCard; c
           : isBlankedSampleSize(paper) ? <Hole lang={lang} /> : <span className="text-muted">{L(lang, "ไม่ได้รายงาน", "not reported")}</span>}
       </dd>
       <dt className="text-muted">{L(lang, "ประชากร", "Population")}</dt><dd className="break-words">{card.population}</dd>
-      <dt className="text-muted">{L(lang, "ความเสี่ยงอคติ", "Risk of bias")}</dt><dd>{ROB_LABEL[lang][card.risk_of_bias] ?? card.risk_of_bias}</dd>
+      <dt className="text-muted"><Term k="riskOfBias" lang={lang}>{L(lang, "ความเสี่ยงอคติ", "Risk of bias")}</Term></dt><dd>{ROB_LABEL[lang][card.risk_of_bias] ?? card.risk_of_bias}</dd>
       <dt className="text-muted">{L(lang, "ที่มาของข้อความ", "Text read")}</dt>
       <dd>{(paper.fulltext_source ? SOURCE_LABEL[paper.fulltext_source] ?? ["–", "–"] : ["บทคัดย่อ", "Abstract"])[lang === "th" ? 0 : 1]}</dd>
     </dl>
@@ -101,8 +109,12 @@ function Links({ paper, lang }: { paper: Paper; lang: Lang }) {
 }
 
 /** The paper behind whatever the reader selected: facts, each outcome's number and the exact sentence it came from. */
-export function SourceRail({ paper, outcome, lang, onClose }: {
+export function SourceRail({ paper, outcome, lang, onClose, headingId, visible = true }: {
   paper: Paper | null; outcome?: string; lang: Lang; onClose?: () => void;
+  /** id of the heading (the drawer's accessible name and initial focus target). */
+  headingId?: string;
+  /** false while the rail is hidden (closed drawer): the selected outcome scrolls into view once it shows. */
+  visible?: boolean;
 }) {
   const card = paper ? (lang === "en" ? paper.card_en ?? paper.card : paper.card) : null;
   const cardEn = paper?.card_en ?? paper?.card;
@@ -110,7 +122,7 @@ export function SourceRail({ paper, outcome, lang, onClose }: {
     <aside aria-label={L(lang, "ต้นฉบับ", "Source")} aria-live="polite"
       className="grid min-w-0 content-start gap-4 bg-rail p-6">
       <div className="flex items-center justify-between gap-2">
-        <span className="label">{L(lang, "ต้นฉบับ", "Source")}{paper ? ` · ${paper.ref}` : ""}</span>
+        <h2 id={headingId} tabIndex={-1} className="label">{L(lang, "ต้นฉบับ", "Source")}{paper ? ` · ${paper.ref}` : ""}</h2>
         {onClose && (
           <button type="button" onClick={onClose} className="rounded-sm border border-rule px-2 py-0.5 text-sm lg:hidden">
             {L(lang, "ปิด", "Close")}
@@ -122,8 +134,9 @@ export function SourceRail({ paper, outcome, lang, onClose }: {
       ) : (
         <>
           {paper.verification?.uncertain && (
-            <p className="flex items-center gap-2 border-t-2 border-dashed border-harm pt-2 font-display text-[0.85rem] font-semibold text-warn">
-              ◆ {L(lang, "ไม่แน่นอน: สองโมเดลอ่านทิศทางผลต่างกัน", "Uncertain: two models read the direction differently")}
+            <p className="flex flex-wrap items-center gap-2 border-t-2 border-dashed border-harm pt-2 font-display text-[0.85rem] font-semibold text-warn">
+              <UncertainFlag lang={lang} />
+              <Term k="uncertain" lang={lang}>{L(lang, "หมายถึงอะไร", "what does this mean?")}</Term>
             </p>
           )}
           <p className="font-display text-base font-semibold leading-snug break-words">{paper.title}</p>
@@ -134,7 +147,7 @@ export function SourceRail({ paper, outcome, lang, onClose }: {
               <ul className="grid gap-3">
                 {card.outcomes.map((o, i) => (
                   <OutcomeEvidence key={`${o.outcome}-${i}`} paper={paper} o={o} en={cardEn?.outcomes[i]} lang={lang}
-                    selected={outcome == null || (cardEn?.outcomes[i]?.outcome ?? o.outcome) === outcome} />
+                    selected={outcome != null && (cardEn?.outcomes[i]?.outcome ?? o.outcome) === outcome} visible={visible} />
                 ))}
               </ul>
             </>

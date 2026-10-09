@@ -97,6 +97,7 @@ export const resultFixture: ReviewResult = {
       journal: "Gut", doi: "10.1000/p2", relevance: 88, card: p2card, card_en: p2card,
       verification: verification({ numbers_verified: 0, numbers_total: 1, unverified: [{ field: "effect", outcome: "CRC incidence" }] }) },
     { ref: "P3", title: "Metformin use and colorectal cancer risk among adults with type 2 diabetes", year: 2021,
+      authors: ["Lindqvist J", "Other A"],
       journal: "BMJ Open", doi: "10.1000/p3", pmid: "3000003", pmcid: "PMC300003", relevance: 93,
       card: p3card, card_en: p3card, verification: verification() },
     { ref: "P4", title: "Short-term metformin initiation and gastrointestinal cancer detection", year: 2020,

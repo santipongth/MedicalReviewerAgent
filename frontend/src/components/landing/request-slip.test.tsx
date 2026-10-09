@@ -17,6 +17,10 @@ const OPEN = { accepting: true, reason: null, retry_after: null, queue_depth: 0,
 
 import { RequestSlip } from "./request-slip";
 
+async function typeTopic(text = "statins and dementia") {
+  await userEvent.type(screen.getByLabelText(/หัวข้อ/), text);
+}
+
 beforeEach(() => {
   push.mockReset();
   createReview.mockReset();
@@ -29,11 +33,9 @@ describe("RequestSlip", () => {
   it("submits the topic with options and opens the review", async () => {
     createReview.mockResolvedValue({ review_id: "r-1", status: "queued", cached: false });
     render(<RequestSlip />);
-    const topic = screen.getByLabelText(/หัวข้อ/);
-    await userEvent.clear(topic);
-    await userEvent.type(topic, "statins and dementia");
+    await typeTopic();
     await userEvent.click(screen.getByLabelText("English"));
-    await userEvent.click(screen.getByLabelText("RCT"));
+    await userEvent.click(screen.getByLabelText(/RCT/));
     await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith({
       topic: "statins and dementia", language: "en", options: { max_papers: 30, study_types: ["RCT"] },
@@ -68,6 +70,7 @@ describe("RequestSlip", () => {
   it("explains a full queue returned at submit time", async () => {
     createReview.mockRejectedValue(new ApiError(503, "the review queue is full", 60, undefined, "queue_full"));
     render(<RequestSlip />);
+    await typeTopic();
     await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("คิว");
   });
@@ -81,6 +84,7 @@ describe("RequestSlip", () => {
     createReview.mockResolvedValue({ review_id: "r-2", status: "queued", cached: false });
     render(<RequestSlip />);
     await screen.findByTestId("turnstile");
+    await typeTopic();
     await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({ language: "th" }), { turnstileToken: "tok-1" });
   });
@@ -99,6 +103,7 @@ describe("RequestSlip", () => {
   it("names a momentary admission backlog honestly", async () => {
     createReview.mockRejectedValue(new ApiError(503, "too many submissions", 5, undefined, "busy"));
     render(<RequestSlip />);
+    await typeTopic();
     await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("มีผู้ส่งพร้อมกันจำนวนมาก");
   });
@@ -106,6 +111,7 @@ describe("RequestSlip", () => {
   it("explains a rate limit with the wait time", async () => {
     createReview.mockRejectedValue(new ApiError(429, "rate limit exceeded", 1800));
     render(<RequestSlip />);
+    await typeTopic();
     await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("30 นาที");
     expect(push).not.toHaveBeenCalled();
@@ -115,5 +121,48 @@ describe("RequestSlip", () => {
     render(<RequestSlip />);
     await userEvent.click(screen.getByRole("button", { name: "SGLT2 inhibitors and heart failure" }));
     expect(screen.getByLabelText(/หัวข้อ/)).toHaveValue("SGLT2 inhibitors and heart failure");
+  });
+
+  it("starts with an empty topic and a placeholder example", () => {
+    render(<RequestSlip />);
+    const topic = screen.getByLabelText(/หัวข้อ/);
+    expect(topic).toHaveValue("");
+    expect(topic).toHaveAttribute("placeholder", "เช่น เมตฟอร์มินกับมะเร็งลำไส้ใหญ่");
+  });
+
+  it("pre-fills the topic from initialTopic", () => {
+    render(<RequestSlip initialTopic="vitamin D and fractures" />);
+    expect(screen.getByLabelText(/หัวข้อ/)).toHaveValue("vitamin D and fractures");
+  });
+
+  it("says why the button is disabled while the Turnstile token is pending", async () => {
+    getStatus.mockResolvedValue({ ...OPEN, turnstile_site_key: "site-key" });
+    render(<RequestSlip />);
+    await screen.findByTestId("turnstile");
+    const button = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ });
+    expect(button).toBeDisabled();
+    const reason = await screen.findByText(/กำลังยืนยันว่าเป็นผู้ใช้จริง/);
+    expect(button.getAttribute("aria-describedby")).toBe(reason.id);
+  });
+
+  it("summarises the folded options as they change", async () => {
+    render(<RequestSlip />);
+    const summary = screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary") as HTMLElement;
+    expect(summary).toHaveTextContent("ทุกชนิดงานวิจัย · สูงสุด 30 ฉบับ · ทุกปี");
+    await userEvent.click(screen.getByLabelText(/RCT/));
+    await userEvent.type(screen.getByLabelText(/ตั้งแต่ปี/), "2015");
+    expect(summary).toHaveTextContent("การทดลองแบบสุ่ม (RCT) · สูงสุด 30 ฉบับ · ตั้งแต่ปี 2015");
+  });
+
+  it("sends English study-type values although the labels are Thai", async () => {
+    createReview.mockResolvedValue({ review_id: "r-3", status: "queued", cached: false });
+    render(<RequestSlip />);
+    await typeTopic();
+    await userEvent.click(screen.getByLabelText(/Cohort/));
+    await userEvent.click(screen.getByLabelText(/Systematic review/));
+    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    expect(createReview).toHaveBeenCalledWith(expect.objectContaining({
+      options: { max_papers: 30, study_types: ["Cohort", "Systematic review"] },
+    }));
   });
 });

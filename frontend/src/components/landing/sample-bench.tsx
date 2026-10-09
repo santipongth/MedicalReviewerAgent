@@ -63,6 +63,10 @@ export function SampleBench() {
         <div className="grid gap-2">
           <h2 id="h-sample" className="text-[1.35rem] font-bold">โคลชิซินหลังกล้ามเนื้อหัวใจตายเฉียบพลัน</h2>
           <p className="max-w-[65ch] text-[0.95rem] text-muted">{SAMPLE.question}</p>
+          <p className="max-w-[65ch] text-[0.95rem] text-muted">
+            ตัวเลขที่มีเส้นเทปลายทแยงตรวจกับบทคัดย่อแล้ว แตะเพื่อดูประโยคต้นฉบับ
+            ส่วนช่องลายเส้นคือค่าที่ตรวจไม่ผ่าน ระบบเว้นว่างไว้ ไม่เดา
+          </p>
         </div>
         <p data-testid="sample-summary" className="max-w-[65ch] text-[1.02rem] leading-[1.9]">
           การทดลองแบบสุ่ม {trials.length} ฉบับ: {summary} ส่วนการวิเคราะห์อภิมาน {pooled.length} ฉบับรายงานค่ารวมตั้งแต่{" "}

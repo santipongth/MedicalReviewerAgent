@@ -29,8 +29,11 @@ describe("RecentReviews", () => {
     expect(first).toHaveTextContent("96%");
     expect(screen.getByRole("link", { name: /Vitamin D and fractures/ })).toHaveTextContent("–");
     expect(screen.queryByText("still running")).toBeNull();
-    const cells = Array.from(first.children).map((c) => c.textContent);
-    expect(cells.slice(0, 2)).toEqual(["เมตฟอร์มินกับมะเร็งลำไส้ใหญ่", "96%"]); // topic, then share: same order at every width
+    const cells = Array.from(first.children);
+    expect(cells[0]).toHaveTextContent("เมตฟอร์มินกับมะเร็งลำไส้ใหญ่");
+    expect(cells[1]).toContainElement(screen.getAllByTestId("share")[0]); // topic, then share: same order at every width
+    expect(screen.getAllByTestId("share")[0]).toHaveTextContent("96%");
+    expect(first).toHaveTextContent("96% ตัวเลขตรวจผ่าน"); // screen readers hear what the figure is
   });
 
   it("says so calmly when the list cannot be loaded", async () => {

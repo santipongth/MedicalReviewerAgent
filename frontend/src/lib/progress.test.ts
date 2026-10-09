@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialRun, reduceRun, WELL_COUNT } from "./progress";
+import { initialRun, readCounts, reduceRun, STEPS, WELL_COUNT } from "./progress";
 import type { ReviewEvent } from "./types";
 
 function run(events: [string, Record<string, unknown>][]) {
@@ -53,5 +53,22 @@ describe("reduceRun", () => {
     const s1 = reduceRun(initialRun(), { seq: 5, type: "searching", payload: { found: 9 } });
     const s2 = reduceRun(s1, { seq: 5, type: "searching", payload: { found: 99 } });
     expect(s2.found).toBe(9);
+  });
+});
+
+describe("readCounts", () => {
+  it("counts finished reads (ok or failed) and passes the pipeline counts through", () => {
+    const s = run([
+      ["searching", { found: 41 }], ["enriching", { candidates: 20 }], ["screened", { kept: 8, total: 20 }],
+      ["reading", { ref: "P1", title: "a" }], ["extracted", { ref: "P1", ok: true }],
+      ["reading", { ref: "P2", title: "b" }], ["extracted", { ref: "P2", ok: false }],
+      ["reading", { ref: "P3", title: "c" }],
+    ]);
+    expect(readCounts(s)).toEqual({ found: 41, candidates: 20, kept: 8, read: 2 });
+    expect(readCounts(initialRun())).toEqual({ found: 0, candidates: 0, kept: 0, read: 0 });
+  });
+
+  it("starts the step list with the queue", () => {
+    expect(STEPS[0]).toBe("queue");
   });
 });

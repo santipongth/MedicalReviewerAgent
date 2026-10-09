@@ -124,6 +124,17 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Site header height, measured live by <HeaderHeight>; these are first-paint fallbacks (it wraps to two rows below md).
+   The offline report has no header and sets it to 0 on its root. */
+:root {
+  --header-h: 3.5rem;
+}
+@media (max-width: 47.98rem) {
+  :root {
+    --header-h: 7.75rem;
+  }
+}
+
 body {
   background: var(--ground);
   color: var(--ink);

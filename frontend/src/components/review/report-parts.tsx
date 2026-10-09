@@ -2,9 +2,11 @@
 
 import { Fragment, type ReactNode } from "react";
 import { designKey, designLabel } from "@/lib/charts-data";
+import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
 import type { ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, QuestionBlock, Quality, Synthesis } from "@/lib/types";
-import { Glyph } from "../ui/evidence";
+import { Glyph, UncertainFlag } from "../ui/evidence";
+import { Term } from "../ui/term";
 import { L } from "./text";
 
 export type Select = (ref: string, outcome?: string) => void;
@@ -37,36 +39,51 @@ export function CitedText({ text, onSelect, refs }: { text: string; onSelect: Se
   return <>{parts}</>;
 }
 
-export function QuestionHeader({ question, topic, lang }: { question?: QuestionBlock; topic: string; lang: Lang }) {
+export function QuestionTitle({ question, topic, lang }: { question?: QuestionBlock; topic: string; lang: Lang }) {
   const text = lang === "en" && question?.english ? question.english : question;
   const refined = text?.refined_question || question?.english_topic || topic;
-  const pico = question?.pico;
   return (
     <header className="grid gap-3">
       <span className="label">{question?.refined ? L(lang, "คำถามที่เอเจนต์ตีความแล้ว", "Question as the agent interpreted it") : L(lang, "หัวข้อ", "Topic")}</span>
-      <h1 className="max-w-[40ch] text-[clamp(1.35rem,2.4vw,1.75rem)] font-semibold leading-snug break-words">{refined}</h1>
-      {text?.interpretation && <p className="max-w-[65ch] text-[0.95rem] text-muted">{text.interpretation}</p>}
-      {pico && (
-        <dl className="grid gap-px overflow-hidden rounded-sm border border-rule bg-rule sm:grid-cols-2">
-          {([["P", L(lang, "ประชากร", "Population"), pico.population], ["I", L(lang, "สิ่งที่ศึกษา", "Intervention / exposure"), pico.intervention_or_exposure],
-            ["C", L(lang, "ตัวเปรียบเทียบ", "Comparator"), pico.comparator], ["O", L(lang, "ผลลัพธ์", "Outcomes"), pico.outcomes?.join(", ")]] as const)
-            .map(([k, label, v]) => (
-              <div key={k} className="bg-surface px-4 py-2.5">
-                <dt className="label">{k} · {label}</dt>
-                <dd className="text-[0.92rem] break-words">{v || "–"}</dd>
-              </div>
-            ))}
-        </dl>
-      )}
-      {!!text?.sub_questions?.length && (
-        <details className="text-[0.92rem]">
-          <summary className="cursor-pointer font-display font-semibold">{L(lang, "คำถามย่อยและสมมติฐาน", "Sub-questions and assumptions")}</summary>
-          <ul className="mt-2 list-disc pl-5">{text.sub_questions.map((s) => <li key={s}>{s}</li>)}</ul>
-          {!!text.assumptions?.length && <p className="mt-2 text-muted">{L(lang, "สมมติฐาน", "Assumptions")}: {text.assumptions.join(" · ")}</p>}
-          {!!question?.ambiguities?.length && <p className="mt-1 text-muted">{L(lang, "การตีความอื่นที่ไม่ได้เลือก", "Other readings not chosen")}: {question.ambiguities.join(" · ")}</p>}
-        </details>
-      )}
+      <h1 className="max-w-[40ch] text-[clamp(1.2rem,2vw,1.5rem)] font-semibold leading-snug break-words">{refined}</h1>
     </header>
+  );
+}
+
+/** How the agent read the question: interpretation, PICO, sub-questions, assumptions. One disclosure, no nesting. */
+export function QuestionDetails({ question, lang }: { question?: QuestionBlock; lang: Lang }) {
+  const text = lang === "en" && question?.english ? question.english : question;
+  const pico = question?.pico;
+  const hasMore = !!text?.sub_questions?.length || !!text?.assumptions?.length || !!question?.ambiguities?.length;
+  if (!text?.interpretation && !pico && !hasMore) return null;
+  return (
+    <details className="grid gap-3 text-[0.92rem]">
+      <summary className="cursor-pointer font-display font-semibold">{L(lang, "เอเจนต์ตีความคำถามอย่างไร", "How the agent interpreted the question")}</summary>
+      <div className="mt-3 grid gap-3">
+        {text?.interpretation && <p className="max-w-[65ch] text-[0.95rem] text-muted">{text.interpretation}</p>}
+        {pico && <p className="label"><Term k="pico" lang={lang}>PICO</Term></p>}
+        {pico && (
+          <dl className="grid gap-px overflow-hidden rounded-sm border border-rule bg-rule sm:grid-cols-2">
+            {([["P", L(lang, "ประชากร", "Population"), pico.population], ["I", L(lang, "สิ่งที่ศึกษา", "Intervention / exposure"), pico.intervention_or_exposure],
+              ["C", L(lang, "ตัวเปรียบเทียบ", "Comparator"), pico.comparator], ["O", L(lang, "ผลลัพธ์", "Outcomes"), pico.outcomes?.join(", ")]] as const)
+              .map(([k, label, v]) => (
+                <div key={k} className="bg-surface px-4 py-2.5">
+                  <dt className="label">{k} · {label}</dt>
+                  <dd className="text-[0.92rem] break-words">{v || "–"}</dd>
+                </div>
+              ))}
+          </dl>
+        )}
+        {!!text?.sub_questions?.length && (
+          <div>
+            <p className="label">{L(lang, "คำถามย่อย", "Sub-questions")}</p>
+            <ul className="mt-1 list-disc pl-5">{text.sub_questions.map((s) => <li key={s}>{s}</li>)}</ul>
+          </div>
+        )}
+        {!!text?.assumptions?.length && <p className="text-muted">{L(lang, "สมมติฐาน", "Assumptions")}: {text.assumptions.join(" · ")}</p>}
+        {!!question?.ambiguities?.length && <p className="text-muted">{L(lang, "การตีความอื่นที่ไม่ได้เลือก", "Other readings not chosen")}: {question.ambiguities.join(" · ")}</p>}
+      </div>
+    </details>
   );
 }
 
@@ -79,14 +96,14 @@ export function StrengthLine({ synthesis, lang, quality }: { synthesis: Synthesi
     <div className="grid gap-1.5">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.92rem]">
         <p className="flex items-center gap-2 font-display font-semibold">
-          {L(lang, "ความแข็งแรงของหลักฐาน", "Evidence strength")}: <b>{STRENGTH_LABEL[lang][level]}</b>
+          <Term k="evidenceStrength" lang={lang}>{L(lang, "ความแข็งแรงของหลักฐาน", "Evidence strength")}</Term>: <b>{STRENGTH_LABEL[lang][level]}</b>
           <span aria-hidden="true" className="inline-flex gap-0.5">
             {LEVELS.map((l, i) => <i key={l} className={`h-2 w-[18px] ${i <= idx ? "bg-ink" : "bg-rule"}`} />)}
           </span>
         </p>
         {quality?.numbers_total ? (
           <p className="text-muted">
-            {L(lang, "ตัวเลขที่ตรวจกับต้นฉบับผ่าน", "Numbers verified against the papers")}{" "}
+            {L(lang, "ตัวเลขตรวจผ่าน", "numbers verified")}{" "}
             <span className="font-display tabular-nums">{`${quality.numbers_verified ?? 0}/${quality.numbers_total}`}</span>
           </p>
         ) : null}
@@ -97,29 +114,44 @@ export function StrengthLine({ synthesis, lang, quality }: { synthesis: Synthesi
 }
 
 /** Outcome × paper; every cell is a glyph button that opens its source in the rail. */
-export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcomeOf, pooledRefs }: {
-  rows: ComparisonRow[]; refs: string[]; lang: Lang; onSelect: Select; selected?: { ref: string; outcome?: string };
+export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcomeOf, pooledRefs, papers }: {
+  rows: ComparisonRow[]; refs: string[]; papers?: Paper[]; lang: Lang; onSelect: Select; selected?: { ref: string; outcome?: string };
   outcomeOf: (row: ComparisonRow, ref: string) => string | undefined;
   pooledRefs?: Set<string>; // systematic reviews / meta-analyses: may already include the primary studies
 }) {
+  const byRef = new Map((papers ?? []).map((p) => [p.ref, p]));
+  let selectedLine = "";
+  if (selected?.outcome !== undefined) {
+    for (const row of rows) {
+      const cell = row.cells.find((c) => c.ref === selected.ref);
+      if (cell && outcomeOf(row, selected.ref) === selected.outcome) { selectedLine = `${selected.ref} · ${row.outcome}: ${cell.finding}`; break; }
+    }
+  }
   return (
+    <div>
     <div className="overflow-x-auto rounded-sm border border-rule">
       <table aria-label={L(lang, "ผลแต่ละการศึกษา", "Findings by study")} className="w-full border-collapse text-[0.88rem] sm:min-w-[620px]">
         <thead>
           <tr className="bg-ground">
             <th scope="col" className="left-0 z-10 min-w-[9rem] bg-ground px-2.5 py-2 text-left label sm:sticky sm:min-w-[190px]">{L(lang, "ผลลัพธ์", "Outcome")}</th>
-            {refs.map((r) => (
-              <th key={r} scope="col" className="px-2 py-2 text-center label">
-                {r}
-                {pooledRefs?.has(r) && (
-                  <span className="mt-0.5 block text-[0.68rem] font-semibold text-muted"
-                    title={L(lang, "ผลรวมจาก systematic review/meta-analysis อาจรวมงานต้นฉบับในตารางนี้ไว้แล้ว",
-                      "Pooled result from a systematic review/meta-analysis; may already include primary studies in this table")}>
-                    SR/MA
-                  </span>
-                )}
-              </th>
-            ))}
+            {refs.map((r) => {
+              const paper = byRef.get(r);
+              const surname = surnameOf(paper?.authors?.[0]);
+              const byline = [surname, paper?.year].filter(Boolean).join(" ");
+              return (
+                <th key={r} scope="col" className="px-2 py-2 text-center label">
+                  <abbr title={paper?.title} className="no-underline">
+                    <span className="block">{r}</span>{" "}
+                    {byline && <span className="block text-[0.68rem] font-normal normal-case text-muted">{byline}</span>}
+                  </abbr>
+                  {pooledRefs?.has(r) && (
+                    <span className="mt-0.5 block text-[0.68rem] font-semibold">
+                      <Term k="srma" lang={lang}>SR/MA</Term>
+                    </span>
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -147,15 +179,18 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
         </tbody>
       </table>
     </div>
+    <p aria-live="polite" className="mt-2 min-h-[1.4em] text-[0.85rem] break-words">{selectedLine}</p>
+    </div>
   );
 }
 
 export function MatrixLegend({ lang }: { lang: Lang }) {
   return (
-    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[0.82rem] text-muted">
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[0.82rem] text-muted">
       {(["positive", "negative", "null", "mixed", "unclear"] as const).map((d) => (
         <span key={d} className="inline-flex items-center gap-1.5"><Glyph direction={d} lang={lang} />{DIRECTION_LABEL[lang][d]}</span>
       ))}
+      <UncertainFlag lang={lang} />
     </div>
   );
 }
@@ -226,7 +261,7 @@ export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Pap
                   ) : (
                     <span className="text-err">{L(lang, "อ่านไม่สำเร็จ", "Could not be read")}{p.error ? ` · ${p.error}` : ""}</span>
                   )}
-                  {p.verification?.uncertain && <span className="text-warn">◆ {L(lang, "ไม่แน่นอน", "Uncertain")}</span>}
+                  {p.verification?.uncertain && <UncertainFlag lang={lang} />}
                 </span>
               </span>
             </button>
@@ -245,7 +280,7 @@ export function QualityNote({ quality, stats, lang, preset }: { quality?: Qualit
       ? `${L(lang, "เลือกอ่าน", "read")} ${stats.selected}`
       : `${L(lang, "วิเคราะห์จากบทคัดย่อ", "analysed from abstracts")} ${stats.selected}`),
     stats?.with_fulltext != null && `${L(lang, "ฉบับเต็ม", "full text")} ${stats.with_fulltext}`,
-    quality?.papers_uncertain ? `${L(lang, "ไม่แน่นอน", "uncertain")} ${quality.papers_uncertain}` : false,
+    quality?.papers_uncertain ? `${L(lang, "สองโมเดลอ่านต่างกัน", "models disagree")} ${quality.papers_uncertain}` : false,
     total != null && `${L(lang, "ใช้เวลา", "took")} ${Math.round(total)} ${L(lang, "วินาที", "s")}`,
     preset && `${L(lang, "ชุดโมเดล", "model preset")} ${preset}`,
   ].filter(Boolean);

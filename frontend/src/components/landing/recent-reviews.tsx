@@ -7,6 +7,7 @@ import type { ReviewSummary } from "@/lib/types";
 
 type State = { kind: "loading" } | { kind: "error" } | { kind: "ok"; rows: ReviewSummary[] };
 
+const ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-0.5 sm:grid-cols-[minmax(0,1fr)_4rem_7rem_4.5rem]";
 const rtf = new Intl.RelativeTimeFormat("th", { numeric: "auto" });
 
 function ago(iso: string | null): string {
@@ -52,14 +53,24 @@ export function RecentReviews() {
         <p className="text-[0.92rem] text-muted">ยังไม่มีรีวิวสาธารณะที่เสร็จแล้ว รีวิวแรกของคุณจะปรากฏที่นี่</p>
       )}
       {state.kind === "ok" && state.rows.length > 0 && (
-        <ul className="border-t border-rule">
+        <>
+        <div aria-hidden="true" className={`${ROW} label border-t border-rule pt-3`}>
+          <span className="sm:hidden" />{/* keeps the label over the share column on a phone */}
+          <span className="hidden sm:inline">หัวข้อ</span>
+          <span className="text-right sm:order-last">ตรวจผ่าน</span>
+          <span className="hidden sm:inline">ภาษา</span>
+          <span className="hidden sm:inline">เมื่อ</span>
+        </div>
+        <ul>
           {state.rows.map((r) => (
             <li key={r.id} className="border-b border-rule">
               <Link href={`/r/${r.id}`}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-0.5 py-3 text-ink hover:text-primary sm:grid-cols-[minmax(0,1fr)_4rem_7rem_3.5rem]">
+                className={`${ROW} py-3 text-ink hover:text-primary`}>
                 <span className="min-w-0 break-words font-display font-medium">{r.topic}</span>
                 <span className="text-right font-display tabular-nums sm:order-last">
-                  {r.verification_rate != null ? `${Math.round(r.verification_rate * 100)}%` : <span className="text-muted">–</span>}
+                  {r.verification_rate != null
+                    ? <><span data-testid="share">{Math.round(r.verification_rate * 100)}%</span><span className="sr-only"> ตัวเลขตรวจผ่าน</span></>
+                    : <span className="text-muted">–</span>}
                 </span>
                 <span className="text-[0.8rem] text-muted">{r.language === "th" ? "ไทย" : "English"}</span>
                 <span className="text-[0.8rem] text-muted">{ago(r.finished_at ?? r.created_at)}</span>
@@ -67,6 +78,7 @@ export function RecentReviews() {
             </li>
           ))}
         </ul>
+        </>
       )}
     </section>
   );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resultFixture, legacyReviewFixture } from "@/test/fixtures";
-import { designLabel, emptyFilters, filterPapers, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
+import { designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
 
 const papers = resultFixture.papers!;
 
@@ -60,5 +60,19 @@ describe("prismaStages and studyPoints", () => {
     const pts = studyPoints(papers);
     expect(pts.points.map((p) => [p.ref, p.year, p.n])).toEqual([["P1", 2019, 48210], ["P3", 2021, 1234], ["P4", 2020, 6331]]);
     expect(pts.missing).toBe(2);
+  });
+});
+
+describe("directionTally", () => {
+  it("counts papers that have a card by overall direction and flags pooled SR/MA papers", () => {
+    const tally = directionTally(papers);
+    const withCard = papers.filter((p) => p.card_en ?? p.card);
+    expect(Object.values(tally).reduce((a, b) => a + b, 0)).toBe(withCard.length);
+    expect(tally.negative).toBe(withCard.filter((p) => (p.card_en ?? p.card)!.overall_direction === "negative").length);
+    expect(tally.positive).toBeGreaterThan(0);
+    expect(hasPooledPapers(papers)).toBe(true);
+    expect(hasPooledPapers(papers.filter((p) => p.ref === "P1"))).toBe(false);
+    expect(papers.filter(isPooled).length).toBeGreaterThan(0);
+    expect(isPooled(papers.find((p) => p.ref === "P1")!)).toBe(false);
   });
 });
