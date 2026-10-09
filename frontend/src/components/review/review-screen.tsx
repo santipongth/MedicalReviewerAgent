@@ -9,9 +9,10 @@ import { Report } from "./report";
 import { TerminalState } from "./terminal-state";
 
 export function ReviewScreen({ id }: { id: string }) {
-  const { review, run, phase, connection } = useReview(id);
+  const { review, run, phase, connection, retry } = useReview(id);
   const topic = review?.topic ?? "";
   const [polledPosition, setPolledPosition] = useState<number | null | undefined>(undefined);
+  const knownTopic = review?.topic;
   const waiting = phase === "live" && run.status !== "running";
 
   // While the review waits in the queue (no events yet), refresh its place every few seconds.
@@ -22,6 +23,10 @@ export function ReviewScreen({ id }: { id: string }) {
     }, 5000);
     return () => clearInterval(timer);
   }, [id, waiting]);
+  // Name the tab after the question once it is known (effect only: no hydration mismatch).
+  useEffect(() => {
+    if (knownTopic) document.title = knownTopic;
+  }, [knownTopic]);
   const queuePosition = polledPosition === undefined ? review?.queue_position : polledPosition;
 
   if (phase === "loading") {
@@ -41,6 +46,13 @@ export function ReviewScreen({ id }: { id: string }) {
       <section className="grid max-w-[65ch] gap-4 pt-12">
         <h1 className="text-3xl font-bold">เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</h1>
         <p>ลองโหลดหน้านี้ใหม่อีกครั้งในอีกสักครู่ รีวิวที่ส่งไปแล้วยังทำงานต่อบนเซิร์ฟเวอร์</p>
+        <button
+          type="button"
+          onClick={retry}
+          className="w-fit rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary hover:brightness-110"
+        >
+          ลองอีกครั้ง
+        </button>
       </section>
     );
   }

@@ -61,4 +61,13 @@ describe("useReview", () => {
     await waitFor(() => expect(result.current.phase).toBe("notfound"));
     act(() => {});
   });
+
+  it("retry after an unavailable load reaches the report", async () => {
+    getReview.mockRejectedValueOnce(new Error("down")).mockResolvedValue({ ...base, status: "done", result: { summary: "s" } });
+    const { result } = renderHook(() => useReview("r1", { pollMs: 5 }));
+    await waitFor(() => expect(result.current.phase).toBe("unavailable"));
+    act(() => result.current.retry());
+    expect(result.current.phase).toBe("loading");
+    await waitFor(() => expect(result.current.phase).toBe("report"));
+  });
 });

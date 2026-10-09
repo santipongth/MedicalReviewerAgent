@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ApiError, getReview } from "./api";
 import { apiUrl } from "./config";
 import { followReview } from "./events";
@@ -19,7 +19,13 @@ export function useReview(id: string, { pollMs = 4000 }: { pollMs?: number } = {
   const [run, dispatch] = useReducer(reduceRun, undefined, initialRun);
   const [phase, setPhase] = useState<Phase>("loading");
   const [connection, setConnection] = useState<Connection>("connecting");
+  const [attempt, setAttempt] = useState(0);
   const lastSeq = useRef(0);
+
+  const retry = useCallback(() => {
+    setPhase("loading");
+    setAttempt((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -79,7 +85,7 @@ export function useReview(id: string, { pollMs = 4000 }: { pollMs?: number } = {
       alive = false;
       ctrl.abort();
     };
-  }, [id, pollMs]);
+  }, [id, pollMs, attempt]);
 
-  return { review, run, phase, connection };
+  return { review, run, phase, connection, retry };
 }

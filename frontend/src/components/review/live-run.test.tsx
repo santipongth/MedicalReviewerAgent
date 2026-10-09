@@ -43,11 +43,23 @@ describe("TerminalState", () => {
     expect(screen.getByRole("link", { name: /ถามคำถามใหม่/ })).toHaveAttribute("href", "/");
   });
 
+  it("links to a pre-filled retry and keeps the raw error in a details element", () => {
+    render(<TerminalState status="error" message="LLMError: provider down" topic="metformin & CRC" />);
+    expect(screen.getByRole("link", { name: "ลองอีกครั้ง" })).toHaveAttribute("href", `/?q=${encodeURIComponent("metformin & CRC")}#request`);
+    expect(screen.getByText("LLMError: provider down").closest("details")).not.toBeNull();
+  });
+
+  it("offers an edit-and-resend link for a rejected topic", () => {
+    render(<TerminalState status="rejected" message="not medical" topic="pizza" />);
+    expect(screen.getByRole("link", { name: "แก้หัวข้อแล้วส่งใหม่" })).toHaveAttribute("href", "/?q=pizza#request");
+    expect(screen.getByText("not medical").closest("details")).toBeNull();
+  });
+
   it("shows errors and cancellations plainly", () => {
     const { rerender } = render(<TerminalState status="error" message="LLMError: provider down" topic="t" />);
     expect(screen.getByRole("heading")).toHaveTextContent(/ไม่สำเร็จ/);
     rerender(<TerminalState status="cancelled" topic="t" />);
-    expect(screen.getByRole("heading")).toHaveTextContent(/ยกเลิก/);
+    expect(screen.getByRole("heading")).toHaveTextContent(/หยุดก่อนเสร็จ/);
   });
 });
 
