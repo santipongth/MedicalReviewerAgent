@@ -46,6 +46,12 @@ describe("thoughtFor", () => {
     expect(th(3)).toMatchObject({ key: "guard", heading: "ตรวจหัวข้อ", body: "ตรวจว่าเป็นคำถามทางการแพทย์ก่อนเริ่มค้น", since: 0.5, status: "active" });
     expect(th(4)).toMatchObject({ key: "refine", heading: "ตีความคำถาม", body: "แปลงคำถามให้ชัดแบบ PICO: ใคร ทำอะไร เทียบกับอะไร วัดผลอะไร" });
   });
+  it("refine names PCC for a scoping review and PICO otherwise", () => {
+    const refining = upTo(4);
+    expect(thoughtFor(refining, { framework: "PCC" })?.body).toBe("แปลงคำถามให้ชัดแบบ PCC: ประชากร แนวคิด บริบท");
+    expect(thoughtFor(refining, { framework: "PICO" })?.body).toContain("แบบ PICO");
+    expect(thoughtFor(refining)?.body).toContain("แบบ PICO");
+  });
   it("search: query count, first 2 queries and the rest", () => {
     const t = th(6);
     expect(t).toMatchObject({ key: "search", heading: "ค้นฐานข้อมูล", since: 6,

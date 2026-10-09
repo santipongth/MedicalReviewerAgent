@@ -109,6 +109,15 @@ describe("LiveRun progress details", () => {
     expect(panel.querySelector("svg[role=img]")).not.toBeNull();
   });
 
+  it("names PCC in the live thought of a scoping review only", () => {
+    const { run, scene } = statesOf([["started", {}], ["refining", {}]]);
+    const first = render(<LiveRun run={run} scene={scene} topic="x" connection="open" reviewType="scoping" />);
+    expect(document.getElementById("h-thought")?.closest("[role=group]")).toHaveTextContent("แบบ PCC");
+    first.unmount();
+    render(<LiveRun run={run} scene={scene} topic="x" connection="open" reviewType="slr" />);
+    expect(document.getElementById("h-thought")?.closest("[role=group]")).toHaveTextContent("แบบ PICO");
+  });
+
   it("makes the queue a real step and the current one while queued", () => {
     const run = { ...initialRun(), status: "queued" as const };
     render(<LiveRun run={run} scene={initialScene()} topic="x" connection="open" />);

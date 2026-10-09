@@ -68,7 +68,7 @@ function make(
 }
 
 /** The thought for the current state; null once the review is terminal (done/error/rejected/cancelled). */
-export function thoughtFor(s: Scene): Thought | null {
+export function thoughtFor(s: Scene, opts: { framework?: "PICO" | "PCC" } = {}): Thought | null {
   if (s.status === "waiting") return make("waiting", null, null, "รอคิว", "เอเจนต์จะเริ่มทำงานเมื่อถึงคิว", null);
   if (s.status === "paused") return make("paused", null, null, "หยุดชั่วคราว", "เซิร์ฟเวอร์หยุดชั่วคราว จะทำงานต่อเอง", null);
   if (s.status !== "running") return null;
@@ -84,7 +84,8 @@ export function thoughtFor(s: Scene): Thought | null {
     make(id, id, st, STEP_TITLE[id], body, shortBody, { since, ...extra });
   switch (id) {
     case "guard": return t("ตรวจว่าเป็นคำถามทางการแพทย์ก่อนเริ่มค้น", null);
-    case "refine": return t("แปลงคำถามให้ชัดแบบ PICO: ใคร ทำอะไร เทียบกับอะไร วัดผลอะไร", null);
+    case "refine": return t(
+      opts.framework === "PCC" ? "แปลงคำถามให้ชัดแบบ PCC: ประชากร แนวคิด บริบท" : "แปลงคำถามให้ชัดแบบ PICO: ใคร ทำอะไร เทียบกับอะไร วัดผลอะไร", null);
     case "plan": return t(AGENT_LABEL.plan.role, null);
     case "search": {
       const n = c.queries;

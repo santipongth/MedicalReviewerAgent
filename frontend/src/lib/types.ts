@@ -78,6 +78,8 @@ export interface ComparisonCell {
   ref: string;
   finding: string;
   direction: Direction;
+  design_category?: string;
+  pooled?: boolean;
   effect_measure?: string | null;
   effect_value?: number | null;
   ci_lower?: number | null;
@@ -103,7 +105,7 @@ export interface Synthesis {
   comparison?: ComparisonRow[];
   consensus?: EvidenceCluster[];
   conflicts?: EvidenceCluster[];
-  evidence_strength?: EvidenceStrength;
+  evidence_strength?: EvidenceStrength | null; // null: not graded (narrative, scoping)
   evidence_rationale?: string;
   research_gaps?: string[];
   grade_baseline?: EvidenceStrength | null;
@@ -116,7 +118,22 @@ export interface QuestionText {
   assumptions?: string[];
 }
 
+export type ReviewType = "narrative" | "slr" | "scoping";
+
+export interface KeyTerm {
+  term: string;
+  synonyms: string[];
+  mesh: string[];
+}
+
+export type ExclusionReason =
+  | "off_topic" | "population" | "intervention_exposure" | "outcome" | "study_design" | "publication_type" | "other";
+
 export interface QuestionBlock extends QuestionText {
+  framework?: "PICO" | "PCC";
+  concept?: string | null;
+  context?: string | null;
+  key_terms?: KeyTerm[];
   original_topic?: string;
   english_topic?: string | null;
   refined?: boolean;
@@ -155,6 +172,9 @@ export interface Stats {
   selected?: number;
   with_fulltext?: number; // legacy
   extracted?: number;
+  non_research?: number;
+  excluded_screening?: Record<ExclusionReason, number>;
+  excluded_selection?: { narrative_excluded: number; over_limit: number };
 }
 
 export interface ExternalNote {
@@ -168,6 +188,7 @@ export interface ReviewResult {
   topic?: string;
   english_topic?: string | null;
   language?: "th" | "en";
+  review_type?: ReviewType; // absent in results stored before Plan 14a
   question?: QuestionBlock;
   summary?: string;
   synthesis?: Synthesis;
@@ -198,6 +219,7 @@ export interface ServiceStatus {
     max_papers: { min: number; max: number; default: number };
     candidate_limit: { min: number; max: number; default: number };
     max_queued_reviews: number;
+    review_types?: string[];
     sse_max_per_ip?: number;
   };
 }
@@ -227,6 +249,7 @@ export interface ReviewOptions {
   candidate_limit?: number;
   year_from?: number | null;
   study_types?: string[];
+  review_type?: ReviewType;
 }
 
 export interface CreateReviewBody {

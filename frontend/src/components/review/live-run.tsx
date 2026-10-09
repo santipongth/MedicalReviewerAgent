@@ -37,8 +37,9 @@ export function clockElapsed(startedAt: string | null | undefined, now: number, 
 }
 
 /** What the agent is doing right now: the agent stage, and a text ledger of steps, counts and each paper read. */
-export function LiveRun({ run, scene, topic, connection, queuePosition, startedAt }: {
+export function LiveRun({ run, scene, topic, connection, queuePosition, startedAt, reviewType }: {
   run: RunState; scene: Scene; topic: string; connection: Connection; queuePosition?: number | null; startedAt?: string | null;
+  reviewType?: unknown; // review.options.review_type (unvalidated JSON)
 }) {
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -83,7 +84,7 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
         <section aria-labelledby="h-stage" className="grid gap-4 rounded-sm md:border md:border-rule md:bg-surface md:p-4 xl:p-5">
           <h2 id="h-stage" className="label">เวทีเอเจนต์</h2>
           <StageLocalize.Provider value={scene.expectLocalize}>
-            <StageView scene={scene} connection={connection} lead={<ThoughtCard scene={scene} />} />
+            <StageView scene={scene} connection={connection} lead={<ThoughtCard scene={scene} framework={reviewType === "scoping" ? "PCC" : "PICO"} />} />
           </StageLocalize.Provider>
           <MilestoneStatus scene={scene} />
         </section>
