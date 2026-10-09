@@ -35,19 +35,28 @@ describe("AgentNode", () => {
     expect(p.querySelector("rect")?.getAttribute("class")).toContain("fill-warn-bg");
   });
 
-  it.each(["below", "right"] as const)("count clears the last label line (%s)", (labelAt) => {
-    const { container } = render(
+  it.each(["below", "right"] as const)("draws a multi-part label on one line and the count on its own baseline (%s)", (labelAt) => {
+    const draw = (label: string[], count?: string) => render(
       <StageMotion>
         <svg>
-          <AgentNode id="read" at={{ x: 0, y: 0 }} status="active" label={["ตีความ", "คำถาม"]} count="30/60" labelAt={labelAt} />
+          <AgentNode id="read" at={{ x: 0, y: 0 }} status="active" label={label} count={count} labelAt={labelAt} />
         </svg>
       </StageMotion>,
-    );
-    const label = container.querySelector("text")!;
-    const lastBaseline = Number(label.getAttribute("y")) + 12 * (label.querySelectorAll("tspan").length - 1);
-    const cy = Number(container.querySelector("[data-count]")?.getAttribute("y"));
-    expect(cy).toBeGreaterThanOrEqual(lastBaseline + 10);
-    if (labelAt === "right") expect(cy).toBeLessThan(20); // narrow zone starts at node y + 20
+    ).container;
+    const two = draw(["ตีความ", "คำถาม"], "30/60");
+    const label = two.querySelector("text")!;
+    expect(label.querySelectorAll("tspan")).toHaveLength(0); // never broken inside a Thai word
+    expect(label.textContent).toBe("ตีความคำถาม");
+    const ly = Number(label.getAttribute("y"));
+    const cy = Number(two.querySelector("[data-count]")?.getAttribute("y"));
+    expect(cy).toBeGreaterThanOrEqual(ly + 16); // a 12px Thai glyph cell is ~17px tall
+    if (labelAt === "right") expect(cy).toBeLessThan(18); // narrow details start at node y + 24
+    // below: every tile shares the same label and count baselines, one-part or two-part, with or without a count
+    const one = draw(["คัดกรอง"]);
+    if (labelAt === "below") {
+      expect(Number(one.querySelector("text")!.getAttribute("y"))).toBe(ly);
+      expect(cy).toBe(ly + 17);
+    }
   });
 
   it("shows the count and never uses num-verified", () => {

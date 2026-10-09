@@ -18,14 +18,15 @@ const STROKE: Record<AgentStatus, { cls: string; w: number; dash?: string }> = {
 
 const NUM = { fontVariantNumeric: "tabular-nums" } as const;
 export const LABEL_FONT = 12; // >= 12px effective: narrow viewBox is ~1:1 at 390px, wide is >= ~0.96 from 1024px up
-const PITCH = 14; // label line pitch (one <text>, tspans)
 const COUNT_GAP = 17; // label baseline -> count baseline: a 12px Thai glyph cell is ~17px tall, so the boxes never meet
+/** Label baseline under the tile (wide): the count always sits on the next fixed baseline, COUNT_GAP lower. */
+export const LABEL_BELOW = HALF + 16;
 
 export interface AgentNodeProps {
   id: AgentId;
   at: Pt; // tile centre
   status: AgentStatus;
-  label: string[]; // predefined lines (AGENT_LABEL[id].th)
+  label: string[]; // predefined parts (AGENT_LABEL[id].th), drawn joined on one line
   count?: string; // e.g. "87", "30/60"
   labelAt?: "below" | "right";
 }
@@ -39,10 +40,10 @@ export function AgentNode({ id, at, status, label, count, labelAt = "below" }: A
   const right = labelAt === "right";
   const lx = right ? HALF + 8 : 0;
   const hasCount = count != null && count !== "";
-  // right: the label block (plus count line) is centred on the tile; the count sits COUNT_GAP below the last label line
-  const block = (label.length - 1) * PITCH + (hasCount ? COUNT_GAP : 0);
-  const ly = right ? -block / 2 + 4 : HALF + PITCH;
-  const cy = ly + (label.length - 1) * PITCH + COUNT_GAP;
+  // One line, never broken inside a Thai word. Below: label and count on fixed baselines shared by every tile.
+  // Right (narrow): the label is centred on the tile, or the label + count pair is when there is a count.
+  const ly = right ? (hasCount ? -4 : 4) : LABEL_BELOW;
+  const cy = right ? 13 : LABEL_BELOW + COUNT_GAP;
   return (
     <g data-agent={id} data-status={status} transform={`translate(${at.x} ${at.y})`}>
       <m.g animate={{ scale: status === "active" ? 1.06 : 1 }} transition={{ duration: 0.2, ease: "easeOut" }}>
@@ -67,9 +68,7 @@ export function AgentNode({ id, at, status, label, count, labelAt = "below" }: A
         )}
       </m.g>
       <text x={lx} y={ly} textAnchor={right ? "start" : "middle"} className={`font-display ${textCls}`} fontSize={LABEL_FONT}>
-        {label.map((line, i) => (
-          <tspan key={i} x={lx} dy={i === 0 ? 0 : PITCH}>{line}</tspan>
-        ))}
+        {label.join("")}
       </text>
       {hasCount && (
         <text x={lx} y={cy} textAnchor={right ? "start" : "middle"} className="font-display fill-muted" style={NUM} fontSize={LABEL_FONT} data-count>

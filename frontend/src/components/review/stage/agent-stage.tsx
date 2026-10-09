@@ -36,8 +36,8 @@ export function AgentStage({ scene, connection }: { scene: Scene; connection?: C
   const cur = currentAgent(scene);
   const tinted: AgentId | null = cur === "synth" ? "read" : cur; // synth has no zone of its own; the pool stays tinted
   const order: AgentId[] = [...PIPELINE.filter((id) => layout.nodes[id]), ...(layout.nodes.external ? (["external"] as AgentId[]) : [])];
-  const synth = layout.nodes.synth;
   const synthWorking = showSynthCaption(scene);
+  const sn = layout.notes.synth;
 
   // At most one caption, as the last child of the figure (shared with the 3D view).
   const caption = stageCaption(scene, connection);
@@ -45,7 +45,7 @@ export function AgentStage({ scene, connection }: { scene: Scene; connection?: C
   return (
     <StageMotion>
       <figure className="grid gap-2">
-        <svg viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label={sceneSummary(scene)} className={`h-auto w-full ${wide ? "max-w-[960px]" : "max-w-[480px]"}`}>
+        <svg viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label={sceneSummary(scene)} className={`mx-auto h-auto w-full${wide ? "" : " max-w-[480px]"}`}>
           {(Object.keys(layout.zone) as AgentId[]).map((id) => {
             const r = layout.zone[id]!;
             return (
@@ -66,16 +66,12 @@ export function AgentStage({ scene, connection }: { scene: Scene; connection?: C
               count={countFor(scene, id)} labelAt={layout.label[id]}
             />
           ))}
-          {synthWorking && synth && (wide ? (
-            <text x={synth.x} y={layout.height - 8} textAnchor="middle" fontSize={12} className="font-display fill-muted" data-caption="synth">
-              {SYNTH_CAPTION.join(" ")}
+          {synthWorking && layout.nodes.synth && (
+            // wide: one line under the reader pool; narrow: two lines under the synth label, right of the lane
+            <text x={sn.x} y={sn.y} textAnchor={sn.anchor} fontSize={12} className="font-display fill-muted" data-caption="synth">
+              {sn.stacked ? SYNTH_CAPTION.map((line, i) => <tspan key={i} x={sn.x} dy={i === 0 ? 0 : 14}>{line}</tspan>) : SYNTH_CAPTION.join(" ")}
             </text>
-          ) : (
-            // narrow: under the synth label (x 66), right of the lane edges (which bulge to x <= 66)
-            <text x={70} y={synth.y + 26} textAnchor="start" fontSize={12} className="font-display fill-muted" data-caption="synth">
-              {SYNTH_CAPTION.map((line, i) => <tspan key={i} x={70} dy={i === 0 ? 0 : 14}>{line}</tspan>)}
-            </text>
-          ))}
+          )}
           <PacketLayer scene={scene} layout={layout} />
         </svg>
         <div className="grid gap-2 border-t border-rule pt-3">

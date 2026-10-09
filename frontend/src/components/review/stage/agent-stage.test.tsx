@@ -89,7 +89,9 @@ describe("AgentStage", () => {
     narrow.unmount();
     mockWide(true);
     const wide = render(<AgentStage scene={run(live())} />);
-    expect(svg(wide.container).getAttribute("viewBox")).toMatch(/^0 0 960 330$/);
+    expect(svg(wide.container).getAttribute("viewBox")).toMatch(/^0 0 960 254$/);
+    expect(svg(wide.container)).toHaveClass("mx-auto", "w-full"); // spans the panel, centred: no left-hanging cap
+    expect(svg(wide.container).getAttribute("class")).not.toMatch(/max-w-/);
   });
 
   it("shows +n when there are more than four queries", () => {

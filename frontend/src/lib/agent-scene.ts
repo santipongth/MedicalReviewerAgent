@@ -32,7 +32,8 @@ export const AGENT_LABEL: Record<AgentId, { th: string[]; role: string }> = {
   guard: { th: ["ตรวจหัวข้อ"], role: "ตรวจว่าเป็นคำถามทางการแพทย์" },
   refine: { th: ["ตีความ", "คำถาม"], role: "แปลงคำถามให้ชัดแบบ PICO" },
   plan: { th: ["วางคำค้น"], role: "เลือกคำค้นภาษาอังกฤษ" },
-  search: { th: ["ค้นฐาน", "ข้อมูล"], role: "ค้น PubMed, arXiv และฐานข้อมูลอื่น" },
+  // label parts break only between words: 3D stacks them, 2D joins them on one line
+  search: { th: ["ค้น", "ฐานข้อมูล"], role: "ค้น PubMed, arXiv และฐานข้อมูลอื่น" },
   enrich: { th: ["ดึง", "บทคัดย่อ"], role: "เก็บเฉพาะงานที่มีบทคัดย่อพอให้อ่าน" },
   screen: { th: ["คัดกรอง"], role: "ให้คะแนนความตรงคำถาม ชุดละ 10 ฉบับ" },
   read: { th: ["ผู้อ่าน"], role: "อ่านบทคัดย่อและตรวจตัวเลขกับต้นฉบับ" },
@@ -576,6 +577,22 @@ export function countFor(s: Scene, id: AgentId): string | undefined {
     case "read": return s.slots.length > 0 ? `${readDone(s)}/${s.slots.length}` : undefined;
     default: return undefined;
   }
+}
+
+/**
+ * Which pipeline step the run is on ("ขั้น n จาก of"), counting only the steps the lane draws (localize follows the
+ * language). Null before the first agent starts and once the run has stopped.
+ */
+export function stageStep(s: Scene): { n: number; of: number } | null {
+  if (s.status !== "running" && s.status !== "paused") return null;
+  const cur = currentAgent(s);
+  if (!cur) return null;
+  const vis = PIPELINE.filter((id) => id !== "localize" || s.expectLocalize);
+  // The external side node hangs off the read step. A step the lane does not draw (localize running in a scene that
+  // did not expect it) keeps the last drawn step before it, so the indicator never jumps or vanishes mid-run.
+  let p = PIPELINE.indexOf(cur === "external" ? "read" : cur);
+  while (p > 0 && !vis.includes(PIPELINE[p])) p--;
+  return { n: vis.indexOf(PIPELINE[p]) + 1, of: vis.length };
 }
 
 /** The indeterminate synth caption (two lines; wide views join them with a space). Shown only while synth is working. */

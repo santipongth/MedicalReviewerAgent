@@ -1,7 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { Component, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { SYNTH_CAPTION, showSynthCaption, stageCaption, type Scene } from "@/lib/agent-scene";
+import { SYNTH_CAPTION, showSynthCaption, stageCaption, stageStep, type Scene } from "@/lib/agent-scene";
 import type { Connection } from "@/lib/use-review";
 import { hasWebGL } from "@/lib/webgl";
 import { StageLegend } from "./stage/stage-legend";
@@ -15,10 +15,11 @@ const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.Age
   loading: () => <StagePlaceholder />,
 });
 
-// three.js / R3F / drei live only in this lazily loaded chunk.
+// three.js / R3F / drei live only in this lazily loaded chunk. The placeholder is the loaded wrapper's box (borderless,
+// the 2D stage's aspect), so nothing changes when the chunk lands.
 const Stage3D = dynamic(() => import("./stage3d/stage-3d"), {
   ssr: false,
-  loading: () => <div aria-hidden data-placeholder="3d" className="aspect-[960/330] w-full max-w-[960px] rounded-sm border border-rule bg-surface" />,
+  loading: () => <div aria-hidden data-placeholder="3d" className="mx-auto aspect-[960/254] w-full rounded-sm bg-surface" />,
 });
 
 const STORAGE_KEY = "mra.stage3d";
@@ -71,7 +72,11 @@ class Boundary extends Component<{ onError: () => void; children: ReactNode }, {
 }
 
 /** The agent stage: 2D by default; an opt-in 3D view on wide screens with WebGL and no reduced-motion preference. */
-export function StageView({ scene, connection, lead }: { scene: Scene; connection?: Connection; lead?: ReactNode }) {
+export function StageView({ scene, connection, heading, lead }: {
+  scene: Scene; connection?: Connection;
+  heading?: ReactNode; // the section heading, first in the header row
+  lead?: ReactNode; // full width under the header row (the thought card)
+}) {
   const wide = useWide();
   const reduce = useReduce();
   // Browser-only facts come from external stores whose server snapshot is false, so hydration renders 2D first.
@@ -97,24 +102,38 @@ export function StageView({ scene, connection, lead }: { scene: Scene; connectio
     hadFocus.current = typeof document !== "undefined" && toggleRef.current !== null && document.activeElement === toggleRef.current;
     setFailed(true);
   }
+  const step = stageStep(scene);
   return (
     <>
-      {(lead || can3d) && (
-        <div className="flex items-start gap-3">
-          {lead}
+      {(heading || step || can3d) && (
+        // One header row: section heading · step indicator, the 3D toggle right-aligned. min-h-11 keeps the row the
+        // same height whether or not the toggle shows (it can appear only after hydration).
+        <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1" data-stage-header>
+          {(heading || step) && (
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              {heading}
+              {step && (
+                // quieter than the section label: regular weight, no tracking
+                <span className="font-display text-xs font-normal tabular-nums text-muted" data-stage-step>
+                  {heading && <span aria-hidden="true">· </span>}ขั้น {step.n} จาก {step.of}
+                </span>
+              )}
+            </div>
+          )}
           {can3d && (
             <button
               ref={toggleRef}
               type="button"
               aria-pressed={is3d}
               onClick={toggle}
-              className="ml-auto w-fit flex-none cursor-pointer rounded-sm border border-rule bg-transparent px-3 py-1.5 font-display text-sm hover:text-primary"
+              className="ml-auto min-h-11 w-fit flex-none cursor-pointer rounded-sm border border-rule bg-transparent px-4 font-display text-sm hover:text-primary"
             >
               {is3d ? "มุมมอง 2D" : "มุมมอง 3D"}
             </button>
           )}
         </div>
       )}
+      {lead}
       {failed && <p ref={note} tabIndex={-1} role="status" className="text-sm text-muted outline-none">แสดงแบบ 3D ไม่ได้บนเครื่องนี้ จึงแสดงแบบ 2D แทน</p>}
       {is3d ? (
         // Same captions as the 2D stage (shared helpers), under the canvas.

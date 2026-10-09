@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { initialScene, reduceScene, type EdgeId } from "./agent-scene";
+import { AGENT_LABEL, PIPELINE, initialScene, reduceScene, type EdgeId } from "./agent-scene";
 import type { ReviewEvent } from "./types";
-import { arc, clip, layoutFor, segPath, segX, segY, type LayoutKind, type StageLayout } from "./agent-layout";
+import {
+  REF_FONT, arc, clip, layoutFor, queryChars, segPath, segX, segY, type LayoutKind, type Rect, type StageLayout,
+} from "./agent-layout";
 
 const base = { showLocalize: true, showExternal: true, slots: 0, batches: 0, queries: 0 };
 
@@ -41,7 +43,8 @@ function inside(l: StageLayout) {
   for (const s of l.satellites) {
     expect(s.at.x).toBeGreaterThanOrEqual(0);
     expect(s.at.y).toBeGreaterThanOrEqual(0);
-    expect(s.at.x).toBeLessThanOrEqual(l.width);
+    expect(s.text.x + 100).toBeLessThanOrEqual(l.width); // names are <= 100px at 12px
+    expect(s.text.y + 4).toBeLessThanOrEqual(l.height);
   }
   for (const r of [...l.queryChips, ...l.batchChips]) {
     expect(r.x).toBeGreaterThanOrEqual(0);
@@ -152,10 +155,145 @@ describe.each(["wide", "narrow"] as LayoutKind[])("scene edge ids exist in layou
   }
 });
 
-describe("wide specifics", () => {
-  it("is a single lane", () => {
-    const l = layoutFor("wide", base);
-    expect(new Set(Object.entries(l.nodes).filter(([k]) => k !== "external").map(([, p]) => p!.y)).size).toBe(1);
-    expect(l.width).toBe(960);
+const full = { slots: 30, batches: 6, queries: 9 };
+const lane = (l: StageLayout) => Object.entries(l.nodes).filter(([k]) => k !== "external").map(([, p]) => p!);
+const overlap = (a: Rect, b: Rect) => Math.min(a.x + a.w, b.x + b.w) > Math.max(a.x, b.x) && Math.min(a.y + a.h, b.y + b.h) > Math.max(a.y, b.y);
+
+describe("wide composition", () => {
+  const opts = [true, false].flatMap((showLocalize) => [true, false].map((showExternal) => ({ ...full, showLocalize, showExternal })));
+
+  it("is a single, evenly spaced lane centred in the viewBox", () => {
+    for (const o of opts) {
+      const l = layoutFor("wide", o);
+      const xs = lane(l).map((p) => p.x);
+      expect(new Set(lane(l).map((p) => p.y)).size).toBe(1);
+      expect(l.width).toBe(960);
+      expect(xs[0] + xs[xs.length - 1]).toBeCloseTo(l.width, 6); // centred: equal margins left and right
+      expect(xs[xs.length - 1] - xs[0]).toBeGreaterThanOrEqual(0.9 * l.width); // spans the box
+      const gaps = xs.slice(1).map((x, i) => x - xs[i]);
+      for (const g of gaps) expect(g).toBeCloseTo(gaps[0], 6);
+      expect(gaps[0]).toBeGreaterThanOrEqual(90); // single-line labels (<= 80px) never meet
+    }
+  });
+
+  it("keeps one constant box: the height never depends on external tools, localize or the detail counts", () => {
+    const h = layoutFor("wide", { ...base, showExternal: false, slots: 0, batches: 0, queries: 0 }).height;
+    for (const o of opts) for (const slots of [0, 1, 30]) expect(layoutFor("wide", { ...o, slots }).height).toBe(h);
+    expect(layoutFor("wide", { ...base, showExternal: true }).height).toBe(h);
+  });
+
+  it("nests the external node in the headroom: clear of the tiles, arcs, done badges and labels", () => {
+    for (const showLocalize of [true, false]) {
+      const l = layoutFor("wide", { ...full, showLocalize, showExternal: true });
+      const ext = l.nodes.external!;
+      const n = l.nodes;
+      const laneY = n.read!.y;
+      expect(ext.y - 22 * 1.06).toBeGreaterThanOrEqual(0); // inside the box even at the active scale
+      // horizontally between the read and synth tiles (both at the active scale)
+      expect(ext.x - 22 * 1.06).toBeGreaterThanOrEqual(n.read!.x + 22 * 1.06);
+      expect(ext.x + 22 * 1.06).toBeLessThanOrEqual(n.synth!.x - 22 * 1.06);
+      // the read>synth arc passes under it
+      const rs = l.edges.find((e) => e.id === "read>synth")!;
+      expect(segY(rs.seg, 0.5)).toBeGreaterThan(ext.y + 22 + 2);
+      // its label (right of the tile, baseline ext.y + 4, <= 100px, ~14px tall) stays above the tiles and their badges
+      const label = { x: ext.x + 30, y: ext.y + 4 - 14, w: 100, h: 18 };
+      for (const id of PIPELINE) {
+        const p = n[id];
+        if (p) expect(overlap(label, { x: p.x - 23, y: p.y - 23, w: 46, h: 46 }), id).toBe(false);
+      }
+      expect(label.y + label.h).toBeLessThanOrEqual(laneY - 22);
+      expect(label.x + label.w).toBeLessThanOrEqual(l.width);
+    }
+  });
+
+  it("starts every detail block on the band's common top edge, below the labels and counts", () => {
+    for (const o of opts) {
+      const l = layoutFor("wide", o);
+      const laneY = lane(l)[0].y;
+      const band = l.band!;
+      expect(band.y).toBeGreaterThanOrEqual(laneY + 22 + 16 + 17 + 12); // tile, label baseline, count baseline, gap
+      for (const id of ["plan", "search", "screen", "read"] as const) expect(l.zone[id]!.y, id).toBe(band.y - 6);
+      expect(l.queryChips[0].y).toBe(band.y);
+      expect(l.batchChips[0].y).toBe(band.y + 4);
+      expect(l.slots[0].y - l.slotR).toBe(band.y + 2);
+      expect(l.satellites[0].text.y - 13).toBe(band.y);
+      const bottom = band.y + band.h;
+      for (const s of l.slots) expect(s.y + l.slotR).toBeLessThanOrEqual(bottom);
+      for (const r of l.queryChips) expect(r.y + r.h).toBeLessThanOrEqual(bottom);
+      expect(l.notes.synth.y).toBeGreaterThan(bottom);
+    }
+  });
+
+  it("keeps each detail in its agent's column, with no overlap between neighbours", () => {
+    for (const o of opts) {
+      const l = layoutFor("wide", o);
+      const n = l.nodes;
+      const z = l.zone;
+      // the queries end at the plan tile, the sources start at the search tile, the bar is centred on screen
+      expect(l.queryChips[0].x + l.queryChips[0].w).toBe(n.plan!.x + 22);
+      expect(l.satellites[0].at.x - 4).toBe(n.search!.x - 22);
+      const bar = l.batchChips;
+      expect((bar[0].x + bar[bar.length - 1].x + bar[bar.length - 1].w) / 2).toBeCloseTo(n.screen!.x, 6);
+      // the reader pool spans the read..finish columns and stays inside the lane's right edge
+      const xs = l.slots.map((s) => s.x);
+      expect(Math.min(...xs) - l.slotR).toBeGreaterThanOrEqual(n.read!.x - 22 - 30);
+      expect(Math.max(...xs) + l.slotR).toBeLessThanOrEqual(n.finish!.x + 22);
+      expect(Math.max(...xs)).toBeGreaterThan(n.synth!.x);
+      const blocks = [z.plan!, z.search!, z.screen!, z.read!];
+      for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlap(blocks[i], blocks[j]), `${i}x${j}`).toBe(false);
+      // the kept/cut caption (<= 116px wide) sits between the sources and the pool
+      const cap = { x: l.notes.screen.x - 58, y: l.notes.screen.y - 12, w: 116, h: 16 };
+      expect(overlap(cap, z.search!)).toBe(false);
+      expect(overlap(cap, z.read!)).toBe(false);
+    }
+  });
+
+  it("shows at least 20 query characters per row", () => {
+    for (const kind of ["wide", "narrow"] as LayoutKind[]) {
+      for (const r of layoutFor(kind, { ...base, queries: 4 }).queryChips) expect(queryChars(r.w)).toBeGreaterThanOrEqual(20);
+    }
+  });
+});
+
+describe.each(["wide", "narrow"] as LayoutKind[])("reader slots (%s)", (kind) => {
+  it("fit an 11px 'P30' inside the ring and never touch", () => {
+    const l = layoutFor(kind, { ...base, slots: 30 });
+    expect(REF_FONT).toBeGreaterThanOrEqual(11);
+    expect(3 * 0.62 * REF_FONT).toBeLessThanOrEqual(2 * (l.slotR - 1.5)); // three glyphs inside the stroke
+    for (let i = 1; i < l.slots.length; i++) {
+      for (let j = 0; j < i; j++) expect(Math.hypot(l.slots[i].x - l.slots[j].x, l.slots[i].y - l.slots[j].y)).toBeGreaterThanOrEqual(2 * l.slotR + 2);
+    }
+  });
+});
+
+describe("narrow composition", () => {
+  it("has no wide band and keeps the external node in the lane between read and synth", () => {
+    const l = layoutFor("narrow", { ...base, ...full });
+    expect(l.band).toBeNull();
+    const { read, external, synth } = l.nodes;
+    expect(external!.x).toBe(read!.x);
+    expect(external!.y).toBeGreaterThan(Math.max(...l.slots.map((s) => s.y)) + l.slotR + 22);
+    expect(synth!.y - external!.y).toBeGreaterThanOrEqual(64);
+    // text labels never break inside a word: every narrow label is one line (AgentNode joins the parts)
+    expect(AGENT_LABEL.external.th.join("")).toBe("เครื่องมือภายนอก");
+  });
+
+  it("left-aligns every detail at x = 70, right of the spine, in lane order", () => {
+    const l = layoutFor("narrow", { ...base, ...full });
+    for (const r of [...Object.values(l.zone)]) expect(r!.x).toBe(64);
+    for (const r of l.queryChips) expect(r.x).toBe(70);
+    expect(l.batchChips[0].x).toBe(70);
+    expect(Math.min(...l.slots.map((s) => s.x)) - l.slotR).toBe(70);
+    expect(l.notes.synth.x).toBe(70);
+    // the sources: two columns, names never meet (<= 100px each, columns 140px apart)
+    const cols = [...new Set(l.satellites.map((s) => s.text.x))];
+    expect(cols).toHaveLength(2);
+    expect(cols[1] - cols[0]).toBeGreaterThanOrEqual(110);
+    // each detail ends >= 12px above the next tile's top edge
+    const ys = lane(l).map((p) => p.y).sort((a, b) => a - b);
+    for (const r of Object.values(l.zone)) {
+      const nextTile = ys.find((y) => y - 22 > r!.y);
+      if (nextTile !== undefined) expect(nextTile - 22 - (r!.y + r!.h)).toBeGreaterThanOrEqual(6);
+    }
   });
 });
