@@ -2,7 +2,7 @@
 // slots, spans). No React, no DOM, no timers. Honesty rules: never claim a paper is being read now (all `reading`
 // events arrive together at fan-out), speak only of finished papers or "กำลังอ่านหรือรอคิว"; a direction is always
 // "ตามที่เอเจนต์อ่าน" (the model's judgement of one abstract); missing/unknown direction -> "ไม่มีข้อมูลทิศทาง".
-import { type AgentId, type AgentStatus, type ReaderSlot, type Scene, AGENT_LABEL, currentAgent, readDone, SYNTH_CAPTION } from "./agent-scene";
+import { type AgentId, type AgentStatus, type ReaderSlot, type Scene, AGENT_LABEL, currentAgent, readDone } from "./agent-scene";
 import { AS_READ_TH, NO_DIRECTION_TH, READING_OR_QUEUED } from "./copy";
 import { DESIGN_LABEL, DIRECTION_LABEL } from "./i18n";
 import type { DesignCategory, Direction } from "./types";
@@ -126,7 +126,8 @@ export function thoughtFor(s: Scene): Thought | null {
     case "synth": {
       const p = c.synthPapers;
       const body = p !== null ? `เทียบผลจาก ${p} ฉบับและเขียนสรุป` : "เทียบผลและเขียนสรุป";
-      return t(`${body} ${SYNTH_CAPTION[1]}`, p !== null ? `จาก ${p} ฉบับ` : null, { indeterminate: true });
+      // The stage caption (2D and 3D) already says this step shows no progress; not repeated here.
+      return t(body, p !== null ? `จาก ${p} ฉบับ` : null, { indeterminate: true });
     }
     case "localize": return t("แปลรายงานเป็นภาษาไทย ตัวเลขต้องคงเดิม", null);
     case "finish": return t("รวมผลเป็นรายงานพร้อมที่มาของตัวเลข", null);

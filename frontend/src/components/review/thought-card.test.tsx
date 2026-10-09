@@ -41,14 +41,16 @@ describe("ThoughtCard", () => {
     expect(screen.getByText("ตรวจตัวเลขผ่าน 2 ค่า")).toBeInTheDocument();
   });
 
-  it("synth appends the no-progress caption once", () => {
+  it("synth leaves the no-progress caption to the stage", () => {
     render(<ThoughtCard scene={sceneOf(...START, ev(3, "synthesizing", { papers: 3 }))} />);
-    expect(screen.getAllByText(/ขั้นนี้ไม่มีความคืบหน้าให้ดู/)).toHaveLength(1);
+    expect(screen.getByText("เทียบผลจาก 3 ฉบับและเขียนสรุป")).toBeInTheDocument();
+    expect(screen.queryByText(/ขั้นนี้ไม่มีความคืบหน้าให้ดู/)).toBeNull();
   });
 
   it("is a labelled region without live semantics", () => {
     const { container } = render(<ThoughtCard scene={sceneOf(...START, ev(3, "checking_topic", {}))} />);
-    expect(container.querySelector('[aria-labelledby="h-thought"]')).not.toBeNull();
+    expect(container.querySelector('[role="group"][aria-labelledby="h-thought"]')).not.toBeNull();
+    expect(screen.getByRole("group", { name: "เอเจนต์กำลังทำ" })).toBeInTheDocument();
     expect(container.querySelector("#h-thought")).toHaveTextContent("เอเจนต์กำลังทำ");
     expect(container.querySelector("[aria-live], [role=status]")).toBeNull();
   });

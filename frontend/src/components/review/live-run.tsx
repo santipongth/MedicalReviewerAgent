@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { CopyLinkButton } from "@/components/ui/copy-link";
 import { Term } from "@/components/ui/term";
 import { Glyph, UncertainFlag } from "@/components/ui/evidence";
 import { DESIGN_LABEL } from "@/lib/i18n";
 import { EvidenceBoard } from "./evidence-board";
 import { formatElapsed, type Scene } from "@/lib/agent-scene";
-import { READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
+import { AS_READ_TH, READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
 import type { Connection } from "@/lib/use-review";
 import { MilestoneStatus } from "./stage/milestone-status";
@@ -25,6 +25,16 @@ const STEP_LABEL: Record<StepKey, string> = {
 };
 
 const SHOWN_QUERIES = 3;
+/** A review never runs this long; a larger local clock means a bad `startedAt` or a skewed device clock. */
+const MAX_CLOCK_S = 6 * 60 * 60;
+
+/** Seconds since `startedAt` on the local clock, or the last event's `elapsed` when `startedAt` is missing or implausible. */
+export function clockElapsed(startedAt: string | null | undefined, now: number, fallback: number): number {
+  const started = startedAt ? Date.parse(startedAt) : NaN;
+  if (!Number.isFinite(started)) return fallback;
+  const s = (now - started) / 1000;
+  return s >= 0 && s <= MAX_CLOCK_S ? s : fallback;
+}
 
 /** What the agent is doing right now: the agent stage, and a text ledger of steps, counts and each paper read. */
 export function LiveRun({ run, scene, topic, connection, queuePosition, startedAt }: {
@@ -36,9 +46,12 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [startedAt]);
-  const started = startedAt ? Date.parse(startedAt) : NaN;
-  const elapsed = Number.isFinite(started) ? Math.max(0, (clock - started) / 1000) : run.elapsed;
+  const [readingOpen, setReadingOpen] = useState(false);
+  const readingId = useId();
+  const elapsed = clockElapsed(startedAt, clock, run.elapsed);
   const waiting = run.status === "connecting" || run.status === "queued";
+  const pending = run.reading.filter((r) => r.state === "reading").length;
+  const anyDirection = run.reading.some((r) => r.state === "ok" && r.direction);
   const activeIdx = STEPS.indexOf(waiting ? "queue" : run.step);
   const counts = readCounts(run);
   const shownQueries = run.queries.slice(0, SHOWN_QUERIES);
@@ -49,12 +62,16 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
         <div className="grid gap-2">
           <span className="label">กำลังทบทวน</span>
           <h1 id="h-live" className="text-[clamp(1.6rem,3vw,2.25rem)] font-bold break-words">{topic}</h1>
-          <p className="text-sm text-muted" aria-live="polite">
-            {run.status === "connecting"
-              ? "กำลังเชื่อมต่อ…"
-              : run.status === "queued"
-                ? (queuePosition ? `อยู่ในคิวลำดับที่ ${queuePosition} จะเริ่มเมื่อถึงคิว` : "อยู่ในคิว จะเริ่มในไม่ช้า")
-                : <>ผ่านไป <span className="font-display tabular-nums">{formatElapsed(elapsed)}</span> · {TYPICAL_DURATION_TH}</>}
+          {/* Only the connecting/queue text is announced; the 1s clock sits outside the live region. */}
+          <p className="text-sm text-muted">
+            <span aria-live="polite">
+              {run.status === "connecting"
+                ? "กำลังเชื่อมต่อ…"
+                : run.status === "queued"
+                  ? (queuePosition ? `อยู่ในคิวลำดับที่ ${queuePosition} จะเริ่มเมื่อถึงคิว` : "อยู่ในคิว จะเริ่มในไม่ช้า")
+                  : null}
+            </span>
+            {!waiting && <>ผ่านไป <span className="font-display tabular-nums">{formatElapsed(elapsed)}</span> · {TYPICAL_DURATION_TH}</>}
           </p>
           {(connection === "reconnecting" || connection === "polling") && (
             <p role="status" className="w-fit rounded-sm bg-warn-bg px-3 py-1.5 text-sm text-ink">
@@ -140,25 +157,36 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
           {run.reading.length > 0 && (
             <div>
               <span className="label">กำลังอ่าน</span>
-              <ul className="mt-2 border-t border-rule">
+              {anyDirection && (
+                <p className="mt-1 text-sm text-muted"><Term k="directionTally">ทิศทางผล</Term>{AS_READ_TH}</p>
+              )}
+              <ul id={readingId} className="mt-2 border-t border-rule">
                 {run.reading.map((r) => (
-                  <li key={r.ref} className="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-baseline gap-3 border-b border-rule py-2 text-[0.92rem]">
+                  // Below lg, unfinished rows fold behind the summary toggle (CSS only, so no hydration shift).
+                  <li key={r.ref} data-reading-state={r.state}
+                    className={`${r.state === "reading" && !readingOpen ? "hidden lg:grid" : "grid"} grid-cols-[3rem_minmax(0,1fr)_auto] items-baseline gap-3 border-b border-rule py-2 text-[0.92rem]`}>
                     <span className="font-code font-medium">{r.ref}</span>
                     <span className="min-w-0 break-words">{r.title}</span>
-                    <span className={r.state === "failed" ? "text-err" : r.state === "ok" ? "text-ok" : "text-muted"}>
-                      {r.state === "reading" ? READING_OR_QUEUED : r.state === "failed" ? "อ่านไม่สำเร็จ" : r.uncertain ? (
-                        <>เสร็จ · <Term k="uncertain"><UncertainFlag /></Term></>
-                      ) : r.state === "ok" && r.direction ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          <Glyph direction={r.direction} lang="th" />
-                          {r.design && <span className="text-xs text-muted">{DESIGN_LABEL.th[r.design]}</span>}
+                    <span className={`max-w-[9.5rem] text-right sm:max-w-none ${r.state === "failed" ? "text-err" : r.state === "ok" ? "text-ok" : "text-muted"}`}>
+                      {r.state === "reading" ? READING_OR_QUEUED : r.state === "failed" ? "อ่านไม่สำเร็จ" : r.direction || r.uncertain ? (
+                        <span className="inline-flex flex-wrap items-center justify-end gap-x-1.5">
+                          {r.direction && <Glyph direction={r.direction} lang="th" />}
+                          {r.design && <span className="hidden text-xs text-muted sm:inline">{DESIGN_LABEL.th[r.design]}</span>}
                           เสร็จ
+                          {r.uncertain && <><span aria-hidden="true">·</span><span className="whitespace-nowrap"><Term k="uncertain"><UncertainFlag /></Term></span></>}
                         </span>
                       ) : "เสร็จ"}
                     </span>
                   </li>
                 ))}
               </ul>
+              {pending > 0 && (
+                <button type="button" aria-expanded={readingOpen} aria-controls={readingId}
+                  onClick={() => setReadingOpen((v) => !v)}
+                  className="mt-2 min-h-11 w-full cursor-pointer rounded-sm border border-rule px-3 text-left text-sm lg:hidden">
+                  {readingOpen ? "ซ่อนฉบับที่ยังไม่เสร็จ" : <>อีก <span className="font-display tabular-nums">{pending}</span> ฉบับ{READING_OR_QUEUED}</>}
+                </button>
+              )}
             </div>
           )}
           <div className="grid gap-2 rounded-sm bg-info-bg p-4 text-[0.92rem]">

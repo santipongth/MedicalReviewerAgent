@@ -36,7 +36,7 @@ export function ThoughtCard({ scene }: { scene: Scene }) {
   const thought = thoughtFor(scene);
   if (!thought) return null;
   return (
-    <div aria-labelledby="h-thought" className="min-w-0 flex-1 rounded-sm bg-rail px-3 py-2.5">
+    <div role="group" aria-labelledby="h-thought" className="min-w-0 flex-1 rounded-sm bg-rail px-3 py-2.5">
       <div key={thought.key} className="grid gap-1 motion-safe:animate-[thought-in_200ms_ease-out] motion-reduce:animate-none">
         <div className="flex items-center justify-between gap-3">
           <p className="flex min-w-0 items-center gap-2">

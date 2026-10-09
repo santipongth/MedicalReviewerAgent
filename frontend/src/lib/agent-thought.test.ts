@@ -99,7 +99,8 @@ describe("thoughtFor", () => {
   });
   it("synth is indeterminate; localize, finish; terminal -> null", () => {
     expect(th(18)).toMatchObject({ key: "synth", heading: "สังเคราะห์ผล", indeterminate: true,
-      body: "เทียบผลจาก 2 ฉบับและเขียนสรุป (ขั้นนี้ไม่มีความคืบหน้าให้ดู)" });
+      body: "เทียบผลจาก 2 ฉบับและเขียนสรุป" });
+    expect(th(18)?.body).not.toMatch(/ไม่มีความคืบหน้า/);
     expect(th(19)).toMatchObject({ key: "localize", heading: "แปลภาษา", body: "แปลรายงานเป็นภาษาไทย ตัวเลขต้องคงเดิม", indeterminate: false });
     expect(th(20)).toMatchObject({ key: "finish", heading: "เรียบเรียงรายงาน", body: "รวมผลเป็นรายงานพร้อมที่มาของตัวเลข" });
     expect(thoughtFor(upTo(21))).toBeNull();

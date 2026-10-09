@@ -25,6 +25,8 @@ import type { Connection } from "./use-review"; // type only (erased): no runtim
 export type AgentId =
   | "guard" | "refine" | "plan" | "search" | "enrich" | "screen" | "read" | "external" | "synth" | "localize" | "finish";
 export const PIPELINE: AgentId[] = ["guard", "refine", "plan", "search", "enrich", "screen", "read", "synth", "localize", "finish"]; // external is a side node
+/** Every agent, PIPELINE order with the external side node last. */
+const ALL_AGENTS: readonly AgentId[] = [...PIPELINE, "external"];
 export type AgentStatus = "idle" | "active" | "working" | "done" | "failed" | "skipped" | "paused";
 export const AGENT_LABEL: Record<AgentId, { th: string[]; role: string }> = {
   guard: { th: ["ตรวจหัวข้อ"], role: "ตรวจว่าเป็นคำถามทางการแพทย์" },
@@ -86,7 +88,7 @@ const FINAL_SLOT = new Set<SlotState>(["ok", "failed", "uncertain"]);
 
 export function initialScene(opts?: { language?: string }): Scene {
   const agents = {} as Record<AgentId, AgentStatus>;
-  for (const id of [...PIPELINE, "external" as AgentId]) agents[id] = "idle";
+  for (const id of ALL_AGENTS) agents[id] = "idle";
   return {
     lastSeq: 0, status: "waiting", agents, edges: {},
     counts: {
@@ -319,7 +321,7 @@ function updateSpans(prev: Scene, next: Scene, el: number | null): void {
     changed = true;
   };
   // PIPELINE order, so a silent phase sees the previous agent's end even when both change in the same event.
-  for (const id of [...PIPELINE, "external" as AgentId]) {
+  for (const id of ALL_AGENTS) {
     const a = prev.agents[id];
     const b = next.agents[id];
     if (a === b) continue;
