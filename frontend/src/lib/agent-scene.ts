@@ -460,6 +460,11 @@ const DOING: Partial<Record<AgentId, string>> = {
   external: "ปรึกษาเครื่องมือภายนอก",
 };
 
+/** Papers whose read has finished (ok, uncertain or failed). */
+export function readDone(s: Scene): number {
+  return s.counts.readOk + s.counts.readFailed;
+}
+
 /** Thai aria-label for the stage SVG. */
 export function sceneSummary(s: Scene): string {
   switch (s.status) {
@@ -473,7 +478,7 @@ export function sceneSummary(s: Scene): string {
   }
   const cur = currentAgent(s);
   if (cur === "read") {
-    return `เอเจนต์กำลังอ่านงานวิจัย อ่านแล้ว ${s.counts.readOk + s.counts.readFailed} จาก ${s.slots.length} ฉบับ`;
+    return `เอเจนต์กำลังอ่านงานวิจัย อ่านแล้ว ${readDone(s)} จาก ${s.slots.length} ฉบับ`;
   }
   return cur ? `เอเจนต์กำลัง${DOING[cur] ?? "ทำงาน"}` : "เอเจนต์กำลังทำงาน";
 }

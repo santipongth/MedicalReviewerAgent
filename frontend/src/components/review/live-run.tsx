@@ -1,10 +1,20 @@
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { CopyLinkButton } from "@/components/ui/copy-link";
 import { Term } from "@/components/ui/term";
 import { UncertainFlag } from "@/components/ui/evidence";
+import type { Scene } from "@/lib/agent-scene";
 import { TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
 import type { Connection } from "@/lib/use-review";
+import { MilestoneStatus } from "./stage/milestone-status";
+import { TraceLog } from "./stage/trace-log";
+
+// Client-only chunk (motion lives here); the placeholder reserves the stage's aspect so nothing shifts on load.
+const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.AgentStage), {
+  ssr: false,
+  loading: () => <div aria-hidden className="aspect-[960/420] w-full rounded-sm border border-rule bg-surface" />,
+});
 
 const STEP_LABEL: Record<StepKey, string> = {
   queue: "รอคิว",
@@ -16,22 +26,11 @@ const STEP_LABEL: Record<StepKey, string> = {
   done: "เสร็จแล้ว",
 };
 
-const WELL_CLASS = {
-  empty: "border-rule bg-surface",
-  found: "border-muted bg-rail",
-  out: "border-dashed border-rule bg-transparent",
-  cap: "border-primary bg-primary shadow-[inset_0_0_0_4px_var(--surface)]",
-} as const;
-
 const SHOWN_QUERIES = 3;
 
-function Swatch({ well }: { well: keyof typeof WELL_CLASS }) {
-  return <span aria-hidden="true" className={`inline-block size-3 flex-none rounded-full border ${WELL_CLASS[well]}`} />;
-}
-
-/** What the agent is doing right now: steps, the specimen tray (20 candidates → 8 capped) and each paper read. */
-export function LiveRun({ run, topic, connection, queuePosition, startedAt }: {
-  run: RunState; topic: string; connection: Connection; queuePosition?: number | null; startedAt?: string | null;
+/** What the agent is doing right now: the agent stage, and a text ledger of steps, counts and each paper read. */
+export function LiveRun({ run, scene, topic, connection, queuePosition, startedAt }: {
+  run: RunState; scene: Scene; topic: string; connection: Connection; queuePosition?: number | null; startedAt?: string | null;
 }) {
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -65,8 +64,14 @@ export function LiveRun({ run, topic, connection, queuePosition, startedAt }: {
         )}
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid gap-3">
+        <AgentStage scene={scene} connection={connection} />
+        <MilestoneStatus scene={scene} />
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-2">
         <div className="grid content-start gap-6">
+          <h2 className="label">ความคืบหน้าแบบข้อความ</h2>
           <ol className="grid gap-2 text-[0.95rem]">
             {STEPS.map((s, i) => {
               const done = run.step === "done" || i < activeIdx;
@@ -96,24 +101,17 @@ export function LiveRun({ run, topic, connection, queuePosition, startedAt }: {
           <div className="grid gap-3">
             <dl className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
               {([
-                ["ค้นเจอ", counts.found, "found"],
-                ["มีบทคัดย่อ", counts.candidates, "found"],
-                ["ผ่านคัดกรอง", counts.kept, "cap"],
-                ["อ่านแล้ว", `${counts.read}/${counts.kept}`, "cap"],
-              ] as const).map(([label, value, well]) => (
+                ["ค้นเจอ", counts.found],
+                ["มีบทคัดย่อ", counts.candidates],
+                ["ผ่านคัดกรอง", counts.kept],
+                ["อ่านแล้ว", `${counts.read}/${counts.kept}`],
+              ] as const).map(([label, value]) => (
                 <div key={label} className="flex items-center gap-1.5">
-                  <Swatch well={well} />
                   <dt className="text-muted">{label}</dt>
                   <dd className="font-display font-semibold tabular-nums">{value}</dd>
                 </div>
               ))}
             </dl>
-            <div className="grid w-fit grid-cols-10 gap-1.5" aria-label={`งานวิจัยที่มีบทคัดย่อ ${run.candidates} ฉบับ เลือกวิเคราะห์ ${run.kept} ฉบับ`} role="img">
-              {run.wells.map((w, i) => (
-                <span key={i} data-testid={`well-${w}`}
-                  className={`size-5 rounded-full border transition-[background,border-color] duration-200 ${WELL_CLASS[w]}`} />
-              ))}
-            </div>
           </div>
         </div>
 
@@ -133,6 +131,7 @@ export function LiveRun({ run, topic, connection, queuePosition, startedAt }: {
               )}
             </div>
           )}
+          <TraceLog rows={scene.trace} />
           {run.reading.length > 0 && (
             <div>
               <span className="label">กำลังอ่าน</span>

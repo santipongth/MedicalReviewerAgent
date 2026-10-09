@@ -1,7 +1,7 @@
 "use client";
 import { useMemo } from "react";
 import { m } from "motion/react";
-import { AGENT_LABEL, PIPELINE, currentAgent, sceneSummary, type AgentId, type Scene } from "@/lib/agent-scene";
+import { AGENT_LABEL, PIPELINE, currentAgent, readDone, sceneSummary, type AgentId, type Scene } from "@/lib/agent-scene";
 import { layoutFor } from "@/lib/agent-layout";
 import type { Connection } from "@/lib/use-review";
 import { AgentNode } from "./agent-node";
@@ -21,7 +21,7 @@ function countFor(s: Scene, id: AgentId): string | undefined {
     case "search": return c.found > 0 ? String(c.found) : undefined;
     case "enrich": return c.candidates > 0 ? String(c.candidates) : undefined;
     case "screen": return c.screenedTotal > 0 ? `${c.kept}/${c.screenedTotal}` : undefined;
-    case "read": return s.slots.length > 0 ? `${c.readOk + c.readFailed}/${s.slots.length}` : undefined;
+    case "read": return s.slots.length > 0 ? `${readDone(s)}/${s.slots.length}` : undefined;
     default: return undefined;
   }
 }
@@ -43,6 +43,9 @@ export function AgentStage({ scene, connection }: { scene: Scene; connection?: C
   const order: AgentId[] = [...PIPELINE.filter((id) => layout.nodes[id]), ...(layout.nodes.external ? (["external"] as AgentId[]) : [])];
   const synth = layout.nodes.synth;
   const synthWorking = scene.agents.synth === "working";
+
+  // At most one caption, as the last child of the figure. Polling wins: it explains why the stage updates in steps.
+  const caption = connection === "polling" ? "อัปเดตทุกไม่กี่วินาที" : scene.status === "waiting" ? "รอคิว · เอเจนต์จะเริ่มทำงานเมื่อถึงคิว" : null;
 
   return (
     <StageMotion>
@@ -78,9 +81,8 @@ export function AgentStage({ scene, connection }: { scene: Scene; connection?: C
           )}
           <PacketLayer scene={scene} layout={layout} />
         </svg>
-        {scene.status === "waiting" && <figcaption className="text-xs text-muted">รอคิว · เอเจนต์จะเริ่มทำงานเมื่อถึงคิว</figcaption>}
-        {connection === "polling" && <figcaption className="text-xs text-muted">อัปเดตทุกไม่กี่วินาที</figcaption>}
         <StageLegend />
+        {caption && <figcaption className="text-xs text-muted">{caption}</figcaption>}
       </figure>
     </StageMotion>
   );

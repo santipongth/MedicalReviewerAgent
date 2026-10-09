@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialRun, readCounts, reduceRun, STEPS, WELL_COUNT } from "./progress";
+import { initialRun, readCounts, reduceRun, STEPS } from "./progress";
 import type { ReviewEvent } from "./types";
 
 function run(events: [string, Record<string, unknown>][]) {
@@ -8,7 +8,7 @@ function run(events: [string, Record<string, unknown>][]) {
 }
 
 describe("reduceRun", () => {
-  it("walks the steps and fills the specimen tray", () => {
+  it("walks the steps and tracks the counts", () => {
     const s = run([
       ["queued", {}], ["started", { resume: false, elapsed_s: 0 }], ["checking_topic", {}], ["refining", {}],
       ["question_refined", { refined_question: "Does metformin reduce CRC?", interpretation: "i",
@@ -24,20 +24,17 @@ describe("reduceRun", () => {
     expect(s.question?.refined_question).toBe("Does metformin reduce CRC?");
     expect(s.queries).toEqual(["metformin crc"]);
     expect(s.found).toBe(41);
-    expect(s.wells).toHaveLength(WELL_COUNT);
-    expect(s.wells.filter((w) => w === "cap")).toHaveLength(8);
-    expect(s.wells.filter((w) => w === "out")).toHaveLength(12);
-    expect(s.wells.filter((w) => w === "empty")).toHaveLength(WELL_COUNT - 20);
+    expect(s.candidates).toBe(20);
+    expect(s.kept).toBe(8);
     expect(s.reading.map((r) => [r.ref, r.state])).toEqual([["P1", "ok"], ["P2", "failed"]]);
     expect(s.elapsed).toBe(41.5);
     expect(s.lastSeq).toBe(15);
   });
 
-  it("fits 60 candidates and caps the 30 analysed", () => {
+  it("keeps 60 candidates and the 30 analysed as plain counts", () => {
     const s = run([["enriching", { candidates: 60 }], ["screened", { kept: 30, total: 60 }]]);
-    expect(WELL_COUNT).toBe(60);
-    expect(s.wells.filter((w) => w === "cap")).toHaveLength(30);
-    expect(s.wells.filter((w) => w === "out")).toHaveLength(30);
+    expect(s.candidates).toBe(60);
+    expect(s.kept).toBe(30);
   });
 
   it("records terminal states with their reasons", () => {

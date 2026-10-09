@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  type AgentId, type Pulse, type Scene, currentAgent, formatElapsed, initialScene, planDots, reduceScene, sceneSummary,
+  type AgentId, type Pulse, type Scene, currentAgent, formatElapsed, initialScene, planDots, readDone, reduceScene, sceneSummary,
   takeFreshPulses,
 } from "./agent-scene";
 import type { ReviewEvent } from "./types";
@@ -170,6 +170,8 @@ describe("reader slots", () => {
     expect(s.counts).toMatchObject({ readOk: 2, readFailed: 1, uncertain: 1 });
     expect(s.pulses.filter((p) => p.kind === "failed")).toHaveLength(1);
     expect(sceneSummary(s)).toBe("เอเจนต์กำลังอ่านงานวิจัย อ่านแล้ว 3 จาก 30 ฉบับ");
+    expect(readDone(s)).toBe(3);
+    expect(readDone(initialScene())).toBe(0);
   });
   it("read is done only when all slots are final", () => {
     const three = [ev(1, "screened", { kept: 3, total: 9 }), ...reading(3, 10)];
