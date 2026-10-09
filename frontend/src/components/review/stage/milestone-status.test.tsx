@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AGENT_LABEL, initialScene, reduceScene, type Scene } from "@/lib/agent-scene";
+import { AGENT_LABEL, currentAgent, initialScene, reduceScene, type Scene } from "@/lib/agent-scene";
 import type { ReviewEvent } from "@/lib/types";
 import { MilestoneStatus } from "./milestone-status";
 
@@ -47,5 +47,18 @@ describe("MilestoneStatus", () => {
     expect(vi.getTimerCount()).toBeGreaterThan(0);
     unmount();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("coalesces several changes inside one gap to the last role", () => {
+    const planning = [...refining, ev(5, "question_refined", { refined_question: "q", elapsed_s: 3 }), ev(6, "planning", { queries: ["a"], elapsed_s: 4 })];
+    const { rerender } = render(<MilestoneStatus scene={run(base)} />);
+    const status = screen.getByRole("status");
+    rerender(<MilestoneStatus scene={run(refining)} />);
+    act(() => { vi.advanceTimersByTime(1000); });
+    rerender(<MilestoneStatus scene={run(planning)} />);
+    expect(status).toHaveTextContent(AGENT_LABEL.guard.role);
+    act(() => { vi.advanceTimersByTime(4100); });
+    expect(status).toHaveTextContent(AGENT_LABEL[currentAgent(run(planning))!].role);
+    expect(status).not.toHaveTextContent(AGENT_LABEL.refine.role);
   });
 });

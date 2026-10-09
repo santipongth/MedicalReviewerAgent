@@ -12,22 +12,25 @@ export function MilestoneStatus({ scene }: { scene: Scene }) {
   const lastAt = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef<string | null>(null);
+  const shown = useRef("");
 
   useEffect(() => {
     latest.current = role;
     if (!role) return;
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (role === shown.current) return;
     const now = Date.now();
     const wait = lastAt.current === null ? 0 : lastAt.current + ANNOUNCE_GAP_MS - now;
-    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     if (wait <= 0) {
       lastAt.current = now;
+      shown.current = role;
       setText(role);
       return;
     }
     timer.current = setTimeout(() => {
       timer.current = null;
       lastAt.current = Date.now();
-      if (latest.current) setText(latest.current);
+      if (latest.current) { shown.current = latest.current; setText(latest.current); }
     }, wait);
   }, [role]);
 

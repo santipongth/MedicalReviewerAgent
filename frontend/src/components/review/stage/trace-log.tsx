@@ -9,11 +9,6 @@ export function nearBottom(el: { scrollHeight: number; scrollTop: number; client
   return el.scrollHeight - el.scrollTop - el.clientHeight <= slack;
 }
 
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 export function TraceLog({ rows }: { rows: TraceRow[] }) {
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true); // updated on scroll: was the reader near the bottom?
@@ -22,8 +17,7 @@ export function TraceLog({ rows }: { rows: TraceRow[] }) {
   useEffect(() => {
     const el = box.current;
     if (!el || !stick.current) return;
-    if (prefersReducedMotion() || typeof el.scrollTo !== "function") el.scrollTop = el.scrollHeight;
-    else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    el.scrollTop = el.scrollHeight; // instant: no programmatic scroll events can unstick the log
   }, [last?.key, last?.repeat, rows.length]);
 
   return (
