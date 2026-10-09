@@ -1,15 +1,12 @@
 # Medical Reviewer Agent
 
-Monorepo: `backend/` (Python 3.12, FastAPI + LangGraph + arq), `frontend/` (Next.js 16), `infra/` (compose configs).
 Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plans: `docs/superpowers/plans/`.
+Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.md`.
 
 ## Commands
 - Backend tests: `cd backend && uv run pytest` (unit). Integration: `MRA_INTEGRATION=1 uv run pytest -m integration` with `docker compose up -d postgres redis searxng`. Run tests from `backend/` (config paths are relative to it).
-- Lint: `cd backend && uv run ruff check .`
 - API dev server: `cd backend && uv run uvicorn app.main:app --reload --port 8000` (Windows host: add `--loop app.compat:selector_loop_factory`; psycopg async cannot use the Proactor loop)
 - Worker: `cd backend && uv run arq app.worker.settings.WorkerSettings`
-- Migrations: `cd backend && uv run alembic upgrade head`; new: `uv run alembic revision --autogenerate -m "..."`
-- Full stack: `docker compose up -d --build`
 
 ## Conventions
 - Graph nodes report progress only via `app.graph.progress.progress_writer()` (no-op outside a graph); `EventSink` is the only writer to `review_events` / Redis Streams (the worker emits progress; the API emits `queued` and `cancelled`).
@@ -27,13 +24,6 @@ Spec: `docs/superpowers/specs/2026-10-04-medical-reviewer-agent-design.md`. Plan
   inside `<external_context>`, never instructions, never a citation.
 - Redis clients use `decode_responses=True`.
 - `AppDeps` lives in `app/runtime.py` (re-exported by `app.main`) to avoid import cycles with `app/api/*`.
-
-- Frontend (`frontend/`): Next.js 16 — read `frontend/AGENTS.md` and the bundled docs in `frontend/node_modules/next/dist/docs/` before changing framework code (params are Promises, `PageProps<'/r/[id]'>`, no `next lint`). Commands: `npm test`, `npm run lint`, `npm run typecheck` (runs `next typegen`), `npm run e2e`. Verified numbers render only through `VerifiedNumber`; blanked values through `Hole`; charts use only `src/lib/charts-data.ts` (never compute a number shown as if from a paper).
-
-## Design System
-Read DESIGN.md before visual or UI work: it defines the fonts, colors, spacing, and
-aesthetic direction. Ask the user before departing from it. When reviewing or QA-ing
-UI, flag code that doesn't match DESIGN.md.
 - Capacity and scale (Plan 7): admission control, daily counters and SSE slots live in Redis (`app/services/capacity.py`,
   `sse_slots.py`), so any number of API processes behave as one; per-review LLM spend is capped by a contextvar budget
   charged in `LimitedLLM` (`app/services/budget.py`). Public limits come from `GET /api/v1/status`; never hard-code them
