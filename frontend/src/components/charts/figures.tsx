@@ -300,21 +300,23 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
 const CONCEPT_CAPTION = ["เส้นเชื่อมมาจากตารางผลแต่ละการศึกษาเท่านั้น ไม่ได้แสดงตัวแปรคั่นกลาง (mediator)",
   "Links come only from the per-study results table; no mediating variables (mediators) are shown"];
 
-type TreeDatum = { name: string; ref?: string; value: string; symbol: string; symbolSize: number; itemStyle: Record<string, unknown>; label?: Record<string, unknown>; children?: TreeDatum[] };
+type TreeDatum = { name: string; ref?: string; value: string; tip?: string; symbol: string; symbolSize: number; itemStyle: Record<string, unknown>; label?: Record<string, unknown>; children?: TreeDatum[] };
 
-function treeData(n: MapNode, t: ChartTokens): TreeDatum {
+function treeData(n: MapNode, t: ChartTokens, lang: Lang): TreeDatum {
   const leaf = n.kind === "group";
   const colour = leaf && n.direction ? t.direction[n.direction] : t.muted;
   return {
     name: n.label, value: n.text, ref: n.refs?.[0],
-    symbol: leaf ? (n.direction ? SYMBOL[n.direction] : "circle") : "rect",
+    tip: leaf && n.refs?.length ? L(lang, `คลิกเพื่อเปิด ${n.refs[0]} · ดูทั้งหมดในโครงร่าง`, `Click to open ${n.refs[0]} · see all in the outline`) : undefined,
+    // Shapes no direction glyph uses (circle, diamond, rect, triangle, empty circle): rounded square for structure, pin for design groups.
+    symbol: leaf ? (n.direction ? SYMBOL[n.direction] : "pin") : "roundRect",
     symbolSize: leaf ? 12 : 9,
     itemStyle: leaf ? { color: colour, borderColor: t.surface, borderWidth: 1 } : { color: t.rule, borderColor: t.muted, borderWidth: 1 },
-    ...(n.children.length ? { children: n.children.map((c) => treeData(c, t)) } : {}),
+    ...(n.children.length ? { children: n.children.map((c) => treeData(c, t, lang)) } : {}),
   };
 }
 
-function conceptOption(tree: ConceptTree, t: ChartTokens): EChartsOption {
+function conceptOption(tree: ConceptTree, t: ChartTokens, lang: Lang): EChartsOption {
   const label = { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, width: 160, overflow: "truncate" };
   return {
     animation: !t.reducedMotion,
@@ -323,10 +325,11 @@ function conceptOption(tree: ConceptTree, t: ChartTokens): EChartsOption {
     tooltip: {
       trigger: "item", triggerOn: "mousemove", backgroundColor: t.surface, borderColor: t.rule,
       textStyle: { color: t.ink, fontFamily: t.fontDisplay },
-      formatter: (p: { data: { value: string } }) => encodeHTML(p.data.value),
+      formatter: (p: { data: { value: string; tip?: string } }) =>
+        encodeHTML(p.data.value) + (p.data.tip ? `<br/><span style="color:${t.muted}">${encodeHTML(p.data.tip)}</span>` : ""),
     },
     series: [{
-      type: "tree", data: [treeData(tree.root, t)], layout: "orthogonal", orient: "LR",
+      type: "tree", data: [treeData(tree.root, t, lang)], layout: "orthogonal", orient: "LR",
       initialTreeDepth: 3, expandAndCollapse: true, roam: false, top: 8, bottom: 8, left: 180, right: 200,
       lineStyle: { color: t.rule, width: 1.5, curveness: 0 },
       label: { ...label, position: "left", verticalAlign: "middle", align: "right" },
@@ -365,7 +368,7 @@ function ConceptOutline({ node, lang, onSelect }: { node: MapNode; lang: Lang; o
 }
 
 export function ConceptMapFigure({ tree, tokens, lang, onSelect }: { tree: ConceptTree; tokens: ChartTokens; lang: Lang; onSelect: Select }) {
-  const option = useMemo(() => conceptOption(tree, tokens), [tree, tokens]);
+  const option = useMemo(() => conceptOption(tree, tokens, lang), [tree, tokens, lang]);
   const note = tree.byDirection ? L(lang, "ทิศทางตามที่เอเจนต์อ่านจากบทคัดย่อ", "Directions as the agent read them in the abstracts") : null;
   return (
     <Figure lang={lang} title={L(lang, "แผนที่ความรู้: คำถาม ผลลัพธ์ และงานวิจัยที่รายงาน", "Concept map: question, outcomes and the studies that report them")}
@@ -373,7 +376,7 @@ export function ConceptMapFigure({ tree, tokens, lang, onSelect }: { tree: Conce
       chart={
         <div className="overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, "แผนที่ความรู้ (เลื่อนดูได้)", "Concept map (scrollable)")}>
           <div className="min-w-[680px]">
-            <EChart option={option} height={Math.max(240, tree.leaves * 28)}
+            <EChart option={option} height={Math.max(240, tree.drawnLeaves * 28)}
               label={L(lang, `แผนที่ความรู้ ${tree.leaves} กลุ่มงานวิจัย`, `Concept map with ${tree.leaves} study groups`)}
               onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />
           </div>

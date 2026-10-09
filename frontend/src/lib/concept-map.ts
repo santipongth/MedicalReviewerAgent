@@ -29,8 +29,10 @@ export interface ConceptTree {
   root: MapNode;
   /** Every node, parents before children, in display order. */
   nodes: MapNode[];
-  /** Number of group nodes (the chart's leaves). */
+  /** Number of group nodes (study groups). */
   leaves: number;
+  /** Number of nodes without children: the rows the chart draws. */
+  drawnLeaves: number;
   /** Whether groups are direction groups (false: design groups). */
   byDirection: boolean;
 }
@@ -85,9 +87,36 @@ function elements(result: ReviewResult, lang: Lang): { key: string; label: strin
   return out;
 }
 
+// A comparator that starts like this is the absence of the exposure, so a key term is never filed under it.
+const NEGATED = /^\s*(no\s|without\s|non-|placebo|usual care)/i;
+const LATIN_ONLY = /^[\p{Script=Latin}\p{N}\s\-.,()/]+$/u;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const RANK = ["hub", "p", "context", "c"];
+
+/**
+ * Index of the element a key term belongs under, or -1. Candidates are ranked hub (I/E or Concept), P, Context, C;
+ * within a rank an exact match beats a whole-word match (Latin terms only: Thai has no spaces) beats a substring.
+ */
+function placeTerm(term: string, els: { key: string; text: string; hub: boolean }[]): number {
+  const needle = term.toLowerCase();
+  const word = LATIN_ONLY.test(term) ? new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(needle)}(?![\\p{L}\\p{N}])`, "iu") : null;
+  let best = -1;
+  let bestScore = Infinity;
+  els.forEach((e, i) => {
+    if (e.key === "c" && NEGATED.test(e.text)) return;
+    const text = e.text.toLowerCase();
+    const quality = text === needle ? 0 : word?.test(text) ? 1 : text.includes(needle) ? 2 : -1;
+    if (quality < 0) return;
+    const rank = RANK.indexOf(e.hub ? "hub" : e.key);
+    const score = (rank < 0 ? RANK.length : rank) * 3 + quality;
+    if (score < bestScore) { best = i; bestScore = score; }
+  });
+  return best;
+}
+
 /**
  * Tree for the concept map. Level 1: the question's elements (P, I/E or Concept, C, Context); key terms hang under the
- * first element whose text contains them (case-insensitive), else under "key terms". Level 2 under I/E (Concept): one
+ * best-matching element (see placeTerm), else under "key terms". Level 2 under I/E (Concept): one
  * node per comparison row. Leaves: the papers of that row grouped by direction (design for scoping), as "label · P1, P3 +2".
  * In direction groups, narrative reviews are never placed as leaves.
  */
@@ -138,8 +167,7 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
   for (const [i, kt] of (result.question?.key_terms ?? []).entries()) {
     const term = clean(kt.term);
     if (!term) continue;
-    const needle = term.toLowerCase();
-    const at = els.findIndex((e) => e.text.toLowerCase().includes(needle));
+    const at = placeTerm(term, els);
     const node: MapNode = { id: `t${i}`, kind: "term", label: term, text: term, children: [] };
     (at >= 0 ? attached[at] : loose).push(node);
   }
@@ -156,5 +184,8 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
   const flat: MapNode[] = [];
   const walk = (n: MapNode) => { flat.push(n); n.children.forEach(walk); };
   walk(root);
-  return { root, nodes: flat, leaves: flat.filter((n) => n.kind === "group").length, byDirection };
+  return {
+    root, nodes: flat, leaves: flat.filter((n) => n.kind === "group").length,
+    drawnLeaves: flat.filter((n) => !n.children.length).length, byDirection,
+  };
 }

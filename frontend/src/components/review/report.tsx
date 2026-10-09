@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { exportUrl } from "@/lib/api";
+import { conceptTree } from "@/lib/concept-map";
 import { emptyFilters, filterPapers, isPooled, type Filters } from "@/lib/charts-data";
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
 import type { TermKey } from "@/lib/glossary";
@@ -12,7 +13,7 @@ import { Term } from "../ui/term";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
 import { Charts } from "./charts";
-import { ConceptMapSection, hasConceptMap } from "./concept-map";
+import { ConceptMapSection } from "./concept-map";
 import { EvidenceMapSection } from "./evidence-map";
 import { LitMatrixSection } from "./lit-matrix";
 import { FilterBar, FilterStatus } from "./filter-bar";
@@ -44,7 +45,7 @@ function outcomeFor(paper: Paper | undefined, row: ComparisonRow, ref: string): 
 /** The report bench: reading column (question, summary, matrix, claims, charts, papers) + source rail. */
 /** offline: rendered inside a downloaded HTML file (no links back to the service). */
 export function Report({ review, offline = false }: { review: Review; offline?: boolean }) {
-  const result = review.result ?? {};
+  const result = useMemo(() => review.result ?? {}, [review.result]);
   const original = (result.language ?? review.language ?? "th") as Lang;
   const [lang, setLang] = useState<Lang>(original);
   const showEn = lang === "en" && original === "th";
@@ -60,6 +61,11 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const visibleRows = useMemo(() => rows.filter((r) => r.cells.some((c) => matrixRefs.includes(c.ref))), [rows, matrixRefs]);
   const type = reviewTypeOf(result);
   const map = useMemo(() => (showsSection(type, "evidence_map") ? evidenceMap(visible, rows, lang) : EMPTY_MAP), [type, visible, rows, lang]);
+  // Built from the filtered papers, like the lit matrix and the evidence map; null where the type has no concept map.
+  const tree = useMemo(
+    () => (showsSection(type, "concept_map") ? conceptTree({ ...result, papers: visible }, lang, type) : null),
+    [type, result, visible, lang],
+  );
   const firstWithCard = papers.find((p) => p.card)?.ref;
   const [selection, setSelection] = useState<Selection | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -90,8 +96,8 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const litMatrix = hasLitMatrix && (
     <LitMatrixSection papers={visible} allPapers={papers} lang={lang} type={type} onSelect={select} reviewId={review.id} offline={offline} />
   );
-  const hasConceptMapSection = showsSection(type, "concept_map") && hasPapers && hasConceptMap(result, lang, type);
-  const conceptMap = hasConceptMapSection && <ConceptMapSection result={result} lang={lang} type={type} onSelect={select} />;
+  const hasConceptMapSection = !!tree && tree.leaves > 0;
+  const conceptMap = tree && hasConceptMapSection && <ConceptMapSection tree={tree} lang={lang} onSelect={select} />;
   const hasEvidenceMap = showsSection(type, "evidence_map") && (map.byConcept.rows.length > 0 || map.byYear.rows.length > 0);
   const litNav = { id: "h-litmatrix", label: L(lang, "ตารางงานวิจัย", "Literature matrix") };
   const mapNav = { id: "h-map", label: L(lang, "แผนที่ความรู้", "Concept map") };

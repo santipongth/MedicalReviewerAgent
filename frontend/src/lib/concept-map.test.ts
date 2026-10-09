@@ -29,11 +29,38 @@ describe("conceptTree", () => {
     expect(find(tree.root, "terms")!.children.map((c) => c.label)).toEqual(["sulfonylurea"]);
   });
 
+  it("ranks hub, P, Context, C; exact then whole word then substring; whole words for Latin terms only", () => {
+    const withTerms = (terms: string[], pico: Record<string, string>): ReviewResult => ({
+      ...slr, question: { ...slr.question!, pico: { ...slr.question!.pico, ...pico },
+        key_terms: terms.map((term) => ({ term, synonyms: [], mesh: null })) } });
+    const where = (r: ReviewResult) => {
+      const tree = conceptTree(r, "th", "slr");
+      return Object.fromEntries(tree.root.children.flatMap((e) => e.children.filter((c) => c.kind === "term").map((c) => [c.label, e.id])));
+    };
+    // the hub beats P and C even though P matches exactly
+    expect(where(withTerms(["statin"], { population: "statin", intervention_or_exposure: "statin therapy", comparator: "statin" }))).toEqual({ statin: "e:ie" });
+    // element rank dominates match quality: P (substring) still beats C (whole word)
+    expect(where(withTerms(["statin"], { population: "adults on atorvastatin", intervention_or_exposure: "x", comparator: "statin alone" }))).toEqual({ statin: "e:p" });
+    // Thai terms fall back to substring
+    expect(where(withTerms(["เมตฟอร์มิน"], { population: "ผู้ป่วยที่ใช้เมตฟอร์มินเป็นประจำ", intervention_or_exposure: "x", comparator: "" }))).toEqual({ "เมตฟอร์มิน": "e:p" });
+    // negation and placebo comparators are skipped, a plain one is not
+    expect(where(withTerms(["aspirin"], { population: "adults", intervention_or_exposure: "x", comparator: "Placebo or aspirin" }))).toEqual({ aspirin: "terms" });
+    expect(where(withTerms(["aspirin"], { population: "adults", intervention_or_exposure: "x", comparator: "low-dose aspirin" }))).toEqual({ aspirin: "e:c" });
+  });
+
+  it("drawnLeaves counts every childless node", () => {
+    const tree = conceptTree(slr, "th", "slr");
+    expect(tree.drawnLeaves).toBe(tree.nodes.filter((n) => !n.children.length).length);
+    expect(tree.drawnLeaves).toBeGreaterThan(tree.leaves);
+  });
+
   it("scoping uses PCC elements and groups by design, with no direction", () => {
     const tree = conceptTree(scopingReviewFixture.result!, "th", "scoping");
     expect(tree.byDirection).toBe(false);
-    expect(tree.root.children.map((c) => c.id)).toEqual(["e:p", "e:concept", "e:c", "e:context"]);
-    expect(find(tree.root, "e:c")!.children[0]).toMatchObject({ kind: "term", label: "metformin" }); // matches "no metformin"
+    expect(tree.root.children.map((c) => c.id)).toEqual(["e:p", "e:concept", "e:c", "e:context", "terms"]);
+    // "metformin" only appears in the negated comparator ("no metformin"): it is filed under key terms, not under C
+    expect(find(tree.root, "e:c")!.children).toEqual([]);
+    expect(find(tree.root, "terms")!.children.map((c) => c.label)).toEqual(["metformin"]);
     const groups = tree.nodes.filter((n) => n.kind === "group");
     expect(groups.length).toBeGreaterThan(0);
     expect(groups.every((g) => g.design && !g.direction)).toBe(true);
