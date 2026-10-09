@@ -56,11 +56,24 @@ describe("StageView", () => {
     expect(screen.getByRole("button", { name: "มุมมอง 3D" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("puts the toggle in the same row as the lead (thought card) slot", async () => {
-    render(<StageView scene={initialScene()} lead={<div data-testid="lead" />} />);
+  it("puts heading, step and toggle in one header row, with the lead (thought card) full width under it", async () => {
+    const { container } = render(
+      <StageView scene={sceneOf(...STARTED)} heading={<h2 data-testid="heading">h</h2>} lead={<div data-testid="lead" />} />,
+    );
     await act(async () => {});
-    const row = screen.getByTestId("lead").parentElement!;
-    expect(row).toContainElement(screen.getByRole("button", { name: "มุมมอง 3D" }));
+    const row = screen.getByTestId("heading").parentElement!;
+    const toggle = screen.getByRole("button", { name: "มุมมอง 3D" });
+    expect(row).toContainElement(toggle);
+    expect(toggle).toHaveClass("ml-auto", "min-h-11"); // right-aligned, 44px target
+    expect(row.querySelector("[data-stage-step]")).toHaveTextContent(/ขั้น 1 จาก 9$/); // English scene: no localize step
+    expect(row).not.toContainElement(screen.getByTestId("lead"));
+    expect(screen.getByTestId("lead").parentElement).toBe(container); // a sibling of the row, not nested in it
+  });
+
+  it("shows no step indicator before an agent starts", async () => {
+    render(<StageView scene={sceneOf(ev(1, "queued", { topic: "t" }))} heading={<h2>h</h2>} />);
+    await act(async () => {});
+    expect(document.querySelector("[data-stage-step]")).toBeNull();
   });
 
   it.each([

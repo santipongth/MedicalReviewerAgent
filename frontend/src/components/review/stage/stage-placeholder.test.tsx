@@ -27,7 +27,8 @@ describe("StagePlaceholder", () => {
     expect(aspect(container.querySelector('[data-placeholder="narrow"]'))).toBe(`${n.width}/${n.height}`);
     expect(aspect(container.querySelector('[data-placeholder="wide"]'))).toBe(`${w.width}/${w.height}`);
     expect(container.querySelector('[data-placeholder="narrow"]')).toHaveClass("max-w-[480px]");
-    expect(container.querySelector('[data-placeholder="wide"]')).toHaveClass("max-w-[960px]");
+    expect(container.querySelector('[data-placeholder="wide"]')).toHaveClass("mx-auto", "w-full");
+    expect(container.querySelector('[data-placeholder="wide"]')?.getAttribute("class")).not.toMatch(/max-w-/);
     expect(container.querySelector('[data-placeholder="narrow"]')).toHaveClass("lg:hidden");
     expect(container.querySelector('[data-placeholder="wide"]')).toHaveClass("hidden", "lg:block");
   });

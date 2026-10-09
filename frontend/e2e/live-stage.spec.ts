@@ -220,7 +220,7 @@ const synthFrames = (): SseFrame[] => [{
   events: [...PRE_READ.map((s) => s.ev), ...READING, ...Array.from({ length: 30 }, (_, i) => extracted(i + 1)), ["synthesizing", { papers: 30, elapsed_s: 60 }]],
 }];
 
-for (const width of [390, 900, 1024]) {
+for (const width of [390, 900, 1024, 1440]) {
   for (const [name, frames] of [["reading", allAtOnce], ["synthesizing", synthFrames]] as const) {
     test(`stage text at ${width}px (${name}): legible sizes, no collisions, no horizontal scroll`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -241,9 +241,57 @@ for (const width of [390, 900, 1024]) {
         expect(t.x1, `${t.text} inside right`).toBeLessThanOrEqual(box.x1 + 0.5);
       }
       expect(overlaps(texts)).toEqual([]);
+      // the detail band is drawn and readable: five sources, queries in full (no ellipsis), the screening split
+      for (const s of ["PubMed", "arXiv", "Semantic Scholar", "OpenAlex", "Crossref"]) expect(texts.some((t) => t.text === s), s).toBe(true);
+      expect(texts.some((t) => t.text === "metformin colorectal cancer")).toBe(true);
+      expect(texts.some((t) => t.text === "ผ่าน 30 · ตัดออก 30")).toBe(true);
+      // every node label is one line (no mid-word Thai break)
+      const labels = await page.locator("svg[role=img] [data-agent] > text:not([data-count])").evaluateAll((els) => els.map((e) => e.querySelectorAll("tspan").length));
+      expect(labels.every((n) => n === 0)).toBe(true);
+      // reader refs fit inside their rings
+      const refs = await page.locator('[data-cluster="readers"] > g').evaluateAll((gs) => gs.flatMap((g) => {
+        const t = g.querySelector("text");
+        const c = g.querySelector("circle")!.getBoundingClientRect();
+        if (!t) return [];
+        const r = t.getBoundingClientRect();
+        return [{ ref: t.textContent, tw: r.width, cw: c.width }];
+      }));
+      for (const r of refs) expect(r.tw, `${r.ref} inside its ring`).toBeLessThan(r.cw - 2);
     });
   }
 }
+
+test("wide composition at 1440px: one header row, the stage centred across the panel, one aligned detail band", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await streamSse(page, allAtOnce());
+  await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: running });
+  await page.goto(`/r/${RID}`);
+  await expect(page.getByTestId("reader-ok")).toHaveCount(5);
+  await page.evaluate(() => document.fonts.ready);
+  const panel = page.locator('section[aria-labelledby="h-stage"]');
+  const header = panel.locator("[data-stage-header]");
+  await expect(header.locator("#h-stage")).toHaveText("เวทีเอเจนต์");
+  await expect(header.locator("[data-stage-step]")).toContainText("ขั้น 7 จาก 10");
+  const geo = await panel.evaluate((sec) => {
+    const box = (el: Element) => el.getBoundingClientRect();
+    const cs = getComputedStyle(sec);
+    const inner = { x0: box(sec).left + parseFloat(cs.paddingLeft) + 1, x1: box(sec).right - parseFloat(cs.paddingRight) - 1 };
+    const svg = sec.querySelector("svg[role=img]")!;
+    const thought = sec.querySelector('[aria-labelledby="h-thought"]')!;
+    const head = sec.querySelector("[data-stage-header]")!;
+    const tops = ["queries", "satellites", "batches", "readers"].map((c) => box(sec.querySelector(`[data-cluster="${c}"]`)!).top);
+    return { inner, svg: box(svg), thought: box(thought), head: box(head), tops };
+  });
+  // the stage spans the panel and is centred (no left-hanging max width)
+  expect(geo.svg.width).toBeGreaterThan(0.97 * (geo.inner.x1 - geo.inner.x0));
+  expect(Math.abs(geo.svg.left - geo.inner.x0 - (geo.inner.x1 - geo.svg.right))).toBeLessThan(2);
+  // read top-down: header row, then the thought card at full width, then the stage
+  expect(geo.head.bottom).toBeLessThanOrEqual(geo.thought.top);
+  expect(geo.thought.width).toBeGreaterThan(0.97 * (geo.inner.x1 - geo.inner.x0));
+  expect(geo.thought.bottom).toBeLessThanOrEqual(geo.svg.top);
+  // the detail blocks share one top edge (within a few px: glyph boxes differ)
+  expect(Math.max(...geo.tops) - Math.min(...geo.tops)).toBeLessThan(8);
+});
 
 // --- Plan 13: thought card, live evidence board, grouped log ------------------------------------------------------
 

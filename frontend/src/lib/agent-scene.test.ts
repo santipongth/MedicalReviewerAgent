@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type AgentId, type Pulse, type Scene, MAX_DOTS, PACKET_CAP, SYNTH_CAPTION, countFor, currentAgent, emptySlot, formatElapsed,
-  initialScene, planDots, readDone, reduceScene, sceneSummary, showSynthCaption, stageCaption, takeFreshPulses, traceAgent,
+  initialScene, planDots, readDone, reduceScene, sceneSummary, showSynthCaption, stageCaption, stageStep, takeFreshPulses, traceAgent,
 } from "./agent-scene";
 import type { ReviewEvent } from "./types";
 
@@ -410,6 +410,15 @@ describe("shared stage helpers (2D and 3D)", () => {
     expect(countFor(s, "guard")).toBeUndefined();
     expect(countFor(initialScene(), "search")).toBeUndefined();
     expect([MAX_DOTS, PACKET_CAP]).toEqual([24, 12]);
+  });
+
+  it("stageStep counts the drawn lane (localize follows the language) and is null when nothing runs", () => {
+    expect(stageStep(run(live(1)))).toBeNull(); // queued
+    expect(stageStep(run(live(3)))).toEqual({ n: 1, of: 10 }); // guard
+    expect(stageStep(run(live(12)))).toEqual({ n: 7, of: 10 }); // read
+    expect(stageStep(run(live(12), initialScene({ language: "en" })))).toEqual({ n: 7, of: 9 });
+    expect(stageStep(run([...live(12), ev(50, "synthesizing", { papers: 1 })]))).toEqual({ n: 8, of: 10 });
+    expect(stageStep(run([...live(12), ev(50, "done", {})]))).toBeNull();
   });
 });
 

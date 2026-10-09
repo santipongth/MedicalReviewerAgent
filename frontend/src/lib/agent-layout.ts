@@ -1,4 +1,4 @@
-// Pure layout geometry for the live "agent stage": where nodes, edges, chips and reader slots sit in the SVG viewBox.
+// Pure layout geometry for the live "agent stage": where nodes, edges, details and reader slots sit in the SVG viewBox.
 // No React, no DOM. segX/segY run once per animation frame and must not allocate.
 // Attribution: see NOTICE.md (AI-Agent-observatory by sakshigupta372, used with permission).
 // The arc formula (lifted midpoint, quadratic control through it) is adapted from the AI-Agent-observatory project.
@@ -7,21 +7,31 @@ import { PIPELINE, type AgentId, type EdgeId } from "./agent-scene";
 export interface Pt { x: number; y: number }
 export interface Rect { x: number; y: number; w: number; h: number }
 export type LayoutKind = "wide" | "narrow";
+export type Anchor = "start" | "middle" | "end";
 export interface Seg { a: Pt; c: Pt; b: Pt } // quadratic control through the lifted midpoint
+/**
+ * Composition. Wide: one centred row of uniform tiles spanning the viewBox, a single-line label and a count on fixed
+ * baselines under every tile, then one detail band (`band.y` is its common top edge) whose blocks sit in their agent's
+ * column: queries hang right-aligned from the plan tile, the five sources list down from the search tile, the
+ * screening bar is centred under screen, and the reader pool fills the read..finish columns. Narrow: a vertical lane
+ * with every detail left-aligned in one column right of the spine (x = 70), under its agent's label.
+ */
 export interface StageLayout {
   kind: LayoutKind; width: number; height: number; // viewBox
   nodes: Partial<Record<AgentId, Pt>>; // visible agents only
   label: Partial<Record<AgentId, "below" | "right">>;
   edges: { id: EdgeId; d: string; seg: Seg }[];
-  /**
-   * Engine glyph at `at`, its label's baseline point at `text` (SVG text-anchor `anchor`), connector line from `from`.
-   * Label contract (font 12px): wide labels <= 80px wide; narrow labels <= 100px wide.
-   * Wide: points on an arc above search; "end"/"start" labels sit 8px left/right of the point, "middle" 8px above it.
-   * Narrow: one row of points under the search label; labels hang below the row in two alternating rows (even/odd)
-   * so neighbours never collide, and connectors start at the tile's bottom edge so they stay above every label.
-   */
-  satellites: { label: string; at: Pt; text: Pt; from: Pt; anchor: "start" | "middle" | "end" }[];
-  queryChips: Rect[]; batchChips: Rect[]; slots: Pt[]; zone: Partial<Record<AgentId, Rect>>;
+  band: { y: number; h: number }; // wide: the detail band under the node row; narrow: the source list's band
+  /** Source list: status dot centre `at`, name baseline start `text` (12px, <= 100px wide). */
+  satellites: { label: string; at: Pt; text: Pt }[];
+  /** One row per query (max 4 + "+n"); text is right-aligned (wide) or left-aligned (narrow) inside its row. */
+  queryChips: Rect[]; queryAlign: "start" | "end";
+  /** Segments of the screening bar, one per expected batch (max 10). */
+  batchChips: Rect[];
+  slots: Pt[]; slotR: number;
+  zone: Partial<Record<AgentId, Rect>>;
+  /** Caption anchors: the screening split ("ผ่าน n · ตัดออก n") and the indeterminate synth caption (stacked = two lines). */
+  notes: { screen: Pt & { anchor: Anchor }; synth: Pt & { anchor: Anchor; stacked: boolean } };
 }
 export interface LayoutOpts { showLocalize: boolean; showExternal: boolean; slots: number; batches: number; queries: number }
 
@@ -31,6 +41,15 @@ export const SATELLITES = ["PubMed", "arXiv", "Semantic Scholar", "OpenAlex", "C
 const MAX_SLOTS = 30;
 const MAX_QUERY_CHIPS = 4;
 const MAX_BATCH_CHIPS = 10;
+const HALF = 22; // half a 44px tile
+const ROW = 18; // detail row pitch (12px text)
+const POOL_COLS = 10;
+const SLOT_PITCH = 28;
+/** Reader slot radius and ref font: "P30" (about 3 x 0.6em at 11px) fits inside the ring, clear of its stroke. */
+export const SLOT_R = 12;
+export const REF_FONT = 11;
+/** How many 12px code characters (~7.2px each) fit a query row of width `w`, after the check mark and padding. */
+export const queryChars = (w: number): number => Math.max(0, Math.min(34, Math.floor((w - 20) / 7.2)));
 
 export function arc(a: Pt, b: Pt, bend = 0.18): Seg {
   const dx = b.x - a.x;
@@ -73,7 +92,7 @@ function visibleAgents(o: LayoutOpts): AgentId[] {
   return PIPELINE.filter((id) => id !== "localize" || o.showLocalize);
 }
 
-/** `maxLift` caps the midpoint offset so long lane edges (narrow) never bulge into the zones beside the lane. */
+/** `maxLift` caps the midpoint offset: wide arcs stay low over the row, narrow ones never bulge into the details. */
 function buildEdges(vis: AgentId[], nodes: Partial<Record<AgentId, Pt>>, showExternal: boolean, maxLift = Infinity): StageLayout["edges"] {
   const pairs: [AgentId, AgentId][] = [];
   for (let i = 1; i < vis.length; i++) pairs.push([vis[i - 1], vis[i]]);
@@ -89,10 +108,11 @@ function buildEdges(vis: AgentId[], nodes: Partial<Record<AgentId, Pt>>, showExt
 
 function wideLayout(o: LayoutOpts): StageLayout {
   const width = 960;
-  const height = 330;
-  const laneY = 96;
-  const margin = 60;
-  const zoneY = 170;
+  const margin = 48;
+  const top = o.showExternal ? 66 : 0; // room for the external side node above the row
+  const laneY = top + 34;
+  const bandY = laneY + 72; // under the tiles (bottom +22), labels (baseline +38) and counts (baseline +55)
+  const bandH = 5 * ROW; // five source rows; the query rows and the 3-row reader pool fit inside
   const vis = visibleAgents(o);
   const step = (width - 2 * margin) / (vis.length - 1);
   const nodes: Partial<Record<AgentId, Pt>> = {};
@@ -100,47 +120,63 @@ function wideLayout(o: LayoutOpts): StageLayout {
   vis.forEach((id, i) => { nodes[id] = { x: margin + i * step, y: laneY }; label[id] = "below"; });
   const zone: Partial<Record<AgentId, Rect>> = {};
 
-  // query chips under plan (max 4 + "+n")
+  // queries: rows right-aligned to the plan tile's right edge, as wide as guard..plan (max 4 + "+n")
   const q = clampInt(o.queries, 0, 1000);
   const nq = q > MAX_QUERY_CHIPS ? MAX_QUERY_CHIPS + 1 : q;
   const queryChips: Rect[] = [];
-  const plan = nodes.plan!;
-  for (let i = 0; i < nq; i++) queryChips.push({ x: plan.x - 42, y: zoneY + i * 22, w: 84, h: 18 });
-  if (nq > 0) zone.plan = { x: plan.x - 46, y: zoneY - 4, w: 92, h: nq * 22 + 4 };
+  const qx0 = nodes.guard!.x - HALF;
+  const qx1 = nodes.plan!.x + HALF;
+  for (let i = 0; i < nq; i++) queryChips.push({ x: qx0, y: bandY + i * ROW, w: qx1 - qx0, h: ROW });
+  if (nq > 0) zone.plan = { x: qx0 - 6, y: bandY - 6, w: qx1 - qx0 + 12, h: nq * ROW + 10 };
 
-  // satellites on an arc above search
-  const search = nodes.search!;
-  const sx = search.x;
-  const sy = laneY - 18; // arc centre sits above the node so the points clear the plan>search / search>enrich arcs
+  // sources: a list hanging from the search tile's left edge
+  const sx = nodes.search!.x - HALF;
   const satellites = SATELLITES.map((name, i) => {
-    const ang = (-150 + i * 30) * (Math.PI / 180);
-    const at = { x: sx + 58 * Math.cos(ang), y: sy + 58 * Math.sin(ang) };
-    const anchor = (i < 2 ? "end" : i === 2 ? "middle" : "start") as "start" | "middle" | "end";
-    const text = anchor === "end" ? { x: at.x - 8, y: at.y + 4 } : anchor === "start" ? { x: at.x + 8, y: at.y + 4 } : { x: at.x, y: at.y - 8 };
-    return { label: name, at, text, from: { x: sx, y: laneY }, anchor };
+    const base = bandY + 13 + i * ROW;
+    return { label: name, at: { x: sx + 4, y: base - 4 }, text: { x: sx + 14, y: base } };
   });
-  zone.search = { x: sx - 140, y: 4, w: 280, h: 64 }; // lane arcs peak at y >= ~71, so they stay outside
+  zone.search = { x: sx - 6, y: bandY - 6, w: 126, h: 5 * ROW + 10 };
 
-  // batch chips under screen (max 10, 2 rows of 5)
+  // screening: one segmented bar centred under screen, the kept/cut split under it
   const nb = clampInt(o.batches, 0, MAX_BATCH_CHIPS);
   const batchChips: Rect[] = [];
   const screen = nodes.screen!;
-  for (let i = 0; i < nb; i++) batchChips.push({ x: screen.x - 45 + (i % 5) * 18, y: zoneY + Math.floor(i / 5) * 18, w: 16, h: 16 });
-  if (nb > 0) zone.screen = { x: screen.x - 48, y: zoneY - 4, w: 96, h: Math.ceil(nb / 5) * 18 + 4 };
+  const bw = 84;
+  for (let i = 0; i < nb; i++) {
+    const w = (bw - (nb - 1) * 2) / nb;
+    batchChips.push({ x: screen.x - bw / 2 + i * (w + 2), y: bandY + 4, w, h: 8 });
+  }
+  // the tint wraps the bar only: the kept/cut caption appears once screen is done, when the tint has moved on
+  if (nb > 0) zone.screen = { x: screen.x - bw / 2 - 8, y: bandY - 6, w: bw + 16, h: 24 };
 
-  // reader pool under read/synth (6 cols x 5 rows, 26px pitch)
+  // reader pool: 10 columns centred on the read..finish columns (clamped to the row's right edge); a partial pool
+  // fills from the same origin, so slots never move as papers arrive
   const ns = clampInt(o.slots, 0, MAX_SLOTS);
   const slots: Pt[] = [];
-  const cx = (nodes.read!.x + nodes.synth!.x) / 2;
-  for (let i = 0; i < ns; i++) slots.push({ x: cx - 65 + (i % 6) * 26, y: zoneY + 15 + Math.floor(i / 6) * 26 });
-  if (ns > 0) zone.read = { x: cx - 78, y: zoneY, w: 156, h: Math.ceil(ns / 6) * 26 + 4 };
+  const full = POOL_COLS * SLOT_PITCH;
+  const fin = nodes.finish!;
+  const px0 = Math.min((nodes.read!.x + fin.x) / 2 - full / 2, fin.x + HALF - full);
+  for (let i = 0; i < ns; i++) {
+    slots.push({ x: px0 + SLOT_PITCH / 2 + (i % POOL_COLS) * SLOT_PITCH, y: bandY + 14 + Math.floor(i / POOL_COLS) * SLOT_PITCH });
+  }
+  if (ns > 0) {
+    const cols = Math.min(ns, POOL_COLS);
+    zone.read = { x: px0 - 6, y: bandY - 6, w: cols * SLOT_PITCH + 12, h: Math.ceil(ns / POOL_COLS) * SLOT_PITCH + 10 };
+  }
 
   if (o.showExternal) {
-    // above the lane (below it are the reader pool / chip zones, which edges must not cross)
-    nodes.external = { x: nodes.read!.x, y: 30 };
+    // above the row (below it is the detail band, which edges must not cross)
+    nodes.external = { x: nodes.read!.x, y: laneY - 66 };
     label.external = "right";
   }
-  return { kind: "wide", width, height, nodes, label, edges: buildEdges(vis, nodes, o.showExternal), satellites, queryChips, batchChips, slots, zone };
+  return {
+    kind: "wide", width, height: bandY + bandH + 30, nodes, label, edges: buildEdges(vis, nodes, o.showExternal, 10),
+    band: { y: bandY, h: bandH }, satellites, queryChips, queryAlign: "end", batchChips, slots, slotR: SLOT_R, zone,
+    notes: {
+      screen: { x: screen.x, y: bandY + 30, anchor: "middle" },
+      synth: { x: px0 + full / 2, y: bandY + bandH + 18, anchor: "middle", stacked: false },
+    },
+  };
 }
 
 function narrowLayout(o: LayoutOpts): StageLayout {
@@ -161,44 +197,61 @@ function narrowLayout(o: LayoutOpts): StageLayout {
   const batchChips: Rect[] = [];
   const slots: Pt[] = [];
   let satellites: StageLayout["satellites"] = [];
-  const maxLift = 30; // lane x=36 + 30 = 66 < zone x (70)
+  let screenNote: Pt = { x: zx + 108, y: 0 };
+  let synthNote: Pt = { x: zx, y: 0 };
+  let bandY = 0;
 
-  let y = 36;
+  let y = 34;
   for (const id of vis) {
     nodes[id] = { x: laneX, y };
     label[id] = "right";
-    const zy = y + 26; // zones start below the (right-hand) label block (12px text, 14px pitch, up to 3 lines)
+    const zy = y + 30; // details start under the right-hand label and count lines
     let zh = 0;
     if (id === "plan" && nq > 0) {
-      for (let i = 0; i < nq; i++) queryChips.push({ x: zx, y: zy + i * 22, w: zw, h: 18 });
-      zh = nq * 22;
+      for (let i = 0; i < nq; i++) queryChips.push({ x: zx, y: zy + i * ROW, w: zw, h: ROW });
+      zh = nq * ROW;
     } else if (id === "search") {
-      zh = 50;
+      // two columns (3 + 2) of status dot + name, so the five names never meet
       satellites = SATELLITES.map((name, i) => {
-        const at = { x: zx + 30 + i * 52, y: zy + 8 };
-        return { label: name, at, text: { x: at.x, y: at.y + (i % 2 ? 36 : 19) }, from: { x: laneX, y: y + 22 }, anchor: "middle" as const };
+        const base = zy + 13 + (i % 3) * ROW;
+        const x = zx + Math.floor(i / 3) * 140;
+        return { label: name, at: { x: x + 4, y: base - 4 }, text: { x: x + 14, y: base } };
       });
+      zh = 3 * ROW;
+      bandY = zy;
     } else if (id === "screen" && nb > 0) {
-      for (let i = 0; i < nb; i++) batchChips.push({ x: zx + i * 27, y: zy, w: 24, h: 18 });
-      zh = 22;
+      const bw = 96;
+      for (let i = 0; i < nb; i++) {
+        const w = (bw - (nb - 1) * 2) / nb;
+        batchChips.push({ x: zx + i * (w + 2), y: zy + 5, w, h: 8 });
+      }
+      screenNote = { x: zx + bw + 12, y: zy + 13 };
+      zh = ROW;
     } else if (id === "read" && ns > 0) {
-      for (let i = 0; i < ns; i++) slots.push({ x: zx + 15 + (i % 7) * 30, y: zy + 15 + Math.floor(i / 7) * 30 });
-      zh = Math.ceil(ns / 7) * 30;
+      for (let i = 0; i < ns; i++) {
+        slots.push({ x: zx + SLOT_R + (i % POOL_COLS) * SLOT_PITCH, y: zy + 14 + Math.floor(i / POOL_COLS) * SLOT_PITCH });
+      }
+      zh = Math.ceil(ns / POOL_COLS) * SLOT_PITCH;
+    } else if (id === "synth") {
+      synthNote = { x: zx, y: zy + 12 };
+      zh = 30; // reserved for the two-line caption, so nothing shifts when it appears
     }
-    if (zh > 0) zone[id] = { x: zx, y: zy, w: zw, h: zh };
-    let next = y + Math.max(76, zh + 56); // the next label block (up to 21px above its node) clears this zone
+    if (zh > 0 && id !== "synth") zone[id] = { x: zx - 6, y: zy - 6, w: zw + 12, h: zh + 10 };
+    let next = y + (zh > 0 ? 30 + zh + 34 : 64); // the next tile (22px above its centre) clears this detail by >= 12px
     if (id === "read" && o.showExternal) {
       // side node kept in the lane (below the pool) so its edges never cross the zones; synth follows
       nodes.external = { x: laneX, y: next };
       label.external = "right";
-      next += 76;
+      next += 64;
     }
     y = next;
   }
   const last = nodes.finish!;
   return {
-    kind: "narrow", width, height: last.y + 44, nodes, label,
-    edges: buildEdges(vis, nodes, o.showExternal, maxLift), satellites, queryChips, batchChips, slots, zone,
+    kind: "narrow", width, height: last.y + 40, nodes, label,
+    edges: buildEdges(vis, nodes, o.showExternal, 10), band: { y: bandY, h: 3 * ROW }, satellites,
+    queryChips, queryAlign: "start", batchChips, slots, slotR: SLOT_R, zone,
+    notes: { screen: { ...screenNote, anchor: "start" }, synth: { ...synthNote, anchor: "start", stacked: true } },
   };
 }
 

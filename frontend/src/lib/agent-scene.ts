@@ -578,6 +578,19 @@ export function countFor(s: Scene, id: AgentId): string | undefined {
   }
 }
 
+/**
+ * Which pipeline step the run is on ("ขั้น n จาก of"), counting only the steps the lane draws (localize follows the
+ * language). Null before the first agent starts and once the run has stopped.
+ */
+export function stageStep(s: Scene): { n: number; of: number } | null {
+  if (s.status !== "running" && s.status !== "paused") return null;
+  const cur = currentAgent(s);
+  if (!cur) return null;
+  const vis = PIPELINE.filter((id) => id !== "localize" || s.expectLocalize);
+  const i = vis.indexOf(cur === "external" ? "read" : cur); // the external side node hangs off the read step
+  return i < 0 ? null : { n: i + 1, of: vis.length };
+}
+
 /** The indeterminate synth caption (two lines; wide views join them with a space). Shown only while synth is working. */
 export const SYNTH_CAPTION = ["กำลังเทียบผลและเขียนสรุป", "(ขั้นนี้ไม่มีความคืบหน้าให้ดู)"] as const;
 
