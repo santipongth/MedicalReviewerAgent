@@ -47,5 +47,6 @@ export const SECTIONS_BY_TYPE: Record<ReviewTypeOrLegacy, SectionId[]> = {
   narrative: ["summary", "claims", "findings", "lit_matrix", "concept_map", "forest"],
   slr: ["summary", "claims", "findings", "forest", "lit_matrix", "concept_map", "prisma"],
   scoping: ["summary", "evidence_map", "lit_matrix", "concept_map", "prisma"],
-  legacy: ["summary", "claims", "findings", "forest"],
+  // The study map renders with forest/prisma exactly as it does today (charts.tsx).
+  legacy: ["summary", "claims", "findings", "forest", "prisma"],
 };

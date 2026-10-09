@@ -123,7 +123,7 @@ export type ReviewType = "narrative" | "slr" | "scoping";
 export interface KeyTerm {
   term: string;
   synonyms: string[];
-  mesh: string[];
+  mesh: string | null;
 }
 
 export type ExclusionReason =
@@ -173,7 +173,7 @@ export interface Stats {
   with_fulltext?: number; // legacy
   extracted?: number;
   non_research?: number;
-  excluded_screening?: Record<ExclusionReason, number>;
+  excluded_screening?: Partial<Record<ExclusionReason, number>>;
   excluded_selection?: { narrative_excluded: number; over_limit: number };
 }
 

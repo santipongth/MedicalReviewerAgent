@@ -141,7 +141,9 @@ async def test_timed_stub_result_is_representative_and_carries_review_type():
     r = final.values["result"]
     assert r["review_type"] == "scoping"
     assert len(r["papers"]) == 6 and len(r["synthesis"]["comparison"]) == 2
-    assert r["stats"]["excluded_screening"] > 0 and r["question"]["key_terms"]
+    assert sum(r["stats"]["excluded_screening"].values()) == 28 and r["stats"]["non_research"] == 4
+    assert r["stats"]["excluded_selection"] == {"narrative_excluded": 0, "over_limit": 2}
+    assert r["question"]["key_terms"][0].keys() == {"term", "synonyms", "mesh"}
     card = r["papers"][0]["card"]
     assert {"population", "intervention_or_exposure", "comparator", "key_findings", "limitations",
             "risk_of_bias"} <= set(card)
