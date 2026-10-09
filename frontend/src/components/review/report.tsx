@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { exportUrl } from "@/lib/api";
 import { emptyFilters, filterPapers, type Filters } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
+import { BottomLine } from "./bottom-line";
 import { Charts } from "./charts";
 import { FilterBar } from "./filter-bar";
-import { CitedText, ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, QualityNote, QuestionHeader, StrengthLine } from "./report-parts";
+import { ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, QualityNote, QuestionDetails } from "./report-parts";
 import { SourceRail } from "./source-rail";
 import { L } from "./text";
 
@@ -74,18 +74,9 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
 
       <div className={`grid grid-cols-[minmax(0,1fr)] rounded-sm border border-rule bg-surface ${hasPapers ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : ""}`}>
         <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8 p-5 sm:p-8 ${hasPapers ? "lg:border-r lg:border-rule" : ""}`}>
-          <QuestionHeader question={result.question} topic={review.topic} lang={lang} />
-          {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} />}
-          <section aria-labelledby="h-summary" className="grid gap-2">
-            <h2 id="h-summary" className="text-lg font-semibold">{L(lang, "สรุป", "Summary")}</h2>
-            <p className="max-w-[65ch] text-[1.02rem] leading-[1.75]">
-              <CitedText text={synthesis.executive_summary || result.summary || ""} onSelect={select} refs={refs} />
-            </p>
-            {hasPapers && <p className="text-[0.8rem] text-muted">
-              {L(lang, "สรุปเขียนโดยโมเดลจากข้อมูลที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับได้แสดงด้วยเส้นใต้ลายเทปในตารางและแถบต้นฉบับ",
-                "The summary is written by a model from verified data; numbers checked against the papers carry a striped underline in the table and source rail.")}
-            </p>}
-          </section>
+          <BottomLine id={review.id} question={result.question} topic={review.topic} synthesis={synthesis} result={result}
+            papers={papers} lang={lang} offline={offline} onSelect={select} refs={refs} />
+          <QuestionDetails question={result.question} lang={lang} />
 
           {!hasPapers && (
             <section aria-labelledby="h-next" className="grid gap-3">
@@ -144,21 +135,6 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           )}
 
           <QualityNote quality={result.quality} stats={result.stats} lang={lang} preset={result.llm_preset} />
-          {!offline && (
-            <nav aria-label={L(lang, "ดาวน์โหลดรีวิว", "Download this review")} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[0.9rem]">
-              <span className="label">{L(lang, "ดาวน์โหลด", "Download")}</span>
-              <a href={`/r/${encodeURIComponent(review.id)}/report.html`} download
-                className="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">
-                {L(lang, "HTML (เปิดได้ออฟไลน์)", "HTML (works offline)")}
-              </a>
-              {([["md", "Markdown"], ["csv", "CSV"], ["json", "JSON"]] as const).map(([fmt, name]) => (
-                <a key={fmt} href={exportUrl(review.id, fmt)} download
-                  className="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">
-                  {name}
-                </a>
-              ))}
-            </nav>
-          )}
           <p className="text-[0.8rem] text-muted">{L(lang, "การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์", "Automated rapid literature review; not medical advice.")}</p>
         </div>
 

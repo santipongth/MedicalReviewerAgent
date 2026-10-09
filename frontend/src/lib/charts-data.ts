@@ -40,6 +40,21 @@ export function filterPapers(papers: Paper[], f: Filters): Paper[] {
   });
 }
 
+/** Papers that have a card, counted by the card's overall direction. A count of papers, not a number from a paper. */
+export function directionTally(papers: Paper[]): Record<Direction, number> {
+  const tally: Record<Direction, number> = { positive: 0, negative: 0, null: 0, mixed: 0, unclear: 0 };
+  for (const p of papers) {
+    const card = p.card_en ?? p.card;
+    if (card && card.overall_direction in tally) tally[card.overall_direction] += 1;
+  }
+  return tally;
+}
+
+/** True when any paper is a systematic review / meta-analysis (it may already pool the primary studies). */
+export function hasPooledPapers(papers: Paper[]): boolean {
+  return papers.some((p) => (p.card_en ?? p.card)?.design_category?.startsWith("sr_ma"));
+}
+
 export type Family = "ratio" | "difference" | "correlation";
 const FAMILY: Record<string, Family> = { HR: "ratio", OR: "ratio", RR: "ratio", MD: "difference", SMD: "difference", RD: "difference", r: "correlation" };
 

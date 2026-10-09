@@ -15,7 +15,7 @@ describe("Report", () => {
   it("opens on the refined question, summary, evidence strength and comparison matrix", () => {
     render(<Report review={reviewFixture} />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("ในผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2");
-    expect(screen.getByText(/ความแข็งแรงของหลักฐาน/)).toHaveTextContent("ต่ำ");
+    expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำ");
     expect(screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ })).toBeInTheDocument();
     expect(screen.getByText(/ระยะติดตามสั้น/)).toBeInTheDocument();
   });
@@ -126,5 +126,48 @@ describe("Report", () => {
     expect(screen.queryByText(/ความแข็งแรงของหลักฐาน/)).not.toBeInTheDocument();
     expect(screen.queryByText(/สรุปเขียนโดยโมเดล/)).not.toBeInTheDocument();
     expect(screen.queryByText(/·s*$/)).not.toBeInTheDocument();
+  });
+
+  it("the bottom line shows the direction tally as plain counts, never as verified numbers", () => {
+    render(<Report review={reviewFixture} />);
+    const section = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    const tally = within(section).getByRole("list");
+    const cards = reviewFixture.result!.papers!.map((p) => (p.card_en ?? p.card)?.overall_direction).filter(Boolean);
+    const items = within(tally).getAllByRole("listitem");
+    const total = items.reduce((n, li) => n + Number(li.querySelector(".tabular-nums")!.textContent), 0);
+    expect(total).toBe(cards.length);
+    expect(tally.querySelector(".num-verified")).toBeNull();
+    expect(within(section).getByText(/งานทบทวน\/วิเคราะห์อภิมานอาจซ้อนกับงานวิจัยหลัก/)).toBeInTheDocument();
+    expect(within(section).getByRole("button", { name: /จำนวนงานวิจัยตามทิศทางผล/ })).toBeInTheDocument();
+    expect(within(section).getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ })).toBeInTheDocument();
+    expect(within(section).getByText(/ตัวเลขตรวจผ่าน/)).toBeInTheDocument();
+  });
+
+  it("copy link and downloads are hidden offline; downloads and copy link are present online", () => {
+    const { unmount } = render(<Report review={reviewFixture} />);
+    expect(screen.getByRole("button", { name: "คัดลอกลิงก์" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /HTML/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "พิมพ์" })).toBeInTheDocument();
+    unmount();
+    render(<Report review={reviewFixture} offline />);
+    expect(screen.queryByRole("button", { name: "คัดลอกลิงก์" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /HTML/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "พิมพ์" })).toBeInTheDocument();
+  });
+
+  it("the summary note points to the source rail and no longer says tape is in the table", () => {
+    render(<Report review={reviewFixture} />);
+    const note = screen.getByText(/สรุปเขียนโดยโมเดล/);
+    expect(note).toHaveTextContent("ดูได้ในแถบต้นฉบับ");
+    expect(note.textContent).not.toMatch(/ลายเทปในตาราง/);
+  });
+
+  it("how the agent interpreted the question is one flat disclosure after the bottom line", () => {
+    const { container } = render(<Report review={reviewFixture} />);
+    const summary = screen.getByText("เอเจนต์ตีความคำถามอย่างไร");
+    const details = summary.closest("details")!;
+    expect(details.querySelector("details")).toBeNull();
+    expect(within(details).getByRole("button", { name: "PICO" })).toBeInTheDocument();
+    expect(container.querySelectorAll("h1")).toHaveLength(1);
   });
 });
