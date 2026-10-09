@@ -38,7 +38,7 @@ export function RailDrawer({ open, onClose, headingId, returnFocus, children }: 
     if (!modal) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    document.getElementById(headingId)?.focus();
+    document.getElementById(headingId)?.focus({ preventScroll: true });
     const trigger = () => returnFocus.current; // set at select time, so read it when closing
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return; // an open glossary term already consumed this Esc
@@ -51,7 +51,7 @@ export function RailDrawer({ open, onClose, headingId, returnFocus, children }: 
         const last = items[items.length - 1];
         if (!panel.current.contains(document.activeElement)) {
           e.preventDefault();
-          (e.shiftKey ? last : first)?.focus();
+          (e.shiftKey ? last : first)?.focus({ preventScroll: true });
         } else if (e.shiftKey && (document.activeElement === first || document.activeElement === document.getElementById(headingId))) {
           e.preventDefault();
           last?.focus();

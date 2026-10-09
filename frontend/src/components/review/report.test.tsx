@@ -293,6 +293,15 @@ describe("mobile source drawer", () => {
     expect(document.body.style.overflow).toBe("hidden");
   });
 
+  it("focuses the heading without scrolling, so the selected outcome stays in view", async () => {
+    const spy = vi.spyOn(HTMLElement.prototype, "focus");
+    await openDrawer();
+    const heading = screen.getByRole("heading", { name: /ต้นฉบับ/ });
+    const call = spy.mock.calls.findIndex((_, i) => spy.mock.contexts[i] === heading);
+    expect(spy.mock.calls[call][0]).toEqual({ preventScroll: true });
+    spy.mockRestore();
+  });
+
   it("closes on Esc, restores focus to the trigger and unlocks scroll", async () => {
     const cell = await openDrawer();
     await userEvent.keyboard("{Escape}");
