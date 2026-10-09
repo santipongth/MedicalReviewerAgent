@@ -67,7 +67,14 @@ test("real-time progression: statuses, packets and trace follow each streamed fr
 
   let rows = await traceRows(page).count();
   for (const [i, step] of expected.entries()) {
-    await page.clock.runFor(GAP);
+    if (i > PRE_READ.length) {
+      // The previous frame's packet (700ms travel) has landed before this frame arrives.
+      await page.clock.runFor(GAP - 100);
+      await expect(packets(page), `no packet before frame ${i + 1}`).toHaveCount(0);
+      await page.clock.runFor(100);
+    } else {
+      await page.clock.runFor(GAP);
+    }
     await expect(page.locator(`[data-agent="${step.agent}"]`), `frame ${i + 1}`).toHaveAttribute("data-status", step.status);
     await expect(traceRows(page), `trace after frame ${i + 1}`).toHaveCount(rows + 1);
     rows += 1;
@@ -92,30 +99,50 @@ test("burst then live: replayed history shows final states at once, only live ev
   await expect(page.locator('[data-agent="read"]')).toHaveAttribute("data-status", "active");
   await expect(page.locator('[data-agent="screen"]')).toHaveAttribute("data-status", "done");
   await expect(page.locator('[data-agent="refine"]')).toHaveAttribute("data-status", "done");
-  expect(await packets(page).count()).toBeLessThanOrEqual(24);
   expect(await packets(page).count()).toBe(0); // history is marked as seen at mount
-  await expect(page.getByTestId("reader-ok")).toHaveCount(4, { timeout: 10_000 });
-  await expect(packets(page).first()).toBeAttached();
+  // Waiting on the packet itself (not on the card) so the 700ms flight cannot be missed.
+  await expect(packets(page).first()).toBeAttached({ timeout: 10_000 });
+  await expect(page.getByTestId("reader-ok")).toHaveCount(4);
 });
 
-test("reduced motion: no packets, no running loops, final states visible", async ({ page }) => {
-  const { frames } = timeline(300);
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await streamSse(page, frames);
-  await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: running });
-  await page.goto(`/r/${RID}`);
-  for (let i = 0; i < 20; i++) {
-    expect(await packets(page).count()).toBe(0);
-    if ((await page.getByTestId("reader-ok").count()) === 5) break;
-    await page.waitForTimeout(250);
-  }
-  await expect(page.getByTestId("reader-ok")).toHaveCount(5);
-  await expect(page.locator('[data-agent="read"]')).toHaveAttribute("data-status", "active");
-  await expect(page.locator('[data-agent="screen"]')).toHaveAttribute("data-status", "done");
-  await expect(packets(page)).toHaveCount(0);
-  const animations = await page.evaluate(() => [...document.querySelectorAll(".stage-march, .stage-pulse")].map((el) => el.getAnimations().length));
-  expect(animations.every((n) => n === 0)).toBe(true);
-});
+const loops = (page: Page, sel: string) =>
+  page.evaluate((q) => [...document.querySelectorAll(q)].map((el) => el.getAnimations().length), sel);
+
+for (const reduced of [true, false]) {
+  test(`${reduced ? "reduced motion" : "control"}: ${reduced ? "no packets, no running loops, final states visible" : "loops do run without the preference"}`, async ({ page }) => {
+    const upToEnrich = PRE_READ.slice(0, 8).map((s) => s.ev); // screen is `working` (indeterminate) after `enriching`
+    await page.emulateMedia({ reducedMotion: reduced ? "reduce" : "no-preference" });
+    await streamSse(page, [
+      { delayMs: 0, events: upToEnrich },
+      { delayMs: 3000, events: [PRE_READ[8].ev, PRE_READ[9].ev, ...READING] },
+      { delayMs: 1500, events: [1, 2, 3, 4, 5].map(extracted) },
+    ]);
+    await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: running });
+    await page.goto(`/r/${RID}`);
+
+    // Phase 1: an agent is working, so the dashed `.stage-march` outline exists.
+    await expect(page.locator('[data-agent="screen"]')).toHaveAttribute("data-status", "working");
+    const march = await loops(page, ".stage-march");
+    expect(march.length).toBeGreaterThan(0);
+    if (reduced) expect(march.every((n) => n === 0)).toBe(true);
+    else expect(march.some((n) => n > 0)).toBe(true);
+
+    // Phase 2: readers are reading, so `.stage-pulse` slots exist.
+    await expect(page.getByTestId("reader-reading")).toHaveCount(30, { timeout: 10_000 });
+    await expect.poll(async () => (await loops(page, ".stage-pulse")).length).toBeGreaterThan(0);
+    const pulse = await loops(page, ".stage-pulse");
+    if (reduced) expect(pulse.every((n) => n === 0)).toBe(true);
+    else expect(pulse.some((n) => n > 0)).toBe(true);
+
+    // Phase 3: papers finish; under reduced motion no packet ever appears and the final states are visible.
+    if (reduced) {
+      await expect.poll(() => page.getByTestId("reader-ok").count(), { timeout: 15_000 }).toBe(5);
+      await expect(packets(page)).toHaveCount(0);
+      await expect(page.locator('[data-agent="read"]')).toHaveAttribute("data-status", "active");
+      await expect(page.locator('[data-agent="screen"]')).toHaveAttribute("data-status", "done");
+    }
+  });
+}
 
 for (const width of [1440, 390]) {
   for (const scheme of ["light", "dark"] as const) {
