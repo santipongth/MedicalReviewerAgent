@@ -180,3 +180,70 @@ async def test_select_top_drops_narrative_reviews_when_enough_primary_evidence_e
     out2 = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
         {"candidates": candidates, "screened": few, "options": {}})
     assert len(out2["selected"]) == 3
+
+
+def _screened(candidates, designs, include=True, **extra):
+    return [{"key": c["key"], "relevance": 99 - i, "include": include, "reason": "r", "uncertain": False,
+             "design": designs[i], **extra} for i, c in enumerate(candidates)]
+
+
+async def test_scoping_and_narrative_keep_narrative_reviews():
+    candidates = cands(6)
+    designs = ["narrative_review", "rct", "narrative_review", "cohort", "sr_ma_rct", "narrative_review"]
+    screened = _screened(candidates, designs)
+    for rt in ("scoping", "narrative"):
+        out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+            {"candidates": candidates, "screened": screened, "options": {"review_type": rt}})
+        assert len(out["selected"]) == 6
+        assert out["quality"][0]["narrative_excluded"] == 0
+        assert out["selection_stats"]["narrative_excluded"] == 0
+    slr = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": screened, "options": {"review_type": "slr"}})
+    assert len(slr["selected"]) == 3 and slr["selection_stats"]["narrative_excluded"] == 3
+
+
+async def test_select_top_tallies_exclusion_reasons_and_over_limit():
+    candidates = cands(10)
+    reasons = ["population", "population", "outcome", None, "off_topic"]
+    screened = [{"key": c["key"], "relevance": 90 - i, "include": i >= 5, "reason": "r", "uncertain": False,
+                 "design": "rct", "exclusion_reason": reasons[i] if i < 5 else None}
+                for i, c in enumerate(candidates)]
+    out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": screened, "options": {"max_papers": 5}})
+    assert out["selection_stats"] == {
+        "excluded_screening": {"population": 2, "outcome": 1, "other": 1, "off_topic": 1},
+        "narrative_excluded": 0, "over_limit": 0}
+    many = _screened(candidates, ["rct"] * 10, exclusion_reason=None)
+    out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": many, "options": {"max_papers": 5}})
+    assert len(out["selected"]) == 5 and out["selection_stats"]["over_limit"] == 5
+
+
+async def test_screen_batch_coerces_exclusion_reason():
+    def respond(system, user):
+        return ScreenBatch(decisions=[
+            ScreenDecision(ref="C1", relevance=90, include=True, reason="ok", exclusion_reason="outcome"),
+            ScreenDecision(ref="C2", relevance=5, include=False, reason="no"),
+            ScreenDecision(ref="C3", relevance=5, include=False, reason="no", exclusion_reason="population")])
+    out = await make_screen_batch(deps(FakeStructuredLLM("s", respond)))(payload(3))
+    assert [d["exclusion_reason"] for d in out["screened"]] == [None, "other", "population"]
+
+
+async def test_screen_batch_uses_the_review_types_system_prompt():
+    from app.graph.prompts import SCREEN_SYSTEM, screen_system
+    seen = {}
+
+    def respond(system, user):
+        seen["system"] = system
+        return scorer({})(system, user)
+    for rt in ("slr", "scoping", "narrative"):
+        await make_screen_batch(deps(FakeStructuredLLM("s", respond)))({**payload(2), "review_type": rt})
+        assert seen["system"] == screen_system(rt)
+    assert screen_system("slr") == SCREEN_SYSTEM
+    sends = route_to_screening({"topic": "t", "candidates": cands(2), "options": {"review_type": "scoping"}})
+    assert sends[0].arg["review_type"] == "scoping"
+
+
+def test_screen_decision_schema_requires_nullable_exclusion_reason():
+    schema = ScreenBatch.model_json_schema()["$defs"]["ScreenDecision"]
+    assert "exclusion_reason" in schema["required"] and "default" not in schema["properties"]["exclusion_reason"]

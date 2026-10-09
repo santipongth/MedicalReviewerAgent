@@ -439,9 +439,11 @@ def _question_block(state: ReviewState) -> dict[str, Any]:
                 "framework": None, "concept": None, "context": None,
                 "english": None, "pico": None, "question_type": None, "ambiguities": [], "key_terms": []}
     display = state.get("question_display") or {}
-    framework = "PCC" if ReviewOptions.clamped(state.get("options")).review_type == "scoping" else "PICO"
+    pcc = ReviewOptions.clamped(state.get("options")).review_type == "scoping"
+    framework = "PCC" if pcc else "PICO"
     return {"original_topic": state["topic"], "english_topic": english_topic, "refined": True,
-            "framework": framework, "concept": q.get("concept"), "context": q.get("context"),
+            "framework": framework, "concept": q.get("concept") if pcc else None,
+            "context": q.get("context") if pcc else None,
             **{k: display.get(k, q.get(k)) for k in QUESTION_TEXT},
             "english": {k: q.get(k) for k in QUESTION_TEXT}, "pico": {k: q.get(k) for k in PICO},
             "question_type": q.get("question_type"), "ambiguities": q.get("ambiguities") or [],
@@ -466,6 +468,7 @@ def make_finalize(deps):
                 "verification": p.get("verification"), "error": p.get("error"),
             })
         stats = state.get("search_stats") or {}
+        selection = state.get("selection_stats") or {}
         llms = deps.llms
         models = dict(getattr(llms, "models", {}) or {}) or {
             role: getattr(getattr(llms, role, None), "model", "")
@@ -483,6 +486,10 @@ def make_finalize(deps):
                 "screened": len({d["key"] for d in state.get("screened") or []}),
                 "selected": len(state.get("selected") or []),
                 "extracted": sum(1 for p in papers if p.get("card")),
+                "non_research": stats.get("non_research", 0),
+                "excluded_screening": dict(selection.get("excluded_screening") or {}),
+                "excluded_selection": {"narrative_excluded": selection.get("narrative_excluded", 0),
+                                       "over_limit": selection.get("over_limit", 0)},
             },
             "quality": summarize_quality(state.get("quality") or [], state.get("started_at")),
             "errors": list(state.get("errors") or []), "prompt_version": deps.settings.prompt_version,

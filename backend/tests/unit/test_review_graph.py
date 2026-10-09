@@ -162,7 +162,8 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
     assert r["papers"][0]["card_en"]["population"] == "adults with type 2 diabetes"
     assert r["papers"][0]["verification"]["numbers_verified"] == 2
     assert r["stats"] == {"found": 20, "unique": 10, "with_abstract": 10, "candidates": 10, "screened": 10, "selected": 8,
-                          "extracted": 8}
+                          "extracted": 8, "non_research": 0, "excluded_screening": {},
+                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 2}}
     assert r["summary"].startswith("TH Metformin") and r["synthesis_en"]["executive_summary"].startswith("Metformin")
     assert r["synthesis"]["comparison"][0]["outcome"] == "TH Colorectal cancer incidence"
     assert r["synthesis"]["conflicts"][0]["refs"] == [f"P{i}" for i in range(1, 9)]

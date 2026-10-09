@@ -33,6 +33,25 @@ def test_slr_system_prompts_are_unchanged(name):
     assert sha(builder("slr")) == digest
 
 
+CARD = {"title": "T", "year": 2020, "journal": "J", "pub_types": ["RCT"], "abstract": "Abs"}
+
+
+def test_slr_later_stage_user_prompts_are_unchanged():
+    assert sha(prompts.screen_user(english_topic="Q?", plan={"population": "P", "inclusion_criteria": ["a"]},
+                                   items=[("C1", CARD), ("C2", {"title": "U"})])) ==         "3e9906647439f78cf429360bc578915c6e5d3180ad29d01537f4c095a0378c70"
+    assert sha(prompts.extract_user(question="Q?", outcomes=["o"], candidate=CARD, source="abstract",
+                                    text="Text")) ==         "9f4efc581a01f8e2ef37aeb8e05ff3de75ace31f96ceaa0190a1e9d55eebd6fb"
+    assert sha(prompts.normalize_user(question="Q?", pairs=[("P1", "o")])) ==         "a8f11049113c154762d69c6a196ff66233f7fdf824dcfd7724f007a17d1f26ce"
+    assert sha(prompts.conflict_user(question="Q?", conflict={"outcome": "o", "refs": ["P1"]},
+                                     papers=[{"ref": "P1"}])) ==         "3db817d97a68c42a77255b9dfb6a3919f7cf838e75a874241b6b9ef303f533c2"
+    assert sha(prompts.narrative_user(question="Q?", sub_questions=["a"], papers=[{"ref": "P1"}],
+                                      matrix={"rows": [], "consensus": []}, conflict_notes=[],
+                                      baseline={"level": "low", "factors": ["f"]})) ==         "7d988f5384a6f9f9fae734c669ebf5ceaf14711ce575746f0910579a32dc6e68"
+    ext = [{"tool": "t", "arguments": {}, "text": "x", "ok": True}]
+    assert sha(prompts.narrative_user(question="Q?", sub_questions=[], papers=[], matrix={}, conflict_notes=[],
+                                      baseline={}, external_context=ext)) ==         "25a5e11553e087fcb9bbbc57424e8b5478c98c3e7a80809bb0bdbd03b839f8ef"
+
+
 def test_slr_user_prompts_are_unchanged():
     assert sha(prompts.refine_user(topic="t", english_topic="e", options=OPTIONS)) == \
         "bdcacd6caee94d2c1e5cd44595d3c3a6eca98f8eb58bf38fe956ccc79534d195"
@@ -125,3 +144,20 @@ def test_review_question_schema_requires_nullable_concept_and_context():
     assert {"concept", "context"} <= set(schema["required"])
     assert "default" not in schema["properties"]["concept"]
     assert "default" not in schema["properties"]["context"]
+
+
+@pytest.mark.parametrize("builder,base", [
+    (prompts.refine_system, prompts.REFINE_SYSTEM), (prompts.critique_system, prompts.CRITIQUE_SYSTEM),
+    (prompts.plan_system, prompts.PLAN_SYSTEM), (prompts.screen_system, prompts.SCREEN_SYSTEM),
+    (prompts.narrative_system, prompts.NARRATIVE_SYSTEM)])
+@pytest.mark.parametrize("rt", ["narrative", "scoping"])
+def test_appended_type_blocks_state_that_they_override(builder, base, rt):
+    system = builder(rt)
+    if system == prompts.REFINE_SYSTEM_PCC:
+        return  # scoping refine is a dedicated PCC prompt, not an appended block
+    assert system.startswith(base) and prompts.OVERRIDE_LEAD in system[len(base):]
+    assert sha(builder("slr")) == sha(base)
+
+
+def test_scoping_extract_block_states_that_it_overrides():
+    assert prompts.OVERRIDE_LEAD in prompts.extract_system("scoping")

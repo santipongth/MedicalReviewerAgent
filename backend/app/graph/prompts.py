@@ -62,43 +62,45 @@ REFINE_CHECKLIST_PCC = """Checklist before answering:
 - outcomes list 1-6 aspects of the concept to chart; 1-4 sub_questions; key_terms include the concept with synonyms and MeSH
 - every field is in English; user constraints (dates, study types) are respected"""
 
-_PICO_NARRATIVE_BLOCK = """
+OVERRIDE_LEAD = "\nFor this review type, the following rules override any conflicting rule above:"
+
+_PICO_NARRATIVE_BLOCK = OVERRIDE_LEAD + """
 Review type: narrative review. The aim is a thematic overview of what is known, drawing on many study types
 including review articles, not a graded estimate of an effect."""
 
-_PCC_CRITIQUE_BLOCK = """
+_PCC_CRITIQUE_BLOCK = OVERRIDE_LEAD + """
 This is a scoping review framed with PCC (population, concept, context): check that concept and context are present
 and specific, intervention_or_exposure repeats the concept, a comparator is not required, and outcomes are aspects to
 chart rather than effect measures. Keep concept and context filled in the revised question."""
 
-_PLAN_NARRATIVE_BLOCK = """
+_PLAN_NARRATIVE_BLOCK = OVERRIDE_LEAD + """
 Review type: narrative review. Review articles are welcome, so the study-design query may name reviews or the most
 common design; criteria should admit several study types."""
 
-_PLAN_SCOPING_BLOCK = """
+_PLAN_SCOPING_BLOCK = OVERRIDE_LEAD + """
 Review type: scoping review. Keep queries broad (concept plus context, no outcome terms) so that every design is
 found; a study-design query is not needed. Inclusion criteria: any study design or review that addresses the concept
 in the context. Exclusion criteria: off-topic papers, editorials and protocols without results."""
 
-_SCREEN_NARRATIVE_BLOCK = """
+_SCREEN_NARRATIVE_BLOCK = OVERRIDE_LEAD + """
 Review type: narrative review. Narrative reviews, systematic reviews/meta-analyses and key primary studies are all
 acceptable; include what informs the topic and do not require a reported outcome. design_guess still applies."""
 
-_SCREEN_SCOPING_BLOCK = """
+_SCREEN_SCOPING_BLOCK = OVERRIDE_LEAD + """
 Review type: scoping review. Include any study design or review that addresses the concept in the context; a reported
 outcome or effect is not required and narrative reviews are acceptable. Exclude only off-topic papers, editorials and
 protocols without results."""
 
-_EXTRACT_SCOPING_BLOCK = """
+_EXTRACT_SCOPING_BLOCK = OVERRIDE_LEAD + """
 - Scoping review: outcomes are the aspects of the concept that the abstract reports (not necessarily effects); effect
   fields are usually none, so use null and effect_measure "none" unless the abstract states a number."""
 
-_NARRATIVE_NARRATIVE_BLOCK = """
+_NARRATIVE_NARRATIVE_BLOCK = OVERRIDE_LEAD + """
 Review type: narrative review. Write a thematic synthesis: group the papers by theme, describe where they agree or
 differ, and cite the papers inline. This review is not graded: do not describe the evidence as strong or weak in the
 summary; evidence_rationale is one neutral sentence about the mix of designs (evidence_strength is not shown)."""
 
-_NARRATIVE_SCOPING_BLOCK = """
+_NARRATIVE_SCOPING_BLOCK = OVERRIDE_LEAD + """
 Review type: scoping review. Write an evidence-map narrative: describe what kinds of studies exist (designs, years,
 populations, settings), which aspects of the concept are covered and where the gaps are. Do not judge whether the
 intervention works and do not grade the evidence; evidence_rationale is one neutral sentence about the mix of

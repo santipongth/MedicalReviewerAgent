@@ -120,19 +120,25 @@ class QueryPlan(BaseModel):
     exclusion_criteria: list[str]
 
 
-def _require_design_guess(schema: dict) -> None:
-    schema.setdefault("required", []).append("design_guess")
-    schema["properties"]["design_guess"].pop("default", None)  # strict tool schemas reject "default"
+ExclusionReason = Literal["off_topic", "population", "intervention_exposure", "outcome", "study_design",
+                          "publication_type", "other"]
+
+
+def _require_nullable(schema: dict) -> None:
+    for name in ("design_guess", "exclusion_reason"):
+        schema.setdefault("required", []).append(name)
+        schema["properties"][name].pop("default", None)  # strict tool schemas reject "default"
 
 
 class ScreenDecision(BaseModel):
-    model_config = ConfigDict(json_schema_extra=_require_design_guess)
+    model_config = ConfigDict(json_schema_extra=_require_nullable)
 
     ref: str
     relevance: int
     include: bool
     reason: str
     design_guess: DesignCategory | None = None  # from title/abstract; lets select_top keep narrative reviews out
+    exclusion_reason: ExclusionReason | None = None  # why an excluded paper was dropped (PRISMA); null when included
 
 
 class ScreenBatch(BaseModel):

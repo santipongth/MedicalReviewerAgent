@@ -217,10 +217,32 @@ def _plan_llm():
 
 
 @pytest.mark.parametrize("rt,expect_design", [("slr", True), ("narrative", False), ("scoping", False)])
-async def test_design_query_only_added_for_slr(rt, expect_design):
+async def test_design_query_unless_type_opts_out(rt, expect_design):
     planner = _plan_llm()
     state = {**STATE, "question": good_question().model_dump(), "options": {"review_type": rt}}
     out = await make_plan_queries(deps_with(planner=planner))(state)
     assert any("randomized controlled trial" in q for q in out["plan"]["queries"]) is expect_design
     assert len(out["plan"]["queries"]) == (3 if expect_design else 2)
     assert ("Review type" in planner.calls[0][0]) is (rt != "slr")
+
+
+@pytest.mark.parametrize("rt", ["slr", "narrative"])
+async def test_pico_types_drop_concept_and_context_a_refiner_filled_in(rt):
+    refiner = FakeStructuredLLM("ds", lambda s, u: _pcc())
+    state = {**STATE, "language": "en", "options": {"review_type": rt}}
+    out = await make_refine_question(deps_with(refiner, harness=HarnessSpec(refine_critique=False, localize=False)))(state)
+    assert out["question"]["concept"] is None and out["question"]["context"] is None
+
+
+@pytest.mark.parametrize("rt,framework,keeps", [("slr", "PICO", False), ("narrative", "PICO", False),
+                                                ("scoping", "PCC", True)])
+def test_question_block_shows_concept_only_for_pcc(rt, framework, keeps):
+    from app.graph.nodes.synthesis import _question_block
+    block = _question_block({**STATE, "options": {"review_type": rt}, "question": _pcc().model_dump()})
+    assert block["framework"] == framework
+    assert (block["concept"] == "metformin use") is keeps and (block["context"] is not None) is keeps
+
+
+def test_design_query_is_opt_out_so_new_types_keep_it():
+    from app.graph.nodes.intake import NO_DESIGN_QUERY
+    assert NO_DESIGN_QUERY == {"narrative", "scoping"} and "slr" not in NO_DESIGN_QUERY

@@ -18,6 +18,7 @@ from app.services.llm import LLMError, LLMOutputError, LLMRefusal
 from app.services.llm_config import HarnessSpec
 
 MAX_QUERIES = 4
+NO_DESIGN_QUERY = {"narrative", "scoping"}  # these want breadth; every other type keeps the design query
 
 
 def harness_spec(deps) -> HarnessSpec:
@@ -130,6 +131,8 @@ def make_refine_question(deps):
         if question is None:
             entry["seconds"] = round(time.perf_counter() - started, 3)
             return {"question": None, "cost_usd": cost, "errors": errors, "quality": [entry]}
+        if review_type != "scoping" and (question.concept or question.context):  # PCC fields are scoping-only
+            question = question.model_copy(update={"concept": None, "context": None})
         display, localize_cost = await _localized_display(deps, runner, question, state.get("language", "th"))
         cost += localize_cost
         writer({"type": "question_refined", **display})
@@ -196,7 +199,7 @@ def make_plan_queries(deps):
             if q and q.lower() not in seen:
                 seen[q.lower()] = q
         plan["queries"] = list(seen.values())[:MAX_QUERIES]
-        if review_type == "slr":  # narrative/scoping reviews want breadth, not a design-specific query
+        if review_type not in NO_DESIGN_QUERY:  # narrative/scoping reviews want breadth, not a design query
             plan["queries"] = ensure_design_query(plan["queries"], question)
         if question:  # PICO comes from the refined question so every stage judges against the same criteria
             for key in ("population", "intervention_or_exposure", "comparator", "outcomes"):
