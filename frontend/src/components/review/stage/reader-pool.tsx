@@ -7,16 +7,19 @@ const RING: Record<SlotState, string> = {
   waiting: "stroke-rule", reading: "stroke-primary", ok: "stroke-ok", failed: "stroke-err", uncertain: "stroke-warn",
 };
 
-function Slot({ slot }: { slot: ReaderSlot }) {
+/** Slot radius: narrow has a 30px pitch (r 12), wide a 26px pitch (r 11); both fit an 11px "P30". */
+const slotR = (layout: StageLayout): number => (layout.kind === "narrow" ? 12 : 11);
+
+function Slot({ slot, r }: { slot: ReaderSlot; r: number }) {
   const st = slot.state;
   return (
     <>
       <circle
-        r={10} className={`fill-surface ${RING[st]}${st === "reading" ? " stage-pulse" : ""}`}
+        r={r} className={`fill-surface ${RING[st]}${st === "reading" ? " stage-pulse" : ""}`}
         strokeWidth={st === "reading" ? 2 : 1.25} strokeDasharray={st === "waiting" ? "3 3" : undefined}
       />
       {st === "reading" && slot.ref && (
-        <text textAnchor="middle" y={3} fontSize={9} className="font-display fill-ink" style={{ fontVariantNumeric: "tabular-nums" }}>{slot.ref}</text>
+        <text textAnchor="middle" y={4} fontSize={11} className="font-display fill-ink" style={{ fontVariantNumeric: "tabular-nums" }}>{slot.ref}</text>
       )}
       {st === "ok" && <path d={CHECK} fill="none" className="stroke-ok" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />}
       {st === "failed" && <path d={CROSS} fill="none" className="stroke-err" strokeWidth={1.5} strokeLinecap="round" />}
@@ -39,7 +42,7 @@ export function ReaderPool({ slots, layout }: { slots: ReaderSlot[]; layout: Sta
         if (!slot) return null;
         return (
           <g key={i} data-testid={`reader-${slot.state}`} transform={`translate(${p.x} ${p.y})`}>
-            <Slot slot={slot} />
+            <Slot slot={slot} r={slotR(layout)} />
           </g>
         );
       })}

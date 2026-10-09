@@ -173,3 +173,64 @@ test("narrow geometry: the stage fits 390px and keeps its reader and synthesis l
   await expect(svg.getByText("ผู้อ่าน", { exact: true })).toBeVisible();
   await expect(svg.getByText("สังเคราะห์", { exact: true })).toBeVisible();
 });
+
+/** Every svg <text> box (CSS px) with its effective font size; refs are the reader-slot labels. */
+async function stageText(page: Page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector("svg[role=img]") as SVGSVGElement;
+    const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+    const box = svg.getBoundingClientRect();
+    const texts = [...svg.querySelectorAll("text")].map((t) => {
+      const r = t.getBoundingClientRect();
+      return {
+        text: t.textContent ?? "", ref: !!t.closest('[data-cluster="readers"]'), px: Number(t.getAttribute("font-size")) * scale,
+        x0: r.left, y0: r.top, x1: r.right, y1: r.bottom,
+      };
+    });
+    return { texts, box: { x0: box.left, x1: box.right }, scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth };
+  });
+}
+
+function overlaps(texts: Awaited<ReturnType<typeof stageText>>["texts"]) {
+  const bad: string[] = [];
+  for (let i = 0; i < texts.length; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      const a = texts[i];
+      const b = texts[j];
+      const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+      const h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+      if (w > 1 && h > 1) bad.push(`"${a.text}" x "${b.text}" (${w.toFixed(1)}x${h.toFixed(1)})`);
+    }
+  }
+  return bad;
+}
+
+const synthFrames = (): SseFrame[] => [{
+  delayMs: 0,
+  events: [...PRE_READ.map((s) => s.ev), ...READING, ...Array.from({ length: 30 }, (_, i) => extracted(i + 1)), ["synthesizing", { papers: 30, elapsed_s: 60 }]],
+}];
+
+for (const width of [390, 900, 1024]) {
+  for (const [name, frames] of [["reading", allAtOnce], ["synthesizing", synthFrames]] as const) {
+    test(`stage text at ${width}px (${name}): legible sizes, no collisions, no horizontal scroll`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await streamSse(page, frames());
+      await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: running });
+      await page.goto(`/r/${RID}`);
+      if (name === "reading") await expect(page.getByTestId("reader-ok")).toHaveCount(5);
+      else await expect(page.locator('[data-caption="synth"]')).toBeVisible();
+      await expect(page.locator("svg[role=img]")).toHaveAttribute("viewBox", width >= 1024 ? /^0 0 960 / : /^0 0 360 /);
+      await page.evaluate(() => document.fonts.ready);
+      const { texts, box, scrollW, innerW } = await stageText(page);
+      expect(scrollW).toBeLessThanOrEqual(innerW);
+      // 12px labels on a 360 viewBox drawn 358px wide are 11.93px: allow that rounding, nothing smaller
+      for (const t of texts) expect(t.px, `${t.text} font`).toBeGreaterThanOrEqual(t.ref ? 10.9 : 11.9);
+      for (const t of texts) {
+        expect(t.x0, `${t.text} inside left`).toBeGreaterThanOrEqual(box.x0 - 0.5);
+        expect(t.x1, `${t.text} inside right`).toBeLessThanOrEqual(box.x1 + 0.5);
+      }
+      expect(overlaps(texts)).toEqual([]);
+    });
+  }
+}

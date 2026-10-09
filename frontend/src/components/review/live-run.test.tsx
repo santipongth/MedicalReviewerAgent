@@ -40,6 +40,10 @@ describe("LiveRun", () => {
     expect(screen.getByText("Is the effect dose dependent?")).toBeInTheDocument();
     expect(screen.getByText("Cohort study")).toBeInTheDocument();
     expect(screen.getAllByText(/สองโมเดลอ่านต่างกัน/).length).toBeGreaterThan(0); // legend + ledger
+    // reader-pool honesty: an unfinished paper is "reading or queued" in both the legend and the ledger
+    expect(screen.getByRole("list", { name: "สัญลักษณ์" })).toHaveTextContent("กำลังอ่านหรือรอคิว");
+    expect(screen.getByText("Registry").closest("li")).toHaveTextContent("กำลังอ่านหรือรอคิว");
+    expect(screen.queryByText("กำลังอ่าน…")).not.toBeInTheDocument();
     expect(screen.getByText("P1")).not.toHaveClass("num-verified"); // a ref label, not a verified number
     expect(screen.getByText(/42 วินาที/)).toBeInTheDocument();
     expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("สังเคราะห์");

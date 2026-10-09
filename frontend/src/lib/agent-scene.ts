@@ -27,7 +27,7 @@ export const AGENT_LABEL: Record<AgentId, { th: string[]; role: string }> = {
   external: { th: ["เครื่องมือ", "ภายนอก"], role: "ปรึกษาเครื่องมือที่ผู้ดูแลตั้งไว้" },
   synth: { th: ["สังเคราะห์"], role: "เทียบผลและเขียนสรุป" },
   localize: { th: ["แปลภาษา"], role: "แปลรายงานเป็นภาษาไทย" },
-  finish: { th: ["เสร็จ"], role: "เรียบเรียงรายงาน" },
+  finish: { th: ["เรียบเรียง"], role: "เรียบเรียงรายงาน" },
 };
 
 export type EdgeId = `${AgentId}>${AgentId}`;
@@ -110,8 +110,12 @@ function refreshEdges(s: Scene): void {
     if (s.agents[a] === "done" && s.agents[b] === "done") s.edges[edgeId(a, b)] = "visited";
   }
   if (s.agents.read === "done" && s.agents.external === "done") s.edges["read>external"] = "visited";
-  // shortcut taken when localize is skipped (English reviews)
-  if (s.agents.synth === "done" && s.agents.localize === "skipped" && s.agents.finish === "done") s.edges["synth>finish"] = "visited";
+  // localize skipped: English reviews take the synth>finish shortcut; Thai lanes keep their localize node, so the
+  // path through it (synth>localize>finish) becomes the ghost edge instead
+  if (s.agents.synth === "done" && s.agents.localize === "skipped" && s.agents.finish === "done") {
+    if (s.expectLocalize) s.edges["synth>localize"] = s.edges["localize>finish"] = "visited";
+    else s.edges["synth>finish"] = "visited";
+  }
 }
 
 const TERMINAL_STATUS = new Set<Scene["status"]>(["done", "error", "rejected", "cancelled"]);
@@ -149,10 +153,18 @@ function advanceTo(s: Scene, id: AgentId, status: AgentStatus, alsoDone?: AgentI
   if (s.external && s.agents.external === "active" && idx > PIPELINE.indexOf("read")) s.agents.external = "done";
   refreshEdges(s);
   if (idx > 0 && isRunning(status)) {
-    // with localize skipped the lane has no localize node: the edge into finish is the synth>finish shortcut
-    const from: AgentId = id === "finish" && s.agents.localize === "skipped" ? "synth" : PIPELINE[idx - 1];
+    const from: AgentId = id === "finish" ? finishVia(s) : PIPELINE[idx - 1];
     s.edges[edgeId(from, id)] = "live";
   }
+}
+
+/**
+ * The edge into finish. English lanes have no localize node, so a skipped localize means the synth>finish shortcut.
+ * Thai lanes always draw localize (the layout follows `expectLocalize`), so even when `localizing` never arrives
+ * (no papers, localize off) the edge stays localize>finish and is drawable.
+ */
+function finishVia(s: Scene): AgentId {
+  return s.agents.localize === "skipped" && !s.expectLocalize ? "synth" : "localize";
 }
 
 function pushPulse(s: Scene, key: number, edge: EdgeId, kind: PulseKind, n: number): void {
@@ -380,8 +392,7 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
       break;
     case "finalizing": {
       advanceTo(s, "finish", "working");
-      const via: AgentId = s.agents.localize === "skipped" ? "synth" : "localize";
-      if (via === "synth") s.edges["synth>finish"] = "live";
+      const via = finishVia(s);
       pushPulse(s, ev.seq, edgeId(via, "finish"), "signal", 1);
       break;
     }

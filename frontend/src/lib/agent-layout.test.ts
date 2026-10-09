@@ -136,16 +136,17 @@ describe.each(["wide", "narrow"] as LayoutKind[])("scene edge ids exist in layou
     E(10, "external_lookup"), E(11, "reading", { ref: "P1" }), E(12, "extracted", { ref: "P1", ok: true }),
     E(13, "synthesizing", { papers: 1 }), ...(withLocalize ? [E(14, "localizing")] : []), E(15, "finalizing"), E(16, "done"),
   ];
-  for (const withLocalize of [true, false]) {
-    it(`every edge the scene emits is drawable (localize=${withLocalize})`, () => {
-      let s = initialScene({ language: withLocalize ? "th" : "en" });
+  // Thai without `localizing` = no papers or localize off: the lane still draws localize (it follows the language)
+  for (const [language, withLocalize] of [["th", true], ["en", false], ["th", false]] as const) {
+    it(`every edge the scene emits is drawable (${language}, localizing=${withLocalize})`, () => {
+      let s = initialScene({ language });
       const emitted = new Set<string>();
       for (const ev of walk(withLocalize)) {
         s = reduceScene(s, { kind: "event", ev });
         s.pulses.forEach((p) => emitted.add(p.edge));
         Object.keys(s.edges).forEach((k) => emitted.add(k));
       }
-      const ids = new Set(layoutFor(kind, { ...base, showLocalize: withLocalize }).edges.map((e) => e.id));
+      const ids = new Set(layoutFor(kind, { ...base, showLocalize: s.expectLocalize }).edges.map((e) => e.id));
       for (const id of emitted) expect(ids.has(id as EdgeId), id).toBe(true);
     });
   }

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { FLAG_PATHS } from "@/components/ui/evidence";
+import { READING_OR_QUEUED } from "@/lib/copy";
 import { CHECK, CROSS } from "./icons";
 
 function Sample({ children }: { children: ReactNode }) {
@@ -24,6 +25,9 @@ export function StageLegend() {
       </li>
       <li className="inline-flex items-center gap-1.5">
         <Sample><rect x={-8} y={-6} width={16} height={12} rx={2} fill="none" className="stroke-rule" strokeWidth={1} strokeDasharray="4 3" /></Sample>ข้ามขั้นนี้
+      </li>
+      <li className="inline-flex items-center gap-1.5">
+        <Sample><circle r={7} fill="none" className="stroke-primary" strokeWidth={2} /></Sample>{READING_OR_QUEUED}
       </li>
       <li className="inline-flex items-center gap-1.5">
         <Sample>

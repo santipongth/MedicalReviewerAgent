@@ -1,22 +1,31 @@
-import { layoutFor, type LayoutKind } from "@/lib/agent-layout";
+import { createContext, useContext } from "react";
 
-const OPTS = { showLocalize: true, showExternal: false, slots: 0, batches: 0, queries: 0 }; // what the first render lays out
+/**
+ * ViewBox sizes of the first stage render (no queries, batches or slots yet), precomputed so this eagerly loaded
+ * placeholder does not pull agent-layout into the page chunk. Pinned against layoutFor by stage-placeholder.test.tsx.
+ */
+export const PLACEHOLDER_SIZE = {
+  wide: { width: 960, height: 330 },
+  narrow: { width: 360, height: 794 }, // Thai: localize is in the lane
+  narrowNoLocalize: { width: 360, height: 718 },
+} as const;
 
-/** Viewbox size the stage will take first, per breakpoint (the placeholder reserves exactly this). */
-export function placeholderSize(kind: LayoutKind): { width: number; height: number } {
-  const { width, height } = layoutFor(kind, OPTS);
-  return { width, height };
-}
+/** Whether the lane will show localize (scene.expectLocalize). Unknown -> Thai, the common case. */
+export const StageLocalize = createContext(true);
 
-/** Reserves the stage's box while its chunk loads; breakpoints follow useWide() (md = 768px) via CSS, so no flip on desktop. */
+/**
+ * Reserves the stage's box while its chunk loads; breakpoints follow useWide() (lg = 1024px) via CSS, so no flip on
+ * desktop. Narrow is capped at 480px wide, like the stage (a tablet would otherwise scale the vertical lane ~2.5x).
+ */
 export function StagePlaceholder() {
-  const w = placeholderSize("wide");
-  const n = placeholderSize("narrow");
-  const box = "w-full max-w-[960px] rounded-sm border border-rule bg-surface";
+  const localize = useContext(StageLocalize);
+  const w = PLACEHOLDER_SIZE.wide;
+  const n = localize ? PLACEHOLDER_SIZE.narrow : PLACEHOLDER_SIZE.narrowNoLocalize;
+  const box = "w-full rounded-sm border border-rule bg-surface";
   return (
     <>
-      <div aria-hidden data-placeholder="narrow" className={`${box} md:hidden`} style={{ aspectRatio: `${n.width} / ${n.height}` }} />
-      <div aria-hidden data-placeholder="wide" className={`${box} hidden md:block`} style={{ aspectRatio: `${w.width} / ${w.height}` }} />
+      <div aria-hidden data-placeholder="narrow" className={`${box} max-w-[480px] lg:hidden`} style={{ aspectRatio: `${n.width} / ${n.height}` }} />
+      <div aria-hidden data-placeholder="wide" className={`${box} max-w-[960px] hidden lg:block`} style={{ aspectRatio: `${w.width} / ${w.height}` }} />
     </>
   );
 }

@@ -14,11 +14,13 @@ export interface StageLayout {
   label: Partial<Record<AgentId, "below" | "right">>;
   edges: { id: EdgeId; d: string; seg: Seg }[];
   /**
-   * Label contract for the renderer (Task 4): font <= 10px, every label <= 80px wide. `anchor` is the SVG text-anchor.
-   * Wide: "end"/"start" labels sit 8px left/right of the point (dy +3); the "middle" label sits 8px above its point.
-   * Narrow: all labels are "middle", drawn 14px below the point (points alternate between two rows 22px apart).
+   * Engine glyph at `at`, its label's baseline point at `text` (SVG text-anchor `anchor`), connector line from `from`.
+   * Label contract (font 12px): wide labels <= 80px wide; narrow labels <= 100px wide.
+   * Wide: points on an arc above search; "end"/"start" labels sit 8px left/right of the point, "middle" 8px above it.
+   * Narrow: one row of points under the search label; labels hang below the row in two alternating rows (even/odd)
+   * so neighbours never collide, and connectors start at the tile's bottom edge so they stay above every label.
    */
-  satellites: { label: string; at: Pt; anchor: "start" | "middle" | "end" }[];
+  satellites: { label: string; at: Pt; text: Pt; from: Pt; anchor: "start" | "middle" | "end" }[];
   queryChips: Rect[]; batchChips: Rect[]; slots: Pt[]; zone: Partial<Record<AgentId, Rect>>;
 }
 export interface LayoutOpts { showLocalize: boolean; showExternal: boolean; slots: number; batches: number; queries: number }
@@ -112,10 +114,10 @@ function wideLayout(o: LayoutOpts): StageLayout {
   const sy = laneY - 18; // arc centre sits above the node so the points clear the plan>search / search>enrich arcs
   const satellites = SATELLITES.map((name, i) => {
     const ang = (-150 + i * 30) * (Math.PI / 180);
-    return {
-      label: name, at: { x: sx + 58 * Math.cos(ang), y: sy + 58 * Math.sin(ang) },
-      anchor: (i < 2 ? "end" : i === 2 ? "middle" : "start") as "start" | "middle" | "end",
-    };
+    const at = { x: sx + 58 * Math.cos(ang), y: sy + 58 * Math.sin(ang) };
+    const anchor = (i < 2 ? "end" : i === 2 ? "middle" : "start") as "start" | "middle" | "end";
+    const text = anchor === "end" ? { x: at.x - 8, y: at.y + 4 } : anchor === "start" ? { x: at.x + 8, y: at.y + 4 } : { x: at.x, y: at.y - 8 };
+    return { label: name, at, text, from: { x: sx, y: laneY }, anchor };
   });
   zone.search = { x: sx - 140, y: 4, w: 280, h: 64 }; // lane arcs peak at y >= ~71, so they stay outside
 
@@ -165,16 +167,17 @@ function narrowLayout(o: LayoutOpts): StageLayout {
   for (const id of vis) {
     nodes[id] = { x: laneX, y };
     label[id] = "right";
-    const zy = y + 20; // zones start below the (right-hand) label
+    const zy = y + 26; // zones start below the (right-hand) label block (12px text, 14px pitch, up to 3 lines)
     let zh = 0;
     if (id === "plan" && nq > 0) {
       for (let i = 0; i < nq; i++) queryChips.push({ x: zx, y: zy + i * 22, w: zw, h: 18 });
       zh = nq * 22;
     } else if (id === "search") {
-      zh = 62;
-      satellites = SATELLITES.map((name, i) => ({
-        label: name, at: { x: zx + 30 + i * 52, y: zy + 8 + (i % 2) * 22 }, anchor: "middle" as const,
-      }));
+      zh = 50;
+      satellites = SATELLITES.map((name, i) => {
+        const at = { x: zx + 30 + i * 52, y: zy + 8 };
+        return { label: name, at, text: { x: at.x, y: at.y + (i % 2 ? 36 : 19) }, from: { x: laneX, y: y + 22 }, anchor: "middle" as const };
+      });
     } else if (id === "screen" && nb > 0) {
       for (let i = 0; i < nb; i++) batchChips.push({ x: zx + i * 27, y: zy, w: 24, h: 18 });
       zh = 22;
@@ -183,7 +186,7 @@ function narrowLayout(o: LayoutOpts): StageLayout {
       zh = Math.ceil(ns / 7) * 30;
     }
     if (zh > 0) zone[id] = { x: zx, y: zy, w: zw, h: zh };
-    let next = y + Math.max(76, zh + 50);
+    let next = y + Math.max(76, zh + 56); // the next label block (up to 21px above its node) clears this zone
     if (id === "read" && o.showExternal) {
       // side node kept in the lane (below the pool) so its edges never cross the zones; synth follows
       nodes.external = { x: laneX, y: next };

@@ -222,12 +222,23 @@ describe("pause, resume and terminal events", () => {
     expect(s.status).toBe("cancelled");
     expect(s.agents.screen).toBe("skipped");
   });
-  it("localize is skipped when finalizing arrives without localizing", () => {
-    const s = run([...live(12), ev(13, "synthesizing", { papers: 1 }), ev(14, "finalizing")]);
+  it("localize is skipped when finalizing arrives without localizing (English: synth>finish shortcut)", () => {
+    const s = run([...live(12), ev(13, "synthesizing", { papers: 1 }), ev(14, "finalizing")], initialScene({ language: "en" }));
     expect(agents(s, "synth", "localize", "finish")).toEqual(["done", "skipped", "working"]);
     expect(s.pulses.at(-1)).toMatchObject({ edge: "synth>finish" });
     expect(s.edges["synth>finish"]).toBe("live");
     expect(s.edges["localize>finish"]).toBeUndefined();
+  });
+  it("a Thai review without localizing keeps the drawable localize>finish edge", () => {
+    const s = run([...live(12), ev(13, "synthesizing", { papers: 1 }), ev(14, "finalizing")]);
+    expect(agents(s, "synth", "localize", "finish")).toEqual(["done", "skipped", "working"]);
+    expect(s.pulses.at(-1)).toMatchObject({ edge: "localize>finish" });
+    expect(s.edges["localize>finish"]).toBe("live");
+    expect(s.edges["synth>finish"]).toBeUndefined();
+    const d = run([ev(15, "done")], s);
+    expect(d.edges["localize>finish"]).toBe("visited");
+    expect(d.edges["synth>localize"]).toBe("visited");
+    expect(d.edges["synth>finish"]).toBeUndefined();
   });
   it("currentAgent", () => {
     expect(currentAgent(initialScene())).toBeNull();
@@ -238,7 +249,7 @@ describe("pause, resume and terminal events", () => {
 describe("fix round 1", () => {
   const liveEdges = (s: Scene) => Object.entries(s.edges).filter(([, v]) => v === "live");
   it("synth>finish shortcut becomes visited after done", () => {
-    const s = run([...live(12), ev(13, "synthesizing", { papers: 1 }), ev(14, "finalizing"), ev(15, "done")]);
+    const s = run([...live(12), ev(13, "synthesizing", { papers: 1 }), ev(14, "finalizing"), ev(15, "done")], initialScene({ language: "en" }));
     expect(s.edges["synth>finish"]).toBe("visited");
     expect(liveEdges(s)).toEqual([]);
   });

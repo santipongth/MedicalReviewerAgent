@@ -3,6 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialScene, reduceScene, type Scene } from "@/lib/agent-scene";
 import type { ReviewEvent } from "@/lib/types";
 import { AgentStage } from "./agent-stage";
+import { WIDE_QUERY } from "./use-wide";
+
+const reducedMotion = vi.hoisted(() => ({ value: false }));
+vi.mock("motion/react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("motion/react")>()),
+  useReducedMotion: () => reducedMotion.value,
+}));
 
 const EVENTS: [string, Record<string, unknown>][] = [
   ["queued", { topic: "metformin" }], ["started", { resume: false, elapsed_s: 0.1 }],
@@ -24,13 +31,44 @@ const live = (n = EVENTS.length) => EVENTS.slice(0, n).map(([t, p], i) => ev(i +
 
 function mockWide(wide: boolean) {
   vi.stubGlobal("matchMedia", (q: string) => ({
-    matches: wide, media: q, addEventListener: () => {}, removeEventListener: () => {},
+    matches: q === WIDE_QUERY ? wide : false, media: q, addEventListener: () => {}, removeEventListener: () => {},
   }));
 }
 const svg = (c: HTMLElement) => c.querySelector("svg[role=img]") as SVGSVGElement;
 
 describe("AgentStage", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    reducedMotion.value = false;
+  });
+
+  it("switches to the wide lane at the lg breakpoint (1024px)", () => {
+    expect(WIDE_QUERY).toBe("(min-width: 1024px)");
+  });
+
+  it("fades the zone tint in 0.3s, or instantly under reduced motion", () => {
+    mockWide(true);
+    const a = render(<AgentStage scene={run(live())} />);
+    expect(a.container.querySelector('[data-zone="read"]')).toHaveAttribute("data-fade", "0.3");
+    a.unmount();
+    reducedMotion.value = true;
+    const b = render(<AgentStage scene={run(live())} />);
+    expect(b.container.querySelector('[data-zone="read"]')).toHaveAttribute("data-fade", "0");
+  });
+
+  it("uses >= 12px node labels and >= 11px reader refs in both layouts", () => {
+    for (const wide of [false, true]) {
+      mockWide(wide);
+      const { container, unmount } = render(<AgentStage scene={run(live(11))} />);
+      const sizes = (sel: string) => [...container.querySelectorAll(sel)].map((el) => Number(el.getAttribute("font-size")));
+      const labels = sizes("[data-agent] text");
+      expect(labels.length).toBeGreaterThan(0);
+      expect(Math.min(...labels)).toBeGreaterThanOrEqual(12);
+      expect(Math.min(...sizes('[data-satellite] text, [data-cluster="queries"] text'))).toBeGreaterThanOrEqual(12);
+      expect(Math.min(...sizes('[data-cluster="readers"] text'))).toBeGreaterThanOrEqual(11);
+      unmount();
+    }
+  });
 
   it("draws the full live state: read active, one reader ok, 29 waiting, aria-label mentions reading", () => {
     mockWide(true);
@@ -47,6 +85,7 @@ describe("AgentStage", () => {
     mockWide(false);
     const narrow = render(<AgentStage scene={run(live())} />);
     expect(svg(narrow.container).getAttribute("viewBox")).toMatch(/^0 0 360 /);
+    expect(svg(narrow.container)).toHaveClass("max-w-[480px]"); // same cap as the narrow placeholder
     narrow.unmount();
     mockWide(true);
     const wide = render(<AgentStage scene={run(live())} />);
@@ -90,10 +129,20 @@ describe("AgentStage", () => {
     expect(screen.getByText(/กำลังเทียบผลและเขียนสรุป/)).toBeInTheDocument();
   });
 
+  it("puts the narrow synth caption under the synth label, clear of the lane", () => {
+    mockWide(false);
+    const evs = [...live(10), ev(50, "synthesizing", { papers: 1 })];
+    const { container } = render(<AgentStage scene={run(evs)} />);
+    const cap = container.querySelector('[data-caption="synth"]')!;
+    expect(Number(cap.getAttribute("x"))).toBe(70);
+    expect(cap.querySelectorAll("tspan")).toHaveLength(2);
+    expect(Number(cap.getAttribute("font-size"))).toBeGreaterThanOrEqual(12);
+  });
+
   it("captions the waiting and polling states", () => {
     mockWide(true);
     const { rerender } = render(<AgentStage scene={run(live(1))} />);
-    expect(screen.getByText(/รอคิว/)).toBeInTheDocument();
+    expect(screen.getByText(/^รอคิว · /)).toBeInTheDocument();
     rerender(<AgentStage scene={run(live(3))} connection="polling" />);
     expect(screen.getByText("อัปเดตทุกไม่กี่วินาที")).toBeInTheDocument();
   });

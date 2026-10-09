@@ -17,6 +17,9 @@ const STROKE: Record<AgentStatus, { cls: string; w: number; dash?: string }> = {
 };
 
 const NUM = { fontVariantNumeric: "tabular-nums" } as const;
+export const LABEL_FONT = 12; // >= 12px effective: narrow viewBox is ~1:1 at 390px, wide is >= ~0.96 from 1024px up
+const PITCH = 14; // label line pitch (one <text>, tspans)
+const COUNT_GAP = 17; // label baseline -> count baseline: a 12px Thai glyph cell is ~17px tall, so the boxes never meet
 
 export interface AgentNodeProps {
   id: AgentId;
@@ -36,10 +39,10 @@ export function AgentNode({ id, at, status, label, count, labelAt = "below" }: A
   const right = labelAt === "right";
   const lx = right ? HALF + 8 : 0;
   const hasCount = count != null && count !== "";
-  // right: the label block (plus count line) is centred on the tile; count sits one line below the last label line
-  const lines = label.length + (hasCount ? 1 : 0);
-  const ly = right ? -((lines - 1) * 6) + 3 : HALF + 12;
-  const cy = ly + label.length * 12;
+  // right: the label block (plus count line) is centred on the tile; the count sits COUNT_GAP below the last label line
+  const block = (label.length - 1) * PITCH + (hasCount ? COUNT_GAP : 0);
+  const ly = right ? -block / 2 + 4 : HALF + PITCH;
+  const cy = ly + (label.length - 1) * PITCH + COUNT_GAP;
   return (
     <g data-agent={id} data-status={status} transform={`translate(${at.x} ${at.y})`}>
       <m.g animate={{ scale: status === "active" ? 1.06 : 1 }} transition={{ duration: 0.2, ease: "easeOut" }}>
@@ -63,13 +66,13 @@ export function AgentNode({ id, at, status, label, count, labelAt = "below" }: A
           </g>
         )}
       </m.g>
-      <text x={lx} y={ly} textAnchor={right ? "start" : "middle"} className={`font-display ${textCls}`} fontSize={10}>
+      <text x={lx} y={ly} textAnchor={right ? "start" : "middle"} className={`font-display ${textCls}`} fontSize={LABEL_FONT}>
         {label.map((line, i) => (
-          <tspan key={i} x={lx} dy={i === 0 ? 0 : 12}>{line}</tspan>
+          <tspan key={i} x={lx} dy={i === 0 ? 0 : PITCH}>{line}</tspan>
         ))}
       </text>
       {hasCount && (
-        <text x={lx} y={cy} textAnchor={right ? "start" : "middle"} className="font-display fill-muted" style={NUM} fontSize={10} data-count>
+        <text x={lx} y={cy} textAnchor={right ? "start" : "middle"} className="font-display fill-muted" style={NUM} fontSize={LABEL_FONT} data-count>
           {count}
         </text>
       )}

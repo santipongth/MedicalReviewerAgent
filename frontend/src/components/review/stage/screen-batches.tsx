@@ -24,7 +24,7 @@ export function ScreenBatches({ scene, layout }: { scene: Scene; layout: StageLa
         );
       })}
       {zone && finished && screenedTotal > 0 && (
-        <text x={zone.x + zone.w / 2} y={zone.y + zone.h + 12} textAnchor="middle" fontSize={10} className="font-display fill-muted" style={NUM} data-caption="screened">
+        <text x={zone.x + zone.w / 2} y={zone.y + zone.h + 12} textAnchor="middle" fontSize={12} className="font-display fill-muted" style={NUM} data-caption="screened">
           {`ผ่าน ${kept} · ตัดออก ${Math.max(0, screenedTotal - kept)}`}
         </text>
       )}

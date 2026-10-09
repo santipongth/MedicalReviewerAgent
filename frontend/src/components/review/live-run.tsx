@@ -4,14 +4,15 @@ import { CopyLinkButton } from "@/components/ui/copy-link";
 import { Term } from "@/components/ui/term";
 import { UncertainFlag } from "@/components/ui/evidence";
 import type { Scene } from "@/lib/agent-scene";
-import { TYPICAL_DURATION_TH } from "@/lib/copy";
+import { READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
 import type { Connection } from "@/lib/use-review";
 import { MilestoneStatus } from "./stage/milestone-status";
-import { StagePlaceholder } from "./stage/stage-placeholder";
+import { StageLocalize, StagePlaceholder } from "./stage/stage-placeholder";
 import { TraceLog } from "./stage/trace-log";
 
 // Client-only chunk (motion lives here); the placeholder reserves the stage's aspect so nothing shifts on load.
+// LiveRun renders after the review (and so its language) has loaded, so the placeholder knows whether localize shows.
 const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.AgentStage), {
   ssr: false,
   loading: () => <StagePlaceholder />,
@@ -66,7 +67,9 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
       </div>
 
       <div className="grid gap-3">
-        <AgentStage scene={scene} connection={connection} />
+        <StageLocalize.Provider value={scene.expectLocalize}>
+          <AgentStage scene={scene} connection={connection} />
+        </StageLocalize.Provider>
         <MilestoneStatus scene={scene} />
       </div>
 
@@ -142,7 +145,7 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
                     <span className="font-code font-medium">{r.ref}</span>
                     <span className="min-w-0 break-words">{r.title}</span>
                     <span className={r.state === "failed" ? "text-err" : r.state === "ok" ? "text-ok" : "text-muted"}>
-                      {r.state === "reading" ? "กำลังอ่าน…" : r.state === "failed" ? "อ่านไม่สำเร็จ" : r.uncertain ? (
+                      {r.state === "reading" ? READING_OR_QUEUED : r.state === "failed" ? "อ่านไม่สำเร็จ" : r.uncertain ? (
                         <>เสร็จ · <Term k="uncertain"><UncertainFlag /></Term></>
                       ) : "เสร็จ"}
                     </span>
