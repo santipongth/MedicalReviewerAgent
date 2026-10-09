@@ -7,6 +7,9 @@ export const DIRECTION_LABEL: Record<Lang, Record<Direction, string>> = {
   en: { positive: "Supports", negative: "Opposite / harm", null: "No association", mixed: "Mixed", unclear: "Unclear" },
 };
 
+/** Fixed display order of directions (never ranked by count). Re-exported by live-evidence.ts. */
+export const DIRECTION_ORDER: Direction[] = ["positive", "negative", "null", "mixed", "unclear"];
+
 export const STRENGTH_LABEL: Record<Lang, Record<EvidenceStrength, string>> = {
   th: { high: "สูง", moderate: "ปานกลาง", low: "ต่ำ", very_low: "ต่ำมาก" },
   en: { high: "High", moderate: "Moderate", low: "Low", very_low: "Very low" },

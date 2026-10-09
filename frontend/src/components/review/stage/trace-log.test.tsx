@@ -4,8 +4,8 @@ import type { TraceRow } from "@/lib/agent-scene";
 import { nearBottom, TraceLog } from "./trace-log";
 
 const rows: TraceRow[] = [
-  { key: 1, type: "started", text: "เริ่มงาน", elapsed: 0.4, repeat: 1 },
-  { key: 2, type: "extracted", text: "อ่านบทความ", elapsed: 75, repeat: 6 },
+  { key: 1, type: "started", text: "เริ่มงาน", elapsed: 0.4, repeat: 1, agent: null },
+  { key: 2, type: "extracted", text: "อ่านบทความ", elapsed: 75, repeat: 6, agent: "read" },
 ];
 
 describe("TraceLog", () => {
@@ -36,7 +36,7 @@ describe("TraceLog", () => {
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => geom.scrollHeight });
     Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => geom.clientHeight });
     try {
-      const mk = (n: number): TraceRow[] => Array.from({ length: n }, (_, i) => ({ key: i, type: "extracted", text: "t", elapsed: i, repeat: 1 }));
+      const mk = (n: number): TraceRow[] => Array.from({ length: n }, (_, i) => ({ key: i, type: "extracted", text: "t", elapsed: i, repeat: 1, agent: "read" }));
       const { rerender } = render(<TraceLog rows={mk(3)} />);
       const box = screen.getByRole("region", { name: "บันทึกการทำงาน" }).querySelector("div")!;
       for (let n = 4; n < 8; n++) {

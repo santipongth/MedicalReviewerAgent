@@ -10,7 +10,16 @@
 //   reading -> a paper entered the read pool  extracted -> a paper finished; the last one ends read, starts synth
 //   synthesizing -> synth runs                localizing -> synth ends, localize runs
 //   finalizing -> localize ends (or is skipped), finish runs        done -> everything ends
-import type { ReviewEvent } from "./types";
+//
+// Step spans (`spans`, for durations in the grouped log) come only from received `elapsed_s` values, never a client
+// clock. A post-pass (`updateSpans`) diffs agent statuses before/after each event:
+//   - entering active/working with no start yet -> start = elapsed_s of that event (paused -> working keeps the start)
+//   - leaving active/working/paused for done/failed/skipped -> end = elapsed_s of that event
+//   - idle -> done directly (a silent phase, e.g. plan on `planning`) -> start = end of the previous PIPELINE agent
+//     ("a step ends when the next begins"), end = elapsed_s
+//   - an event without elapsed_s leaves the field null (so no duration is shown for that step)
+import { asDesign, asDirection } from "./live-evidence";
+import type { DesignCategory, Direction, ReviewEvent } from "./types";
 import type { Connection } from "./use-review"; // type only (erased): no runtime cycle
 
 export type AgentId =
@@ -36,8 +45,16 @@ export type EdgeState = "idle" | "live" | "visited"; // visited = observatory "g
 export type PulseKind = "query" | "paper" | "kept" | "card" | "failed" | "signal";
 export interface Pulse { key: number; edge: EdgeId; kind: PulseKind; n: number } // key = event seq; n in 1..8
 export type SlotState = "waiting" | "reading" | "ok" | "failed" | "uncertain";
-export interface ReaderSlot { ref: string | null; state: SlotState }
-export interface TraceRow { key: number; type: string; text: string; elapsed: number | null; repeat: number }
+export interface ReaderSlot {
+  ref: string | null; state: SlotState;
+  title: string | null; // from reading.title (trimmed, <= 200 chars)
+  direction: Direction | null; // extracted.direction via asDirection; null when failed/missing/unknown
+  design: DesignCategory | null; // extracted.design via asDesign
+  verified: number | null; // count of numbers that passed verification
+  doneKey: number | null; // seq of the extracted event that last changed state or direction
+}
+export interface TraceRow { key: number; type: string; text: string; elapsed: number | null; repeat: number; agent: AgentId | null }
+export interface StepSpan { start: number | null; end: number | null } // elapsed_s only
 export interface Scene {
   lastSeq: number;
   status: "waiting" | "running" | "paused" | "done" | "error" | "rejected" | "cancelled";
@@ -56,6 +73,7 @@ export interface Scene {
   external: boolean;
   expectLocalize: boolean; // from review.language === "th"
   elapsed: number;
+  spans: Partial<Record<AgentId, StepSpan>>;
 }
 export type SceneAction = { kind: "event"; ev: ReviewEvent } | { kind: "lang"; language: string };
 
@@ -76,6 +94,7 @@ export function initialScene(opts?: { language?: string }): Scene {
       readOk: 0, readFailed: 0, uncertain: 0, synthPapers: null,
     },
     queries: [], slots: [], pulses: [], trace: [], external: false, expectLocalize: opts?.language === "th", elapsed: 0,
+    spans: {},
   };
 }
 
@@ -91,6 +110,12 @@ function toNum(v: unknown): number | null {
 }
 const num = (v: unknown): number => toNum(v) ?? 0;
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+const MAX_TITLE = 200;
+function titleOf(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t === "" ? null : t.slice(0, MAX_TITLE);
+}
 const pulseN = (n: number): number => Math.max(1, Math.min(8, Math.floor(n)));
 
 function edgeId(a: AgentId, b: AgentId): EdgeId {
@@ -199,6 +224,10 @@ function recountSlots(s: Scene): void {
   s.counts.uncertain = unc;
 }
 
+export function emptySlot(ref: string | null): ReaderSlot {
+  return { ref, state: "waiting", title: null, direction: null, design: null, verified: null, doneKey: null };
+}
+
 /** Slot for `ref`: existing, else first free (no ref yet), else append while under the cap. Returns index or -1. */
 function slotFor(s: Scene, ref: string | null): number {
   if (ref !== null) {
@@ -208,7 +237,7 @@ function slotFor(s: Scene, ref: string | null): number {
   const free = s.slots.findIndex((sl) => sl.ref === null);
   if (free >= 0) return free;
   if (s.slots.length < MAX_SLOTS) {
-    s.slots.push({ ref, state: "waiting" });
+    s.slots.push(emptySlot(ref));
     return s.slots.length - 1;
   }
   return -1;
@@ -253,6 +282,17 @@ function traceText(type: string, p: Record<string, unknown>, s: Scene): string {
 
 const MERGE = new Set(["screening", "reading"]);
 
+const TRACE_AGENT: Record<string, AgentId> = {
+  checking_topic: "guard", refining: "refine", question_refined: "refine", planning: "plan", searching: "search",
+  enriching: "enrich", screening: "screen", screened: "screen", external_lookup: "external", reading: "read",
+  extracted: "read", synthesizing: "synth", localizing: "localize", finalizing: "finish",
+};
+
+/** The agent a trace row belongs to (status rows such as queued/started/done -> null). */
+export function traceAgent(type: string): AgentId | null {
+  return Object.prototype.hasOwnProperty.call(TRACE_AGENT, type) ? TRACE_AGENT[type] : null;
+}
+
 function pushTrace(s: Scene, ev: ReviewEvent, p: Record<string, unknown>): void {
   const elapsed = toNum(p.elapsed_s);
   const last = s.trace[s.trace.length - 1];
@@ -262,7 +302,39 @@ function pushTrace(s: Scene, ev: ReviewEvent, p: Record<string, unknown>): void 
     s.trace = [...s.trace.slice(0, -1), { ...last, repeat, text, elapsed: elapsed ?? last.elapsed }];
     return;
   }
-  s.trace = [...s.trace, { key: ev.seq, type: ev.type, text: traceText(ev.type, p, s), elapsed, repeat: 1 }].slice(-MAX_TRACE);
+  s.trace = [...s.trace, { key: ev.seq, type: ev.type, text: traceText(ev.type, p, s), elapsed, repeat: 1, agent: traceAgent(ev.type) }].slice(-MAX_TRACE);
+}
+
+// --- step spans (see header) ------------------------------------------------------------------------------------
+
+const ENDED = new Set<AgentStatus>(["done", "failed", "skipped"]);
+
+/** Diffs agent statuses before/after one event and records span starts/ends (copy-on-write on `next.spans`). */
+function updateSpans(prev: Scene, next: Scene, el: number | null): void {
+  const spans: Scene["spans"] = { ...next.spans };
+  let changed = false;
+  const get = (id: AgentId): StepSpan | undefined => spans[id];
+  const put = (id: AgentId, sp: StepSpan): void => {
+    spans[id] = sp;
+    changed = true;
+  };
+  // PIPELINE order, so a silent phase sees the previous agent's end even when both change in the same event.
+  for (const id of [...PIPELINE, "external" as AgentId]) {
+    const a = prev.agents[id];
+    const b = next.agents[id];
+    if (a === b) continue;
+    const cur = get(id) ?? { start: null, end: null };
+    if (isRunning(b) && a !== "paused") {
+      if (cur.start === null && el !== null) put(id, { ...cur, start: el });
+    } else if ((isRunning(a) || a === "paused") && ENDED.has(b)) {
+      if (el !== null) put(id, { ...cur, end: el });
+    } else if (a === "idle" && b === "done") {
+      const i = PIPELINE.indexOf(id);
+      const before = i > 0 ? (get(PIPELINE[i - 1])?.end ?? null) : null;
+      put(id, { start: cur.start ?? before, end: el ?? cur.end });
+    }
+  }
+  if (changed) next.spans = spans;
 }
 
 // --- reducer -----------------------------------------------------------------------------------------------------
@@ -344,7 +416,7 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
       // Idempotent (a restarted worker may re-emit `screened`): keep slots that have a ref, resize only the waiting tail.
       const want = Math.min(Math.max(kept, 0), MAX_SLOTS);
       while (s.slots.length > want && s.slots[s.slots.length - 1].ref === null) s.slots.pop();
-      while (s.slots.length < want) s.slots.push({ ref: null, state: "waiting" });
+      while (s.slots.length < want) s.slots.push(emptySlot(null));
       recountSlots(s);
       advanceTo(s, "read", "working", "screen");
       pushPulse(s, ev.seq, "screen>read", "kept", Math.min(kept, 8));
@@ -363,6 +435,7 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
         s.slots[i].ref = str(p.ref) ?? s.slots[i].ref;
         s.slots[i].state = "reading";
       }
+      if (i >= 0) s.slots[i].title = titleOf(p.title) ?? s.slots[i].title;
       break;
     }
     case "extracted": {
@@ -370,9 +443,17 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
       const next: SlotState = p.ok === true ? (p.uncertain === true ? "uncertain" : "ok") : "failed";
       const i = slotFor(s, str(p.ref));
       if (i >= 0) {
-        const changed = s.slots[i].state !== next;
-        s.slots[i].ref = str(p.ref) ?? s.slots[i].ref;
-        s.slots[i].state = next;
+        const sl = s.slots[i];
+        const changed = sl.state !== next;
+        const ok = next !== "failed";
+        const direction = ok ? asDirection(p.direction) : null;
+        // Resume re-emits the same result: doneKey (which drives board/pile animation) moves only on a real change.
+        if (changed || direction !== sl.direction) sl.doneKey = ev.seq;
+        sl.ref = str(p.ref) ?? sl.ref;
+        sl.state = next;
+        sl.direction = direction;
+        sl.design = ok ? asDesign(p.design) : null;
+        sl.verified = ok ? toNum(p.verified) : null;
         if (changed) pushPulse(s, ev.seq, "read>synth", next === "failed" ? "failed" : "card", 1);
       }
       recountSlots(s);
@@ -435,6 +516,7 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
       break; // unknown event: trace row only (forward compatible)
   }
   if (TERMINAL_STATUS.has(s.status)) retireLiveEdges(s);
+  updateSpans(state, s, el);
   pushTrace(s, ev, p);
   return s;
 }

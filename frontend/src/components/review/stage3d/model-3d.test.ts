@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  MAX_DOTS, PACKET_CAP, PIPELINE, initialScene, planDots, reduceScene, takeFreshPulses, type AgentStatus, type Pulse,
+  MAX_DOTS, PACKET_CAP, PIPELINE, emptySlot, initialScene, planDots, reduceScene, takeFreshPulses, type AgentStatus, type Pulse,
   type Scene,
 } from "@/lib/agent-scene";
 import { layout3dFor } from "@/lib/agent-layout-3d";
@@ -162,9 +162,9 @@ describe("labels", () => {
     const s: Scene = {
       ...initialScene(),
       slots: [
-        { ref: "P1", state: "reading" }, { ref: "P2", state: "reading" }, { ref: "P3", state: "reading" },
-        { ref: "P4", state: "reading" }, { ref: "P5", state: "reading" }, { ref: "P6", state: "ok" },
-        { ref: "P7", state: "uncertain" }, { ref: "P8", state: "failed" }, { ref: null, state: "waiting" },
+        { ...emptySlot("P1"), state: "reading" }, { ...emptySlot("P2"), state: "reading" }, { ...emptySlot("P3"), state: "reading" },
+        { ...emptySlot("P4"), state: "reading" }, { ...emptySlot("P5"), state: "reading" }, { ...emptySlot("P6"), state: "ok" },
+        { ...emptySlot("P7"), state: "uncertain" }, { ...emptySlot("P8"), state: "failed" }, emptySlot(null),
       ],
     };
     s.counts = { ...s.counts, readOk: 2, uncertain: 1, readFailed: 1 };
