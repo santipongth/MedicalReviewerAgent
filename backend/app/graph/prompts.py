@@ -43,6 +43,97 @@ REFINE_CHECKLIST = """Checklist before answering:
 - every field is in English; user constraints (dates, study types) are respected"""
 
 
+REFINE_SYSTEM_PCC = """You are a senior clinical research librarian. Before any searching, you interpret the user's topic and
+rewrite it as ONE precise research question for a scoping review, which maps what evidence exists rather than
+estimating an effect.
+Work in English. Decide the question type, write a 1-2 sentence interpretation of what the user wants to map, then
+the refined question with PCC elements: population, concept (the phenomenon, intervention or exposure being mapped,
+also copied into intervention_or_exposure) and context (setting, geography or care level). Leave comparator empty
+unless the user asks for a comparison. outcomes are the aspects of the concept to chart (e.g. study designs used,
+populations, measures, gaps), at most 6, most important first. Add suitable study designs (any design may qualify;
+say so) and a timeframe when the user restricted dates.
+Keep it broad: add 1-4 sub-questions that cover the main aspects to map. List key search terms with synonyms and the
+MeSH heading. When the topic is ambiguous, choose the most common meaningful interpretation, record that choice in
+assumptions and the alternatives in ambiguities. Do not invent facts about the evidence."""
+
+REFINE_CHECKLIST_PCC = """Checklist before answering:
+- refined_question is one question ending with "?" (40-400 characters)
+- population, concept and context are specific; intervention_or_exposure repeats the concept; comparator may be empty
+- outcomes list 1-6 aspects of the concept to chart; 1-4 sub_questions; key_terms include the concept with synonyms and MeSH
+- every field is in English; user constraints (dates, study types) are respected"""
+
+_PICO_NARRATIVE_BLOCK = """
+Review type: narrative review. The aim is a thematic overview of what is known, drawing on many study types
+including review articles, not a graded estimate of an effect."""
+
+_PCC_CRITIQUE_BLOCK = """
+This is a scoping review framed with PCC (population, concept, context): check that concept and context are present
+and specific, intervention_or_exposure repeats the concept, a comparator is not required, and outcomes are aspects to
+chart rather than effect measures. Keep concept and context filled in the revised question."""
+
+_PLAN_NARRATIVE_BLOCK = """
+Review type: narrative review. Review articles are welcome, so the study-design query may name reviews or the most
+common design; criteria should admit several study types."""
+
+_PLAN_SCOPING_BLOCK = """
+Review type: scoping review. Keep queries broad (concept plus context, no outcome terms) so that every design is
+found; a study-design query is not needed. Inclusion criteria: any study design or review that addresses the concept
+in the context. Exclusion criteria: off-topic papers, editorials and protocols without results."""
+
+_SCREEN_NARRATIVE_BLOCK = """
+Review type: narrative review. Narrative reviews, systematic reviews/meta-analyses and key primary studies are all
+acceptable; include what informs the topic and do not require a reported outcome. design_guess still applies."""
+
+_SCREEN_SCOPING_BLOCK = """
+Review type: scoping review. Include any study design or review that addresses the concept in the context; a reported
+outcome or effect is not required and narrative reviews are acceptable. Exclude only off-topic papers, editorials and
+protocols without results."""
+
+_EXTRACT_SCOPING_BLOCK = """
+- Scoping review: outcomes are the aspects of the concept that the abstract reports (not necessarily effects); effect
+  fields are usually none, so use null and effect_measure "none" unless the abstract states a number."""
+
+_NARRATIVE_NARRATIVE_BLOCK = """
+Review type: narrative review. Write a thematic synthesis: group the papers by theme, describe where they agree or
+differ, and cite the papers inline. This review is not graded: do not describe the evidence as strong or weak in the
+summary; evidence_rationale is one neutral sentence about the mix of designs (evidence_strength is not shown)."""
+
+_NARRATIVE_SCOPING_BLOCK = """
+Review type: scoping review. Write an evidence-map narrative: describe what kinds of studies exist (designs, years,
+populations, settings), which aspects of the concept are covered and where the gaps are. Do not judge whether the
+intervention works and do not grade the evidence; evidence_rationale is one neutral sentence about the mix of
+designs (evidence_strength is not shown)."""
+
+
+def refine_system(review_type: str = "slr") -> str:
+    if review_type == "scoping":
+        return REFINE_SYSTEM_PCC
+    return REFINE_SYSTEM + _PICO_NARRATIVE_BLOCK if review_type == "narrative" else REFINE_SYSTEM
+
+
+def refine_checklist(review_type: str = "slr") -> str:
+    return REFINE_CHECKLIST_PCC if review_type == "scoping" else REFINE_CHECKLIST
+
+
+def critique_system(review_type: str = "slr") -> str:
+    if review_type == "scoping":
+        return CRITIQUE_SYSTEM + _PCC_CRITIQUE_BLOCK
+    return CRITIQUE_SYSTEM + _PICO_NARRATIVE_BLOCK if review_type == "narrative" else CRITIQUE_SYSTEM
+
+
+def plan_system(review_type: str = "slr") -> str:
+    return PLAN_SYSTEM + {"narrative": _PLAN_NARRATIVE_BLOCK, "scoping": _PLAN_SCOPING_BLOCK}.get(review_type, "")
+
+
+def screen_system(review_type: str = "slr") -> str:
+    return SCREEN_SYSTEM + {"narrative": _SCREEN_NARRATIVE_BLOCK, "scoping": _SCREEN_SCOPING_BLOCK}.get(review_type, "")
+
+
+def narrative_system(review_type: str = "slr") -> str:
+    return NARRATIVE_SYSTEM + {"narrative": _NARRATIVE_NARRATIVE_BLOCK,
+                               "scoping": _NARRATIVE_SCOPING_BLOCK}.get(review_type, "")
+
+
 def _constraints(options: dict[str, Any]) -> str:
     lines = []
     if options.get("year_from"):
@@ -52,9 +143,9 @@ def _constraints(options: dict[str, Any]) -> str:
     return "User constraints:\n" + ("\n".join(lines) if lines else "- none")
 
 
-def refine_user(*, topic: str, english_topic: str, options: dict[str, Any]) -> str:
+def refine_user(*, topic: str, english_topic: str, options: dict[str, Any], review_type: str = "slr") -> str:
     return (f"{DATA_NOTICE}\n<user_topic>{topic}</user_topic>\n<english_gloss>{english_topic}</english_gloss>\n"
-            f"{_constraints(options)}\n\n{REFINE_CHECKLIST}")
+            f"{_constraints(options)}\n\n{refine_checklist(review_type)}")
 
 
 CRITIQUE_SYSTEM = """You review a draft research question written for a rapid medical literature review and improve it.
@@ -64,10 +155,11 @@ Does it cover safety/harm? Is it concise? List the concrete issues you found (em
 revised question (unchanged if it is already good). Keep everything in English and keep the user's constraints."""
 
 
-def critique_user(*, topic: str, question: dict[str, Any], options: dict[str, Any]) -> str:
+def critique_user(*, topic: str, question: dict[str, Any], options: dict[str, Any],
+                  review_type: str = "slr") -> str:
     return (f"{DATA_NOTICE}\n<user_topic>{topic}</user_topic>\n"
             f"<draft_question>\n{json.dumps(question, ensure_ascii=False)}\n</draft_question>\n"
-            f"{_constraints(options)}\n\n{REFINE_CHECKLIST}")
+            f"{_constraints(options)}\n\n{refine_checklist(review_type)}")
 
 
 PLAN_SYSTEM = """You design the search strategy for a rapid systematic-style literature review.
@@ -80,8 +172,10 @@ Also give explicit inclusion and exclusion criteria (study types, population, ou
 
 
 def plan_user(*, topic: str, english_topic: str, options: dict[str, Any],
-              question: dict[str, Any] | None = None) -> str:
+              question: dict[str, Any] | None = None, review_type: str = "slr") -> str:
     if question:
+        pcc = (f"Concept: {question.get('concept') or '-'}\nContext: {question.get('context') or '-'}\n"
+               if review_type == "scoping" else "")
         terms = "; ".join(
             f"{t['term']} (synonyms: {', '.join(t.get('synonyms') or []) or '-'}; MeSH: {t.get('mesh') or '-'})"
             for t in question.get("key_terms") or [])
@@ -89,7 +183,7 @@ def plan_user(*, topic: str, english_topic: str, options: dict[str, Any],
                 f"Sub-questions: {' | '.join(question.get('sub_questions') or [])}\n"
                 f"Population: {question['population']}\n"
                 f"Intervention/exposure: {question['intervention_or_exposure']}\n"
-                f"Comparator: {question['comparator']}\n"
+                f"Comparator: {question['comparator']}\n{pcc}"
                 f"Outcomes: {', '.join(question.get('outcomes') or [])}\n"
                 f"Study designs: {', '.join(question.get('study_designs') or [])}\n"
                 f"Key terms: {terms}")
@@ -149,8 +243,8 @@ EXTRACT_CHECKLIST = """Checklist before answering:
 - unreported numbers are null (never estimated); all text fields are in English"""
 
 
-def extract_system(language: str = "en") -> str:  # language kept for compatibility; extraction is English
-    return EXTRACT_SYSTEM
+def extract_system(review_type: str = "slr") -> str:  # extraction is always English
+    return EXTRACT_SYSTEM + (_EXTRACT_SCOPING_BLOCK if review_type == "scoping" else "")
 
 
 def extract_user(*, question: str, outcomes: list[str], candidate: dict[str, Any], source: str, text: str) -> str:

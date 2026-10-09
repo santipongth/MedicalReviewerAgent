@@ -77,8 +77,16 @@ class KeyTerm(BaseModel):
     mesh: str | None
 
 
+def _require_pcc(schema: dict) -> None:
+    for name in ("concept", "context"):  # required-nullable: PICO reviews return null
+        schema.setdefault("required", []).append(name)
+        schema["properties"][name].pop("default", None)  # strict tool schemas reject "default"
+
+
 class ReviewQuestion(BaseModel):
     """The user's topic interpreted and rewritten as an answerable research question (English)."""
+
+    model_config = ConfigDict(json_schema_extra=_require_pcc)
 
     question_type: QuestionType
     interpretation: str
@@ -93,6 +101,8 @@ class ReviewQuestion(BaseModel):
     key_terms: list[KeyTerm]
     assumptions: list[str]
     ambiguities: list[str]
+    concept: str | None = None  # PCC (scoping) only; PICO reviews return null
+    context: str | None = None
 
 
 class QuestionCritique(BaseModel):

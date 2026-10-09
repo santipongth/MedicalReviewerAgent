@@ -183,3 +183,44 @@ async def test_plan_queries_uses_question_subquestions_and_synonyms():
     assert len(out["plan"]["queries"]) == 4
     assert out["plan"]["population"] == "adults with type 2 diabetes"  # PICO comes from the refined question
     assert out["plan"]["outcomes"] == ["colorectal cancer incidence", "colorectal cancer mortality"]
+
+
+# ---- review types ---------------------------------------------------------------------------
+def _pcc(**kw):
+    return good_question(question_type="other", comparator="", concept="metformin use",
+                         context="population-based cohorts", **kw)
+
+
+async def test_scoping_refine_uses_pcc_prompt_and_accepts_empty_comparator():
+    refiner = FakeStructuredLLM("ds", lambda s, u: _pcc())
+    state = {**STATE, "language": "en", "options": {"review_type": "scoping"}}
+    out = await make_refine_question(deps_with(refiner, harness=HarnessSpec(refine_critique=False, localize=False)))(state)
+    assert out["question"]["concept"] == "metformin use" and out["question"]["comparator"] == ""
+    system, user = refiner.calls[0]
+    assert "PCC" in system and "concept" in user
+
+
+async def test_scoping_refine_repairs_missing_concept():
+    answers = iter([good_question(question_type="other", comparator=""), _pcc()])
+    refiner = FakeStructuredLLM("ds", lambda s, u: next(answers))
+    state = {**STATE, "language": "en", "options": {"review_type": "scoping"}}
+    out = await make_refine_question(deps_with(refiner, harness=HarnessSpec(refine_critique=False, localize=False)))(state)
+    assert out["quality"][0]["repaired"] is True and out["question"]["context"] == "population-based cohorts"
+    assert "concept" in refiner.calls[1][1]
+
+
+def _plan_llm():
+    return FakeStructuredLLM("ds", lambda s, u: QueryPlan(
+        queries=["metformin colorectal cancer", "dimethylbiguanide colon cancer"],
+        population="x", intervention_or_exposure="x", comparator="x", outcomes=["x"],
+        inclusion_criteria=["human"], exclusion_criteria=["editorial"]))
+
+
+@pytest.mark.parametrize("rt,expect_design", [("slr", True), ("narrative", False), ("scoping", False)])
+async def test_design_query_only_added_for_slr(rt, expect_design):
+    planner = _plan_llm()
+    state = {**STATE, "question": good_question().model_dump(), "options": {"review_type": rt}}
+    out = await make_plan_queries(deps_with(planner=planner))(state)
+    assert any("randomized controlled trial" in q for q in out["plan"]["queries"]) is expect_design
+    assert len(out["plan"]["queries"]) == (3 if expect_design else 2)
+    assert ("Review type" in planner.calls[0][0]) is (rt != "slr")

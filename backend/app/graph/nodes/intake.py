@@ -13,6 +13,7 @@ from app.graph.state import ReviewState
 from app.harness.localize import localize_strings
 from app.harness.question import question_problems
 from app.harness.runner import HarnessRunner
+from app.schemas.review import ReviewOptions
 from app.services.llm import LLMError, LLMOutputError, LLMRefusal
 from app.services.llm_config import HarnessSpec
 
@@ -87,13 +88,15 @@ def make_refine_question(deps):
         writer({"type": "refining"})
         spec, runner = harness_spec(deps), harness_runner(deps)
         options = state.get("options") or {}
+        review_type = ReviewOptions.clamped(options).review_type
         english_topic = state.get("english_topic") or state["topic"]
         errors: list[str] = []
         try:
             res = await runner.call(
-                refiner, prompts.REFINE_SYSTEM,
-                prompts.refine_user(topic=state["topic"], english_topic=english_topic, options=options),
-                schema=ReviewQuestion, validate=lambda q: question_problems(q, options),
+                refiner, prompts.refine_system(review_type),
+                prompts.refine_user(topic=state["topic"], english_topic=english_topic, options=options,
+                                    review_type=review_type),
+                schema=ReviewQuestion, validate=lambda q: question_problems(q, options, review_type),
             )
         except LLMError as exc:  # provider error or refusal: review the English topic as-is
             errors.append(f"question refinement failed: {type(exc).__name__}")
@@ -109,9 +112,11 @@ def make_refine_question(deps):
         if question is not None and spec.refine_critique and critic is not None:
             try:
                 crit = await runner.call(
-                    critic, prompts.CRITIQUE_SYSTEM,
-                    prompts.critique_user(topic=state["topic"], question=question.model_dump(), options=options),
-                    schema=QuestionCritique, validate=lambda c: question_problems(c.revised, options),
+                    critic, prompts.critique_system(review_type),
+                    prompts.critique_user(topic=state["topic"], question=question.model_dump(), options=options,
+                                          review_type=review_type),
+                    schema=QuestionCritique,
+                    validate=lambda c: question_problems(c.revised, options, review_type),
                     trigger="critique",
                 )
             except LLMError as exc:  # keep the validated draft
@@ -163,15 +168,16 @@ def make_plan_queries(deps):
     async def plan_queries(state: ReviewState) -> dict:
         started = time.perf_counter()
         question = state.get("question")
+        review_type = ReviewOptions.clamped(state.get("options")).review_type
 
         def validate(p: QueryPlan) -> list[str]:
             return [] if any(q.strip() for q in p.queries) else ["queries must contain at least one search query"]
 
         try:
             res = await harness_runner(deps).call(
-                deps.llms.planner, prompts.PLAN_SYSTEM,
+                deps.llms.planner, prompts.plan_system(review_type),
                 prompts.plan_user(topic=state["topic"], english_topic=state.get("english_topic") or state["topic"],
-                                  options=state.get("options") or {}, question=question),
+                                  options=state.get("options") or {}, question=question, review_type=review_type),
                 schema=QueryPlan, validate=validate, trigger="plan")
         except LLMError as exc:
             res = None
@@ -189,7 +195,9 @@ def make_plan_queries(deps):
             q = " ".join(q.split())
             if q and q.lower() not in seen:
                 seen[q.lower()] = q
-        plan["queries"] = ensure_design_query(list(seen.values())[:MAX_QUERIES], question)
+        plan["queries"] = list(seen.values())[:MAX_QUERIES]
+        if review_type == "slr":  # narrative/scoping reviews want breadth, not a design-specific query
+            plan["queries"] = ensure_design_query(plan["queries"], question)
         if question:  # PICO comes from the refined question so every stage judges against the same criteria
             for key in ("population", "intervention_or_exposure", "comparator", "outcomes"):
                 plan[key] = question[key]

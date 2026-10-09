@@ -436,9 +436,12 @@ def _question_block(state: ReviewState) -> dict[str, Any]:
     if not q:
         return {"original_topic": state["topic"], "english_topic": english_topic, "refined": False,
                 "interpretation": None, "refined_question": english_topic, "sub_questions": [], "assumptions": [],
+                "framework": None, "concept": None, "context": None,
                 "english": None, "pico": None, "question_type": None, "ambiguities": [], "key_terms": []}
     display = state.get("question_display") or {}
+    framework = "PCC" if ReviewOptions.clamped(state.get("options")).review_type == "scoping" else "PICO"
     return {"original_topic": state["topic"], "english_topic": english_topic, "refined": True,
+            "framework": framework, "concept": q.get("concept"), "context": q.get("context"),
             **{k: display.get(k, q.get(k)) for k in QUESTION_TEXT},
             "english": {k: q.get(k) for k in QUESTION_TEXT}, "pico": {k: q.get(k) for k in PICO},
             "question_type": q.get("question_type"), "ambiguities": q.get("ambiguities") or [],

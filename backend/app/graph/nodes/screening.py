@@ -151,7 +151,8 @@ def route_to_reading(state: ReviewState, external_enabled=None) -> list[Send] | 
     if not selected:
         return "normalize_outcomes"
     common = {"plan": state.get("plan") or {}, "question": review_question(state),
-              "question_detail": state.get("question"), "language": state.get("language", "th")}
+              "question_detail": state.get("question"), "language": state.get("language", "th"),
+              "review_type": ReviewOptions.clamped(state.get("options")).review_type}
     sends = [Send("read_paper", {"paper": s, **common}) for s in selected]
     if external_enabled is not None and external_enabled():
         sends.append(Send("external_enrich", {"question": common["question"], "plan": common["plan"]}))
