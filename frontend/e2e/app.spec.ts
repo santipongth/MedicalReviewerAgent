@@ -47,6 +47,7 @@ test("landing: receipt from a real verified number, then submit opens the live r
   await noSeriousA11y(page);
   await page.emulateMedia({ colorScheme: "light" });
 
+  await page.getByLabel(/^หัวข้อ/).fill("metformin colorectal cancer");
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
   await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
   await expect(page.getByRole("heading", { level: 1 })).toContainText("ในผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2", { timeout: 15_000 });
@@ -80,8 +81,11 @@ test("report: matrix cell opens the verbatim sentence; charts and filters work; 
   await page.screenshot({ path: shots("report-light"), fullPage: true });
   await noSeriousA11y(page);
 
+  await page.getByRole("button", { name: /^กรอง \(แสดง 5 จาก 5 ฉบับ\)/ }).click();
   await page.getByLabel(/ความเกี่ยวข้องขั้นต่ำ/).fill("90");
-  await expect(page.getByText("แสดง 2 จาก 5 ฉบับ")).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "กำลังกรอง" }).first()).toContainText("แสดง 2 จาก 5 ฉบับ");
+  await page.getByRole("button", { name: "ล้างตัวกรอง" }).first().click();
+  await expect(page.getByRole("button", { name: /^กรอง \(แสดง 5 จาก 5 ฉบับ\)/ })).toBeVisible();
 
   await page.getByRole("button", { name: "ใช้ธีมมืด" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -116,10 +120,23 @@ test("phone width: no horizontal scroll, source rail opens as a drawer", async (
   await expect(page.getByRole("complementary", { name: "ต้นฉบับ" })).toBeHidden();
   await page.getByRole("button", { name: /^P1: / }).click();
   const rail = page.getByRole("complementary", { name: "ต้นฉบับ" });
+  const drawer = page.getByRole("dialog");
   await expect(rail).toBeVisible();
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("heading", { level: 2 })).toBeFocused();
   await page.screenshot({ path: shots("report-phone-drawer") });
   await rail.getByRole("button", { name: "ปิด" }).click();
   await expect(rail).toBeHidden();
+  // Esc closes it
+  await page.getByRole("button", { name: /^P1: / }).click();
+  await expect(drawer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  // a tap on the backdrop (above the sheet) closes it
+  await page.getByRole("button", { name: /^P1: / }).click();
+  await expect(drawer).toBeVisible();
+  await page.getByTestId("rail-backdrop").click({ position: { x: 10, y: 10 } });
+  await expect(drawer).toBeHidden();
 });
 
 test("landing on a phone: no horizontal scroll, the source sits under the plot, a dead API leaves the page usable", async ({ page }) => {
@@ -164,6 +181,7 @@ test("submit errors: rate limit shows the wait time", async ({ page }) => {
     "POST /api/v1/reviews": (route) => json(route, 429, { detail: "rate limit exceeded" }, { "retry-after": "1800", "access-control-expose-headers": "Retry-After" }),
   });
   await page.goto("/");
+  await page.getByLabel(/^หัวข้อ/).fill("statins and dementia");
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "นาที" })).toContainText("30 นาที");
 });
@@ -191,4 +209,77 @@ test("about page renders the deployment's API address in every snippet", async (
   await expect(page.getByText(/สตรีมสดพร้อมกันได้ 5/)).toBeVisible();
   await noSeriousA11y(page);
   await noHorizontalScroll(page);
+});
+
+test("landing: ?q= pre-fills the request slip", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?q=statins");
+  await expect(page.getByLabel(/^หัวข้อ/)).toHaveValue("statins");
+  await page.goto("/");
+  await expect(page.getByLabel(/^หัวข้อ/)).toHaveValue("");
+});
+
+test("live run: a queued review shows the รอคิว step as current", async ({ page }) => {
+  await mockApi(page, {
+    [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, { ...reviewFixture, status: "queued", result: null }),
+    [`GET /api/v1/reviews/${RID}/events`]: (route) => route.fulfill({ status: 200,
+      headers: { "content-type": "text/event-stream", "access-control-allow-origin": "*" }, body: sse([LIVE_EVENTS[0]]) }),
+  });
+  await page.goto(`/r/${RID}`);
+  await expect(page.locator("li[aria-current='step']")).toContainText("รอคิว");
+  await expect(page.getByText(/อยู่ในคิว/)).toBeVisible();
+});
+
+test("live run: the search queries are listed under the PubMed step", async ({ page }) => {
+  await mockApi(page, {
+    [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, { ...reviewFixture, status: "running", result: null }),
+    [`GET /api/v1/reviews/${RID}/events`]: (route) => route.fulfill({ status: 200,
+      headers: { "content-type": "text/event-stream", "access-control-allow-origin": "*" }, body: sse(LIVE_EVENTS) }),
+  });
+  await page.goto(`/r/${RID}`);
+  await expect(page.locator("ol li").filter({ hasText: "metformin colorectal cancer" })).toBeVisible();
+});
+
+test("report: the section nav jumps to the papers", async ({ page }) => {
+  await mockApi(page);
+  await page.goto(`/r/${RID}`);
+  const nav = page.getByRole("navigation", { name: "ในรายงานนี้" });
+  await nav.getByRole("link", { name: "งานวิจัยที่อ่าน" }).click();
+  await expect(page).toHaveURL(/#h-papers$/);
+  await expect(page.locator("#h-papers")).toBeInViewport();
+});
+
+test("report on a phone: a glossary term opens on tap and closes on Esc", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockApi(page);
+  await page.goto(`/r/${RID}`);
+  const term = page.getByRole("button", { name: "จำนวนงานวิจัยตามทิศทางผลที่เอเจนต์อ่าน" });
+  await term.scrollIntoViewIfNeeded();
+  await term.click();
+  await expect(term).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("note")).toBeVisible();
+  await noHorizontalScroll(page);
+  await page.keyboard.press("Escape");
+  await expect(term).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("note")).toHaveCount(0);
+});
+
+test("axe: landing at 375px in light and dark", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockApi(page);
+  await page.goto("/");
+  await expect(page.getByLabel(/^หัวข้อ/)).toBeVisible();
+  await noSeriousA11y(page);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForTimeout(400); // let the 150ms colour transitions finish; axe would otherwise sample mid-fade colours
+  await noSeriousA11y(page);
+});
+
+test("axe: report with the source drawer open at 375px", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await mockApi(page);
+  await page.goto(`/r/${RID}`);
+  await page.getByRole("button", { name: /^P1: / }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await noSeriousA11y(page);
 });

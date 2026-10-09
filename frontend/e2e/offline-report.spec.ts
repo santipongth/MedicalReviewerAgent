@@ -17,5 +17,7 @@ test("the single-file HTML report works offline", async ({ page }) => {
   await expect(table).toBeVisible();
   await page.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }).click();
   await expect(page.getByRole("complementary", { name: "ต้นฉบับ" })).toContainText("Metformin use was associated");
+  // there is no page to link to in a file on disk, so the copy-link button is not rendered
+  await expect(page.getByRole("button", { name: "คัดลอกลิงก์" })).toHaveCount(0);
   expect(requests.filter((u) => !u.includes("fonts.g"))).toEqual([]); // only the optional web fonts were attempted
 });
