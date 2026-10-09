@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyReviewFixture, legacyReviewFixture, reviewFixture } from "@/test/fixtures";
 
 vi.mock("./charts", () => ({ Charts: () => <section aria-labelledby="h-charts"><h2 id="h-charts">แผนภาพหลักฐาน</h2><div data-testid="charts" /></section> }));
@@ -250,5 +250,79 @@ describe("Report", () => {
     expect(details.querySelector("details")).toBeNull();
     expect(within(details).getByRole("button", { name: "PICO" })).toBeInTheDocument();
     expect(container.querySelectorAll("h1")).toHaveLength(1);
+  });
+});
+
+function stubNarrowViewport() {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("max-width"), media: query, addEventListener: () => {}, removeEventListener: () => {},
+  }));
+}
+
+describe("source rail", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("a citation selects the paper but highlights no outcome", async () => {
+    render(<Report review={reviewFixture} />);
+    const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    await userEvent.click(within(summary).getByRole("button", { name: "P4" }));
+    expect(screen.getByRole("complementary", { name: /ต้นฉบับ/ }).querySelector("li[aria-current]")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
+    expect(screen.getByRole("complementary", { name: /ต้นฉบับ/ }).querySelectorAll("li[aria-current]")).toHaveLength(1);
+  });
+});
+
+describe("mobile source drawer", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function openDrawer() {
+    stubNarrowViewport();
+    render(<Report review={reviewFixture} />);
+    const cell = screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ });
+    await userEvent.click(cell);
+    return cell;
+  }
+
+  it("opens as a labelled modal dialog and moves focus to the heading", async () => {
+    await openDrawer();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    const heading = within(dialog).getByRole("heading", { name: /ต้นฉบับ/ });
+    expect(dialog).toHaveAccessibleName(heading.textContent!);
+    expect(heading).toHaveFocus();
+    expect(document.body.style.overflow).toBe("hidden");
+  });
+
+  it("closes on Esc, restores focus to the trigger and unlocks scroll", async () => {
+    const cell = await openDrawer();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(cell).toHaveFocus();
+    expect(document.body.style.overflow).not.toBe("hidden");
+  });
+
+  it("closes on backdrop click", async () => {
+    await openDrawer();
+    await userEvent.click(screen.getByTestId("rail-backdrop"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("Esc with an open glossary term closes only the term", async () => {
+    await openDrawer();
+    const dialog = within(screen.getByRole("dialog"));
+    await userEvent.click(dialog.getAllByRole("button", { name: /ความเสี่ยงอคติ/ })[0]);
+    expect(screen.getByRole("note")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("is not a dialog on desktop", async () => {
+    render(<Report review={reviewFixture} />);
+    await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("complementary", { name: /ต้นฉบับ/ })).toBeInTheDocument();
   });
 });

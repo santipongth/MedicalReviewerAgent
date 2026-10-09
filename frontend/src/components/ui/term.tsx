@@ -29,6 +29,9 @@ export function Term({
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // Capture phase + stopPropagation: an enclosing drawer/dialog listener never sees this Esc.
+        e.stopPropagation();
+        e.preventDefault();
         setOpen(false);
         trigger.current?.focus();
       }
@@ -36,11 +39,11 @@ export function Term({
     const onDown = (e: MouseEvent | TouchEvent) => {
       if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("touchstart", onDown);
     return () => {
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("touchstart", onDown);
     };

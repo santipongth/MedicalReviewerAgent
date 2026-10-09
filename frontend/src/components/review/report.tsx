@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { exportUrl } from "@/lib/api";
 import { emptyFilters, filterPapers, type Filters } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
@@ -11,6 +11,7 @@ import { Charts } from "./charts";
 import { FilterBar, FilterStatus } from "./filter-bar";
 import { ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, QualityNote, QuestionDetails } from "./report-parts";
 import { ReportNav, type NavItem } from "./report-nav";
+import { RailDrawer } from "./rail-drawer";
 import { SourceRail } from "./source-rail";
 import { L } from "./text";
 
@@ -55,7 +56,11 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const active = selection ?? (firstWithCard ? { ref: firstWithCard } : null);
 
+  const railHeading = useId();
+  const returnFocus = useRef<HTMLElement | null>(null);
+
   function select(ref: string, outcome?: string) {
+    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSelection({ ref, outcome });
     setDrawerOpen(true);
   }
@@ -178,10 +183,10 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
         </div>
 
         {hasPapers && (
-          <div className={`min-w-0 lg:sticky lg:top-14 lg:max-h-[calc(100dvh-4.5rem)] lg:self-start lg:overflow-auto ${drawerOpen ? "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:max-h-[70dvh] max-lg:overflow-auto max-lg:border-t max-lg:border-ink" : "max-lg:hidden"}`}>
+          <RailDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} headingId={railHeading} returnFocus={returnFocus}>
             <SourceRail paper={active ? byRef.get(active.ref) ?? null : null} outcome={active?.outcome} lang={lang}
-              onClose={() => setDrawerOpen(false)} />
-          </div>
+              onClose={() => setDrawerOpen(false)} headingId={railHeading} visible={drawerOpen} />
+          </RailDrawer>
         )}
       </div>
     </div>

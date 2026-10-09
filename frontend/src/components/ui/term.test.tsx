@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GLOSSARY } from "@/lib/glossary";
 import { Term } from "./term";
 
@@ -27,6 +27,20 @@ describe("Term", () => {
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("note")).toBeNull();
     expect(btn).toHaveFocus();
+  });
+
+  it("Esc is not propagated to other listeners while the panel is open", async () => {
+    const outer = vi.fn();
+    document.addEventListener("keydown", outer);
+    render(<Term k="ci95" />);
+    await userEvent.keyboard("{Escape}");
+    expect(outer).toHaveBeenCalledTimes(1); // closed term: Esc passes through
+    await userEvent.click(screen.getByRole("button"));
+    outer.mockClear();
+    await userEvent.keyboard("{Escape}");
+    expect(outer).not.toHaveBeenCalled();
+    expect(screen.queryByRole("note")).toBeNull();
+    document.removeEventListener("keydown", outer);
   });
 
   it("clicking outside closes it", async () => {
