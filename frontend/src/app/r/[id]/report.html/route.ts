@@ -1,12 +1,7 @@
+import { serverApiUrl } from "@/lib/server-api";
 import { loadStandaloneAssets } from "@/lib/standalone-assets";
 import { buildStandaloneHtml } from "@/lib/standalone-html";
 import type { Review } from "@/lib/types";
-
-/** Server-side address of the API: INTERNAL_API_URL (e.g. http://api:8000 in compose), else an absolute public URL. */
-function serverApiUrl(): string {
-  const configured = process.env.INTERNAL_API_URL ?? process.env.PUBLIC_API_URL ?? "";
-  return (/^https?:\/\//.test(configured) ? configured : "http://localhost:8000").replace(/\/$/, "");
-}
 
 /** The finished review as one interactive HTML file that opens offline. */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
