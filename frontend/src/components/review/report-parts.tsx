@@ -4,7 +4,7 @@ import { Fragment, type ReactNode } from "react";
 import { designKey, designLabel } from "@/lib/charts-data";
 import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
-import { isGraded, REVIEW_TYPE_LABEL, type ReviewTypeOrLegacy } from "@/lib/review-type";
+import { isGraded, REVIEW_TYPE_LABEL, showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, QuestionBlock, Quality, Synthesis } from "@/lib/types";
 import { Glyph, UncertainFlag } from "../ui/evidence";
 import { Term } from "../ui/term";
@@ -52,12 +52,12 @@ export function QuestionTitle({ question, topic, lang }: { question?: QuestionBl
 }
 
 /** How the agent read the question: interpretation, PICO, sub-questions, assumptions. One disclosure, no nesting. */
-export function QuestionDetails({ question, lang }: { question?: QuestionBlock; lang: Lang }) {
+export function QuestionDetails({ question, lang, type = "legacy" }: { question?: QuestionBlock; lang: Lang; type?: ReviewTypeOrLegacy }) {
   const text = lang === "en" && question?.english ? question.english : question;
   const pico = question?.pico;
   const hasMore = !!text?.sub_questions?.length || !!text?.assumptions?.length || !!question?.ambiguities?.length;
   const isPcc = question?.framework === "PCC";
-  const keyTerms = question?.key_terms ?? [];
+  const keyTerms = type === "legacy" ? [] : question?.key_terms ?? []; // legacy reports stay as they were
   if (!text?.interpretation && !pico && !isPcc && !keyTerms.length && !hasMore) return null;
   return (
     <details className="grid gap-3 text-[0.92rem]">
@@ -277,7 +277,9 @@ export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs }: {
   );
 }
 
-export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Paper[]; lang: Lang; onSelect: Select; selectedRef?: string }) {
+export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy" }: {
+  papers: Paper[]; lang: Lang; onSelect: Select; selectedRef?: string; type?: ReviewTypeOrLegacy;
+}) {
   return (
     <ul className="border-t border-rule">
       {papers.map((p) => {
@@ -295,8 +297,8 @@ export function PaperList({ papers, lang, onSelect, selectedRef }: { papers: Pap
                   {card ? (
                     <>
                       <span>{designLabel(designKey(card), lang)}</span>
-                      <span className="inline-flex items-center gap-1.5"><Glyph direction={card.overall_direction} lang={lang} />{DIRECTION_LABEL[lang][card.overall_direction]}</span>
-                      <span>{L(lang, "อคติ", "Bias")}: {ROB_LABEL[lang][card.risk_of_bias]}</span>
+                      {showsDirection(type) && <span className="inline-flex items-center gap-1.5"><Glyph direction={card.overall_direction} lang={lang} />{DIRECTION_LABEL[lang][card.overall_direction]}</span>}
+                      {showsRiskOfBias(type) && <span>{L(lang, "อคติ", "Bias")}: {ROB_LABEL[lang][card.risk_of_bias]}</span>}
                     </>
                   ) : (
                     <span className="text-err">{L(lang, "อ่านไม่สำเร็จ", "Could not be read")}{p.error ? ` · ${p.error}` : ""}</span>

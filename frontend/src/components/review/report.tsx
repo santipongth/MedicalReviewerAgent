@@ -7,7 +7,7 @@ import { emptyFilters, filterPapers, isPooled, type Filters } from "@/lib/charts
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
 import type { TermKey } from "@/lib/glossary";
 import type { Lang } from "@/lib/i18n";
-import { REVIEW_TYPE_LABEL, reviewTypeOf, showsSection } from "@/lib/review-type";
+import { REVIEW_TYPE_LABEL, reviewTypeOf, showsRiskOfBias, showsSection } from "@/lib/review-type";
 import { Term } from "../ui/term";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
@@ -22,7 +22,7 @@ import { L } from "./text";
 
 const TYPE_TERM: Record<"narrative" | "slr" | "scoping", TermKey> = { narrative: "narrativeReview", slr: "slr", scoping: "scopingReview" };
 
-const DL ="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
+const DL = "inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
 
 type Selection = { ref: string; outcome?: string };
 
@@ -58,7 +58,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const visibleRows = useMemo(() => rows.filter((r) => r.cells.some((c) => matrixRefs.includes(c.ref))), [rows, matrixRefs]);
   const type = reviewTypeOf(result);
   const map = useMemo(() => (showsSection(type, "evidence_map") ? evidenceMap(visible, rows, lang) : EMPTY_MAP), [type, visible, rows, lang]);
-  const firstWithCard =papers.find((p) => p.card)?.ref;
+  const firstWithCard = papers.find((p) => p.card)?.ref;
   const [selection, setSelection] = useState<Selection | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const active = selection ?? (firstWithCard ? { ref: firstWithCard } : null);
@@ -97,7 +97,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   ];
   const filterStatus = <FilterStatus filters={filters} onChange={setFilters} shown={visible.length} total={papers.length} lang={lang} />;
   const filterBar = papers.length > 1
-    ? <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} /> : null;
+    ? <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} showRisk={showsRiskOfBias(type)} /> : null;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 pt-8" onPointerDownCapture={notePress} onClickCapture={notePress}
       style={offline ? ({ "--header-h": "0px" } as CSSProperties) : undefined}>
@@ -128,7 +128,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           {hasPapers && <ReportNav items={navItems} label={L(lang, "ในรายงานนี้", "In this report")} />}
           <BottomLine id={review.id} question={result.question} topic={review.topic} synthesis={synthesis} result={result}
             papers={papers} lang={lang} offline={offline} onSelect={select} refs={refs} />
-          <QuestionDetails question={result.question} lang={lang} />
+          <QuestionDetails question={result.question} lang={lang} type={type} />
 
           {!hasPapers && (
             <section aria-labelledby="h-next" className="grid gap-3">
@@ -183,7 +183,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
             <section aria-labelledby="h-papers" className="grid gap-2">
               <h2 id="h-papers" className={H2}>{L(lang, "งานวิจัยที่อ่าน", "Papers read")}</h2>
               {filterStatus}
-              <PaperList papers={visible} lang={lang} onSelect={select} selectedRef={active?.ref} />
+              <PaperList papers={visible} lang={lang} onSelect={select} selectedRef={active?.ref} type={type} />
             </section>
           )}
 
@@ -220,7 +220,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
         {hasPapers && (
           <RailDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} headingId={railHeading} returnFocus={returnFocus}>
             <SourceRail paper={active ? byRef.get(active.ref) ?? null : null} outcome={active?.outcome} lang={lang}
-              onClose={() => setDrawerOpen(false)} headingId={railHeading} visible={drawerOpen} />
+              onClose={() => setDrawerOpen(false)} headingId={railHeading} visible={drawerOpen} type={type} />
           </RailDrawer>
         )}
       </div>

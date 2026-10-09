@@ -59,3 +59,8 @@ export function showsSection(type: ReviewTypeOrLegacy, id: SectionId): boolean {
 export function showsDirection(type: ReviewTypeOrLegacy): boolean {
   return type !== "scoping";
 }
+
+/** Scoping does no quality appraisal, so no risk-of-bias label or filter is shown. */
+export function showsRiskOfBias(type: ReviewTypeOrLegacy): boolean {
+  return type !== "scoping";
+}

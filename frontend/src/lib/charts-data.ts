@@ -161,7 +161,7 @@ export const EXCLUSION_REASON_LABEL: Record<ExclusionReason, { th: string; en: s
   intervention_exposure: { th: "การรักษาหรือปัจจัยที่ศึกษาไม่ตรง", en: "Intervention or exposure does not match" },
   outcome: { th: "ผลลัพธ์ไม่ตรง", en: "Outcome does not match" },
   study_design: { th: "รูปแบบการศึกษาไม่ตรงเกณฑ์", en: "Study design does not match" },
-  publication_type: { th: "ชนิดสิ่งตีพิมพ์ไม่ตรง (เช่น บทบรรณาธิการ)", en: "Publication type (e.g. editorial)" },
+  publication_type: { th: "ชนิดสิ่งตีพิมพ์ไม่ตรง (เช่น บทบรรณาธิการ)", en: "Publication type does not match (e.g. editorial)" },
   other: { th: "เหตุผลอื่น", en: "Other reason" },
 };
 

@@ -311,6 +311,31 @@ describe("Report per review type", () => {
     expect(within(details).getByText("metformin")).toBeInTheDocument();
   });
 
+  it("scoping: no direction glyph or risk-of-bias label in the paper list, source drawer or filters", async () => {
+    render(<Report review={scopingReviewFixture} />);
+    const list = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    expect(within(list).queryAllByRole("img")).toHaveLength(0);
+    expect(list).not.toHaveTextContent(/อคติ/);
+    expect(list).not.toHaveTextContent(/สนับสนุนผล|ตรงข้าม/);
+    expect(within(list).getByText("Case-control")).toBeInTheDocument(); // design stays
+    await userEvent.click(within(list).getByRole("button", { name: /^P2 / })); // P2 keeps a positive direction in its card
+    expect(rail().queryAllByRole("img")).toHaveLength(0);
+    expect(screen.getByRole("complementary", { name: /ต้นฉบับ/ })).not.toHaveTextContent(/ความเสี่ยงอคติ|สนับสนุนผล/);
+    await openFilters();
+    expect(screen.queryByText("ความเสี่ยงอคติ")).toBeNull();
+  });
+
+  it("key terms show on typed results only; a legacy result with key_terms renders as before", () => {
+    const keyTerms = [{ term: "metformin", synonyms: ["biguanide"], mesh: "Metformin" }];
+    const legacy = { ...reviewFixture, result: { ...reviewFixture.result!, question: { ...reviewFixture.result!.question!, key_terms: keyTerms } } };
+    const { unmount } = render(<Report review={legacy} />);
+    expect(screen.queryByText("คำสำคัญที่ใช้ค้น")).toBeNull();
+    expect(screen.queryByText(/· biguanide/)).toBeNull();
+    unmount();
+    render(<Report review={{ ...legacy, result: { ...legacy.result, review_type: "slr" as const } }} />);
+    expect(screen.getByText("คำสำคัญที่ใช้ค้น")).toBeInTheDocument();
+  });
+
   it("narrative: not graded, keeps claims and findings, hides PRISMA", () => {
     const { container } = render(<Report review={narrativeReviewFixture} />);
     expect(screen.getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนแบบบรรยาย\)/)).toBeInTheDocument();

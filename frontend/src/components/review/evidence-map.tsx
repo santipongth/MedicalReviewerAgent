@@ -47,6 +47,12 @@ export function EvidenceMapSection({ map, lang }: { map: EvidenceMap; lang: Lang
           label={L(lang, "จำนวนงานวิจัยตามประเด็นและชนิดงานวิจัย", "Studies by concept and design")}
           corner={L(lang, "ประเด็น", "Concept")} />
       )}
+      {map.byConcept.rows.length > 0 && (
+        <p className="text-[0.82rem] text-muted">
+          {L(lang, "ตารางแรกนับงานวิจัยตามแนวคิดหรือประเด็นในตารางเปรียบเทียบ งานเดียวอาจอยู่หลายแถว", "The first table counts papers per concept (comparison row); one paper can appear in several rows")}
+          {map.outsideConcepts > 0 && ` · ${L(lang, `ไม่ได้จัดเข้าแนวคิดใด ${map.outsideConcepts} งาน`, `${map.outsideConcepts} not placed under any concept`)}`}
+        </p>
+      )}
       {map.byYear.rows.length > 0 && (
         <CountTable table={map.byYear} lang={lang}
           label={L(lang, "จำนวนงานวิจัยตามช่วงปีและชนิดงานวิจัย", "Studies by period and design")}

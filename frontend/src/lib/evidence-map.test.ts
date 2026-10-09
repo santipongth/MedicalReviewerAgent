@@ -38,6 +38,14 @@ describe("evidenceMap", () => {
     expect(evidenceMap(papers, dup, "th").byConcept.rows[0].total).toBe(1);
   });
 
+  it("keeps duplicate concept names apart and counts papers outside every concept", () => {
+    const dupe = [rows[0], { ...rows[0] }, { outcome: "y", cells: [rows[0].cells[0]] }];
+    const keys = evidenceMap(papers, dupe, "th").byConcept.rows.map((r) => r.key);
+    expect(new Set(keys).size).toBe(3);
+    expect(evidenceMap(papers, rows, "th").outsideConcepts).toBe(0);
+    expect(evidenceMap(papers, [rows[1]], "th").outsideConcepts).toBe(3); // P1, P2, P4 are in no row
+  });
+
   it("is empty when there are no papers with a design", () => {
     const m = evidenceMap([papers[4]], [], "th");
     expect(m.byConcept.rows).toEqual([]);

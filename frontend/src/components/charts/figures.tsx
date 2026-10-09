@@ -183,8 +183,9 @@ function ExclusionTable({ data, lang }: { data: NonNullable<ReturnType<typeof ex
       <div className="overflow-x-auto">
         <table aria-label={L(lang, "เหตุผลที่คัดออก", "Reasons for exclusion")} className="w-full border-collapse text-[0.88rem]">
           <caption className="pb-1 text-left label">{L(lang, "เหตุผลที่คัดออก", "Reasons for exclusion")}</caption>
-          <thead className="sr-only"><tr>
-            <th scope="col">{L(lang, "เหตุผล", "Reason")}</th><th scope="col">{L(lang, "จำนวน", "Count")}</th>
+          <thead><tr>
+            <th scope="col"><span className="sr-only">{L(lang, "เหตุผล", "Reason")}</span></th>
+            <th scope="col"><span className="sr-only">{L(lang, "จำนวน", "Count")}</span></th>
           </tr></thead>
           <tbody>
             {rows.map((r) => (
@@ -228,9 +229,15 @@ export function PrismaFigure({ stages, tokens, lang, exclusions = null, scoping 
       caption={L(lang, "จำนวนงานวิจัยในแต่ละขั้นของรีวิวนี้", "Number of records at each step of this review")}
       chart={<EChart option={option} height={stages.length * 34 + 16} label={stages.map((s) => `${s.label} ${s.value}`).join(", ")} />}
       table={
-        <table className="w-full border-collapse text-[0.88rem]"><tbody>
-          {stages.map((s) => <tr key={s.key} className="border-b border-rule"><td className="py-1.5 pr-3">{s.label}</td><td className="py-1.5 font-display tabular-nums">{s.value}</td></tr>)}
-        </tbody></table>
+        <table aria-label={L(lang, "ขั้นตอนการคัดเลือก", "Selection flow")} className="w-full border-collapse text-[0.88rem]">
+          <thead><tr>
+            <th scope="col"><span className="sr-only">{L(lang, "ขั้นตอน", "Step")}</span></th>
+            <th scope="col"><span className="sr-only">{L(lang, "จำนวน", "Count")}</span></th>
+          </tr></thead>
+          <tbody>
+            {stages.map((s) => <tr key={s.key} className="border-b border-rule"><th scope="row" className="py-1.5 pr-3 text-left font-normal">{s.label}</th><td className="py-1.5 font-display tabular-nums">{s.value}</td></tr>)}
+          </tbody>
+        </table>
       }
     />
   );

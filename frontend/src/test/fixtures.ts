@@ -146,6 +146,14 @@ export const legacyReviewFixture: Review = {
   },
 };
 
+function stripAppraisal(c: PaperCard): PaperCard {
+  return {
+    ...c, risk_of_bias: "unclear", overall_direction: "unclear",
+    outcomes: c.outcomes.map((o) => ({ ...o, effect_size: null, effect_measure: "none", effect_value: null, ci_lower: null,
+      ci_upper: null, p_value: null, direction: "unclear" })),
+  };
+}
+
 /** A Plan 14a scoping result: PCC question, no grade, no consensus/conflicts, PRISMA exclusion reasons. */
 export const scopingReviewFixture: Review = {
   ...reviewFixture,
@@ -159,6 +167,11 @@ export const scopingReviewFixture: Review = {
     },
     synthesis: { ...resultFixture.synthesis!, consensus: [], conflicts: [], evidence_strength: null, evidence_rationale: "" },
     synthesis_en: undefined,
+    // A scoping card carries no effect, direction or quality judgement; two of the papers are shaped that way.
+    papers: resultFixture.papers!.map((p) => (p.ref === "P1" || p.ref === "P3") ? {
+      ...p,
+      card: p.card && stripAppraisal(p.card), card_en: p.card_en && stripAppraisal(p.card_en),
+    } : p),
     stats: {
       ...resultFixture.stats, non_research: 3,
       excluded_screening: { off_topic: 7, study_design: 2, other: 1 },

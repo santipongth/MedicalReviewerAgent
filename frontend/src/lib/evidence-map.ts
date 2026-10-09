@@ -21,9 +21,11 @@ export interface EvidenceMap {
   byYear: MapTable;
   /** Papers missing from the year table (no card, so no design, or no year). */
   unplaced: number;
+  /** Papers with a card that appear in no concept row of the first table. */
+  outsideConcepts: number;
 }
 
-export const EMPTY_MAP: EvidenceMap = { byConcept: { designs: [], rows: [] }, byYear: { designs: [], rows: [] }, unplaced: 0 };
+export const EMPTY_MAP: EvidenceMap = { byConcept: { designs: [], rows: [] }, byYear: { designs: [], rows: [] }, unplaced: 0, outsideConcepts: 0 };
 
 const DESIGN_ORDER = Object.keys(DESIGN_LABEL.th);
 
@@ -57,17 +59,19 @@ export function yearBin(year: number): { key: string; label: string } {
 export function evidenceMap(papers: Paper[], comparison: ComparisonRow[], lang: Lang): EvidenceMap {
   const byRef = new Map(papers.map((p) => [p.ref, p]));
   const conceptRows: MapRow[] = [];
-  for (const row of comparison) {
+  const inConcepts = new Set<string>();
+  for (const [index, row] of comparison.entries()) {
     const seen = new Set<string>();
     const counts: Record<string, number> = {};
     for (const cell of row.cells) {
       const paper = byRef.get(cell.ref);
       if (!paper || seen.has(cell.ref)) continue;
       seen.add(cell.ref);
+      inConcepts.add(cell.ref);
       const d = paperDesign(paper) ?? cell.design_category ?? "other";
       counts[d] = (counts[d] ?? 0) + 1;
     }
-    if (seen.size) conceptRows.push({ key: row.outcome, label: row.outcome, counts, total: seen.size });
+    if (seen.size) conceptRows.push({ key: `${index}:${row.outcome}`, label: row.outcome, counts, total: seen.size });
   }
 
   const bins = new Map<string, MapRow>();
@@ -82,5 +86,6 @@ export function evidenceMap(papers: Paper[], comparison: ComparisonRow[], lang: 
     bins.set(key, row);
   }
   const yearRows = [...bins.values()].sort((a, b) => Number(a.key) - Number(b.key));
-  return { byConcept: table(conceptRows, lang), byYear: table(yearRows, lang), unplaced };
+  const outsideConcepts = papers.filter((p) => paperDesign(p) != null && !inConcepts.has(p.ref)).length;
+  return { byConcept: table(conceptRows, lang), byYear: table(yearRows, lang), unplaced, outsideConcepts };
 }

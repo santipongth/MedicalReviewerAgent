@@ -25,8 +25,8 @@ export function FilterStatus({ filters, onChange, shown, total, lang }: {
 }
 
 /** A folded set of filters directly above the matrix; they also scope the charts and the paper list. */
-export function FilterBar({ papers, filters, onChange, shown, lang }: {
-  papers: Paper[]; filters: Filters; onChange: (f: Filters) => void; shown: number; lang: Lang;
+export function FilterBar({ papers, filters, onChange, shown, lang, showRisk = true }: {
+  papers: Paper[]; filters: Filters; onChange: (f: Filters) => void; shown: number; lang: Lang; showRisk?: boolean;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -76,7 +76,7 @@ export function FilterBar({ papers, filters, onChange, shown, lang }: {
           </div>
         </div>
       )}
-      <fieldset className="grid gap-1">
+      {showRisk && <fieldset className="grid gap-1">
         <legend className="label"><Term k="riskOfBias" lang={lang}>{L(lang, "ความเสี่ยงอคติ", "Risk of bias")}</Term></legend>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {RISKS.map((r) => (
@@ -86,7 +86,7 @@ export function FilterBar({ papers, filters, onChange, shown, lang }: {
             </label>
           ))}
         </div>
-      </fieldset>
+      </fieldset>}
       {designs.length > 1 && (
         <fieldset className="grid gap-1">
           <legend className="label"><Term k="studyDesign" lang={lang}>{L(lang, "รูปแบบการศึกษา", "Study design")}</Term></legend>
