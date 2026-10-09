@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { CopyLinkButton } from "@/components/ui/copy-link";
 import { Term } from "@/components/ui/term";
-import { UncertainFlag } from "@/components/ui/evidence";
+import { Glyph, UncertainFlag } from "@/components/ui/evidence";
+import { DESIGN_LABEL } from "@/lib/i18n";
+import { EvidenceBoard } from "./evidence-board";
 import { formatElapsed, type Scene } from "@/lib/agent-scene";
 import { READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
@@ -68,6 +70,8 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
           </StageLocalize.Provider>
           <MilestoneStatus scene={scene} />
         </section>
+
+        <EvidenceBoard scene={scene} />
       </div>
 
       <div className="grid gap-8 lg:grid-cols-2">
@@ -144,6 +148,12 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
                     <span className={r.state === "failed" ? "text-err" : r.state === "ok" ? "text-ok" : "text-muted"}>
                       {r.state === "reading" ? READING_OR_QUEUED : r.state === "failed" ? "อ่านไม่สำเร็จ" : r.uncertain ? (
                         <>เสร็จ · <Term k="uncertain"><UncertainFlag /></Term></>
+                      ) : r.state === "ok" && r.direction ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Glyph direction={r.direction} lang="th" />
+                          {r.design && <span className="text-xs text-muted">{DESIGN_LABEL.th[r.design]}</span>}
+                          เสร็จ
+                        </span>
                       ) : "เสร็จ"}
                     </span>
                   </li>
