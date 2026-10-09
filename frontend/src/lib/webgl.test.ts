@@ -23,6 +23,12 @@ describe("hasWebGL", () => {
     stub(() => { throw new Error("x"); });
     expect(hasWebGL()).toBe(false);
   });
+  it("releases the probe context", () => {
+    const loseContext = vi.fn();
+    stub(() => ({ getExtension: (n: string) => (n === "WEBGL_lose_context" ? { loseContext } : null) }));
+    expect(hasWebGL()).toBe(true);
+    expect(loseContext).toHaveBeenCalledTimes(1);
+  });
   it("caches the answer", () => {
     const spy = stub(() => ({}));
     hasWebGL(); hasWebGL();

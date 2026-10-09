@@ -1,6 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
-import { Component, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Scene } from "@/lib/agent-scene";
 import type { Connection } from "@/lib/use-review";
 import { hasWebGL } from "@/lib/webgl";
@@ -45,13 +45,15 @@ function subscribePref(cb: () => void): () => void {
   window.addEventListener("storage", cb);
   return () => { prefListeners.delete(cb); window.removeEventListener("storage", cb); };
 }
-let memoryPref = false; // keeps the toggle working when storage is blocked
+let memoryPref = false; // session-only value, used once a write to storage has failed
+let writeFailed = false;
 function readPref(): boolean {
+  if (writeFailed) return memoryPref;
   try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return memoryPref; }
 }
 function writePref(on: boolean): void {
   memoryPref = on;
-  try { localStorage.setItem(STORAGE_KEY, on ? "1" : "0"); } catch { /* storage blocked: session only */ }
+  try { localStorage.setItem(STORAGE_KEY, on ? "1" : "0"); writeFailed = false; } catch { writeFailed = true; }
   prefListeners.forEach((cb) => cb());
 }
 
@@ -71,6 +73,9 @@ export function StageView({ scene, connection }: { scene: Scene; connection?: Co
   const webgl = useSyncExternalStore(noSubscribe, hasWebGL, () => false);
   const pref = useSyncExternalStore(subscribePref, readPref, () => false);
   const [failed, setFailed] = useState(false);
+  const note = useRef<HTMLParagraphElement>(null);
+  // The toggle unmounts when 3D fails; move focus to the note so it is not dropped to the body.
+  useEffect(() => { if (failed) note.current?.focus(); }, [failed]);
   const can3d = wide && webgl && !reduce && !failed;
   const is3d = can3d && pref;
   function toggle() {
@@ -88,7 +93,7 @@ export function StageView({ scene, connection }: { scene: Scene; connection?: Co
           {is3d ? "มุมมอง 2D" : "มุมมอง 3D"}
         </button>
       )}
-      {failed && <p role="status" className="text-sm text-muted">แสดงแบบ 3D ไม่ได้บนเครื่องนี้ จึงแสดงแบบ 2D แทน</p>}
+      {failed && <p ref={note} tabIndex={-1} role="status" className="text-sm text-muted outline-none">แสดงแบบ 3D ไม่ได้บนเครื่องนี้ จึงแสดงแบบ 2D แทน</p>}
       {is3d ? (
         <>
           <Boundary onError={() => setFailed(true)}>

@@ -22,10 +22,13 @@ vi.mock("next/dynamic", () => ({
   },
 }));
 
+const mq = { wide: true, reduce: false, listeners: new Set<() => void>() };
 function media(matches: { wide: boolean; reduce: boolean }) {
+  mq.wide = matches.wide; mq.reduce = matches.reduce; mq.listeners.clear();
   window.matchMedia = ((q: string) => ({
-    matches: q.includes("min-width") ? matches.wide : matches.reduce,
-    addEventListener: () => {}, removeEventListener: () => {},
+    get matches() { return q.includes("min-width") ? mq.wide : mq.reduce; },
+    addEventListener: (_: string, cb: () => void) => mq.listeners.add(cb),
+    removeEventListener: (_: string, cb: () => void) => mq.listeners.delete(cb),
   })) as never;
 }
 
@@ -90,6 +93,29 @@ describe("StageView", () => {
     expect(await screen.findByTestId("stage-2d")).toBeInTheDocument();
     expect(screen.getByText("แสดงแบบ 3D ไม่ได้บนเครื่องนี้ จึงแสดงแบบ 2D แทน")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /มุมมอง/ })).toBeNull();
+    expect(screen.getByText("แสดงแบบ 3D ไม่ได้บนเครื่องนี้ จึงแสดงแบบ 2D แทน")).toHaveFocus();
+  });
+
+  it.each([
+    ["the viewport narrows", () => { mq.wide = false; }],
+    ["reduced motion turns on", () => { mq.reduce = true; }],
+  ])("returns to 2D while 3D is shown when %s", async (_n, change) => {
+    localStorage.setItem("mra.stage3d", "1");
+    await renderView();
+    expect(await screen.findByTestId("stage-3d")).toBeInTheDocument();
+    act(() => { change(); mq.listeners.forEach((cb) => cb()); });
+    expect(await screen.findByTestId("stage-2d")).toBeInTheDocument();
+    expect(screen.queryByTestId("stage-3d")).toBeNull();
+    expect(screen.queryByRole("button", { name: /มุมมอง/ })).toBeNull();
+  });
+
+  it("still toggles when only setItem throws", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota"); });
+    await renderView();
+    fireEvent.click(screen.getByRole("button", { name: "มุมมอง 3D" }));
+    expect(await screen.findByTestId("stage-3d")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "มุมมอง 2D" }));
+    expect(await screen.findByTestId("stage-2d")).toBeInTheDocument();
   });
 
   it("stays 2D when localStorage throws", async () => {
