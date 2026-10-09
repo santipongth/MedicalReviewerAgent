@@ -109,7 +109,12 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, other`.
 - Narrative reviews are listed, but they never count as evidence.
 
-**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`.
+**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). `excluded_selection` is `{narrative_excluded, over_limit}`. Results stored before Plan 14a have none of these keys.
+
+**Review type (Plan 14a).** `result.review_type` is `narrative`, `slr` or `scoping`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
+- `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
+- `synthesis.evidence_strength` and `synthesis.grade_baseline` are nullable. They are `null` for `narrative` and `scoping`, which are not graded; clients must not read `null` as "very low".
+- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and cards make no direction or risk-of-bias claims.
 
 **Synthesis.** `synthesis.consensus` explanations name any dissenting minority. Consensus needs at least 70 % of at least 3 studies to agree. `synthesis.conflicts` lists real splits, each with its likely reasons.
 
@@ -121,8 +126,8 @@ The web app also serves the whole interactive report as one HTML file that works
 
 | Format | Contents |
 |---|---|
-| `md` | The Markdown report. This is the same file as the MCP resource `review://{id}/report.md`. |
-| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`. Only verified numbers appear; blanked values are empty. The file starts with a UTF-8 BOM for spreadsheets. |
+| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). This is the same file as the MCP resource `review://{id}/report.md`. |
+| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty). Only verified numbers appear; blanked values are empty. The file starts with a UTF-8 BOM for spreadsheets. |
 | `json` | `{review_id, topic, language, created_at, finished_at, result}` |
 
 ### `GET /api/v1/status`
