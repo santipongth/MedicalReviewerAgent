@@ -48,29 +48,27 @@ export function EvidenceBoard({ scene }: { scene: Scene }) {
 
       {empty && <p className="text-sm text-muted">ยังไม่มีงานที่อ่านเสร็จ</p>}
 
-      <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-        {DIRECTION_ORDER.map((d) => {
-          const n = tally.groups[d].length;
-          return (
-            <li key={d} data-evidence-dir={d} data-count={n} className={`flex items-center gap-1.5 ${n === 0 ? "text-muted" : ""}`}>
-              <Glyph direction={d} lang="th" />
-              <span>{DIRECTION_LABEL.th[d]}</span>
-              <span className="font-display font-semibold tabular-nums">{n}</span>
-            </li>
-          );
-        })}
-      </ul>
-
       {!empty && (
-        <>
-          <button type="button" aria-expanded={open} aria-controls={detailId} onClick={() => setOpen((v) => !v)}
-            className="min-h-11 w-fit cursor-pointer rounded-sm border border-rule px-3 text-sm lg:hidden">
-            {open ? "ซ่อนรายฉบับ" : "ดูรายฉบับ"}
-          </button>
-          <div id={detailId} className={`${open ? "grid" : "hidden lg:grid"} gap-4 sm:grid-cols-2 lg:grid-cols-5`}>
-            {DIRECTION_ORDER.map((d) => (
-              <div key={d} className="flex min-w-0 flex-wrap content-start gap-1.5">
-                {tally.groups[d].map((it) => (
+        <button type="button" aria-expanded={open} aria-controls={DIRECTION_ORDER.map((d) => `${detailId}-${d}`).join(" ")}
+          onClick={() => setOpen((v) => !v)}
+          className="min-h-11 w-fit cursor-pointer rounded-sm border border-rule px-3 text-sm lg:hidden">
+          {open ? "ซ่อนรายฉบับ" : "ดูรายฉบับ"}
+        </button>
+      )}
+
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
+        {DIRECTION_ORDER.map((d) => {
+          const items = tally.groups[d];
+          const n = items.length;
+          return (
+            <li key={d} data-evidence-dir={d} data-count={n} className="grid min-w-0 content-start gap-2">
+              <span className={`flex items-center gap-1.5 ${n === 0 ? "text-muted" : ""}`}>
+                <Glyph direction={d} lang="th" />
+                <span>{DIRECTION_LABEL.th[d]}</span>
+                <span className="font-display font-semibold tabular-nums">{n}</span>
+              </span>
+              <div id={`${detailId}-${d}`} className={`${open ? "flex" : "hidden lg:flex"} flex-wrap content-start gap-1.5`}>
+                {items.map((it) => (
                   <span key={it.ref} data-evidence-chip={it.ref}
                     className={`inline-flex items-center gap-1 rounded-sm border border-rule px-1.5 py-0.5 ${fresh.has(it.key) ? "motion-safe:animate-[evidence-in_200ms_ease-out] motion-reduce:animate-none" : ""}`}>
                     <Glyph direction={d} lang="th" />
@@ -80,10 +78,10 @@ export function EvidenceBoard({ scene }: { scene: Scene }) {
                   </span>
                 ))}
               </div>
-            ))}
-          </div>
-        </>
-      )}
+            </li>
+          );
+        })}
+      </ul>
 
       {(tally.pooled > 0 || tally.noDirection > 0 || tally.failed > 0 || tally.uncertain > 0 || synthesizing) && (
         <div className="grid gap-1 text-[0.82rem] text-muted">

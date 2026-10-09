@@ -60,16 +60,22 @@ describe("EvidenceBoard", () => {
     expect(screen.queryByText(/ซ้อนกับงานวิจัยหลัก/)).toBeNull();
   });
 
-  it("toggle flips aria-expanded and the detail classes", () => {
+  it("toggle flips aria-expanded and the chip list classes", () => {
     render(<EvidenceBoard scene={full()} />);
     const btn = screen.getByRole("button", { name: "ดูรายฉบับ" });
-    const detail = document.getElementById(btn.getAttribute("aria-controls")!)!;
+    const lists = btn.getAttribute("aria-controls")!.split(" ").map((id) => document.getElementById(id)!);
+    expect(lists).toHaveLength(5);
     expect(btn).toHaveAttribute("aria-expanded", "false");
-    expect(detail.className).toContain("hidden lg:grid");
+    for (const l of lists) expect(l.className).toContain("hidden lg:flex");
     fireEvent.click(btn);
     expect(screen.getByRole("button", { name: "ซ่อนรายฉบับ" })).toHaveAttribute("aria-expanded", "true");
-    expect(detail.className).not.toContain("hidden");
-    expect(detail.className).toContain("grid");
+    for (const l of lists) { expect(l.className).not.toContain("hidden"); expect(l.className).toContain("flex"); }
+  });
+
+  it("each chip sits inside the column of its direction", () => {
+    const { container } = render(<EvidenceBoard scene={full()} />);
+    const where = (ref: string) => container.querySelector(`[data-evidence-chip="${ref}"]`)!.closest("[data-evidence-dir]")!.getAttribute("data-evidence-dir");
+    expect([where("P1"), where("P2"), where("P3"), where("P4")]).toEqual(["positive", "positive", "null", "mixed"]);
   });
 
   it("chips present at mount do not animate; a later chip does", () => {
