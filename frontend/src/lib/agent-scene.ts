@@ -11,6 +11,7 @@
 //   synthesizing -> synth runs                localizing -> synth ends, localize runs
 //   finalizing -> localize ends (or is skipped), finish runs        done -> everything ends
 import type { ReviewEvent } from "./types";
+import type { Connection } from "./use-review"; // type only (erased): no runtime cycle
 
 export type AgentId =
   | "guard" | "refine" | "plan" | "search" | "enrich" | "screen" | "read" | "external" | "synth" | "localize" | "finish";
@@ -474,6 +475,35 @@ const DOING: Partial<Record<AgentId, string>> = {
 /** Papers whose read has finished (ok, uncertain or failed). */
 export function readDone(s: Scene): number {
   return s.counts.readOk + s.counts.readFailed;
+}
+
+/** Packet pool size and per-update pulse cap, shared by the 2D and 3D stages (kept here so the 3D chunk never imports the 2D stage). */
+export const MAX_DOTS = 24;
+export const PACKET_CAP = 12;
+
+/** The count shown under an agent's label (2D and 3D). */
+export function countFor(s: Scene, id: AgentId): string | undefined {
+  const c = s.counts;
+  switch (id) {
+    case "search": return c.found > 0 ? String(c.found) : undefined;
+    case "enrich": return c.candidates > 0 ? String(c.candidates) : undefined;
+    case "screen": return c.screenedTotal > 0 ? `${c.kept}/${c.screenedTotal}` : undefined;
+    case "read": return s.slots.length > 0 ? `${readDone(s)}/${s.slots.length}` : undefined;
+    default: return undefined;
+  }
+}
+
+/** The indeterminate synth caption (two lines; wide views join them with a space). Shown only while synth is working. */
+export const SYNTH_CAPTION = ["กำลังเทียบผลและเขียนสรุป", "(ขั้นนี้ไม่มีความคืบหน้าให้ดู)"] as const;
+
+export function showSynthCaption(s: Scene): boolean {
+  return s.agents.synth === "working";
+}
+
+/** At most one stage caption (2D and 3D). Polling wins: it explains why the stage updates in steps. */
+export function stageCaption(s: Scene, connection?: Connection): string | null {
+  if (connection === "polling") return "อัปเดตทุกไม่กี่วินาที";
+  return s.status === "waiting" ? "รอคิว · เอเจนต์จะเริ่มทำงานเมื่อถึงคิว" : null;
 }
 
 /** Thai aria-label for the stage SVG. */

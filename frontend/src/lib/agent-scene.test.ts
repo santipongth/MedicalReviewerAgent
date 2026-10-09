@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  type AgentId, type Pulse, type Scene, currentAgent, formatElapsed, initialScene, planDots, readDone, reduceScene, sceneSummary,
-  takeFreshPulses,
+  type AgentId, type Pulse, type Scene, MAX_DOTS, PACKET_CAP, SYNTH_CAPTION, countFor, currentAgent, formatElapsed, initialScene,
+  planDots, readDone, reduceScene, sceneSummary, showSynthCaption, stageCaption, takeFreshPulses,
 } from "./agent-scene";
 import type { ReviewEvent } from "./types";
 
@@ -383,5 +383,32 @@ describe("junk payloads", () => {
     expect(s.counts.synthPapers).toBeNull();
     expect(s.lastSeq).toBe(13);
     expect(() => sceneSummary(s)).not.toThrow();
+  });
+});
+
+describe("shared stage helpers (2D and 3D)", () => {
+  it("stageCaption: polling wins, then waiting, else none", () => {
+    expect(stageCaption(run(live(1)))).toBe("รอคิว · เอเจนต์จะเริ่มทำงานเมื่อถึงคิว");
+    expect(stageCaption(run(live(1)), "polling")).toBe("อัปเดตทุกไม่กี่วินาที");
+    expect(stageCaption(run(live(3)), "polling")).toBe("อัปเดตทุกไม่กี่วินาที");
+    expect(stageCaption(run(live(3)), "open")).toBeNull();
+    expect(stageCaption(run(live(3)))).toBeNull();
+  });
+
+  it("showSynthCaption only while synth is working", () => {
+    expect(showSynthCaption(run(live(12)))).toBe(false);
+    expect(showSynthCaption(run([...live(12), ev(50, "synthesizing", { papers: 1 })]))).toBe(true);
+    expect(SYNTH_CAPTION.join(" ")).toBe("กำลังเทียบผลและเขียนสรุป (ขั้นนี้ไม่มีความคืบหน้าให้ดู)");
+  });
+
+  it("countFor gives the label counts (search, enrich, screen, read) and nothing for other agents", () => {
+    const s = run(live(12));
+    expect(countFor(s, "search")).toBe("41");
+    expect(countFor(s, "enrich")).toBe("60");
+    expect(countFor(s, "screen")).toBe("30/60");
+    expect(countFor(s, "read")).toBe(`${readDone(s)}/${s.slots.length}`);
+    expect(countFor(s, "guard")).toBeUndefined();
+    expect(countFor(initialScene(), "search")).toBeUndefined();
+    expect([MAX_DOTS, PACKET_CAP]).toEqual([24, 12]);
   });
 });

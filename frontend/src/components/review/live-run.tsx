@@ -1,4 +1,3 @@
-import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { CopyLinkButton } from "@/components/ui/copy-link";
 import { Term } from "@/components/ui/term";
@@ -8,15 +7,9 @@ import { READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
 import type { Connection } from "@/lib/use-review";
 import { MilestoneStatus } from "./stage/milestone-status";
-import { StageLocalize, StagePlaceholder } from "./stage/stage-placeholder";
+import { StageLocalize } from "./stage/stage-placeholder";
+import { StageView } from "./stage-view";
 import { TraceLog } from "./stage/trace-log";
-
-// Client-only chunk (motion lives here); the placeholder reserves the stage's aspect so nothing shifts on load.
-// LiveRun renders after the review (and so its language) has loaded, so the placeholder knows whether localize shows.
-const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.AgentStage), {
-  ssr: false,
-  loading: () => <StagePlaceholder />,
-});
 
 const STEP_LABEL: Record<StepKey, string> = {
   queue: "รอคิว",
@@ -68,7 +61,7 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
 
       <div className="grid gap-3">
         <StageLocalize.Provider value={scene.expectLocalize}>
-          <AgentStage scene={scene} connection={connection} />
+          <StageView scene={scene} connection={connection} />
         </StageLocalize.Provider>
         <MilestoneStatus scene={scene} />
       </div>
