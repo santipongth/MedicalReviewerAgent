@@ -73,15 +73,16 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
     comparison = [cells("Primary outcome", (0, 1, 2, 3)), cells("Safety outcome", (0, 2, 4))]
     summary = f"Stub review for: {topic}"
     graded = review_type == "slr"  # narrative and scoping reviews are not graded (same rule as write_synthesis)
+    scoping = review_type == "scoping"  # a scoping review makes no claims: no consensus, no conflicts
     synthesis = {
         "executive_summary": summary, "comparison": comparison,
-        "consensus": [{"statement": "Most simulated studies point the same way.", "refs": ["P1", "P3"],
-                       "explanation": "Illustrative."}],
-        "conflicts": [{"statement": "One simulated study disagrees.", "refs": ["P4"],
-                       "explanation": "Illustrative.", "likely_reasons": ["Different population"]}],
+        "consensus": [] if scoping else [{"statement": "Most simulated studies point the same way.",
+                                          "refs": ["P1", "P3"], "explanation": "Illustrative."}],
+        "conflicts": [] if scoping else [{"statement": "One simulated study disagrees.", "refs": ["P4"],
+                                          "explanation": "Illustrative.", "likely_reasons": ["Different population"]}],
         "evidence_strength": "low" if graded else None,
         "evidence_rationale": "Simulated data." if graded else
-        f"Certainty of evidence is not graded in a {review_type} review.",
+        f"Certainty of evidence is not graded in a {'scoping' if scoping else 'narrative'} review.",
         "research_gaps": ["No long-term follow-up in the stub data."],
         "grade_baseline": "low" if graded else None,
     }
@@ -92,6 +93,9 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
             "interpretation": f"Evidence on {topic}",
             "refined_question": f"What does the published evidence say about {topic}?",
             "sub_questions": [], "assumptions": [],
+            "framework": "PCC" if scoping else "PICO",
+            "concept": f"Evidence on {topic}" if scoping else None,
+            "context": "Any setting" if scoping else None,
             "pico": {"population": "Adults", "intervention_or_exposure": "Index intervention",
                      "comparator": "Placebo or usual care", "outcomes": ["Primary outcome", "Safety outcome"],
                      "study_designs": [], "timeframe": None},
@@ -101,7 +105,7 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
         "summary": summary, "synthesis": synthesis, "synthesis_en": synthesis,
         "papers": papers, "queries": [f"{topic} randomized controlled trial", f"{topic} cohort study"],
         "stats": {"found": 87, "unique": 70, "with_abstract": 64, "candidates": 60, "screened": 60,
-                  "selected": len(papers) + 2, "extracted": len(papers), "excluded_screening": {"off_topic": 20, "population": 5, "publication_type": 3},
+                  "selected": len(papers), "extracted": len(papers), "excluded_screening": {"off_topic": 20, "population": 5, "publication_type": 3},
                   "non_research": 4, "excluded_selection": {"narrative_excluded": 0, "over_limit": 2}},
         "quality": {}, "errors": [], "prompt_version": "stub", "llm_preset": "stub", "models": {},
         "external_context": [],

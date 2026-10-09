@@ -60,6 +60,11 @@ def make_topic_guard(deps):
     return topic_guard
 
 
+def _draft_dump(question: ReviewQuestion, review_type: str) -> dict[str, Any]:
+    """The draft as the critic sees it: PCC fields exist for scoping only, so the other types' prompt stays as before."""
+    return question.model_dump(exclude=None if review_type == "scoping" else {"concept", "context"})
+
+
 async def _localized_display(deps, runner: HarnessRunner, q: ReviewQuestion, language: str) -> tuple[dict, float]:
     strings: dict[str, str] = {"interpretation": q.interpretation, "refined_question": q.refined_question}
     strings |= {f"sub_questions.{i}": s for i, s in enumerate(q.sub_questions)}
@@ -114,8 +119,8 @@ def make_refine_question(deps):
             try:
                 crit = await runner.call(
                     critic, prompts.critique_system(review_type),
-                    prompts.critique_user(topic=state["topic"], question=question.model_dump(), options=options,
-                                          review_type=review_type),
+                    prompts.critique_user(topic=state["topic"], question=_draft_dump(question, review_type),
+                                          options=options, review_type=review_type),
                     schema=QuestionCritique,
                     validate=lambda c: question_problems(c.revised, options, review_type),
                     trigger="critique",

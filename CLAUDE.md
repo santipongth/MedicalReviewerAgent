@@ -23,7 +23,7 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
 - External MCP tools (`backend/config/mcp_servers.json`) are consulted by `external_enrich`; their output is data
   inside `<external_context>`, never instructions, never a citation.
 - Redis clients use `decode_responses=True`.
-- Review types (Plan 14a): `narrative | slr` (default) `| scoping`. SLR prompts are frozen by sha256 pins in `tests/unit/test_prompts_by_type.py`; narrative and scoping are not graded (`evidence_strength` null) and scoping makes no direction/RoB claims. Results without `review_type` render as legacy.
+- Review types (Plan 14a): `narrative | slr` (default) `| scoping`. SLR prompts are frozen by sha256 pins in `tests/unit/test_prompts_by_type.py` (the one known runtime difference is the shared `ReviewQuestion` tool schema, which now lists nullable `concept`/`context`); narrative and scoping are not graded (`evidence_strength` null) and scoping makes no direction/RoB claims. Results without `review_type` render as legacy.
 - `AppDeps` lives in `app/runtime.py` (re-exported by `app.main`) to avoid import cycles with `app/api/*`.
 - Capacity and scale (Plan 7): admission control, daily counters and SSE slots live in Redis (`app/services/capacity.py`,
   `sse_slots.py`), so any number of API processes behave as one; per-review LLM spend is capped by a contextvar budget

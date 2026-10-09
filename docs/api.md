@@ -107,14 +107,14 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 
 **Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`.
 - `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, other`.
-- Narrative reviews are listed, but they never count as evidence.
+- Narrative reviews are listed, but they never count as evidence, except in scoping reviews, which count them. A narrative-type review also gives them to the synthesis and can cite them, but keeps them out of the comparison table.
 
 **Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). `excluded_selection` is `{narrative_excluded, over_limit}`. Results stored before Plan 14a have none of these keys.
 
 **Review type (Plan 14a).** `result.review_type` is `narrative`, `slr` or `scoping`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
-- `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
+- `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`; `null` when the question was not refined), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
 - `synthesis.evidence_strength` and `synthesis.grade_baseline` are nullable. They are `null` for `narrative` and `scoping`, which are not graded; clients must not read `null` as "very low".
-- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and cards make no direction or risk-of-bias claims.
+- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. The cards still carry `overall_direction`, `risk_of_bias`, `outcomes[].direction` and `synthesis.comparison[].cells[].direction` as raw agent extraction. The report and the CSV do not show them (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present these fields as findings.
 
 **Synthesis.** `synthesis.consensus` explanations name any dissenting minority. Consensus needs at least 70 % of at least 3 studies to agree. `synthesis.conflicts` lists real splits, each with its likely reasons.
 

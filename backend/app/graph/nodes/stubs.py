@@ -152,7 +152,8 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
         selected = state.get("selected") or []
         if not selected:
             return "normalize_outcomes"
-        common = {"review_id": state.get("review_id", ""), "topic": state["topic"], "kept": len(selected)}
+        common = {"review_id": state.get("review_id", ""), "topic": state["topic"], "kept": len(selected),
+                  "review_type": ReviewOptions.clamped(state.get("options")).review_type}
         return [Send("read_paper", {"index": i + 1, **common}) for i in range(len(selected))]
 
     async def read_paper(payload: dict[str, Any]) -> dict:
@@ -167,10 +168,12 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
         async with pool:
             await asyncio.sleep(per_paper * rng.uniform(0.7, 1.3))
         ok = i % 11 != 0
-        progress_writer()({"type": "extracted", "ref": ref, "ok": ok, "verified": (i % 4) if ok else 0,
-                           "uncertain": i % 7 == 0,
-                           "direction": STUB_DIRECTIONS[i % 7] if ok else None,
-                           "design": STUB_DESIGNS[i % 5] if ok else None})
+        extracted = {"type": "extracted", "ref": ref, "ok": ok, "verified": (i % 4) if ok else 0,
+                     "uncertain": i % 7 == 0, "direction": STUB_DIRECTIONS[i % 7] if ok else None,
+                     "design": STUB_DESIGNS[i % 5] if ok else None}
+        if payload.get("review_type") == "scoping":  # same as the real reader: no direction for scoping
+            del extracted["direction"]
+        progress_writer()(extracted)
         return {"papers": [{"ref": ref, "ok": ok}]}
 
     async def normalize_outcomes(state: ReviewState) -> dict:

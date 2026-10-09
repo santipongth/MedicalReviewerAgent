@@ -281,7 +281,8 @@ def make_write_synthesis(deps):
         language = state.get("language", "th")
         review_type = _review_type(state)
         graded = review_type == "slr"
-        papers = _evidence(state)
+        # narrative reviews are cited and summarised in narrative/scoping reviews; only the matrix leaves them out
+        papers = _evidence(state) if graded else _with_cards(state)
         if not papers:
             if state.get("selected"):
                 messages = EXTRACTION_FAILED
@@ -311,9 +312,14 @@ def make_write_synthesis(deps):
                                 f"GRADE-lite baseline {baseline}")
             return problems
 
+        prompt_matrix = matrix
+        if review_type == "scoping":  # no direction-based consensus or per-cell directions reach a scoping summary
+            prompt_matrix = {"rows": [{**r, "cells": [{k: v for k, v in c.items() if k != "direction"}
+                                                      for c in r.get("cells", [])]}
+                                      for r in matrix.get("rows", [])], "consensus": []}
         user = prompts.narrative_user(question=review_question(state),
                                       sub_questions=question.get("sub_questions") or [],
-                                      papers=[_brief(p) for p in papers], matrix=matrix, conflict_notes=notes,
+                                      papers=[_brief(p) for p in papers], matrix=prompt_matrix, conflict_notes=notes,
                                       baseline=matrix.get("grade") or {},
                                       external_context=state.get("external_context") or [], review_type=review_type)
         narrative_call = harness_runner(deps).call(
@@ -362,19 +368,13 @@ def make_write_synthesis(deps):
             fixed = narrative.model_copy(update=update)
             entry["citation_fixes"] = int(fixed != narrative)
             narrative = fixed
-        if graded:
-            synthesis = Synthesis(
-                executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),
-                consensus=consensus, conflicts=conflicts,
-                evidence_strength=clamp_to_baseline(narrative.evidence_strength, baseline),
-                evidence_rationale=narrative.evidence_rationale, research_gaps=narrative.research_gaps,
-                grade_baseline=baseline)
-        else:  # not graded: no strength, no baseline, a fixed rationale that localizes like any other text
-            synthesis = Synthesis(
-                executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),
-                consensus=consensus, conflicts=conflicts, evidence_strength=None,
-                evidence_rationale=_not_graded_rationale(review_type), research_gaps=narrative.research_gaps,
-                grade_baseline=None)
+        # not graded: no strength, no baseline, a fixed rationale that localizes like any other text
+        synthesis = Synthesis(
+            executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),
+            consensus=consensus, conflicts=conflicts,
+            evidence_strength=clamp_to_baseline(narrative.evidence_strength, baseline) if graded else None,
+            evidence_rationale=narrative.evidence_rationale if graded else _not_graded_rationale(review_type),
+            research_gaps=narrative.research_gaps, grade_baseline=baseline if graded else None)
         entry["seconds"] = round(time.perf_counter() - started, 3)
         quality.append(entry)
         return {"synthesis": synthesis.model_dump(), "localized_cards": localized_cards, "cost_usd": cost,
