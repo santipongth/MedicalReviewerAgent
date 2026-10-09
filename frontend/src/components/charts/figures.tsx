@@ -317,7 +317,7 @@ function treeData(n: MapNode, t: ChartTokens, lang: Lang): TreeDatum {
 }
 
 function conceptOption(tree: ConceptTree, t: ChartTokens, lang: Lang): EChartsOption {
-  const label = { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, width: 160, overflow: "truncate" };
+  const label = { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, width: 150, overflow: "truncate" };
   return {
     animation: !t.reducedMotion,
     animationDuration: 400,
@@ -332,7 +332,7 @@ function conceptOption(tree: ConceptTree, t: ChartTokens, lang: Lang): EChartsOp
       type: "tree", data: [treeData(tree.root, t, lang)], layout: "orthogonal", orient: "LR",
       initialTreeDepth: 3, expandAndCollapse: true, roam: false, top: 8, bottom: 8, left: 180, right: 200,
       lineStyle: { color: t.rule, width: 1.5, curveness: 0 },
-      label: { ...label, position: "left", verticalAlign: "middle", align: "right" },
+      label: { ...label, position: "top", distance: 6, verticalAlign: "bottom", align: "center", width: 170 },
       leaves: { label: { ...label, position: "right", verticalAlign: "middle", align: "left" } },
       emphasis: { focus: "descendant" },
       animationDurationUpdate: t.reducedMotion ? 0 : 300,
@@ -375,7 +375,7 @@ export function ConceptMapFigure({ tree, tokens, lang, onSelect }: { tree: Conce
       caption={<>{L(lang, CONCEPT_CAPTION[0], CONCEPT_CAPTION[1])}{note && <> · {note}</>}</>}
       chart={
         <div className="overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, "แผนที่ความรู้ (เลื่อนดูได้)", "Concept map (scrollable)")}>
-          <div className="min-w-[680px]">
+          <div className="min-w-[960px]">
             <EChart option={option} height={Math.max(240, tree.drawnLeaves * 28)}
               label={L(lang, `แผนที่ความรู้ ${tree.leaves} กลุ่มงานวิจัย`, `Concept map with ${tree.leaves} study groups`)}
               onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />

@@ -12,7 +12,7 @@ function Count({ n }: { n: number | undefined }) {
 /** Counts only (font-display tabular-nums, never VerifiedNumber): rows × design categories, then a total. */
 function CountTable({ table, label, corner, lang }: { table: MapTable; label: string; corner: string; lang: Lang }) {
   return (
-    <div className="overflow-x-auto rounded-sm border border-rule">
+    <div className="overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, `${label} (เลื่อนดูได้)`, `${label} (scrollable)`)}>
       <table aria-label={label} className="w-full border-collapse text-[0.88rem]">
         <thead>
           <tr className="bg-ground">
