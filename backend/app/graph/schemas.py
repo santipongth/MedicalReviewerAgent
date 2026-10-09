@@ -230,7 +230,7 @@ class Synthesis(BaseModel):
     comparison: list[ComparisonRow]
     consensus: list[EvidenceCluster]
     conflicts: list[EvidenceCluster]
-    evidence_strength: Literal["high", "moderate", "low", "very_low"]
+    evidence_strength: Literal["high", "moderate", "low", "very_low"] | None = None  # None: not graded (narrative, scoping)
     evidence_rationale: str
     research_gaps: list[str]
     grade_baseline: str | None = None
@@ -262,6 +262,12 @@ class SynthesisNarrative(BaseModel):
     executive_summary: str
     evidence_strength: Literal["high", "moderate", "low", "very_low"]
     evidence_rationale: str
+    research_gaps: list[str]
+
+
+class NarrativeNoGrade(BaseModel):
+    """Narrative and scoping reviews are not graded: the model writes only the summary and the gaps."""
+    executive_summary: str
     research_gaps: list[str]
 
 

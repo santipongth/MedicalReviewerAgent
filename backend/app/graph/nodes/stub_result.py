@@ -18,9 +18,10 @@ _PAPERS = (
 def _card(i: int, topic: str) -> dict[str, Any]:
     design, study_design, _year, direction, rob, n, effect, ci = _PAPERS[i]
     has_effect = effect is not None
+    quote = f"HR {effect} (95% CI {ci[0]}-{ci[1]})" if has_effect and ci else None
     outcomes = [{
         "outcome": "Primary outcome", "result": f"Reported {direction} association for {topic}.",
-        "evidence_quote": None, "effect_size": None,
+        "evidence_quote": quote, "effect_size": None,
         "effect_measure": "HR" if has_effect else None, "effect_value": effect,
         "ci_lower": ci[0] if ci else None, "ci_upper": ci[1] if ci else None, "p_value": None,
         "direction": direction,
@@ -28,7 +29,7 @@ def _card(i: int, topic: str) -> dict[str, Any]:
     return {
         "study_design": study_design, "design_category": design,
         "population": f"Adults studied in the context of {topic}",
-        "sample_size": n, "sample_size_quote": None,
+        "sample_size": n, "sample_size_quote": f"A total of {n} participants were enrolled." if n else None,
         "intervention_or_exposure": "Index intervention",
         "comparator": "Placebo or usual care" if design == "rct" else None,
         "outcomes": outcomes,
@@ -36,6 +37,14 @@ def _card(i: int, topic: str) -> dict[str, Any]:
         "limitations": ["Illustrative stub data; abstract-only reading."],
         "funding_or_conflicts": None, "risk_of_bias": rob, "overall_direction": direction,
     }
+
+
+def _verification(card: dict[str, Any]) -> dict[str, Any]:
+    """Every number the card shows has a quote containing it, so all of them count as verified."""
+    o = card["outcomes"][0]
+    total = sum(v is not None for v in (card["sample_size"], o["effect_value"], o["ci_lower"], o["ci_upper"]))
+    return {"numbers_verified": total, "numbers_total": total, "agreement": None, "escalated": False,
+            "repaired": False, "uncertain": False, "unverified": []}
 
 
 def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str, Any]:
@@ -47,8 +56,7 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
             "year": year, "journal": "Journal of Simulated Evidence", "doi": None, "pmid": None, "pmcid": None,
             "url": None, "relevance": round(0.95 - 0.05 * i, 2), "screen_reason": "Relevant to the question",
             "card": card, "card_en": card,
-            "verification": {"numbers_verified": 0, "numbers_total": 0, "agreement": None, "escalated": False,
-                             "repaired": False, "uncertain": False, "unverified": []},
+            "verification": _verification(card),
             "error": None,
         })
 
@@ -64,15 +72,18 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
 
     comparison = [cells("Primary outcome", (0, 1, 2, 3)), cells("Safety outcome", (0, 2, 4))]
     summary = f"Stub review for: {topic}"
+    graded = review_type == "slr"  # narrative and scoping reviews are not graded (same rule as write_synthesis)
     synthesis = {
         "executive_summary": summary, "comparison": comparison,
         "consensus": [{"statement": "Most simulated studies point the same way.", "refs": ["P1", "P3"],
                        "explanation": "Illustrative."}],
         "conflicts": [{"statement": "One simulated study disagrees.", "refs": ["P4"],
                        "explanation": "Illustrative.", "likely_reasons": ["Different population"]}],
-        "evidence_strength": None if review_type != "slr" else "low",
-        "evidence_rationale": "Simulated data.", "research_gaps": ["No long-term follow-up in the stub data."],
-        "grade_baseline": None,
+        "evidence_strength": "low" if graded else None,
+        "evidence_rationale": "Simulated data." if graded else
+        f"Certainty of evidence is not graded in a {review_type} review.",
+        "research_gaps": ["No long-term follow-up in the stub data."],
+        "grade_baseline": "low" if graded else None,
     }
     return {
         "topic": topic, "english_topic": topic, "language": language, "review_type": review_type,

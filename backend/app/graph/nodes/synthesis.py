@@ -18,6 +18,7 @@ from app.graph.progress import progress_writer
 from app.graph.schemas import (
     ConflictNote,
     EvidenceCluster,
+    NarrativeNoGrade,
     OutcomeClusters,
     Synthesis,
     SynthesisNarrative,
@@ -79,8 +80,14 @@ def _with_cards(state: ReviewState) -> list[dict[str, Any]]:
 
 def _evidence(state: ReviewState) -> list[dict[str, Any]]:
     """Papers that count as evidence: narrative reviews stay in the paper list but add no matrix cells, conflicts
-    or grade (they restate other studies)."""
+    or grade (they restate other studies). A scoping review maps everything, so it counts them."""
+    if _review_type(state) == "scoping":
+        return _with_cards(state)
     return [p for p in _with_cards(state) if p["card"].get("design_category") != "narrative_review"]
+
+
+def _review_type(state: ReviewState) -> str:
+    return ReviewOptions.clamped(state.get("options")).review_type
 
 
 def _brief(p: dict[str, Any]) -> dict[str, Any]:
@@ -94,10 +101,15 @@ def _brief(p: dict[str, Any]) -> dict[str, Any]:
             "text_source": "abstract", "card": card}
 
 
-def _empty_synthesis(summary: str) -> dict[str, Any]:
+def _empty_synthesis(summary: str, review_type: str = "slr") -> dict[str, Any]:
+    graded = review_type == "slr"
     return Synthesis(executive_summary=summary, comparison=[], consensus=[], conflicts=[],
-                     evidence_strength="very_low", evidence_rationale=summary, research_gaps=[],
-                     grade_baseline="very_low").model_dump()
+                     evidence_strength="very_low" if graded else None, evidence_rationale=summary, research_gaps=[],
+                     grade_baseline="very_low" if graded else None).model_dump()
+
+
+def _not_graded_rationale(review_type: str) -> str:
+    return f"Certainty of evidence is not graded in a {'scoping' if review_type == 'scoping' else 'narrative'} review."
 
 
 # ---- S1 + S2: normalize outcome names, then build the matrix in code ----------------------------
@@ -139,7 +151,7 @@ def make_normalize_outcomes(deps):
 # ---- S3: explain each conflict ----------------------------------------------------------------
 def route_conflicts(state: ReviewState) -> list[Send] | str:
     conflicts = (state.get("matrix") or {}).get("conflicts") or []
-    if not conflicts:
+    if not conflicts or _review_type(state) == "scoping":  # a scoping review does not explain disagreements
         return "write_synthesis"
     by_ref = {p["ref"]: p for p in _evidence(state)}
     question = review_question(state)
@@ -267,6 +279,8 @@ def make_write_synthesis(deps):
     async def write_synthesis(state: ReviewState) -> dict:
         started = time.perf_counter()
         language = state.get("language", "th")
+        review_type = _review_type(state)
+        graded = review_type == "slr"
         papers = _evidence(state)
         if not papers:
             if state.get("selected"):
@@ -276,8 +290,8 @@ def make_write_synthesis(deps):
                 messages = SCREENING_FAILED
             else:
                 messages = NO_PAPERS
-            english = _empty_synthesis(messages["en"])
-            display = _empty_synthesis(messages.get(language, messages["en"]))
+            english = _empty_synthesis(messages["en"], review_type)
+            display = _empty_synthesis(messages.get(language, messages["en"]), review_type)
             return {"synthesis": english, "synthesis_display": display, "localized_cards": None,
                     "quality": [{"stage": "narrative", "skipped": True, "seconds": 0.0}]}
         matrix = state.get("matrix") or {}
@@ -287,12 +301,12 @@ def make_write_synthesis(deps):
                        key=lambda n: n["outcome"].lower())
         question = state.get("question") or {}
 
-        def validate(n: SynthesisNarrative) -> list[str]:
-            problems = check_citations(" ".join([n.executive_summary, n.evidence_rationale, *n.research_gaps]),
-                                       allowed)
+        def validate(n: SynthesisNarrative | NarrativeNoGrade) -> list[str]:
+            rationale = getattr(n, "evidence_rationale", "")
+            problems = check_citations(" ".join([n.executive_summary, rationale, *n.research_gaps]), allowed)
             if not _CITED.search(n.executive_summary):
                 problems.append("executive_summary must cite the supporting papers inline, e.g. [P1]")
-            if abs(LEVELS.index(n.evidence_strength) - LEVELS.index(baseline)) > 1:
+            if graded and abs(LEVELS.index(n.evidence_strength) - LEVELS.index(baseline)) > 1:
                 problems.append(f"evidence_strength {n.evidence_strength} is more than one level away from the "
                                 f"GRADE-lite baseline {baseline}")
             return problems
@@ -302,8 +316,9 @@ def make_write_synthesis(deps):
                                       papers=[_brief(p) for p in papers], matrix=matrix, conflict_notes=notes,
                                       baseline=matrix.get("grade") or {},
                                       external_context=state.get("external_context") or [])
-        narrative_call = harness_runner(deps).call(deps.llms.synthesizer, prompts.NARRATIVE_SYSTEM, user,
-                                                   schema=SynthesisNarrative, validate=validate, trigger="narrative")
+        narrative_call = harness_runner(deps).call(
+            deps.llms.synthesizer, prompts.narrative_system(review_type), user,
+            schema=SynthesisNarrative if graded else NarrativeNoGrade, validate=validate, trigger="narrative")
         res, cards = await asyncio.gather(narrative_call, _localize_cards(deps, papers, language),
                                           return_exceptions=True)
         cost, errors = 0.0, []
@@ -320,7 +335,7 @@ def make_write_synthesis(deps):
         entry: dict[str, Any] = {"stage": "narrative", "repaired": False, "escalated": False, "citation_fixes": 0,
                                  "fallback": False}
         consensus, conflicts = _clusters(matrix, notes)
-        narrative: SynthesisNarrative | None = None
+        narrative: SynthesisNarrative | NarrativeNoGrade | None = None
         if isinstance(res, BaseException):
             if not isinstance(res, LLMError):
                 raise res
@@ -331,22 +346,33 @@ def make_write_synthesis(deps):
             narrative = res.value
         if narrative is None:
             entry["fallback"] = True
-            narrative = SynthesisNarrative(executive_summary=SYNTH_FAILED, evidence_strength=baseline,
-                                           evidence_rationale="; ".join((matrix.get("grade") or {}).get("factors", [])),
-                                           research_gaps=[])
+            if graded:
+                narrative = SynthesisNarrative(
+                    executive_summary=SYNTH_FAILED, evidence_strength=baseline,
+                    evidence_rationale="; ".join((matrix.get("grade") or {}).get("factors", [])), research_gaps=[])
+            else:
+                narrative = NarrativeNoGrade(executive_summary=SYNTH_FAILED, research_gaps=[])
         elif not res.ok:  # still invalid after repairs: remove what cannot be trusted, keep the rest
-            fixed = narrative.model_copy(update={
-                "executive_summary": strip_unknown_citations(narrative.executive_summary, allowed),
-                "evidence_rationale": strip_unknown_citations(narrative.evidence_rationale, allowed),
-                "research_gaps": [strip_unknown_citations(g, allowed) for g in narrative.research_gaps]})
+            update = {"executive_summary": strip_unknown_citations(narrative.executive_summary, allowed),
+                      "research_gaps": [strip_unknown_citations(g, allowed) for g in narrative.research_gaps]}
+            if graded:
+                update["evidence_rationale"] = strip_unknown_citations(narrative.evidence_rationale, allowed)
+            fixed = narrative.model_copy(update=update)
             entry["citation_fixes"] = int(fixed != narrative)
             narrative = fixed
-        synthesis = Synthesis(
-            executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),
-            consensus=consensus, conflicts=conflicts,
-            evidence_strength=clamp_to_baseline(narrative.evidence_strength, baseline),
-            evidence_rationale=narrative.evidence_rationale, research_gaps=narrative.research_gaps,
-            grade_baseline=baseline)
+        if graded:
+            synthesis = Synthesis(
+                executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),
+                consensus=consensus, conflicts=conflicts,
+                evidence_strength=clamp_to_baseline(narrative.evidence_strength, baseline),
+                evidence_rationale=narrative.evidence_rationale, research_gaps=narrative.research_gaps,
+                grade_baseline=baseline)
+        else:  # not graded: no strength, no baseline, a fixed rationale that localizes like any other text
+            synthesis = Synthesis(
+                executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),
+                consensus=consensus, conflicts=conflicts, evidence_strength=None,
+                evidence_rationale=_not_graded_rationale(review_type), research_gaps=narrative.research_gaps,
+                grade_baseline=None)
         entry["seconds"] = round(time.perf_counter() - started, 3)
         quality.append(entry)
         return {"synthesis": synthesis.model_dump(), "localized_cards": localized_cards, "cost_usd": cost,
@@ -404,7 +430,7 @@ def make_localize(deps):
         if state.get("synthesis_display") is not None:  # already in the user's language (no-papers message)
             return {}
         started = time.perf_counter()
-        synthesis = state.get("synthesis") or _empty_synthesis("")
+        synthesis = state.get("synthesis") or _empty_synthesis("", _review_type(state))
         language = state.get("language", "th")
         llm = getattr(deps.llms, "localizer", None)
         if language == "en" or not harness_spec(deps).localize or llm is None:
@@ -454,7 +480,7 @@ def make_finalize(deps):
     async def finalize(state: ReviewState) -> dict:
         papers = unique_papers(state)
         language = state.get("language", "th")
-        synthesis_en = state.get("synthesis") or _empty_synthesis(NO_PAPERS["en"])
+        synthesis_en = state.get("synthesis") or _empty_synthesis(NO_PAPERS["en"], _review_type(state))
         synthesis = state.get("synthesis_display") or synthesis_en
         localized = state.get("localized_cards") or {}
         out_papers = []

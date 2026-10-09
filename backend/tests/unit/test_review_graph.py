@@ -278,3 +278,27 @@ async def test_review_finishes_with_what_it_has_when_the_cost_cap_is_reached():
         values, _ = await run(deps, thread="capped")
     r = values["result"]
     assert r is not None and any("cost cap" in e for e in r["errors"])
+
+
+async def test_scoping_run_skips_conflict_explanation_and_grading():
+    from app.graph.schemas import NarrativeNoGrade
+    deps = make_deps()
+    deps.llms.refiner = FakeStructuredLLM("ref", lambda s, u: QUESTION.model_copy(
+        update={"concept": "metformin use", "context": "adults with type 2 diabetes", "comparator": ""}))
+    deps.llms.synthesizer = FakeStructuredLLM("syn", lambda s, u: NarrativeNoGrade(
+        executive_summary="Studies of metformin in diabetes are mostly cohorts [P1, P2].", research_gaps=["RCTs"]))
+    values, _ = await run(deps, options={"max_papers": 8, "candidate_limit": 20, "review_type": "scoping"},
+                          language="en")
+    r = values["result"]
+    assert deps.llms.conflict_explainer.calls == []
+    assert r["review_type"] == "scoping"
+    assert r["synthesis"]["evidence_strength"] is None and r["synthesis"]["grade_baseline"] is None
+    assert r["synthesis"]["evidence_rationale"] == "Certainty of evidence is not graded in a scoping review."
+    assert "scoping review" in deps.llms.synthesizer.calls[0][0]
+
+
+async def test_slr_run_still_explains_conflicts_and_grades():
+    deps = make_deps()
+    values, _ = await run(deps, language="en")
+    assert len(deps.llms.conflict_explainer.calls) == 1
+    assert values["result"]["synthesis"]["evidence_strength"] == "low"
