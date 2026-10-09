@@ -15,10 +15,11 @@ const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.Age
   loading: () => <StagePlaceholder />,
 });
 
-// three.js / R3F / drei live only in this lazily loaded chunk.
+// three.js / R3F / drei live only in this lazily loaded chunk. The placeholder is the loaded wrapper's box (borderless,
+// the 2D stage's aspect), so nothing changes when the chunk lands.
 const Stage3D = dynamic(() => import("./stage3d/stage-3d"), {
   ssr: false,
-  loading: () => <div aria-hidden data-placeholder="3d" className="mx-auto aspect-[960/226] w-full rounded-sm border border-rule bg-surface" />,
+  loading: () => <div aria-hidden data-placeholder="3d" className="mx-auto aspect-[960/254] w-full rounded-sm bg-surface" />,
 });
 
 const STORAGE_KEY = "mra.stage3d";

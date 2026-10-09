@@ -152,17 +152,23 @@ export function packetScale(t: number): number {
 
 // Framing: the camera keeps a fixed elevation (the Plan 12 view direction, from [0, 3.1, 7] toward [0, -1.1, 0]) and
 // backs off along it just far enough that the whole layout (lane, labels' room, pool, full piles, thought headroom)
-// fits the 960/226 wrapper (the 2D stage's box, so toggling never shifts the page) with an 8% margin, plus a small pan
-// toward the current agent.
+// fits the 960/254 wrapper (the 2D stage's constant box, so toggling never shifts the page) with an 8% side margin
+// and a 2% vertical one, plus a small pan toward the current agent.
 export const CAMERA_BASE: Vec3 = [0, 3.1, 7]; // initial Canvas camera only; the rig places the fitted camera at once
 const VIEW_UP = 4.2; // camera offset direction from the look-at point (y, z), i.e. ~31 degrees above the horizon
 const VIEW_BACK = 7;
 const VIEW_LEN = Math.hypot(VIEW_UP, VIEW_BACK);
 const DIR_Y = VIEW_UP / VIEW_LEN;
 const DIR_Z = VIEW_BACK / VIEW_LEN;
-export const STAGE_ASPECT = 960 / 226; // = PLACEHOLDER_SIZE.wide (pinned by stage-3d.test.tsx)
+export const STAGE_ASPECT = 960 / 254; // = PLACEHOLDER_SIZE.wide (pinned by stage-3d.test.tsx)
 export const STAGE_FOV = 45;
 export const FIT_MARGIN = 0.08;
+/**
+ * Vertical margin. The wide box is flat (the 2D stage's aspect), so the fit is height-bound; the frame points already
+ * include the DOM labels' room (thought headroom, label drop, pile captions), so a slim vertical margin is enough and
+ * lets the lane use more of the width.
+ */
+export const FIT_MARGIN_V = 0.02;
 const PAN = 0.1; // fraction of the way from the lane centre toward the current agent (keeps the whole lane framed)
 const NEAR_MIN = 0.5;
 
@@ -188,7 +194,8 @@ const fitTarget: Vec3 = [0, 0, 0];
 
 /**
  * Camera position + look-at (6 numbers into `out`) at the fixed elevation, as close as possible while every one of
- * `points` (default: the 8 corners of `bounds`) stays within (1 - FIT_MARGIN) of the frustum edges (pinhole
+ * `points` (default: the 8 corners of `bounds`) stays within (1 - FIT_MARGIN) of the side edges and (1 - FIT_MARGIN_V)
+ * of the top and bottom edges of the frustum (pinhole
  * projection, vertical `fovDeg`, `aspect` = width / height). The look-at starts at the bounds centre and is re-centred
  * in view space so the points' projected extent is centred (a perspective view of a deep box is not symmetric).
  * `padX` reserves room for a later sideways pan of that many world units.
@@ -204,9 +211,9 @@ export function fitCamera(
   t[0] = ok ? (min[0] + max[0]) / 2 : 0;
   t[1] = ok ? (min[1] + max[1]) / 2 : 0;
   t[2] = ok ? (min[2] + max[2]) / 2 : 0;
-  const lim = 1 - FIT_MARGIN;
-  const tanV = Math.tan((fovDeg * Math.PI) / 360) * lim;
-  const tanH = tanV * aspect;
+  const tan = Math.tan((fovDeg * Math.PI) / 360);
+  const tanV = tan * (1 - FIT_MARGIN_V);
+  const tanH = tan * aspect * (1 - FIT_MARGIN);
   let d = NEAR_MIN;
   if (ok) {
     const pts = points && points.length > 0 ? points : boundsCorners(bounds);

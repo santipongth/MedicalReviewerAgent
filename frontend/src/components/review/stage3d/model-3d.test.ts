@@ -6,7 +6,7 @@ import {
 import { PILE_HALF, PILE_PITCH, PILE_STACK_DZ, layout3dFor, type Vec3 } from "@/lib/agent-layout-3d";
 import { DIRECTION_ORDER } from "@/lib/i18n";
 import {
-  ARRIVAL_STAGGER_MS, EDGE_COLOR, EDGE_RADIUS, FIT_MARGIN, FLIGHT_MS, NODE_VISUAL, PACKET_COLOR, PILE_BAR, PILE_COLOR, PILE_R, PILE_SHAPE,
+  ARRIVAL_STAGGER_MS, EDGE_COLOR, EDGE_RADIUS, FIT_MARGIN, FIT_MARGIN_V, FLIGHT_MS, NODE_VISUAL, PACKET_COLOR, PILE_BAR, PILE_COLOR, PILE_R, PILE_SHAPE,
   SLOT_COLOR, SLOT_SCALE, STAGE_ASPECT, STAGE_FOV, THOUGHT_LIFT, anySpinning, cameraAgent, cameraGoal, easeInOut,
   easeToward, fitCamera, flightT, makeFlights, packetScale, pileCaptionAt, pileLabelAt, planArrivals, poolLabelAt,
   poolSummary, schedulePackets, thoughtAnchor, thoughtLeader, visibleAgents,
@@ -303,24 +303,31 @@ function project(cam: number[], p: Vec3, fovDeg: number, aspect: number): [numbe
 const corners = (b: { min: Vec3; max: Vec3 }): Vec3[] =>
   Array.from({ length: 8 }, (_, c) => [(c & 1) ? b.max[0] : b.min[0], (c & 2) ? b.max[1] : b.min[1], (c & 4) ? b.max[2] : b.min[2]] as Vec3);
 
+const LIM_X = 1 - FIT_MARGIN + 1e-6;
+const LIM_Y = 1 - FIT_MARGIN_V + 1e-6;
+
 describe("fitted framing", () => {
+  it("uses a slimmer vertical margin than the side margin (the flat box is height-bound)", () => {
+    expect(FIT_MARGIN_V).toBeLessThan(FIT_MARGIN);
+    expect(FIT_MARGIN_V).toBeGreaterThan(0);
+  });
   const cases = [
     layout3dFor({ showLocalize: true, showExternal: true, slots: 30 }),
     layout3dFor({ showLocalize: false, showExternal: false, slots: 30 }),
     layout3dFor({ showLocalize: true, showExternal: false, slots: 0 }),
   ];
-  it("projects every bounds corner within NDC +-0.95 (8% margin), and at least one corner touches the margin", () => {
+  it("projects every bounds corner inside the margins (8% sides, 2% top/bottom), and one corner touches a margin", () => {
     for (const l of cases) {
       const cam = fitCamera(l.bounds);
       let edge = 0;
       for (const p of corners(l.bounds)) {
         const [x, y, depth] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
         expect(depth).toBeGreaterThan(0);
-        expect(Math.abs(x)).toBeLessThanOrEqual(0.95);
-        expect(Math.abs(y)).toBeLessThanOrEqual(0.95);
-        edge = Math.max(edge, Math.abs(x), Math.abs(y));
+        expect(Math.abs(x)).toBeLessThanOrEqual(LIM_X);
+        expect(Math.abs(y)).toBeLessThanOrEqual(LIM_Y);
+        edge = Math.max(edge, Math.abs(x) / (1 - FIT_MARGIN), Math.abs(y) / (1 - FIT_MARGIN_V));
       }
-      expect(edge).toBeCloseTo(1 - FIT_MARGIN, 3); // fills the wrapper: not further away than needed
+      expect(edge).toBeCloseTo(1, 3); // fills the wrapper: not further away than needed
     }
   });
   it("keeps the fixed elevation and centres the projected extent", () => {
@@ -341,11 +348,11 @@ describe("fitted framing", () => {
       for (const p of l.frame) {
         const [x, y, depth] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
         expect(depth).toBeGreaterThan(0);
-        expect(Math.abs(x)).toBeLessThanOrEqual(0.95);
-        expect(Math.abs(y)).toBeLessThanOrEqual(0.95);
-        edge = Math.max(edge, Math.abs(x), Math.abs(y));
+        expect(Math.abs(x)).toBeLessThanOrEqual(LIM_X);
+        expect(Math.abs(y)).toBeLessThanOrEqual(LIM_Y);
+        edge = Math.max(edge, Math.abs(x) / (1 - FIT_MARGIN), Math.abs(y) / (1 - FIT_MARGIN_V));
       }
-      expect(edge).toBeCloseTo(1 - FIT_MARGIN, 2);
+      expect(edge).toBeCloseTo(1, 2);
       const box = fitCamera(l.bounds);
       const dist = (c: number[]) => Math.hypot(c[0] - c[3], c[1] - c[4], c[2] - c[5]);
       expect(dist(cam)).toBeLessThan(dist(box)); // closer than fitting the box corners
@@ -357,8 +364,8 @@ describe("fitted framing", () => {
         const cam = cameraGoal(l, id);
         for (const p of l.frame) {
           const [x, y] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
-          expect(Math.abs(x)).toBeLessThanOrEqual(0.95);
-          expect(Math.abs(y)).toBeLessThanOrEqual(0.95);
+          expect(Math.abs(x)).toBeLessThanOrEqual(LIM_X);
+          expect(Math.abs(y)).toBeLessThanOrEqual(LIM_Y);
         }
       }
     }

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  type AgentId, type Pulse, type Scene, MAX_DOTS, PACKET_CAP, SYNTH_CAPTION, countFor, currentAgent, emptySlot, formatElapsed,
+  type AgentId, type Pulse, type Scene, AGENT_LABEL, MAX_DOTS, PACKET_CAP, SYNTH_CAPTION, countFor, currentAgent, emptySlot, formatElapsed,
   initialScene, planDots, readDone, reduceScene, sceneSummary, showSynthCaption, stageCaption, stageStep, takeFreshPulses, traceAgent,
 } from "./agent-scene";
 import type { ReviewEvent } from "./types";
+import { STEP_TITLE } from "./agent-thought";
 
 // Same shape as e2e/mock-api.ts LIVE_EVENTS (plus the tail the backend stub emits).
 const EVENTS: [string, Record<string, unknown>][] = [
@@ -419,6 +420,20 @@ describe("shared stage helpers (2D and 3D)", () => {
     expect(stageStep(run(live(12), initialScene({ language: "en" })))).toEqual({ n: 7, of: 9 });
     expect(stageStep(run([...live(12), ev(50, "synthesizing", { papers: 1 })]))).toEqual({ n: 8, of: 10 });
     expect(stageStep(run([...live(12), ev(50, "done", {})]))).toBeNull();
+  });
+
+  it("the joined 2D label matches the step title, and multi-part labels split only between words", () => {
+    const same: AgentId[] = ["guard", "refine", "plan", "search", "enrich", "screen", "localize"];
+    for (const id of same) expect(AGENT_LABEL[id].th.join(""), id).toBe(STEP_TITLE[id]);
+    // shorter tile labels of a longer title (the title adds an object): the label is a whole-word part of it
+    for (const id of ["synth", "finish", "external"] as AgentId[]) expect(STEP_TITLE[id], id).toContain(AGENT_LABEL[id].th.join(""));
+    // read: the tile names the role ("ผู้อ่าน"), the title the activity ("อ่านงานวิจัย")
+    expect(AGENT_LABEL.read.th.join("")).toBe("ผู้อ่าน");
+    // the 3D labels stack the parts, so each part must be a whole word
+    const multi = Object.fromEntries((Object.keys(AGENT_LABEL) as AgentId[]).filter((id) => AGENT_LABEL[id].th.length > 1).map((id) => [id, AGENT_LABEL[id].th]));
+    expect(multi).toEqual({
+      refine: ["ตีความ", "คำถาม"], search: ["ค้น", "ฐานข้อมูล"], enrich: ["ดึง", "บทคัดย่อ"], external: ["เครื่องมือ", "ภายนอก"],
+    });
   });
 
   it("stageStep: paused keeps the step; error, cancelled and rejected clear it", () => {

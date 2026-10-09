@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialScene, reduceScene, type EdgeId } from "./agent-scene";
+import { AGENT_LABEL, PIPELINE, initialScene, reduceScene, type EdgeId } from "./agent-scene";
 import type { ReviewEvent } from "./types";
 import {
   REF_FONT, arc, clip, layoutFor, queryChars, segPath, segX, segY, type LayoutKind, type Rect, type StageLayout,
@@ -176,17 +176,48 @@ describe("wide composition", () => {
     }
   });
 
+  it("keeps one constant box: the height never depends on external tools, localize or the detail counts", () => {
+    const h = layoutFor("wide", { ...base, showExternal: false, slots: 0, batches: 0, queries: 0 }).height;
+    for (const o of opts) for (const slots of [0, 1, 30]) expect(layoutFor("wide", { ...o, slots }).height).toBe(h);
+    expect(layoutFor("wide", { ...base, showExternal: true }).height).toBe(h);
+  });
+
+  it("nests the external node in the headroom: clear of the tiles, arcs, done badges and labels", () => {
+    for (const showLocalize of [true, false]) {
+      const l = layoutFor("wide", { ...full, showLocalize, showExternal: true });
+      const ext = l.nodes.external!;
+      const n = l.nodes;
+      const laneY = n.read!.y;
+      expect(ext.y - 22 * 1.06).toBeGreaterThanOrEqual(0); // inside the box even at the active scale
+      // horizontally between the read and synth tiles (both at the active scale)
+      expect(ext.x - 22 * 1.06).toBeGreaterThanOrEqual(n.read!.x + 22 * 1.06);
+      expect(ext.x + 22 * 1.06).toBeLessThanOrEqual(n.synth!.x - 22 * 1.06);
+      // the read>synth arc passes under it
+      const rs = l.edges.find((e) => e.id === "read>synth")!;
+      expect(segY(rs.seg, 0.5)).toBeGreaterThan(ext.y + 22 + 2);
+      // its label (right of the tile, baseline ext.y + 4, <= 100px, ~14px tall) stays above the tiles and their badges
+      const label = { x: ext.x + 30, y: ext.y + 4 - 14, w: 100, h: 18 };
+      for (const id of PIPELINE) {
+        const p = n[id];
+        if (p) expect(overlap(label, { x: p.x - 23, y: p.y - 23, w: 46, h: 46 }), id).toBe(false);
+      }
+      expect(label.y + label.h).toBeLessThanOrEqual(laneY - 22);
+      expect(label.x + label.w).toBeLessThanOrEqual(l.width);
+    }
+  });
+
   it("starts every detail block on the band's common top edge, below the labels and counts", () => {
     for (const o of opts) {
       const l = layoutFor("wide", o);
       const laneY = lane(l)[0].y;
-      expect(l.band.y).toBeGreaterThanOrEqual(laneY + 22 + 16 + 17 + 12); // tile, label baseline, count baseline, gap
-      for (const id of ["plan", "search", "screen", "read"] as const) expect(l.zone[id]!.y, id).toBe(l.band.y - 6);
-      expect(l.queryChips[0].y).toBe(l.band.y);
-      expect(l.batchChips[0].y).toBe(l.band.y + 4);
-      expect(l.slots[0].y - l.slotR).toBe(l.band.y + 2);
-      expect(l.satellites[0].text.y - 13).toBe(l.band.y);
-      const bottom = l.band.y + l.band.h;
+      const band = l.band!;
+      expect(band.y).toBeGreaterThanOrEqual(laneY + 22 + 16 + 17 + 12); // tile, label baseline, count baseline, gap
+      for (const id of ["plan", "search", "screen", "read"] as const) expect(l.zone[id]!.y, id).toBe(band.y - 6);
+      expect(l.queryChips[0].y).toBe(band.y);
+      expect(l.batchChips[0].y).toBe(band.y + 4);
+      expect(l.slots[0].y - l.slotR).toBe(band.y + 2);
+      expect(l.satellites[0].text.y - 13).toBe(band.y);
+      const bottom = band.y + band.h;
       for (const s of l.slots) expect(s.y + l.slotR).toBeLessThanOrEqual(bottom);
       for (const r of l.queryChips) expect(r.y + r.h).toBeLessThanOrEqual(bottom);
       expect(l.notes.synth.y).toBeGreaterThan(bottom);
@@ -236,6 +267,17 @@ describe.each(["wide", "narrow"] as LayoutKind[])("reader slots (%s)", (kind) =>
 });
 
 describe("narrow composition", () => {
+  it("has no wide band and keeps the external node in the lane between read and synth", () => {
+    const l = layoutFor("narrow", { ...base, ...full });
+    expect(l.band).toBeNull();
+    const { read, external, synth } = l.nodes;
+    expect(external!.x).toBe(read!.x);
+    expect(external!.y).toBeGreaterThan(Math.max(...l.slots.map((s) => s.y)) + l.slotR + 22);
+    expect(synth!.y - external!.y).toBeGreaterThanOrEqual(64);
+    // text labels never break inside a word: every narrow label is one line (AgentNode joins the parts)
+    expect(AGENT_LABEL.external.th.join("")).toBe("เครื่องมือภายนอก");
+  });
+
   it("left-aligns every detail at x = 70, right of the spine, in lane order", () => {
     const l = layoutFor("narrow", { ...base, ...full });
     for (const r of [...Object.values(l.zone)]) expect(r!.x).toBe(64);

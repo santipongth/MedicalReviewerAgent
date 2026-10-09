@@ -21,7 +21,7 @@ export interface StageLayout {
   nodes: Partial<Record<AgentId, Pt>>; // visible agents only
   label: Partial<Record<AgentId, "below" | "right">>;
   edges: { id: EdgeId; d: string; seg: Seg }[];
-  band: { y: number; h: number }; // wide: the detail band under the node row; narrow: the source list's band
+  band: { y: number; h: number } | null; // wide only: the detail band under the node row (narrow details follow the lane)
   /** Source list: status dot centre `at`, name baseline start `text` (12px, <= 100px wide). */
   satellites: { label: string; at: Pt; text: Pt }[];
   /** One row per query (max 4 + "+n"); text is right-aligned (wide) or left-aligned (narrow) inside its row. */
@@ -43,8 +43,18 @@ const MAX_QUERY_CHIPS = 4;
 const MAX_BATCH_CHIPS = 10;
 const HALF = 22; // half a 44px tile
 const ROW = 18; // detail row pitch (12px text)
+const TEXT_BASE = 13; // a detail row's text baseline below the row's top (dots sit 4px above it)
 const POOL_COLS = 10;
 const SLOT_PITCH = 28;
+// Wide box: the height never depends on what the run turns on, so the page never shifts mid-run.
+const LANE_Y = 62; // tile row centre; the headroom above holds the external node (when shown)
+const EXT_RISE = 38; // external node centre above the row, nested in the gap between the read and synth tiles
+const BAND_GAP = 72; // row centre -> band top: under the tiles (+22), labels (baseline +38) and counts (baseline +55)
+const TAIL = 30; // under the band: the one-line synth caption
+const BAR_W_WIDE = 84;
+const BAR_W_NARROW = 96;
+const SRC_W = 126; // wide source list width (dot + the longest name, "Semantic Scholar")
+const SRC_COL = 140; // narrow: second source column offset
 /** Reader slot radius and ref font: "P30" (about 3 x 0.6em at 11px) fits inside the ring, clear of its stroke. */
 export const SLOT_R = 12;
 export const REF_FONT = 11;
@@ -109,9 +119,8 @@ function buildEdges(vis: AgentId[], nodes: Partial<Record<AgentId, Pt>>, showExt
 function wideLayout(o: LayoutOpts): StageLayout {
   const width = 960;
   const margin = 48;
-  const top = o.showExternal ? 66 : 0; // room for the external side node above the row
-  const laneY = top + 34;
-  const bandY = laneY + 72; // under the tiles (bottom +22), labels (baseline +38) and counts (baseline +55)
+  const laneY = LANE_Y;
+  const bandY = laneY + BAND_GAP;
   const bandH = 5 * ROW; // five source rows; the query rows and the 3-row reader pool fit inside
   const vis = visibleAgents(o);
   const step = (width - 2 * margin) / (vis.length - 1);
@@ -132,16 +141,16 @@ function wideLayout(o: LayoutOpts): StageLayout {
   // sources: a list hanging from the search tile's left edge
   const sx = nodes.search!.x - HALF;
   const satellites = SATELLITES.map((name, i) => {
-    const base = bandY + 13 + i * ROW;
+    const base = bandY + TEXT_BASE + i * ROW;
     return { label: name, at: { x: sx + 4, y: base - 4 }, text: { x: sx + 14, y: base } };
   });
-  zone.search = { x: sx - 6, y: bandY - 6, w: 126, h: 5 * ROW + 10 };
+  zone.search = { x: sx - 6, y: bandY - 6, w: SRC_W, h: 5 * ROW + 10 };
 
   // screening: one segmented bar centred under screen, the kept/cut split under it
   const nb = clampInt(o.batches, 0, MAX_BATCH_CHIPS);
   const batchChips: Rect[] = [];
   const screen = nodes.screen!;
-  const bw = 84;
+  const bw = BAR_W_WIDE;
   for (let i = 0; i < nb; i++) {
     const w = (bw - (nb - 1) * 2) / nb;
     batchChips.push({ x: screen.x - bw / 2 + i * (w + 2), y: bandY + 4, w, h: 8 });
@@ -165,15 +174,17 @@ function wideLayout(o: LayoutOpts): StageLayout {
   }
 
   if (o.showExternal) {
-    // above the row (below it is the detail band, which edges must not cross)
-    nodes.external = { x: nodes.read!.x, y: laneY - 66 };
+    // In the headroom the box always keeps, centred on the gap between the read and synth tiles (so the tiles stay
+    // horizontally clear) and high enough that the read>synth arc passes under it; its label runs right, above the
+    // synth tile. Below the row is the detail band, which edges must not cross.
+    nodes.external = { x: (nodes.read!.x + nodes.synth!.x) / 2, y: laneY - EXT_RISE };
     label.external = "right";
   }
   return {
-    kind: "wide", width, height: bandY + bandH + 30, nodes, label, edges: buildEdges(vis, nodes, o.showExternal, 10),
+    kind: "wide", width, height: bandY + bandH + TAIL, nodes, label, edges: buildEdges(vis, nodes, o.showExternal, 10),
     band: { y: bandY, h: bandH }, satellites, queryChips, queryAlign: "end", batchChips, slots, slotR: SLOT_R, zone,
     notes: {
-      screen: { x: screen.x, y: bandY + 30, anchor: "middle" },
+      screen: { x: screen.x, y: bandY + TEXT_BASE + ROW - 1, anchor: "middle" }, // the row under the bar
       synth: { x: px0 + full / 2, y: bandY + bandH + 18, anchor: "middle", stacked: false },
     },
   };
@@ -197,9 +208,9 @@ function narrowLayout(o: LayoutOpts): StageLayout {
   const batchChips: Rect[] = [];
   const slots: Pt[] = [];
   let satellites: StageLayout["satellites"] = [];
-  let screenNote: Pt = { x: zx + 108, y: 0 };
+  const bw = BAR_W_NARROW;
+  let screenNote: Pt = { x: zx + bw + 12, y: 0 }; // the split follows the bar on its line
   let synthNote: Pt = { x: zx, y: 0 };
-  let bandY = 0;
 
   let y = 34;
   for (const id of vis) {
@@ -213,19 +224,17 @@ function narrowLayout(o: LayoutOpts): StageLayout {
     } else if (id === "search") {
       // two columns (3 + 2) of status dot + name, so the five names never meet
       satellites = SATELLITES.map((name, i) => {
-        const base = zy + 13 + (i % 3) * ROW;
-        const x = zx + Math.floor(i / 3) * 140;
+        const base = zy + TEXT_BASE + (i % 3) * ROW;
+        const x = zx + Math.floor(i / 3) * SRC_COL;
         return { label: name, at: { x: x + 4, y: base - 4 }, text: { x: x + 14, y: base } };
       });
       zh = 3 * ROW;
-      bandY = zy;
     } else if (id === "screen" && nb > 0) {
-      const bw = 96;
       for (let i = 0; i < nb; i++) {
         const w = (bw - (nb - 1) * 2) / nb;
         batchChips.push({ x: zx + i * (w + 2), y: zy + 5, w, h: 8 });
       }
-      screenNote = { x: zx + bw + 12, y: zy + 13 };
+      screenNote = { x: screenNote.x, y: zy + TEXT_BASE };
       zh = ROW;
     } else if (id === "read" && ns > 0) {
       for (let i = 0; i < ns; i++) {
@@ -249,7 +258,7 @@ function narrowLayout(o: LayoutOpts): StageLayout {
   const last = nodes.finish!;
   return {
     kind: "narrow", width, height: last.y + 40, nodes, label,
-    edges: buildEdges(vis, nodes, o.showExternal, 10), band: { y: bandY, h: 3 * ROW }, satellites,
+    edges: buildEdges(vis, nodes, o.showExternal, 10), band: null, satellites,
     queryChips, queryAlign: "start", batchChips, slots, slotR: SLOT_R, zone,
     notes: { screen: { ...screenNote, anchor: "start" }, synth: { ...synthNote, anchor: "start", stacked: true } },
   };

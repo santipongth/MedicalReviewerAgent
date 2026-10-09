@@ -261,6 +261,38 @@ for (const width of [390, 900, 1024, 1440]) {
   }
 }
 
+for (const width of [1440, 390]) {
+  test(`external tools at ${width}px: the node appears on external_lookup${width > 1000 ? " without the stage box changing size" : " in the lane"}, no text collisions`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await streamSse(page, [
+      { delayMs: 0, events: PRE_READ.map((s) => s.ev) },
+      { delayMs: 2500, events: [["external_lookup", { elapsed_s: 16.5 }], ...READING, ...[1, 2, 3].map(extracted)] },
+    ]);
+    await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: running });
+    await page.goto(`/r/${RID}`);
+    const svg = page.locator("svg[role=img]");
+    await expect(page.locator('[data-agent="read"]')).toHaveAttribute("data-status", "working");
+    await expect(page.locator('[data-agent="external"]')).toHaveCount(0);
+    const before = { box: (await svg.boundingBox())!, viewBox: await svg.getAttribute("viewBox") };
+    await expect(page.locator('[data-agent="external"]')).toHaveCount(1, { timeout: 10_000 });
+    await expect(page.getByTestId("reader-ok")).toHaveCount(3);
+    await page.evaluate(() => document.fonts.ready);
+    if (width > 1000) {
+      expect(await svg.getAttribute("viewBox")).toBe(before.viewBox);
+      const after = (await svg.boundingBox())!;
+      // (its top may move: the thought card above grows as reading starts; the stage box itself must not)
+      expect(Math.abs(after.height - before.box.height)).toBeLessThan(1);
+      expect(Math.abs(after.width - before.box.width)).toBeLessThan(1);
+    }
+    const { texts, box, scrollW, innerW } = await stageText(page);
+    expect(scrollW).toBeLessThanOrEqual(innerW);
+    expect(texts.some((t) => t.text === "เครื่องมือภายนอก")).toBe(true);
+    for (const t of texts) expect(t.x1, `${t.text} inside right`).toBeLessThanOrEqual(box.x1 + 0.5);
+    expect(overlaps(texts)).toEqual([]);
+  });
+}
+
 test("wide composition at 1440px: one header row, the stage centred across the panel, one aligned detail band", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await streamSse(page, allAtOnce());
