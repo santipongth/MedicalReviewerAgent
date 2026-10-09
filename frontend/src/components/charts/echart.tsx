@@ -15,7 +15,11 @@ export function encodeHTML(source: unknown): string {
 let runtime: Promise<typeof import("./echarts-runtime")> | null = null;
 /** Loads (once) the echarts runtime chunk. The offline report build inlines it, so it works without a network. */
 function loadEcharts() {
-  runtime ??= import("./echarts-runtime");
+  // A failed load is not cached: the next chart mount retries (flaky network, or chunks rotated by a deploy).
+  runtime ??= import("./echarts-runtime").catch((e: unknown) => {
+    runtime = null;
+    throw e;
+  });
   return runtime;
 }
 
@@ -44,6 +48,9 @@ export function EChart({
       c.setOption(optionRef.current, { notMerge: true }); // whatever option is current once the runtime arrives
       ro = new ResizeObserver(() => c.resize());
       ro.observe(el.current);
+    }).catch((e: unknown) => {
+      // The box stays empty at its reserved height; every figure also has a table view with the same numbers.
+      console.warn("chart unavailable: could not load echarts", e);
     });
     return () => {
       alive = false;
