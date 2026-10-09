@@ -15,10 +15,10 @@ export interface Layout3D {
 export interface Layout3DOpts { showLocalize: boolean; showExternal: boolean; slots: number }
 
 const MAX_SLOTS = 30;
-const STEP = 2.2; // spacing between lane agents along x
-const CURVE = 0.025; // z = -CURVE * x^2
+const STEP = 1.9; // spacing between lane agents along x
+const CURVE = 0.008; // z = -CURVE * x^2 (a gentle bow: a deeper curve crowded the two end nodes in perspective)
 const EXTERNAL_Y = 1.6;
-const POOL_Y = -2.1;
+const POOL_Y = -2.3; // far enough below the lane that the read label's count never sits on the pool
 const POOL_COLS = 6;
 const POOL_PITCH = 0.35;
 
@@ -69,7 +69,7 @@ export function layout3dFor(o: Layout3DOpts): Layout3D {
   if (o.showExternal) pairs.push(["read", "external"], ["external", "synth"]);
   const edges = pairs.map(([p, q]) => ({ id: `${p}>${q}` as EdgeId, seg: arc3(nodes[p]!, nodes[q]!) }));
 
-  // reader pool: 6 columns on the y = -2.1 plane, centred under read/synth
+  // reader pool: 6 columns on the y = POOL_Y plane, centred under read/synth
   const ns = clampInt(o.slots, 0, MAX_SLOTS);
   const slots: Vec3[] = [];
   const cx = (nodes.read![0] + nodes.synth![0]) / 2;

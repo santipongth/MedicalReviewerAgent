@@ -1,6 +1,7 @@
 "use client";
 // One agent: a small flat-shaded icosahedron core inside a torus ring. Colour and ring style come from NODE_VISUAL;
-// no emissive glow. The ring rotates only while the agent is `working` (and only then requests frames).
+// no emissive glow. The ring rotates only while the agent is `working`; it does not request frames itself (Stage3D's
+// SpinTicker requests a throttled frame while any ring spins), it just advances on whatever frames get drawn.
 import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import type { Group } from "three";
@@ -20,10 +21,9 @@ export function Node3D({ at, status, tokens }: { at: Vec3; status: AgentStatus; 
   const v = NODE_VISUAL[status];
   const color = tokens[v.color];
   const ring = useRef<Group>(null);
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     if (!v.spin || !ring.current) return;
     ring.current.rotation.z += SPIN * Math.min(delta, 0.1);
-    state.invalidate(); // keep the demand loop alive only while working
   });
   return (
     <group position={at} scale={v.scale}>

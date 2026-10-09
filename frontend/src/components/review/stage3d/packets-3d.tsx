@@ -5,9 +5,8 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { Color, Object3D, type InstancedMesh } from "three";
-import { planDots, takeFreshPulses, type Scene } from "@/lib/agent-scene";
+import { MAX_DOTS, PACKET_CAP, planDots, takeFreshPulses, type Scene } from "@/lib/agent-scene";
 import { arc3X, arc3Y, arc3Z, type Layout3D } from "@/lib/agent-layout-3d";
-import { MAX_DOTS, PACKET_CAP } from "../stage/packet-layer";
 import { PACKET_COLOR, easeInOut, flightT, makeFlights, packetScale, schedulePackets, type Flight } from "./model-3d";
 import type { Tokens3D } from "./tokens-3d";
 

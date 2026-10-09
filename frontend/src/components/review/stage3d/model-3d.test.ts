@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  PIPELINE, initialScene, planDots, reduceScene, takeFreshPulses, type AgentStatus, type Pulse, type Scene,
+  MAX_DOTS, PACKET_CAP, PIPELINE, initialScene, planDots, reduceScene, takeFreshPulses, type AgentStatus, type Pulse,
+  type Scene,
 } from "@/lib/agent-scene";
 import { layout3dFor } from "@/lib/agent-layout-3d";
-import { MAX_DOTS, PACKET_CAP } from "../stage/packet-layer";
 import {
-  CAMERA_BASE, EDGE_COLOR, FLIGHT_MS, NODE_VISUAL, PACKET_COLOR, SLOT_COLOR, anySpinning, cameraAgent, cameraGoal,
+  CAMERA_BASE, EDGE_COLOR, FLIGHT_MS, NODE_VISUAL, PACKET_COLOR, SLOT_COLOR, SLOT_SCALE, anySpinning, cameraAgent, cameraGoal,
   easeInOut, easeToward, flightT, makeFlights, packetScale, poolLabelAt, poolSummary, schedulePackets, visibleAgents,
 } from "./model-3d";
 
@@ -31,6 +31,18 @@ describe("status -> visual", () => {
     expect(EDGE_COLOR).toEqual({ idle: "rule", visited: "ink", live: "primary" });
     expect(SLOT_COLOR).toEqual({ waiting: "rule", reading: "primary", ok: "ok", failed: "err", uncertain: "warn" });
     expect(PACKET_COLOR).toEqual({ query: "ink", paper: "ink", kept: "primary", card: "primary", failed: "err", signal: "muted" });
+  });
+
+  it("gives every reader-slot state its own silhouette (failed and uncertain are not colour-only)", () => {
+    const shapes = Object.values(SLOT_SCALE).map((s) => s.join(","));
+    expect(new Set(shapes).size).toBe(shapes.length);
+    const [fx, fy, fz] = SLOT_SCALE.failed;
+    const [ux, uy, uz] = SLOT_SCALE.uncertain;
+    expect(fy).toBeGreaterThan(fx); // failed: tall and narrow
+    expect(fx).toBe(fz);
+    expect(ux).toBeGreaterThan(uy); // uncertain: a capsule lying along x, narrow in depth (not the round ok disc)
+    expect(ux).toBeGreaterThan(uz);
+    expect(SLOT_SCALE.ok[0]).toBe(SLOT_SCALE.ok[2]);
   });
 
   it("anySpinning is true only while a visible node is working", () => {

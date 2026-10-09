@@ -3,10 +3,9 @@
 // plus a single reader-pool summary (P-refs being read, ✓ / ✕ / flag counts). All aria-hidden and pointer-events:none;
 // the text ledger below the stage stays the accessible source of truth.
 import { Html } from "@react-three/drei";
-import { AGENT_LABEL, PIPELINE, type Scene } from "@/lib/agent-scene";
+import { AGENT_LABEL, PIPELINE, countFor, type Scene } from "@/lib/agent-scene";
 import type { Layout3D } from "@/lib/agent-layout-3d";
 import { FLAG_PATHS } from "@/components/ui/evidence";
-import { countFor } from "../stage/agent-stage";
 import { CHECK, CROSS } from "../stage/icons";
 import { NODE_VISUAL, poolLabelAt, poolSummary, visibleAgents } from "./model-3d";
 

@@ -3,7 +3,9 @@
 // See NOTICE.md at the repo root.
 import { useMemo } from "react";
 import { m, useReducedMotion } from "motion/react";
-import { AGENT_LABEL, PIPELINE, currentAgent, readDone, sceneSummary, type AgentId, type Scene } from "@/lib/agent-scene";
+import {
+  AGENT_LABEL, PIPELINE, SYNTH_CAPTION, countFor, currentAgent, sceneSummary, showSynthCaption, stageCaption, type AgentId, type Scene,
+} from "@/lib/agent-scene";
 import { layoutFor } from "@/lib/agent-layout";
 import type { Connection } from "@/lib/use-review";
 import { AgentNode } from "./agent-node";
@@ -16,19 +18,6 @@ import { StageEdge } from "./stage-edge";
 import { StageLegend } from "./stage-legend";
 import { StageMotion } from "./motion";
 import { useWide } from "./use-wide";
-
-const SYNTH_CAPTION = ["กำลังเทียบผลและเขียนสรุป", "(ขั้นนี้ไม่มีความคืบหน้าให้ดู)"];
-
-export function countFor(s: Scene, id: AgentId): string | undefined {
-  const c = s.counts;
-  switch (id) {
-    case "search": return c.found > 0 ? String(c.found) : undefined;
-    case "enrich": return c.candidates > 0 ? String(c.candidates) : undefined;
-    case "screen": return c.screenedTotal > 0 ? `${c.kept}/${c.screenedTotal}` : undefined;
-    case "read": return s.slots.length > 0 ? `${readDone(s)}/${s.slots.length}` : undefined;
-    default: return undefined;
-  }
-}
 
 export function AgentStage({ scene, connection }: { scene: Scene; connection?: Connection }) {
   const wide = useWide();
@@ -48,10 +37,10 @@ export function AgentStage({ scene, connection }: { scene: Scene; connection?: C
   const tinted: AgentId | null = cur === "synth" ? "read" : cur; // synth has no zone of its own; the pool stays tinted
   const order: AgentId[] = [...PIPELINE.filter((id) => layout.nodes[id]), ...(layout.nodes.external ? (["external"] as AgentId[]) : [])];
   const synth = layout.nodes.synth;
-  const synthWorking = scene.agents.synth === "working";
+  const synthWorking = showSynthCaption(scene);
 
-  // At most one caption, as the last child of the figure. Polling wins: it explains why the stage updates in steps.
-  const caption = connection === "polling" ? "อัปเดตทุกไม่กี่วินาที" : scene.status === "waiting" ? "รอคิว · เอเจนต์จะเริ่มทำงานเมื่อถึงคิว" : null;
+  // At most one caption, as the last child of the figure (shared with the 3D view).
+  const caption = stageCaption(scene, connection);
 
   return (
     <StageMotion>

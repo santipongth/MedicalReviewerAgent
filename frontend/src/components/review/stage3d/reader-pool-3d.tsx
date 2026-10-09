@@ -1,20 +1,16 @@
 "use client";
 // The reader pool: one InstancedMesh of up to 30 spheres, one per paper slot, coloured by slot state (waiting `rule`,
-// reading `primary`, ok `ok`, failed `err`, uncertain `warn`). Waiting slots are small spheres, reading ones large spheres and ok ones flattened discs, so
+// reading `primary`, ok `ok`, failed `err`, uncertain `warn`). Each state also has its own silhouette (SLOT_SCALE), so
 // state is not colour-only; the ✓/✕/flag counts live in the pool summary label (Labels3D).
 import { useThree } from "@react-three/fiber";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Color, Object3D, type InstancedMesh } from "three";
-import { MAX_SLOTS, type ReaderSlot, type SlotState } from "@/lib/agent-scene";
+import { MAX_SLOTS, type ReaderSlot } from "@/lib/agent-scene";
 import type { Layout3D } from "@/lib/agent-layout-3d";
-import { SLOT_COLOR } from "./model-3d";
+import { SLOT_COLOR, SLOT_SCALE } from "./model-3d";
 import type { Tokens3D } from "./tokens-3d";
 
 const R = 0.12;
-// [x, y, z] scale per state: reading is a large sphere, ok a flattened disc, waiting a small sphere (shape, not just hue).
-const SLOT_SCALE: Record<SlotState, [number, number, number]> = {
-  waiting: [0.7, 0.7, 0.7], reading: [1.4, 1.4, 1.4], ok: [1.05, 0.45, 1.05], failed: [1, 1, 1], uncertain: [1, 1, 1],
-};
 
 export function ReaderPool3D({ slots, layout, tokens }: { slots: ReaderSlot[]; layout: Layout3D; tokens: Tokens3D }) {
   const mesh = useRef<InstancedMesh>(null);

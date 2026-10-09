@@ -1,11 +1,8 @@
 "use client";
 import { animate, m, useMotionValue, useReducedMotion, useTransform, type AnimationPlaybackControls } from "motion/react";
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { planDots, takeFreshPulses, type PulseKind, type Scene } from "@/lib/agent-scene";
+import { MAX_DOTS, PACKET_CAP, planDots, takeFreshPulses, type PulseKind, type Scene } from "@/lib/agent-scene";
 import { segX, segY, type Seg, type StageLayout } from "@/lib/agent-layout";
-
-export const MAX_DOTS = 24;
-export const PACKET_CAP = 12;
 
 const KIND_CLS: Record<PulseKind, string> = {
   query: "fill-ink", paper: "fill-ink", kept: "fill-primary", card: "fill-primary", failed: "fill-err", signal: "fill-muted",

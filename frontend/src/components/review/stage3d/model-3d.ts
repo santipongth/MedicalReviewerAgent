@@ -34,6 +34,15 @@ export const EDGE_COLOR: Record<EdgeState, Token3D> = { idle: "rule", visited: "
 export const SLOT_COLOR: Record<SlotState, Token3D> = {
   waiting: "rule", reading: "primary", ok: "ok", failed: "err", uncertain: "warn",
 };
+/**
+ * Reader-pool instance scale [x, y, z] per slot state, so state is never colour-only (err/warn is a colour-blind pair):
+ * waiting a small sphere, reading a large sphere, ok a flat round disc, failed a tall narrow spindle (upright),
+ * uncertain a lying capsule along x (unlike the round ok disc, it is narrow in depth). Every state has its own silhouette.
+ */
+export const SLOT_SCALE: Record<SlotState, readonly [number, number, number]> = {
+  waiting: [0.7, 0.7, 0.7], reading: [1.4, 1.4, 1.4], ok: [1.05, 0.45, 1.05], failed: [0.6, 1.3, 0.6], uncertain: [1.5, 0.6, 0.6],
+};
+
 export const PACKET_COLOR: Record<PulseKind, Token3D> = {
   query: "ink", paper: "ink", kept: "primary", card: "primary", failed: "err", signal: "muted",
 };
@@ -95,8 +104,11 @@ export function packetScale(t: number): number {
 
 // --- camera ------------------------------------------------------------------------------------------------------
 
-export const CAMERA_BASE: Vec3 = [0, 4, 8.2];
-const PAN = 0.3; // fraction of the way from the lane centre toward the current agent (keeps the whole lane framed)
+// Framing (Plan 12 final review): a lower, closer camera with a small pan keeps both lane ends legible (a bigger pan
+// pushed the far end into perspective crowding) and uses more of the stage's height.
+export const CAMERA_BASE: Vec3 = [0, 3.1, 7];
+const PAN = 0.1; // fraction of the way from the lane centre toward the current agent (keeps the whole lane framed)
+const LOOK_Y = -1.1; // look-at height: between the lane (y 0) and the reader pool (y -2.3)
 
 /** Camera position + look-at for the current agent (lane centre when none). Writes into `out` (6 numbers). */
 export function cameraGoal(layout: Layout3D, agent: AgentId | null, out: number[] = new Array(6).fill(0)): number[] {
@@ -106,7 +118,7 @@ export function cameraGoal(layout: Layout3D, agent: AgentId | null, out: number[
   const node = agent ? layout.nodes[agent] : undefined;
   const tx = node ? cx + (node[0] - cx) * PAN : cx;
   out[0] = tx; out[1] = CAMERA_BASE[1]; out[2] = CAMERA_BASE[2];
-  out[3] = tx; out[4] = -0.7; out[5] = cz / 2;
+  out[3] = tx; out[4] = LOOK_Y; out[5] = cz / 2;
   return out;
 }
 
