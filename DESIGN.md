@@ -147,7 +147,8 @@ Loading: Google Fonts via `next/font/google` with `display: swap`, Thai and Lati
 
 ## Layout
 
-- **Report "bench":** a 12-column grid at 1024px and up, with a reading column of 7 columns and a sticky source rail of 5 columns. Below 900px the rail becomes a bottom drawer.
+- **Report "bench":** a 12-column grid at 1024px and up, with a reading column of 7 columns and a sticky source rail of 5 columns. Below 1024px the rail becomes a bottom drawer: a modal dialog with a flat backdrop, focus on its heading, and Esc or a backdrop tap to close.
+- **Report order:** the answer comes first: bottom line, then where studies agree and conflict, the comparison matrix, charts, gaps, papers, and last the method and downloads. A sticky section nav lets the reader jump between them.
 - **Width:** the page is at most 1240px wide, and running text is at most 65 characters.
 - **Report density:** comfortable-compact, with 36px table rows and a sticky first column in the comparison matrix. The matrix scrolls horizontally inside its own container.
 - **Landing:** left-aligned and generous. The headline sits beside the request slip; below them a sample report from a real review (forest rows and numbers tap to show their source sentence in a rail), then how a number earns its tape, the run timeline, the agent band and recent public reviews. The site footer carries the disclaimer and data sources.
@@ -167,12 +168,14 @@ Flat. Depth comes from surface order (ground → surface → rail) and 1px rules
   - During a live run the number first appears in Anuphan with no tape.
   - When verification passes, the face switches and the tape fades in over 400ms.
 - **Not verified:** a hatched 45° slot in `hatch` with a dashed border, labelled "ไม่ยืนยัน / not verified". It is never omitted.
-- **Uncertain paper:** two models disagreed. It gets a dashed `finding-harm` torn edge on its rail entry or card, plus a warning flag.
+- **Uncertain paper:** two models disagreed. It gets a dashed `finding-harm` torn edge on its rail entry or card, plus a warning flag (`UncertainFlag`, a small flag icon with a text label). The ◆ glyph is reserved for the harm direction and is never used for "uncertain".
 - **Source rail:**
   - Shows the paper title, a facts list (year, design, n, risk of bias, direction) and the verbatim quote in Source Serif 4.
   - The matched number in the quote has a `highlight` background, and a "found verbatim in the paper" flag follows the quote.
   - Ends with a link out to PMC, PubMed or the DOI.
 - **Comparison matrix:** outcome × paper. Each cell is a glyph button with an aria-label naming the direction. The selected cell gets a `rail` fill and an `ink` border.
+- **Report section nav:** a sticky row of anchor links under the site header (`nav` labelled "ในรายงานนี้") to each report section. It scrolls horizontally on a phone, and the current section is marked with `aria-current`. It is a plain text link row on `ground`, with no pills.
+- **Glossary term:** a jargon word shown as a dotted-underline button (`Term`) that toggles a short Thai/English explanation. On a phone the explanation is a bottom sheet, from `sm` up a 288px popover under the word. Tap or click toggles it (`aria-expanded`), Esc or an outside tap closes it, and an open term takes the Esc before any drawer around it. It is flat, with a 1px `rule` border.
 - **Forest plot:** log scale, with the null line drawn in `text` and dashed ticks drawn in `rule`. Markers use the direction glyph shapes. Unverified values are omitted and labelled, never estimated.
 - **Specimen tray (live run):** 60 wells (10 × 6, 20 px each so it fits a 390 px phone). A well fills when its candidate (one with an abstract) is found, empties when it is screened out, and is capped in `primary` for the up to 30 papers selected for analysis.
 - **Buttons:** primary is solid `primary` (hover brightens, disabled at 45% opacity). Ghost has a 1px `rule` border that turns `text` on hover. Focus-visible is a 2px `primary` outline at 2px offset.
@@ -206,4 +209,5 @@ Flat. Depth comes from surface order (ground → surface → rail) and 1px rules
 | 2026-10-05 | Landing direction C: "อย่าเพิ่งเชื่อเรา แตะที่ตัวเลขดูก่อน" | Chosen from three HTML mockups (https://claude.ai/artifact/JWBF5BDC9c2Hb1uenjivpG). The receipt is a committed snapshot of a real review (MACE rows of the colchicine review) rendered by the same components as the report, so the landing shows rather than claims; a test pins every shown number to its quote |
 | 2026-10-05 | Code gets its own face (`--font-code`: ui-monospace stack) | Martian Mono stays exclusive to verified numbers; code samples, ref chips and pipeline counts had borrowed it, which diluted the signal |
 | 2026-10-05 | Dark finding colors re-stepped to #3B98D4 / #DB712F / #B05C9E | dataviz validator: the preview's dark set failed the dark lightness band (L 0.48–0.67) and was in the CVD floor band; the new set passes all checks on #1B3029 (light set passes unchanged) |
+| 2026-10-09 | Plan 10 (UX clarity): rail/drawer breakpoint stays at 1024px; report is answer-first; agree/conflict moves above the matrix; section nav, glossary term and UncertainFlag added | Readers could not tell where the answer was or what the jargon meant. The nav and glossary are plain, flat and keyboard operable; the warning flag replaces ◆ for "uncertain" so ◆ keeps meaning harm only |
 | 2026-10-04 | Tokens from the approved HTML preview | AI image mockups were unavailable (no OpenAI key), so the HTML preview (Path B) is the source of every token |
