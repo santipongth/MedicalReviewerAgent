@@ -136,7 +136,7 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
               )}
             </div>
           )}
-          <TraceLog rows={scene.trace} />
+          <TraceLog scene={scene} />
           {run.reading.length > 0 && (
             <div>
               <span className="label">กำลังอ่าน</span>

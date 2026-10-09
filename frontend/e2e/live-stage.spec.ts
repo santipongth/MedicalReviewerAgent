@@ -47,7 +47,7 @@ async function noSeriousA11y(page: Page) {
 }
 
 const packets = (page: Page) => page.locator("[data-packet]");
-const traceRows = (page: Page) => page.getByRole("region", { name: "บันทึกการทำงาน" }).locator("ol li");
+const traceRows = (page: Page) => page.getByRole("region", { name: "บันทึกการทำงาน" }).locator("[data-trace-row]");
 
 test("real-time progression: statuses, packets and trace follow each streamed frame", async ({ page }) => {
   const GAP = 1000;
