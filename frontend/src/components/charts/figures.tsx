@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { forestAxis, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
+import { forestAxis, type exclusionRows, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
 import { L } from "../review/text";
@@ -175,7 +175,39 @@ export function ForestFigure({ data, tokens, lang, onSelect }: { data: ForestDat
   );
 }
 
-export function PrismaFigure({ stages, tokens, lang }: { stages: Stage[]; tokens: ChartTokens; lang: Lang }) {
+/** Why records were left out: reason labels with plain counts (not paper numbers). */
+function ExclusionTable({ data, lang }: { data: NonNullable<ReturnType<typeof exclusionRows>>; lang: Lang }) {
+  const rows = [...data.reasons, ...data.extra];
+  return (
+    <div className="grid gap-1.5">
+      <div className="overflow-x-auto">
+        <table aria-label={L(lang, "เหตุผลที่คัดออก", "Reasons for exclusion")} className="w-full border-collapse text-[0.88rem]">
+          <caption className="pb-1 text-left label">{L(lang, "เหตุผลที่คัดออก", "Reasons for exclusion")}</caption>
+          <thead className="sr-only"><tr>
+            <th scope="col">{L(lang, "เหตุผล", "Reason")}</th><th scope="col">{L(lang, "จำนวน", "Count")}</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key} className="border-b border-rule">
+                <th scope="row" className="py-1.5 pr-3 text-left font-normal break-words">{r.label}</th>
+                <td className="py-1.5 font-display tabular-nums">{r.value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data.reasons.length > 0 && (
+        <p className="text-[0.82rem] text-muted">
+          {L(lang, "นับเฉพาะบทความที่ระบบบันทึกเหตุผลไว้ ผลรวมอาจน้อยกว่าจำนวนที่ไม่ได้เลือก", "Counts only records with a recorded reason; the sum may be below the number not selected")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function PrismaFigure({ stages, tokens, lang, exclusions = null, scoping = false }: {
+  stages: Stage[]; tokens: ChartTokens; lang: Lang; exclusions?: ReturnType<typeof exclusionRows>; scoping?: boolean;
+}) {
   const option = useMemo<EChartsOption>(() => ({
     animation: !tokens.reducedMotion,
     animationDuration: 600,
@@ -191,8 +223,8 @@ export function PrismaFigure({ stages, tokens, lang }: { stages: Stage[]; tokens
     }],
   }), [stages, tokens]);
   if (!stages.length) return null;
-  return (
-    <Figure lang={lang} title={<>{L(lang, "ขั้นตอนการคัดเลือก", "Selection flow")} (<Term k="prisma" lang={lang}>PRISMA</Term>)</>}
+  const figure = (
+    <Figure lang={lang} title={<>{L(lang, "ขั้นตอนการคัดเลือก", "Selection flow")} (<Term k="prisma" lang={lang}>{scoping ? "PRISMA-ScR" : "PRISMA"}</Term>)</>}
       caption={L(lang, "จำนวนงานวิจัยในแต่ละขั้นของรีวิวนี้", "Number of records at each step of this review")}
       chart={<EChart option={option} height={stages.length * 34 + 16} label={stages.map((s) => `${s.label} ${s.value}`).join(", ")} />}
       table={
@@ -202,6 +234,8 @@ export function PrismaFigure({ stages, tokens, lang }: { stages: Stage[]; tokens
       }
     />
   );
+  if (!exclusions) return figure;
+  return <div className="grid min-w-0 gap-4">{figure}<ExclusionTable data={exclusions} lang={lang} /></div>;
 }
 
 export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {

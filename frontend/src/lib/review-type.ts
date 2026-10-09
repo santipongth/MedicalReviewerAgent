@@ -50,3 +50,12 @@ export const SECTIONS_BY_TYPE: Record<ReviewTypeOrLegacy, SectionId[]> = {
   // The study map renders with forest/prisma exactly as it does today (charts.tsx).
   legacy: ["summary", "claims", "findings", "forest", "prisma"],
 };
+
+export function showsSection(type: ReviewTypeOrLegacy, id: SectionId): boolean {
+  return SECTIONS_BY_TYPE[type].includes(id);
+}
+
+/** Scoping reviews map what exists and never tally or draw a direction of effect. */
+export function showsDirection(type: ReviewTypeOrLegacy): boolean {
+  return type !== "scoping";
+}

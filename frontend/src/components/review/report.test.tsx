@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { emptyReviewFixture, legacyReviewFixture, reviewFixture } from "@/test/fixtures";
+import { emptyReviewFixture, legacyReviewFixture, narrativeReviewFixture, reviewFixture, scopingReviewFixture } from "@/test/fixtures";
 
 vi.mock("./charts", () => ({ Charts: () => <section aria-labelledby="h-charts"><h2 id="h-charts">แผนภาพหลักฐาน</h2><div data-testid="charts" /></section> }));
 
@@ -255,6 +255,83 @@ describe("Report", () => {
     expect(details.querySelector("details")).toBeNull();
     expect(within(details).getByRole("button", { name: "PICO" })).toBeInTheDocument();
     expect(container.querySelectorAll("h1")).toHaveLength(1);
+  });
+});
+
+function navIds(container: HTMLElement) {
+  const nav = within(container).getByRole("navigation", { name: "ในรายงานนี้" });
+  return within(nav).getAllByRole("link").map((a) => a.getAttribute("href")!.slice(1));
+}
+
+describe("Report per review type", () => {
+  it("a legacy result (no review_type) shows no type badge and keeps its sections and 'very low' fallback", () => {
+    const noStrength = { ...reviewFixture, result: { ...reviewFixture.result!, synthesis: { ...reviewFixture.result!.synthesis!, evidence_strength: null } } };
+    const { container } = render(<Report review={noStrength} />);
+    expect(screen.queryByText(/อ่านเฉพาะบทคัดย่อ/)).toBeNull();
+    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-gaps", "h-papers", "h-method"]);
+    expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำมาก");
+  });
+
+  it("scoping: badge, PCC, evidence map; no claims, findings matrix, forest or direction tally", () => {
+    const { container } = render(<Report review={scopingReviewFixture} />);
+    expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การทบทวนขอบเขต");
+    expect(navIds(container)).toEqual(["h-summary", "h-evidence-map", "h-charts", "h-gaps", "h-papers", "h-method"]);
+    expect(container.querySelector("#h-claims")).toBeNull();
+    expect(container.querySelector("#h-matrix")).toBeNull();
+    expect(screen.queryByRole("table", { name: /ผลแต่ละการศึกษา/ })).toBeNull();
+    const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    expect(within(summary).queryByRole("list")).toBeNull();
+    expect(within(summary).queryByRole("button", { name: /จำนวนงานวิจัยตามทิศทางผล/ })).toBeNull();
+    expect(within(summary).getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนขอบเขต\)/)).toBeInTheDocument();
+    expect(screen.queryByText("ต่ำมาก")).toBeNull();
+    expect(screen.getByText(/ไม่ใช่คำแนะนำทางการแพทย์/)).toHaveTextContent("การทบทวนขอบเขต");
+  });
+
+  it("scoping: the evidence map counts papers per concept and design, as plain counts", () => {
+    render(<Report review={scopingReviewFixture} />);
+    const section = screen.getByRole("heading", { name: "แผนที่หลักฐาน" }).closest("section")!;
+    expect(within(section).getByText("จำนวนงานที่พบ ไม่ใช่การประเมินว่าได้ผล")).toBeInTheDocument();
+    const byConcept = within(section).getByRole("table", { name: /ตามประเด็น/ });
+    const row = within(byConcept).getByRole("row", { name: /อุบัติการณ์มะเร็งลำไส้ใหญ่/ });
+    expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["2", "1", "1", "4"]);
+    expect(within(byConcept).getByRole("columnheader", { name: "รวม" })).toBeInTheDocument();
+    const byYear = within(section).getByRole("table", { name: /ตามช่วงปี/ });
+    expect(within(within(byYear).getByRole("row", { name: /2015–2019/ })).getAllByRole("cell").map((c) => c.textContent)).toEqual(["1", "1", "–", "2"]);
+    expect(section.querySelector(".num-verified")).toBeNull();
+    expect(section.querySelectorAll("td.tabular-nums.font-display").length).toBeGreaterThan(0);
+  });
+
+  it("scoping: question details show the PCC block and key terms instead of PICO", () => {
+    render(<Report review={scopingReviewFixture} />);
+    const details = screen.getByText("เอเจนต์ตีความคำถามอย่างไร").closest("details")!;
+    expect(within(details).getByRole("button", { name: "PCC" })).toBeInTheDocument();
+    expect(within(details).queryByRole("button", { name: "PICO" })).toBeNull();
+    expect(within(details).getByText("C · แนวคิด").nextElementSibling).toHaveTextContent("การใช้เมตฟอร์มิน");
+    expect(within(details).getByText("C · บริบท").nextElementSibling).toHaveTextContent("การดูแลผู้ป่วยนอก");
+    expect(within(details).getByText("metformin")).toBeInTheDocument();
+  });
+
+  it("narrative: not graded, keeps claims and findings, hides PRISMA", () => {
+    const { container } = render(<Report review={narrativeReviewFixture} />);
+    expect(screen.getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนแบบบรรยาย\)/)).toBeInTheDocument();
+    expect(screen.queryByText("ต่ำมาก")).toBeNull();
+    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-gaps", "h-papers", "h-method"]);
+    expect(screen.getByTestId("charts")).toBeInTheDocument();
+  });
+
+  it("slr with a null strength says it was not assessed, never 'very low'", () => {
+    const slr = { ...reviewFixture, result: { ...reviewFixture.result!, review_type: "slr" as const,
+      synthesis: { ...reviewFixture.result!.synthesis!, evidence_strength: null } } };
+    render(<Report review={slr} />);
+    expect(screen.getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนวรรณกรรมอย่างเป็นระบบ\)/)).toBeInTheDocument();
+    expect(screen.queryByText("ต่ำมาก")).toBeNull();
+  });
+
+  it("slr with a grade keeps the strength bar", () => {
+    const slr = { ...reviewFixture, result: { ...reviewFixture.result!, review_type: "slr" as const } };
+    render(<Report review={slr} />);
+    expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำ");
+    expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การทบทวนวรรณกรรมอย่างเป็นระบบ");
   });
 });
 

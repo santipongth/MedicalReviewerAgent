@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resultFixture, legacyReviewFixture } from "@/test/fixtures";
-import { designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
+import { EXCLUSION_REASON_LABEL, exclusionRows, designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
 
 const papers = resultFixture.papers!;
 
@@ -60,6 +60,33 @@ describe("prismaStages and studyPoints", () => {
     const pts = studyPoints(papers);
     expect(pts.points.map((p) => [p.ref, p.year, p.n])).toEqual([["P1", 2019, 48210], ["P3", 2021, 1234], ["P4", 2020, 6331]]);
     expect(pts.missing).toBe(2);
+  });
+});
+
+describe("exclusionRows", () => {
+  const stats = {
+    ...resultFixture.stats, non_research: 3, excluded_screening: { study_design: 2, off_topic: 7, other: 1, outcome: 0 },
+    excluded_selection: { narrative_excluded: 0, over_limit: 4 },
+  };
+
+  it("labels each recorded reason in Thai, in a fixed order, skipping zero counts", () => {
+    const r = exclusionRows(stats, "th")!;
+    expect(r.reasons.map((x) => [x.key, x.label, x.value])).toEqual([
+      ["off_topic", "ไม่เกี่ยวกับหัวข้อ", 7], ["study_design", "รูปแบบการศึกษาไม่ตรงเกณฑ์", 2], ["other", "เหตุผลอื่น", 1],
+    ]);
+    expect(r.extra.map((x) => [x.label, x.value])).toEqual([["ไม่ใช่งานวิจัย", 3], ["เกินจำนวนที่วิเคราะห์", 4]]);
+  });
+
+  it("has a Thai and English label for every reason", () => {
+    for (const v of Object.values(EXCLUSION_REASON_LABEL)) { expect(v.th.trim()).not.toBe(""); expect(v.en.trim()).not.toBe(""); }
+    expect(Object.keys(EXCLUSION_REASON_LABEL)).toHaveLength(7);
+  });
+
+  it("is null for results without the data, and never derives a remainder", () => {
+    expect(exclusionRows(resultFixture.stats, "th")).toBeNull();
+    expect(exclusionRows(undefined, "th")).toBeNull();
+    const r = exclusionRows({ ...stats, excluded_screening: { off_topic: 1 } }, "th")!;
+    expect(r.reasons).toHaveLength(1); // screened - selected is not turned into an "other" row
   });
 });
 

@@ -4,10 +4,15 @@ import Link from "next/link";
 import { useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { exportUrl } from "@/lib/api";
 import { emptyFilters, filterPapers, isPooled, type Filters } from "@/lib/charts-data";
+import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
+import type { TermKey } from "@/lib/glossary";
 import type { Lang } from "@/lib/i18n";
+import { REVIEW_TYPE_LABEL, reviewTypeOf, showsSection } from "@/lib/review-type";
+import { Term } from "../ui/term";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
 import { Charts } from "./charts";
+import { EvidenceMapSection } from "./evidence-map";
 import { FilterBar, FilterStatus } from "./filter-bar";
 import { ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, QualityNote, QuestionDetails } from "./report-parts";
 import { ReportNav, SECTION_H2 as H2, type NavItem } from "./report-nav";
@@ -15,7 +20,9 @@ import { RailDrawer } from "./rail-drawer";
 import { SourceRail } from "./source-rail";
 import { L } from "./text";
 
-const DL = "inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
+const TYPE_TERM: Record<"narrative" | "slr" | "scoping", TermKey> = { narrative: "narrativeReview", slr: "slr", scoping: "scopingReview" };
+
+const DL ="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
 
 type Selection = { ref: string; outcome?: string };
 
@@ -49,7 +56,9 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const visible = useMemo(() => filterPapers(papers, filters), [papers, filters]);
   const matrixRefs = useMemo(() => visible.filter((p) => rows.some((r) => r.cells.some((c) => c.ref === p.ref))).map((p) => p.ref), [visible, rows]);
   const visibleRows = useMemo(() => rows.filter((r) => r.cells.some((c) => matrixRefs.includes(c.ref))), [rows, matrixRefs]);
-  const firstWithCard = papers.find((p) => p.card)?.ref;
+  const type = reviewTypeOf(result);
+  const map = useMemo(() => (showsSection(type, "evidence_map") ? evidenceMap(visible, rows, lang) : EMPTY_MAP), [type, visible, rows, lang]);
+  const firstWithCard =papers.find((p) => p.card)?.ref;
   const [selection, setSelection] = useState<Selection | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const active = selection ?? (firstWithCard ? { ref: firstWithCard } : null);
@@ -72,12 +81,16 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   }
 
   const hasPapers = papers.length > 0;
-  const hasClaims = !!(synthesis.consensus?.length || synthesis.conflicts?.length);
+  const hasClaims = showsSection(type, "claims") && !!(synthesis.consensus?.length || synthesis.conflicts?.length);
+  const hasMatrix = showsSection(type, "findings") && rows.length > 0;
+  const hasCharts = hasPapers && (showsSection(type, "forest") || showsSection(type, "prisma"));
+  const hasEvidenceMap = showsSection(type, "evidence_map") && (map.byConcept.rows.length > 0 || map.byYear.rows.length > 0);
   const navItems: NavItem[] = [
     { id: "h-summary", label: L(lang, "สรุป", "Summary") },
     ...(hasClaims ? [{ id: "h-claims", label: L(lang, "จุดตรงกัน/ขัดกัน", "Agree/conflict") }] : []),
-    ...(rows.length > 0 ? [{ id: "h-matrix", label: L(lang, "ผลแต่ละการศึกษา", "Findings") }] : []),
-    ...(hasPapers ? [{ id: "h-charts", label: L(lang, "แผนภาพ", "Charts") }] : []),
+    ...(hasMatrix ? [{ id: "h-matrix", label: L(lang, "ผลแต่ละการศึกษา", "Findings") }] : []),
+    ...(hasEvidenceMap ? [{ id: "h-evidence-map", label: L(lang, "แผนที่หลักฐาน", "Evidence map") }] : []),
+    ...(hasCharts ? [{ id: "h-charts", label: L(lang, "แผนภาพ", "Charts") }] : []),
     ...(synthesis.research_gaps?.length ? [{ id: "h-gaps", label: L(lang, "สิ่งที่ยังไม่รู้", "Gaps") }] : []),
     ...(hasPapers ? [{ id: "h-papers", label: L(lang, "งานวิจัยที่อ่าน", "Papers") }] : []),
     { id: "h-method", label: offline ? L(lang, "วิธีทำ", "Method") : L(lang, "ดาวน์โหลด", "Downloads") },
@@ -89,7 +102,15 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 pt-8" onPointerDownCapture={notePress} onClickCapture={notePress}
       style={offline ? ({ "--header-h": "0px" } as CSSProperties) : undefined}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="label break-words">{review.topic}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="label break-words">{review.topic}</span>
+          {type !== "legacy" && (
+            <span className="label rounded-sm bg-rail px-2 py-1">
+              <Term k={TYPE_TERM[type]} lang={lang}>{REVIEW_TYPE_LABEL[type][lang]}</Term>
+              {" · "}{L(lang, "อัตโนมัติ · อ่านเฉพาะบทคัดย่อ", "automated · abstracts only")}
+            </span>
+          )}
+        </div>
         {original === "th" && result.synthesis_en && (
           <div role="group" aria-label="ภาษา" className="inline-flex rounded-sm border border-rule font-display text-sm">
             {(["th", "en"] as const).map((l) => (
@@ -129,9 +150,11 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
             </section>
           )}
 
-          {rows.length === 0 && filterBar}
+          {!hasMatrix && filterBar}
 
-          {rows.length > 0 && (
+          {hasEvidenceMap && <EvidenceMapSection map={map} lang={lang} />}
+
+          {hasMatrix && (
             <section aria-labelledby="h-matrix" className="grid grid-cols-[minmax(0,1fr)] gap-3">
               <h2 id="h-matrix" className={H2}>{L(lang, "ผลแต่ละการศึกษา", "Findings by study")}</h2>
               {filterBar}
@@ -142,7 +165,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
             </section>
           )}
 
-          {hasPapers && (
+          {hasCharts && (
             <div className="grid gap-3">
               {filterStatus}
               <Charts result={result} papers={visible} lang={lang} onSelect={select} />
@@ -185,7 +208,12 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
                 ))}
               </ul>
             )}
-            <p className="text-[0.8rem] text-muted">{L(lang, "การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์", "Automated rapid literature review; not medical advice.")}</p>
+            <p className="text-[0.8rem] text-muted">
+              {type === "legacy"
+                ? L(lang, "การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์", "Automated rapid literature review; not medical advice.")
+                : L(lang, `${REVIEW_TYPE_LABEL[type].th}แบบเร่งด่วนโดยอัตโนมัติ อ่านเฉพาะบทคัดย่อ ไม่ใช่คำแนะนำทางการแพทย์`,
+                  `Automated rapid ${REVIEW_TYPE_LABEL[type].en.toLowerCase()} from abstracts only; not medical advice.`)}
+            </p>
           </section>
         </div>
 
