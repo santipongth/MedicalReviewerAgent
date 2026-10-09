@@ -100,6 +100,8 @@ def _cell_value(value: Any) -> Any:
 def render_csv(result: dict[str, Any] | None) -> str:
     """One row per paper × outcome, from the English cards. Values the verifier blanked are already null and stay
     empty here: nothing is estimated. A paper without a card gets one row carrying its error."""
+    # A scoping review judges neither direction nor bias: those columns stay in the header but are left empty.
+    scoping = (result or {}).get("review_type") == "scoping"
     out = io.StringIO()
     writer = csv.DictWriter(out, fieldnames=CSV_FIELDS, extrasaction="ignore", lineterminator="\n")
     writer.writeheader()
@@ -118,5 +120,7 @@ def render_csv(result: dict[str, Any] | None) -> str:
         for o in card.get("outcomes") or [{}]:
             row = base | {k: o.get(k) for k in ("outcome", "direction", "effect_measure", "effect_value",
                                                 "ci_lower", "ci_upper", "p_value", "evidence_quote")}
+            if scoping:
+                row |= {"direction": None, "overall_direction": None, "risk_of_bias": None}
             writer.writerow({k: _cell_value(v) for k, v in row.items()})
     return "\ufeff" + out.getvalue()  # BOM: spreadsheet apps then read Thai/unicode titles correctly

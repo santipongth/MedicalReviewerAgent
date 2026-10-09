@@ -87,7 +87,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const hasCharts = hasPapers && (showsSection(type, "forest") || showsSection(type, "prisma"));
   const hasLitMatrix = showsSection(type, "lit_matrix") && papers.length > 0;
   const litMatrix = hasLitMatrix && (
-    <LitMatrixSection papers={visible} lang={lang} type={type} onSelect={select} reviewId={review.id} offline={offline} />
+    <LitMatrixSection papers={visible} allPapers={papers} lang={lang} type={type} onSelect={select} reviewId={review.id} offline={offline} />
   );
   const hasEvidenceMap = showsSection(type, "evidence_map") && (map.byConcept.rows.length > 0 || map.byYear.rows.length > 0);
   const litNav = { id: "h-litmatrix", label: L(lang, "ตารางงานวิจัย", "Literature matrix") };

@@ -11,9 +11,9 @@ import { SECTION_H2 } from "./report-nav";
 import { L } from "./text";
 
 const CLAMP = "line-clamp-4 break-words";
-const TD = "min-h-9 px-2.5 py-2 align-top";
+const TD = "px-2.5 py-2 align-top";
 
-function Number_({ cell, lang }: { cell: LitRow["n"]; lang: Lang }) {
+function NCell({ cell, lang }: { cell: LitRow["n"]; lang: Lang }) {
   if (cell.kind === "value") return <VerifiedNumber value={cell.text} />;
   if (cell.kind === "blanked") return <Hole lang={lang} />;
   return <span className="text-muted">–</span>;
@@ -52,18 +52,19 @@ function Cell({ col, row, lang }: { col: LitColumn; row: LitRow; lang: Lang }) {
         </span>
       ) : null;
     case "risk": return <>{row.risk ? ROB_LABEL[lang][row.risk] : "–"}</>;
-    case "n": return <Number_ cell={row.n} lang={lang} />;
+    case "n": return <NCell cell={row.n} lang={lang} />;
     case "limitations": return <p className={CLAMP}>{row.limitations || "–"}</p>;
     default: return null;
   }
 }
 
 /** Literature review matrix: one row per paper, scrolling inside its own container with a sticky first column. */
-export function LitMatrixSection({ papers, lang, type, onSelect, reviewId, offline = false }: {
-  papers: Paper[]; lang: Lang; type: ReviewTypeOrLegacy; onSelect: (ref: string) => void; reviewId: string; offline?: boolean;
+export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSelect, reviewId, offline = false }: {
+  papers: Paper[]; allPapers?: Paper[]; lang: Lang; type: ReviewTypeOrLegacy; onSelect: (ref: string) => void; reviewId: string; offline?: boolean;
 }) {
   const rows = litRows(papers, lang);
-  const cols = litColumns(type, rows);
+  // The column set follows the whole review, so it does not change while the reader filters.
+  const cols = litColumns(type, allPapers === papers ? rows : litRows(allPapers, lang));
   const others = cols.slice(1);
   return (
     <section aria-labelledby="h-litmatrix" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">

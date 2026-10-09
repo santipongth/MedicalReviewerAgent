@@ -45,6 +45,14 @@ def test_csv_appends_columns_at_the_end_and_joins_lists():
     assert rows[0]["key_findings"] == "a | b" and rows[0]["risk_of_bias"] == "low" and rows[0]["limitations"] == "small"
 
 
+def test_scoping_csv_leaves_direction_and_bias_empty_but_keeps_the_header():
+    text = render_csv(review("scoping", None).result).lstrip("﻿")
+    rows = list(csv.DictReader(io.StringIO(text)))
+    assert list(rows[0].keys()) == CSV_FIELDS
+    assert rows[0]["direction"] == rows[0]["overall_direction"] == rows[0]["risk_of_bias"] == ""
+    assert rows[0]["population"] == "adults"
+
+
 def test_stub_cards_quote_their_numbers_and_counts_match():
     from app.graph.nodes.stub_result import stub_result
     for rt, strength in (("slr", "low"), ("narrative", None), ("scoping", None)):

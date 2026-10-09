@@ -53,6 +53,13 @@ describe("LitMatrixSection", () => {
     expect(row.querySelector(".num-verified")).toBeNull();
   });
 
+  it("the comparator column follows all papers, not the filtered ones", () => {
+    const none = papers.map((p) => ({ ...p, card: p.card && { ...p.card, comparator: null }, card_en: p.card_en && { ...p.card_en, comparator: null } }));
+    const some = [{ ...none[0], card: { ...none[0].card!, comparator: "placebo" }, card_en: { ...none[0].card_en!, comparator: "placebo" } }, ...none.slice(1)];
+    render(<LitMatrixSection papers={[some[1]]} allPapers={some} lang="th" type="slr" reviewId="r1" onSelect={() => {}} />);
+    expect(headers()).toContain("ตัวเปรียบเทียบ");
+  });
+
   it("clicking a ref opens it in the rail", () => {
     const onSelect = vi.fn();
     show(papers, "slr", { onSelect });
