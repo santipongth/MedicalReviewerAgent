@@ -2,6 +2,7 @@
 
 import { Fragment, type ReactNode } from "react";
 import { designKey, designLabel } from "@/lib/charts-data";
+import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
 import type { ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, QuestionBlock, Quality, Synthesis } from "@/lib/types";
 import { Glyph, UncertainFlag } from "../ui/evidence";
@@ -135,7 +136,7 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
             <th scope="col" className="left-0 z-10 min-w-[9rem] bg-ground px-2.5 py-2 text-left label sm:sticky sm:min-w-[190px]">{L(lang, "ผลลัพธ์", "Outcome")}</th>
             {refs.map((r) => {
               const paper = byRef.get(r);
-              const surname = paper?.authors?.[0]?.trim().split(/\s+/).pop();
+              const surname = surnameOf(paper?.authors?.[0]);
               const byline = [surname, paper?.year].filter(Boolean).join(" ");
               return (
                 <th key={r} scope="col" className="px-2 py-2 text-center label">

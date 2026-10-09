@@ -105,7 +105,7 @@ describe("Report", () => {
     render(<Report review={reviewFixture} />);
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
     const live = table.parentElement!.parentElement!.querySelector("p[aria-live=polite]")!;
-    expect(live).toHaveTextContent("");
+    expect(live.textContent).toBe("");
     await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
     expect(live).toHaveTextContent(/^P3 · .*อุบัติการณ์.*:/);
   });
