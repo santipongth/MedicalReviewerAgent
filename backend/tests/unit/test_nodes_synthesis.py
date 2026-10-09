@@ -401,3 +401,11 @@ def test_dissent_counts_distinct_studies_when_one_paper_reports_two_directions()
 def test_narrative_prompt_prefers_pooled_estimates():
     from app.graph.prompts import NARRATIVE_SYSTEM
     assert "pooled" in NARRATIVE_SYSTEM and "independent" in NARRATIVE_SYSTEM
+
+
+async def test_finalize_carries_review_type():
+    base = {"topic": "t", "english_topic": "T", "language": "en", "papers": [], "question": None,
+            "synthesis": {"executive_summary": "none"}}
+    r = (await make_finalize(deps())({**base, "options": {"review_type": "scoping"}}))["result"]
+    assert r["review_type"] == "scoping"
+    assert (await make_finalize(deps())(base))["result"]["review_type"] == "slr"

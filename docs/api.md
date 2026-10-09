@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-05.2`, API/MCP version 0.7.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-10.1`, API/MCP version 0.7.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It refines your question, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.
@@ -71,13 +71,14 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 
 ```json
 {"topic": "metformin and colorectal cancer", "language": "th",
- "options": {"max_papers": 30, "candidate_limit": 60, "year_from": 2015, "study_types": ["RCT"]},
+ "options": {"review_type": "slr", "max_papers": 30, "candidate_limit": 60, "year_from": 2015, "study_types": ["RCT"]},
  "callback_url": "https://your-app.example.org/hooks/review"}
 ```
 
 Field rules:
 - `topic`: 3–300 characters, with at least one letter or digit.
 - `language`: `th` (default) or `en`.
+- `review_type`: `slr` (default, systematic review), `narrative` or `scoping`. Anything else gets 422. It is part of the cache key. The allowed values are in `GET /api/v1/status → limits.review_types`.
 - `max_papers`: 5–30, default 30.
 - `candidate_limit`: 20–100, default 60. Must be at least `max_papers`.
 - `year_from`: 1950–2100.
@@ -102,7 +103,7 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `progress` is reserved and always `null`. Live progress comes from the event stream.
 - `status` is one of `queued`, `running`, `done`, `error`, `rejected` or `cancelled`.
 
-`result` has these keys: `topic, english_topic, language, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context`.
+`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context`.
 
 **Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`.
 - `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, other`.
@@ -130,6 +131,7 @@ The web app also serves the whole interactive report as one HTML file that works
 {"accepting": true, "reason": null, "retry_after": null, "queue_depth": 0, "running": 3, "reviews_today": 41,
  "turnstile_site_key": null,
  "limits": {"review_rate_limit": "5/hour", "api_key_rate_limit": "60/hour", "paper_search_rate_limit": "30/minute",
+            "review_types": ["narrative", "slr", "scoping"],
             "max_papers": {"min": 5, "max": 30, "default": 30}, "candidate_limit": {"min": 20, "max": 100, "default": 60},
             "max_queued_reviews": 50, "sse_max_per_ip": 5}}
 ```
@@ -199,7 +201,7 @@ The server name is `medical-reviewer-agent`, version 0.7.0. The `Host` header mu
 | Tool | Returns | Notes |
 |---|---|---|
 | `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | `limit` is clamped to 1–25; shares the paper-search limit |
-| `start_review(topic, language="th", max_papers=30)` | `{review_id, status, cached, status_url}` | `max_papers` is clamped to 5–30; capacity errors include the reason and the wait time |
+| `start_review(topic, language="th", max_papers=30, review_type="slr")` | `{review_id, status, cached, status_url}` | `max_papers` is clamped to 5–30; `review_type` is `narrative`, `slr` or `scoping` (an unknown value is a tool error); capacity errors include the reason and the wait time |
 | `get_review_status(review_id)` | `{review_id, status, error, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled` |
 | `get_review_result(review_id)` | `{review_id, status, result}` | if the review is not done: `{…, result: null, message, error}` |
 

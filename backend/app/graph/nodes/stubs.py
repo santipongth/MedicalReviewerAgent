@@ -9,6 +9,7 @@ from typing import Any
 from langgraph.config import get_stream_writer
 from langgraph.types import Send
 
+from app.graph.nodes.stub_result import stub_result
 from app.graph.progress import progress_writer
 from app.graph.state import ReviewState
 from app.schemas.review import ReviewOptions
@@ -37,6 +38,7 @@ async def finalize(state: ReviewState) -> dict:
         "result": {
             "summary": f"Stub review for: {state['topic']}",
             "language": state["language"],
+            "review_type": ReviewOptions.clamped(state.get("options")).review_type,
             "papers": [],
             "comparison": [],
         }
@@ -186,8 +188,8 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
     async def finalize_timed(state: ReviewState) -> dict:
         progress_writer()({"type": "finalizing"})
         await asyncio.sleep(timeline.seconds("finalize", _rng(state, "finalize")))
-        return {"result": {"summary": f"Stub review for: {state['topic']}", "language": state["language"],
-                           "papers": [], "comparison": []}}
+        review_type = ReviewOptions.clamped(state.get("options")).review_type
+        return {"result": stub_result(state["topic"], state["language"], review_type)}
 
     return {
         "topic_guard": make_phase("guard", timeline, lambda s: [{"type": "checking_topic"}]),

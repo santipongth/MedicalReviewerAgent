@@ -34,6 +34,7 @@ from app.harness.matrix import (
 )
 from app.harness.quality import summarize_quality
 from app.harness.verify import check_citations, strip_unknown_citations
+from app.schemas.review import ReviewOptions
 from app.services.llm import LLMError
 
 NO_PAPERS = {
@@ -468,6 +469,7 @@ def make_finalize(deps):
             for role in ("guard", "planner", "screener", "extractor", "synthesizer")}
         result = {
             "topic": state["topic"], "english_topic": state.get("english_topic"), "language": language,
+            "review_type": ReviewOptions.clamped(state.get("options")).review_type,
             "question": _question_block(state),
             "summary": synthesis["executive_summary"], "synthesis": synthesis, "synthesis_en": synthesis_en,
             "papers": out_papers, "queries": (state.get("plan") or {}).get("queries", []),
