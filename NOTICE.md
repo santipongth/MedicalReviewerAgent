@@ -1,0 +1,1 @@
+The live-run agent stage adapts ideas and the edge-arc formula from AI-Agent-observatory by sakshigupta372 (https://github.com/sakshigupta372/AI-Agent-observatory), used with the author's permission as stated by the project owner on 2026-10-09.

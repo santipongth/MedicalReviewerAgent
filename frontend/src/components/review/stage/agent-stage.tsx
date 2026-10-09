@@ -1,4 +1,6 @@
 "use client";
+// Adapts ideas from AI-Agent-observatory by sakshigupta372, used with the author's permission.
+// See NOTICE.md at the repo root.
 import { useMemo } from "react";
 import { m } from "motion/react";
 import { AGENT_LABEL, PIPELINE, currentAgent, readDone, sceneSummary, type AgentId, type Scene } from "@/lib/agent-scene";

@@ -1,5 +1,6 @@
 // Pure layout geometry for the live "agent stage": where nodes, edges, chips and reader slots sit in the SVG viewBox.
 // No React, no DOM. segX/segY run once per animation frame and must not allocate.
+// Attribution: see NOTICE.md (AI-Agent-observatory by sakshigupta372, used with permission).
 // The arc formula (lifted midpoint, quadratic control through it) is adapted from the AI-Agent-observatory project.
 import { PIPELINE, type AgentId, type EdgeId } from "./agent-scene";
 

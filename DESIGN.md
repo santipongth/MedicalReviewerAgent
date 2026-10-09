@@ -121,7 +121,7 @@ components:
 
 **Creative North Star:** an instrument from the operating theatre and the sterile supply room, not a magazine and not a SaaS dashboard. The people reading these reports work in hospitals; the request slip, the autoclave tape and the green drape are their world, and every design choice serves one promise: every number is verifiable.
 **Product context:** public, no-login literature-review agent (web, REST, MCP) for clinicians, researchers and students in Thailand and internationally. Peers: Elicit, Consensus, Scite, OpenEvidence, Cochrane Library.
-**Mode per surface:** Landing `/`: Persuade, by showing a real receipt rather than claims. Report `/r/[id]`: Read and Operate. Live run: Experience, kept functional. `/about`: Read.
+**Mode per surface:** Landing `/`: Persuade, by showing a real receipt rather than claims. Report `/r/[id]`: Read and Operate. Live run: Experience: a working instrument panel. `/about`: Read.
 **Reference sites:** https://elicit.com, https://consensus.app (Scite, OpenEvidence and Cochrane Library were blocked during research on 2026-10-04).
 **Key characteristics:**
 - A green environment, never white or cream.
@@ -160,7 +160,7 @@ Flat. Depth comes from surface order (ground → surface → rail) and 1px rules
 
 ## Shapes
 
-2px radius everywhere (cut tape). `full` is reserved for round data glyphs and specimen-tray wells, never for buttons or chips.
+2px radius everywhere (cut tape). `full` is reserved for round data glyphs (packet dots, reader slots, search-engine satellites), never for buttons or chips.
 
 ## Components
 
@@ -177,7 +177,12 @@ Flat. Depth comes from surface order (ground → surface → rail) and 1px rules
 - **Report section nav:** a sticky row of anchor links under the site header (`nav` labelled "ในรายงานนี้") to each report section. It scrolls horizontally on a phone, and the current section is marked with `aria-current`. It is a plain text link row on `surface` (the reading column it sits in), with no pills.
 - **Glossary term:** a jargon word shown as a dotted-underline button (`Term`) that toggles a short Thai/English explanation. On a phone the explanation is a bottom sheet, from `sm` up a 288px popover under the word. Tap or click toggles it (`aria-expanded`), Esc or an outside tap closes it, and an open term takes the Esc before any drawer around it. It is flat, with a 1px `rule` border.
 - **Forest plot:** log scale, with the null line drawn in `text` and dashed ticks drawn in `rule`. Markers use the direction glyph shapes. Unverified values are omitted and labelled, never estimated.
-- **Specimen tray (live run):** 60 wells (10 × 6, 20 px each so it fits a 390 px phone). A well fills when its candidate (one with an abstract) is found, empties when it is screened out, and is capped in `primary` for the up to 30 papers selected for analysis.
+- **Agent stage (live run):** a flat 2D SVG of the pipeline, driven only by real review events. Node tiles are 44px with 2px corners. The wide layout (960×330 viewBox) is a horizontal lane with the external-tools node above it; narrow (<768px) is a vertical lane with the external-tools node in the lane and the five search engines (PubMed, arXiv, Semantic Scholar, OpenAlex, Crossref) as satellites.
+  - Status vocabulary: active = solid `primary`; working = marching dashed `primary`, the indeterminate state, used only for phases without progress events; done = `ink` + ✓; failed = `err` + ✕; skipped = dashed `rule`; paused = `warn-bg`.
+  - Edges are `rule`, ghost (visited) edges `ink`, the live edge `primary`.
+  - Packets are 7px round dots, signals of real events only, at most 8 per event and 24 on screen. The shown number is the event's payload count, never the dot count.
+  - The reader pool is round slots (full radius allowed), one per paper, with the flag for uncertain papers. A slot means reading or queued, never in flight.
+  - A trace log ("บันทึกการทำงาน") lists every event, and one throttled milestone announcer (`role="status"`) speaks for screen readers. The text ledger always stays below the stage.
 - **Buttons:** primary is solid `primary` (hover brightens, disabled at 45% opacity). Ghost has a 1px `rule` border that turns `text` on hover. Focus-visible is a 2px `primary` outline at 2px offset.
 - **Status blocks:** a background tint plus a bold label. Success uses a `success` tint, warning `warning-bg`, error `error-bg`, info `info-bg`. Never a colored left border.
 
@@ -198,9 +203,10 @@ Flat. Depth comes from surface order (ground → surface → rail) and 1px rules
 
 - **Approach:** minimal-functional.
 - **Easing:** enter ease-out, exit ease-in, move ease-in-out.
-- **Duration:** micro 50–100ms, short 150–250ms (wells, hover), medium 250–400ms (tape fade-in, drawers).
+- **Duration:** micro 50–100ms, short 150–250ms (stage status changes, hover), medium 250–400ms (tape fade-in, drawers).
 - **The one authored moment:** during a live run, a number appears in plain ink and the autoclave stripes fade in once verification passes.
-- **Reduced motion:** `prefers-reduced-motion` removes every transition, and states appear in their final form.
+- **The second authored moment:** the agent stage. Packets travel 700ms ease-in-out along curved edges (120ms stagger) when an event arrives; a working phase is a 1.2s marching outline; the reader pulse marks a paper being read. Bursts and replays collapse to the final state.
+- **Reduced motion:** `prefers-reduced-motion` removes every transition, and states appear in their final form. On the stage: no packets, no loops, final states only. JS motion goes through `MotionConfig reducedMotion="user"` plus `useReducedMotion`.
 
 ## Decisions Log
 | Date | Decision | Rationale |
@@ -210,4 +216,5 @@ Flat. Depth comes from surface order (ground → surface → rail) and 1px rules
 | 2026-10-05 | Code gets its own face (`--font-code`: ui-monospace stack) | Martian Mono stays exclusive to verified numbers; code samples, ref chips and pipeline counts had borrowed it, which diluted the signal |
 | 2026-10-05 | Dark finding colors re-stepped to #3B98D4 / #DB712F / #B05C9E | dataviz validator: the preview's dark set failed the dark lightness band (L 0.48–0.67) and was in the CVD floor band; the new set passes all checks on #1B3029 (light set passes unchanged) |
 | 2026-10-09 | Plan 10 (UX clarity): rail/drawer breakpoint stays at 1024px; report is answer-first; agree/conflict moves above the matrix; section nav, glossary term and UncertainFlag added | Readers could not tell where the answer was or what the jargon meant. The nav and glossary are plain, flat and keyboard operable; the warning flag replaces ◆ for "uncertain" so ◆ keeps meaning harm only |
+| 2026-10-09 | Plan 11: the live run's step list + specimen tray are replaced by a real-time 2D agent stage (SVG + motion), text ledger kept | The user approved; adapted from sakshigupta372/AI-Agent-observatory (graph of agents, curved edges with travelling packets, planner task chips, ghost edges, trace panel) to Theatre Green: flat, 2D, no bob or glow, driven only by real events, reduced-motion and mobile first |
 | 2026-10-04 | Tokens from the approved HTML preview | AI image mockups were unavailable (no OpenAI key), so the HTML preview (Path B) is the source of every token |
