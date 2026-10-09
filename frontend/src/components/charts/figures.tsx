@@ -306,18 +306,22 @@ function treeData(n: MapNode, t: ChartTokens, lang: Lang): TreeDatum {
   const leaf = n.kind === "group";
   const colour = leaf && n.direction ? t.direction[n.direction] : t.muted;
   return {
-    name: n.label, value: n.text, ref: n.refs?.[0],
+    name: n.kind === "root" ? L(lang, "คำถาม", "Question") : n.label, value: n.text, ref: n.refs?.[0],
     tip: leaf && n.refs?.length ? L(lang, `คลิกเพื่อเปิด ${n.refs[0]} · ดูทั้งหมดในโครงร่าง`, `Click to open ${n.refs[0]} · see all in the outline`) : undefined,
     // Shapes no direction glyph uses (circle, diamond, rect, triangle, empty circle): rounded square for structure, pin for design groups.
     symbol: leaf ? (n.direction ? SYMBOL[n.direction] : "pin") : "roundRect",
-    symbolSize: leaf ? 12 : 9,
-    itemStyle: leaf ? { color: colour, borderColor: t.surface, borderWidth: 1 } : { color: t.rule, borderColor: t.muted, borderWidth: 1 },
+    symbolSize: leaf ? 12 : 10,
+    itemStyle: leaf ? { color: colour, borderColor: t.surface, borderWidth: 1 } : { color: t.muted, borderColor: t.surface, borderWidth: 1 },
+    // Only study groups label to the right; a childless element or term keeps its label above, clear of the level after it.
+    ...(!leaf && !n.children.length ? { label: { ...CONCEPT_LABEL_TOP, color: t.ink, backgroundColor: t.surface, fontFamily: t.fontDisplay } } : {}),
     ...(n.children.length ? { children: n.children.map((c) => treeData(c, t, lang)) } : {}),
   };
 }
 
+const CONCEPT_LABEL_TOP = { position: "top", distance: 6, verticalAlign: "bottom", align: "center", fontSize: 12, width: 150, overflow: "truncate", padding: [1, 3] };
+
 function conceptOption(tree: ConceptTree, t: ChartTokens, lang: Lang): EChartsOption {
-  const label = { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, width: 150, overflow: "truncate" };
+  const label = { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, overflow: "truncate", backgroundColor: t.surface, padding: [1, 3] };
   return {
     animation: !t.reducedMotion,
     animationDuration: 400,
@@ -330,10 +334,10 @@ function conceptOption(tree: ConceptTree, t: ChartTokens, lang: Lang): EChartsOp
     },
     series: [{
       type: "tree", data: [treeData(tree.root, t, lang)], layout: "orthogonal", orient: "LR",
-      initialTreeDepth: 3, expandAndCollapse: true, roam: false, top: 8, bottom: 8, left: 180, right: 200,
-      lineStyle: { color: t.rule, width: 1.5, curveness: 0 },
-      label: { ...label, position: "top", distance: 6, verticalAlign: "bottom", align: "center", width: 170 },
-      leaves: { label: { ...label, position: "right", verticalAlign: "middle", align: "left" } },
+      initialTreeDepth: 3, expandAndCollapse: true, roam: false, top: 28, bottom: 8, left: 34, right: 196,
+      lineStyle: { color: t.muted, width: 1.5, curveness: 0 },
+      label: { ...label, position: "top", distance: 6, verticalAlign: "bottom", align: "center", width: 150 },
+      leaves: { label: { ...label, position: "right", distance: 8, verticalAlign: "middle", align: "left", width: 180 } },
       emphasis: { focus: "descendant" },
       animationDurationUpdate: t.reducedMotion ? 0 : 300,
     }],
@@ -374,9 +378,10 @@ export function ConceptMapFigure({ tree, tokens, lang, onSelect }: { tree: Conce
     <Figure lang={lang} title={L(lang, "แผนที่ความรู้: คำถาม ผลลัพธ์ และงานวิจัยที่รายงาน", "Concept map: question, outcomes and the studies that report them")}
       caption={<>{L(lang, CONCEPT_CAPTION[0], CONCEPT_CAPTION[1])}{note && <> · {note}</>}</>}
       chart={
-        <div className="overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, "แผนที่ความรู้ (เลื่อนดูได้)", "Concept map (scrollable)")}>
-          <div className="min-w-[960px]">
-            <EChart option={option} height={Math.max(240, tree.drawnLeaves * 28)}
+        <div className="@container overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, "แผนที่ความรู้ (เลื่อนดูได้)", "Concept map (scrollable)")}>
+          {/* Fills the column; only a container narrower than 600px keeps a 720px canvas and scrolls inside this region. */}
+          <div className="@max-[600px]:min-w-[720px]">
+            <EChart option={option} height={Math.max(260, tree.drawnLeaves * 34)}
               label={L(lang, `แผนที่ความรู้ ${tree.leaves} กลุ่มงานวิจัย`, `Concept map with ${tree.leaves} study groups`)}
               onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />
           </div>
