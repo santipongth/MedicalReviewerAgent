@@ -4,6 +4,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ApiError, getReview } from "./api";
 import { apiUrl } from "./config";
 import { followReview } from "./events";
+import { initialScene, reduceScene } from "./agent-scene";
 import { initialRun, reduceRun } from "./progress";
 import type { Review } from "./types";
 
@@ -17,6 +18,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function useReview(id: string, { pollMs = 4000 }: { pollMs?: number } = {}) {
   const [review, setReview] = useState<Review | null>(null);
   const [run, dispatch] = useReducer(reduceRun, undefined, initialRun);
+  const [scene, dispatchScene] = useReducer(reduceScene, undefined, () => initialScene());
   const [phase, setPhase] = useState<Phase>("loading");
   const [connection, setConnection] = useState<Connection>("connecting");
   const [attempt, setAttempt] = useState(0);
@@ -39,7 +41,9 @@ export function useReview(id: string, { pollMs = 4000 }: { pollMs?: number } = {
       }
       if (TERMINAL_STATUS.has(r.status)) {
         const payload = r.status === "rejected" ? { reason: r.error } : { message: r.error };
-        dispatch({ seq: Number.MAX_SAFE_INTEGER, type: r.status, payload });
+        const ev = { seq: Number.MAX_SAFE_INTEGER, type: r.status, payload };
+        dispatch(ev);
+        dispatchScene({ kind: "event", ev });
         setPhase("terminal");
         return true;
       }
@@ -54,6 +58,7 @@ export function useReview(id: string, { pollMs = 4000 }: { pollMs?: number } = {
         if (alive) setPhase(e instanceof ApiError && e.status === 404 ? "notfound" : "unavailable");
         return;
       }
+      if (alive) dispatchScene({ kind: "lang", language: r.language });
       if (!alive || settle(r)) return;
       setPhase("live");
       const outcome = await followReview(id, {
@@ -63,6 +68,7 @@ export function useReview(id: string, { pollMs = 4000 }: { pollMs?: number } = {
         onEvent: (ev) => {
           lastSeq.current = Math.max(lastSeq.current, ev.seq);
           dispatch(ev);
+          dispatchScene({ kind: "event", ev });
         },
         onStatus: (s) => alive && setConnection(s),
       });
@@ -87,5 +93,5 @@ export function useReview(id: string, { pollMs = 4000 }: { pollMs?: number } = {
     };
   }, [id, pollMs, attempt]);
 
-  return { review, run, phase, connection, retry };
+  return { review, run, scene, phase, connection, retry };
 }
