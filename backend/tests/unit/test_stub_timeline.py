@@ -111,3 +111,13 @@ def test_phase_shares_sum_to_one():
     total = sum(getattr(tl, n) for n in ("guard", "refine", "plan", "search", "enrich", "screen", "select",
                                          "read", "normalize", "write_synthesis", "localize", "finalize"))
     assert abs(total - 1.0) < 1e-9
+
+
+async def test_read_phase_tracks_its_share_when_kept_is_below_concurrency():
+    delay = 2.0
+    events, _, _ = await run(concurrency=16, options={"max_papers": 10, "candidate_limit": 30}, delay=delay)
+    first_reading = min(at for at, e in events if e["type"] == "reading")
+    last_extracted = max(at for at, e in events if e["type"] == "extracted")
+    share = StubTimeline(delay).read * delay
+    # one round behind the pool: each paper sleeps share * U(0.7, 1.3)
+    assert 0.65 * share <= last_extracted - first_reading <= 1.35 * share + 0.05

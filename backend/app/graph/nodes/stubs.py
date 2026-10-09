@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 from dataclasses import dataclass
 from typing import Any
@@ -155,8 +156,10 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
         ref = f"P{i}"
         progress_writer()({"type": "reading", "ref": ref, "title": f"Simulated study {i}: {payload['topic']}"[:140]})
         rng = _rng(payload, "read", i)
-        # Each pool slot handles ~kept/concurrency papers, so the whole phase lasts `read * delay`.
-        per_paper = timeline.read * timeline.delay * max(1, settings.llm_concurrency) / kept
+        # Papers run in ceil(kept/concurrency) rounds behind the pool, so the whole phase lasts ~`read * delay`
+        # (also when kept < concurrency: one round, each paper takes the whole share).
+        rounds = math.ceil(kept / max(1, settings.llm_concurrency))
+        per_paper = timeline.read * timeline.delay / max(1, rounds)
         async with pool:
             await asyncio.sleep(per_paper * rng.uniform(0.7, 1.3))
         ok = i % 11 != 0
