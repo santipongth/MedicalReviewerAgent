@@ -12,6 +12,7 @@ import { Term } from "../ui/term";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
 import { Charts } from "./charts";
+import { ConceptMapSection, hasConceptMap } from "./concept-map";
 import { EvidenceMapSection } from "./evidence-map";
 import { LitMatrixSection } from "./lit-matrix";
 import { FilterBar, FilterStatus } from "./filter-bar";
@@ -89,16 +90,21 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const litMatrix = hasLitMatrix && (
     <LitMatrixSection papers={visible} allPapers={papers} lang={lang} type={type} onSelect={select} reviewId={review.id} offline={offline} />
   );
+  const hasConceptMapSection = showsSection(type, "concept_map") && hasPapers && hasConceptMap(result, lang, type);
+  const conceptMap = hasConceptMapSection && <ConceptMapSection result={result} lang={lang} type={type} onSelect={select} />;
   const hasEvidenceMap = showsSection(type, "evidence_map") && (map.byConcept.rows.length > 0 || map.byYear.rows.length > 0);
   const litNav = { id: "h-litmatrix", label: L(lang, "ตารางงานวิจัย", "Literature matrix") };
+  const mapNav = { id: "h-map", label: L(lang, "แผนที่ความรู้", "Concept map") };
   const navItems: NavItem[] = [
     { id: "h-summary", label: L(lang, "สรุป", "Summary") },
     ...(hasClaims ? [{ id: "h-claims", label: L(lang, "จุดตรงกัน/ขัดกัน", "Agree/conflict") }] : []),
     ...(hasMatrix ? [{ id: "h-matrix", label: L(lang, "ผลแต่ละการศึกษา", "Findings") }] : []),
     ...(hasEvidenceMap ? [{ id: "h-evidence-map", label: L(lang, "แผนที่หลักฐาน", "Evidence map") }] : []),
     ...(hasLitMatrix && type !== "slr" ? [litNav] : []),
+    ...(hasConceptMapSection && type !== "slr" ? [mapNav] : []),
     ...(hasCharts ? [{ id: "h-charts", label: L(lang, "แผนภาพ", "Charts") }] : []),
     ...(hasLitMatrix && type === "slr" ? [litNav] : []),
+    ...(hasConceptMapSection && type === "slr" ? [mapNav] : []),
     ...(synthesis.research_gaps?.length ? [{ id: "h-gaps", label: L(lang, "สิ่งที่ยังไม่รู้", "Gaps") }] : []),
     ...(hasPapers ? [{ id: "h-papers", label: L(lang, "งานวิจัยที่อ่าน", "Papers") }] : []),
     { id: "h-method", label: offline ? L(lang, "วิธีทำ", "Method") : L(lang, "ดาวน์โหลด", "Downloads") },
@@ -174,6 +180,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           )}
 
           {type !== "slr" && litMatrix}
+          {type !== "slr" && conceptMap}
 
           {hasCharts && (
             <div className="grid gap-3">
@@ -183,6 +190,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           )}
 
           {type === "slr" && litMatrix}
+          {type === "slr" && conceptMap}
 
           {!!synthesis.research_gaps?.length && (
             <section aria-labelledby="h-gaps" className="grid gap-2">

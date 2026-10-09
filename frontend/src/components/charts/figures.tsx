@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import type { ConceptTree, MapNode } from "@/lib/concept-map";
 import { forestAxis, type exclusionRows, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
@@ -291,6 +292,97 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
             </tr>
           ))}
         </tbody></table>
+      }
+    />
+  );
+}
+
+const CONCEPT_CAPTION = ["เส้นเชื่อมมาจากตารางผลแต่ละการศึกษาเท่านั้น ไม่ได้แสดงตัวแปรคั่นกลาง (mediator)",
+  "Links come only from the per-study results table; no mediating variables (mediators) are shown"];
+
+type TreeDatum = { name: string; ref?: string; value: string; symbol: string; symbolSize: number; itemStyle: Record<string, unknown>; label?: Record<string, unknown>; children?: TreeDatum[] };
+
+function treeData(n: MapNode, t: ChartTokens): TreeDatum {
+  const leaf = n.kind === "group";
+  const colour = leaf && n.direction ? t.direction[n.direction] : t.muted;
+  return {
+    name: n.label, value: n.text, ref: n.refs?.[0],
+    symbol: leaf ? (n.direction ? SYMBOL[n.direction] : "circle") : "rect",
+    symbolSize: leaf ? 12 : 9,
+    itemStyle: leaf ? { color: colour, borderColor: t.surface, borderWidth: 1 } : { color: t.rule, borderColor: t.muted, borderWidth: 1 },
+    ...(n.children.length ? { children: n.children.map((c) => treeData(c, t)) } : {}),
+  };
+}
+
+function conceptOption(tree: ConceptTree, t: ChartTokens): EChartsOption {
+  const label = { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, width: 160, overflow: "truncate" };
+  return {
+    animation: !t.reducedMotion,
+    animationDuration: 400,
+    aria: { enabled: false },
+    tooltip: {
+      trigger: "item", triggerOn: "mousemove", backgroundColor: t.surface, borderColor: t.rule,
+      textStyle: { color: t.ink, fontFamily: t.fontDisplay },
+      formatter: (p: { data: { value: string } }) => encodeHTML(p.data.value),
+    },
+    series: [{
+      type: "tree", data: [treeData(tree.root, t)], layout: "orthogonal", orient: "LR",
+      initialTreeDepth: 3, expandAndCollapse: true, roam: false, top: 8, bottom: 8, left: 180, right: 200,
+      lineStyle: { color: t.rule, width: 1.5, curveness: 0 },
+      label: { ...label, position: "left", verticalAlign: "middle", align: "right" },
+      leaves: { label: { ...label, position: "right", verticalAlign: "middle", align: "left" } },
+      emphasis: { focus: "descendant" },
+      animationDurationUpdate: t.reducedMotion ? 0 : 300,
+    }],
+  };
+}
+
+/** The outline twin: every node with its full text; each paper ref is a button that opens the source rail. */
+function ConceptOutline({ node, lang, onSelect }: { node: MapNode; lang: Lang; onSelect: Select }) {
+  return (
+    <li className="grid gap-1">
+      <span className="break-words">
+        {node.kind === "group" ? (
+          <>
+            {node.direction && <><Glyph direction={node.direction} lang={lang} />{" "}</>}
+            {node.text} <span className="font-display tabular-nums">({node.count})</span>
+            {node.refs?.map((r) => (
+              <button key={r} type="button" onClick={() => onSelect(r)}
+                className="ml-1 inline-flex min-h-11 min-w-11 items-center justify-center font-display font-semibold text-primary underline underline-offset-2">
+                {r}
+              </button>
+            ))}
+          </>
+        ) : node.text}
+      </span>
+      {node.children.length > 0 && (
+        <ul className="grid list-disc gap-1 pl-5">
+          {node.children.map((c) => <ConceptOutline key={c.id} node={c} lang={lang} onSelect={onSelect} />)}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+export function ConceptMapFigure({ tree, tokens, lang, onSelect }: { tree: ConceptTree; tokens: ChartTokens; lang: Lang; onSelect: Select }) {
+  const option = useMemo(() => conceptOption(tree, tokens), [tree, tokens]);
+  const note = tree.byDirection ? L(lang, "ทิศทางตามที่เอเจนต์อ่านจากบทคัดย่อ", "Directions as the agent read them in the abstracts") : null;
+  return (
+    <Figure lang={lang} title={L(lang, "แผนที่ความรู้: คำถาม ผลลัพธ์ และงานวิจัยที่รายงาน", "Concept map: question, outcomes and the studies that report them")}
+      caption={<>{L(lang, CONCEPT_CAPTION[0], CONCEPT_CAPTION[1])}{note && <> · {note}</>}</>}
+      chart={
+        <div className="overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, "แผนที่ความรู้ (เลื่อนดูได้)", "Concept map (scrollable)")}>
+          <div className="min-w-[680px]">
+            <EChart option={option} height={Math.max(240, tree.leaves * 28)}
+              label={L(lang, `แผนที่ความรู้ ${tree.leaves} กลุ่มงานวิจัย`, `Concept map with ${tree.leaves} study groups`)}
+              onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />
+          </div>
+        </div>
+      }
+      table={
+        <ul aria-label={L(lang, "โครงร่างแผนที่ความรู้", "Concept map outline")} className="grid list-none gap-1 text-[0.9rem]">
+          <ConceptOutline node={tree.root} lang={lang} onSelect={onSelect} />
+        </ul>
       }
     />
   );

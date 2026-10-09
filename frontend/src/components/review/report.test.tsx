@@ -5,6 +5,11 @@ import { emptyReviewFixture, legacyReviewFixture, narrativeReviewFixture, review
 
 vi.mock("./charts", () => ({ Charts: () => <section aria-labelledby="h-charts"><h2 id="h-charts">แผนภาพหลักฐาน</h2><div data-testid="charts" /></section> }));
 
+vi.mock("../charts/echart", () => ({
+  EChart: ({ label }: { label: string }) => <div role="img" aria-label={label} />,
+  encodeHTML: (s: unknown) => String(s ?? ""),
+}));
+
 import { Report } from "./report";
 
 async function openFilters() {
@@ -275,7 +280,7 @@ describe("Report per review type", () => {
   it("scoping: badge, PCC, evidence map; no claims, findings matrix, forest or direction tally", () => {
     const { container } = render(<Report review={scopingReviewFixture} />);
     expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การทบทวนขอบเขต");
-    expect(navIds(container)).toEqual(["h-summary", "h-evidence-map", "h-litmatrix", "h-charts", "h-gaps", "h-papers", "h-method"]);
+    expect(navIds(container)).toEqual(["h-summary", "h-evidence-map", "h-litmatrix", "h-map", "h-charts", "h-gaps", "h-papers", "h-method"]);
     expect(container.querySelector("#h-claims")).toBeNull();
     expect(container.querySelector("#h-matrix")).toBeNull();
     expect(screen.queryByRole("table", { name: /ผลแต่ละการศึกษา/ })).toBeNull();
@@ -340,7 +345,7 @@ describe("Report per review type", () => {
     const { container } = render(<Report review={narrativeReviewFixture} />);
     expect(screen.getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนแบบบรรยาย\)/)).toBeInTheDocument();
     expect(screen.queryByText("ต่ำมาก")).toBeNull();
-    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-litmatrix", "h-charts", "h-gaps", "h-papers", "h-method"]);
+    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-litmatrix", "h-map", "h-charts", "h-gaps", "h-papers", "h-method"]);
     expect(screen.getByTestId("charts")).toBeInTheDocument();
   });
 
@@ -471,5 +476,30 @@ describe("mobile source drawer", () => {
     await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("complementary", { name: /ต้นฉบับ/ })).toBeInTheDocument();
+  });
+
+  it("concept map: in the type's section order, never for legacy; the outline twin opens the rail", async () => {
+    const slr = { ...reviewFixture, result: { ...reviewFixture.result!, review_type: "slr" as const } };
+    const a = render(<Report review={slr} />);
+    expect(navIds(a.container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-litmatrix", "h-map", "h-gaps", "h-papers", "h-method"]);
+    expect(screen.getByRole("img", { name: /แผนที่ความรู้ \d+ กลุ่มงานวิจัย/ })).toBeInTheDocument();
+    expect(screen.getByText(/เส้นเชื่อมมาจากตารางผลแต่ละการศึกษาเท่านั้น/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "ดูเป็นตาราง" }));
+    const outline = screen.getByRole("list", { name: "โครงร่างแผนที่ความรู้" });
+    expect(within(outline).getAllByText(/อุบัติการณ์มะเร็งลำไส้ใหญ่/).length).toBeGreaterThan(0);
+    await userEvent.click(within(outline).getAllByRole("button", { name: "P4" })[0]);
+    expect(rail().getByText(/Short-term metformin initiation/)).toBeInTheDocument();
+    a.unmount();
+    const legacy = render(<Report review={legacyReviewFixture} />);
+    expect(legacy.container.querySelector("#h-map")).toBeNull();
+  });
+
+  it("concept map: scoping groups by design and shows no direction", async () => {
+    render(<Report review={scopingReviewFixture} />);
+    const section = screen.getByRole("heading", { name: "แผนที่ความรู้" }).closest("section")!;
+    await userEvent.click(within(section).getByRole("button", { name: "ดูเป็นตาราง" }));
+    expect(section).toHaveTextContent("Case-control");
+    expect(section).not.toHaveTextContent(/สนับสนุนผล|ตรงข้าม|ตามที่เอเจนต์อ่าน/);
+    expect(within(section).queryAllByRole("img")).toHaveLength(0);
   });
 });
