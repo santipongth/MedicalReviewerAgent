@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { initialScene, reduceScene, type EdgeId } from "./agent-scene";
+import type { ReviewEvent } from "./types";
 import { arc, clip, layoutFor, segPath, segX, segY, type LayoutKind, type StageLayout } from "./agent-layout";
 
 const base = { showLocalize: true, showExternal: true, slots: 0, batches: 0, queries: 0 };
@@ -98,6 +100,53 @@ describe.each(["wide", "narrow"] as LayoutKind[])("layoutFor %s", (kind) => {
     expect(l.batchChips).toHaveLength(10);
     expect(l.slots).toHaveLength(30);
   });
+});
+
+describe.each(["wide", "narrow"] as LayoutKind[])("edges avoid zones (%s)", (kind) => {
+  it("no sampled edge point falls inside a zone rect, chip or slot box", () => {
+    for (const showLocalize of [true, false]) {
+      for (const showExternal of [true, false]) {
+        for (let slots = 0; slots <= 30; slots++) {
+          const l = layoutFor(kind, { showLocalize, showExternal, slots, batches: 10, queries: 12 });
+          const rects = [...Object.values(l.zone), ...l.queryChips, ...l.batchChips];
+          for (const e of l.edges) {
+            for (let t = 0.1; t <= 0.901; t += 0.05) {
+              const x = segX(e.seg, t);
+              const y = segY(e.seg, t);
+              for (const r of rects) {
+                const hit = x >= r!.x && x <= r!.x + r!.w && y >= r!.y && y <= r!.y + r!.h;
+                expect(hit, `${kind} ${e.id} t=${t.toFixed(2)} in rect ${JSON.stringify(r)}`).toBe(false);
+              }
+              for (const p of l.slots) expect(Math.hypot(x - p.x, y - p.y)).toBeGreaterThan(8);
+            }
+          }
+        }
+      }
+    }
+  });
+});
+
+describe.each(["wide", "narrow"] as LayoutKind[])("scene edge ids exist in layout (%s)", (kind) => {
+  const E = (seq: number, type: string, payload: Record<string, unknown> = {}): ReviewEvent => ({ seq, type, payload });
+  const walk = (withLocalize: boolean): ReviewEvent[] => [
+    E(1, "started"), E(2, "checking_topic"), E(3, "refining"), E(4, "question_refined"), E(5, "planning", { queries: ["a"] }),
+    E(6, "searching", { found: 3 }), E(7, "enriching", { candidates: 3 }), E(8, "screening"), E(9, "screened", { kept: 1, total: 3 }),
+    E(10, "external_lookup"), E(11, "reading", { ref: "P1" }), E(12, "extracted", { ref: "P1", ok: true }),
+    E(13, "synthesizing", { papers: 1 }), ...(withLocalize ? [E(14, "localizing")] : []), E(15, "finalizing"), E(16, "done"),
+  ];
+  for (const withLocalize of [true, false]) {
+    it(`every edge the scene emits is drawable (localize=${withLocalize})`, () => {
+      let s = initialScene({ language: withLocalize ? "th" : "en" });
+      const emitted = new Set<string>();
+      for (const ev of walk(withLocalize)) {
+        s = reduceScene(s, { kind: "event", ev });
+        s.pulses.forEach((p) => emitted.add(p.edge));
+        Object.keys(s.edges).forEach((k) => emitted.add(k));
+      }
+      const ids = new Set(layoutFor(kind, { ...base, showLocalize: withLocalize }).edges.map((e) => e.id));
+      for (const id of emitted) expect(ids.has(id as EdgeId), id).toBe(true);
+    });
+  }
 });
 
 describe("wide specifics", () => {

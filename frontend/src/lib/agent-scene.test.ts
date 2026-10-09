@@ -224,6 +224,8 @@ describe("pause, resume and terminal events", () => {
     const s = run([...live(12), ev(13, "synthesizing", { papers: 1 }), ev(14, "finalizing")]);
     expect(agents(s, "synth", "localize", "finish")).toEqual(["done", "skipped", "working"]);
     expect(s.pulses.at(-1)).toMatchObject({ edge: "synth>finish" });
+    expect(s.edges["synth>finish"]).toBe("live");
+    expect(s.edges["localize>finish"]).toBeUndefined();
   });
   it("currentAgent", () => {
     expect(currentAgent(initialScene())).toBeNull();

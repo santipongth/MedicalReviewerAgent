@@ -12,7 +12,12 @@ export interface StageLayout {
   nodes: Partial<Record<AgentId, Pt>>; // visible agents only
   label: Partial<Record<AgentId, "below" | "right">>;
   edges: { id: EdgeId; d: string; seg: Seg }[];
-  satellites: { label: string; at: Pt }[];
+  /**
+   * Label contract for the renderer (Task 4): font <= 10px, every label <= 80px wide. `anchor` is the SVG text-anchor.
+   * Wide: "end"/"start" labels sit 8px left/right of the point (dy +3); the "middle" label sits 8px above its point.
+   * Narrow: all labels are "middle", drawn 14px below the point (points alternate between two rows 22px apart).
+   */
+  satellites: { label: string; at: Pt; anchor: "start" | "middle" | "end" }[];
   queryChips: Rect[]; batchChips: Rect[]; slots: Pt[]; zone: Partial<Record<AgentId, Rect>>;
 }
 export interface LayoutOpts { showLocalize: boolean; showExternal: boolean; slots: number; batches: number; queries: number }
@@ -65,19 +70,23 @@ function visibleAgents(o: LayoutOpts): AgentId[] {
   return PIPELINE.filter((id) => id !== "localize" || o.showLocalize);
 }
 
-function buildEdges(vis: AgentId[], nodes: Partial<Record<AgentId, Pt>>, showExternal: boolean): StageLayout["edges"] {
+/** `maxLift` caps the midpoint offset so long lane edges (narrow) never bulge into the zones beside the lane. */
+function buildEdges(vis: AgentId[], nodes: Partial<Record<AgentId, Pt>>, showExternal: boolean, maxLift = Infinity): StageLayout["edges"] {
   const pairs: [AgentId, AgentId][] = [];
   for (let i = 1; i < vis.length; i++) pairs.push([vis[i - 1], vis[i]]);
   if (showExternal) pairs.push(["read", "external"], ["external", "synth"]);
   return pairs.map(([p, q]) => {
-    const seg = arc(nodes[p]!, nodes[q]!);
+    const a = nodes[p]!;
+    const b = nodes[q]!;
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const seg = arc(a, b, Math.min(0.18, Math.max(0, (maxLift - 6) / len)));
     return { id: `${p}>${q}` as EdgeId, d: segPath(seg), seg };
   });
 }
 
 function wideLayout(o: LayoutOpts): StageLayout {
   const width = 960;
-  const height = 420;
+  const height = 330;
   const laneY = 96;
   const margin = 60;
   const zoneY = 170;
@@ -98,11 +107,16 @@ function wideLayout(o: LayoutOpts): StageLayout {
 
   // satellites on an arc above search
   const search = nodes.search!;
+  const sx = search.x;
+  const sy = laneY - 18; // arc centre sits above the node so the points clear the plan>search / search>enrich arcs
   const satellites = SATELLITES.map((name, i) => {
     const ang = (-150 + i * 30) * (Math.PI / 180);
-    return { label: name, at: { x: search.x + 58 * Math.cos(ang), y: search.y + 58 * Math.sin(ang) } };
+    return {
+      label: name, at: { x: sx + 58 * Math.cos(ang), y: sy + 58 * Math.sin(ang) },
+      anchor: (i < 2 ? "end" : i === 2 ? "middle" : "start") as "start" | "middle" | "end",
+    };
   });
-  zone.search = { x: search.x - 64, y: laneY - 64, w: 128, h: 42 };
+  zone.search = { x: sx - 140, y: 4, w: 280, h: 64 }; // lane arcs peak at y >= ~71, so they stay outside
 
   // batch chips under screen (max 10, 2 rows of 5)
   const nb = clampInt(o.batches, 0, MAX_BATCH_CHIPS);
@@ -119,9 +133,9 @@ function wideLayout(o: LayoutOpts): StageLayout {
   if (ns > 0) zone.read = { x: cx - 78, y: zoneY, w: 156, h: Math.ceil(ns / 6) * 26 + 4 };
 
   if (o.showExternal) {
-    nodes.external = { x: nodes.read!.x - 70, y: 350 };
-    label.external = "below";
-    zone.external = { x: nodes.external.x - 30, y: 326, w: 60, h: 80 };
+    // above the lane (below it are the reader pool / chip zones, which edges must not cross)
+    nodes.external = { x: nodes.read!.x, y: 30 };
+    label.external = "right";
   }
   return { kind: "wide", width, height, nodes, label, edges: buildEdges(vis, nodes, o.showExternal), satellites, queryChips, batchChips, slots, zone };
 }
@@ -144,6 +158,7 @@ function narrowLayout(o: LayoutOpts): StageLayout {
   const batchChips: Rect[] = [];
   const slots: Pt[] = [];
   let satellites: StageLayout["satellites"] = [];
+  const maxLift = 30; // lane x=36 + 30 = 66 < zone x (70)
 
   let y = 36;
   for (const id of vis) {
@@ -155,8 +170,10 @@ function narrowLayout(o: LayoutOpts): StageLayout {
       for (let i = 0; i < nq; i++) queryChips.push({ x: zx, y: zy + i * 22, w: zw, h: 18 });
       zh = nq * 22;
     } else if (id === "search") {
-      zh = 40;
-      satellites = SATELLITES.map((name, i) => ({ label: name, at: { x: zx + 28 + i * 56, y: zy + 10 } }));
+      zh = 62;
+      satellites = SATELLITES.map((name, i) => ({
+        label: name, at: { x: zx + 30 + i * 52, y: zy + 8 + (i % 2) * 22 }, anchor: "middle" as const,
+      }));
     } else if (id === "screen" && nb > 0) {
       for (let i = 0; i < nb; i++) batchChips.push({ x: zx + i * 27, y: zy, w: 24, h: 18 });
       zh = 22;
@@ -167,19 +184,17 @@ function narrowLayout(o: LayoutOpts): StageLayout {
     if (zh > 0) zone[id] = { x: zx, y: zy, w: zw, h: zh };
     let next = y + Math.max(76, zh + 50);
     if (id === "read" && o.showExternal) {
-      // side node: right of the lane, below the pool; synth follows underneath
-      const ey = next;
-      nodes.external = { x: 120, y: ey };
+      // side node kept in the lane (below the pool) so its edges never cross the zones; synth follows
+      nodes.external = { x: laneX, y: next };
       label.external = "right";
-      zone.external = { x: 170, y: ey - 22, w: 180, h: 44 };
-      next = ey + 60;
+      next += 76;
     }
     y = next;
   }
   const last = nodes.finish!;
   return {
     kind: "narrow", width, height: last.y + 44, nodes, label,
-    edges: buildEdges(vis, nodes, o.showExternal), satellites, queryChips, batchChips, slots, zone,
+    edges: buildEdges(vis, nodes, o.showExternal, maxLift), satellites, queryChips, batchChips, slots, zone,
   };
 }
 

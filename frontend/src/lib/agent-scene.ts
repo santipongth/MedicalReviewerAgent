@@ -148,7 +148,11 @@ function advanceTo(s: Scene, id: AgentId, status: AgentStatus, alsoDone?: AgentI
   s.agents[id] = status;
   if (s.external && s.agents.external === "active" && idx > PIPELINE.indexOf("read")) s.agents.external = "done";
   refreshEdges(s);
-  if (idx > 0 && isRunning(status)) s.edges[edgeId(PIPELINE[idx - 1], id)] = "live";
+  if (idx > 0 && isRunning(status)) {
+    // with localize skipped the lane has no localize node: the edge into finish is the synth>finish shortcut
+    const from: AgentId = id === "finish" && s.agents.localize === "skipped" ? "synth" : PIPELINE[idx - 1];
+    s.edges[edgeId(from, id)] = "live";
+  }
 }
 
 function pushPulse(s: Scene, key: number, edge: EdgeId, kind: PulseKind, n: number): void {
