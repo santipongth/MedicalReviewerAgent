@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { DIRECTION_LABEL, t, type Lang } from "@/lib/i18n";
 import type { Direction } from "@/lib/types";
+import { L } from "@/components/review/text";
+import { Term } from "./term";
 
 /** A number that passed verification against the paper text. Never use this for an unverified value. */
 export function VerifiedNumber({
@@ -29,8 +31,27 @@ export function VerifiedNumber({
 }
 
 /** A value the verifier blanked: shown as a visible gap, never hidden or estimated. */
-export function Hole({ lang, className = "" }: { lang: Lang; className?: string }) {
-  return <span className={`hole ${className}`}>{t(lang, "notVerified")}</span>;
+export function Hole({ lang, className = "", explain = false }: { lang: Lang; className?: string; explain?: boolean }) {
+  const slot = <span className={`hole ${className}`}>{t(lang, "notVerified")}</span>;
+  if (!explain) return slot;
+  return (
+    <>
+      {slot} <Term k="notVerified" lang={lang}>{L(lang, "ทำไม?", "why?")}</Term>
+    </>
+  );
+}
+
+/** Marks a study whose direction the two models read differently. Warning flag, not the harm glyph. */
+export function UncertainFlag({ lang = "th", label }: { lang?: Lang; label?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-warn">
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+        <path d="M2 1h1.5v10H2z" />
+        <path d="M3.5 1.5h6l-1.8 2.5 1.8 2.5h-6z" />
+      </svg>
+      <span>{label ?? L(lang, "สองโมเดลอ่านต่างกัน", "models disagree")}</span>
+    </span>
+  );
 }
 
 const GLYPH_CLASS: Record<Direction, string> = {
