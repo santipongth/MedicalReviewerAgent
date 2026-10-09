@@ -231,6 +231,42 @@ describe("pause, resume and terminal events", () => {
   });
 });
 
+describe("fix round 1", () => {
+  const liveEdges = (s: Scene) => Object.entries(s.edges).filter(([, v]) => v === "live");
+  it("synth>finish shortcut becomes visited after done", () => {
+    const s = run([...live(12), ev(13, "synthesizing", { papers: 1 }), ev(14, "finalizing"), ev(15, "done")]);
+    expect(s.edges["synth>finish"]).toBe("visited");
+    expect(liveEdges(s)).toEqual([]);
+  });
+  it("no live edge after error or cancelled", () => {
+    expect(liveEdges(run([...live(9), ev(60, "error")]))).toEqual([]);
+    expect(liveEdges(run([...live(9), ev(60, "cancelled")]))).toEqual([]);
+    expect(liveEdges(run([ev(1, "checking_topic"), ev(2, "rejected")]))).toEqual([]);
+  });
+  it("a second terminal event is ignored but advances lastSeq", () => {
+    const a = run([...live(9), ev(60, "error")]);
+    const b = run([ev(Number.MAX_SAFE_INTEGER, "error")], a);
+    expect(b.trace).toEqual(a.trace);
+    expect(b.agents).toEqual(a.agents);
+    expect(b.lastSeq).toBe(Number.MAX_SAFE_INTEGER);
+    const c = run([...live(9), ev(60, "cancelled"), ev(61, "cancelled")]);
+    expect(Object.values(c.agents).filter((x) => x === "skipped")).toHaveLength(Object.values(run([...live(9), ev(60, "cancelled")]).agents).filter((x) => x === "skipped").length);
+  });
+  it("screened re-emitted keeps finished reads", () => {
+    const first = run([ev(1, "screened", { kept: 5, total: 9 }), ...reading(3, 10), ev(20, "extracted", { ref: "P1", ok: true }),
+      ev(21, "extracted", { ref: "P2", ok: false })]);
+    const again = run([ev(30, "screened", { kept: 5, total: 9 })], first);
+    expect(again.slots).toEqual(first.slots);
+    expect(again.counts).toEqual(first.counts);
+    expect(run([ev(31, "screened", { kept: 2, total: 9 })], again).slots).toHaveLength(3);
+  });
+  it("NaN seq ignored; unknown events keep status", () => {
+    const s = initialScene();
+    expect(reduceScene(s, { kind: "event", ev: ev(Number.NaN, "queued") })).toBe(s);
+    expect(run([ev(1, "mystery")]).status).toBe("waiting");
+  });
+});
+
 describe("rings and trace", () => {
   it("caps pulses at 24 and trace at 80", () => {
     const evs = Array.from({ length: 100 }, (_, i) => ev(i + 1, i % 2 ? "refining" : "question_refined"));

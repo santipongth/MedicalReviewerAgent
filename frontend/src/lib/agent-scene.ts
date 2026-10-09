@@ -110,6 +110,25 @@ function refreshEdges(s: Scene): void {
     if (s.agents[a] === "done" && s.agents[b] === "done") s.edges[edgeId(a, b)] = "visited";
   }
   if (s.agents.read === "done" && s.agents.external === "done") s.edges["read>external"] = "visited";
+  // shortcut taken when localize is skipped (English reviews)
+  if (s.agents.synth === "done" && s.agents.localize === "skipped" && s.agents.finish === "done") s.edges["synth>finish"] = "visited";
+}
+
+const TERMINAL_STATUS = new Set<Scene["status"]>(["done", "error", "rejected", "cancelled"]);
+const KNOWN = new Set([
+  "queued", "started", "checking_topic", "refining", "question_refined", "planning", "searching", "enriching", "screening",
+  "screened", "external_lookup", "reading", "extracted", "synthesizing", "localizing", "finalizing", "interrupted", "done",
+  "error", "rejected", "cancelled",
+]);
+
+/** On a terminal event no edge may stay live: both ends done -> visited, otherwise back to idle (removed). */
+function retireLiveEdges(s: Scene): void {
+  for (const k of Object.keys(s.edges) as EdgeId[]) {
+    if (s.edges[k] !== "live") continue;
+    const [a, b] = k.split(">") as [AgentId, AgentId];
+    if (s.agents[a] === "done" && s.agents[b] === "done") s.edges[k] = "visited";
+    else delete s.edges[k];
+  }
 }
 
 /**
@@ -200,8 +219,8 @@ function traceText(type: string, p: Record<string, unknown>, s: Scene): string {
     case "reading": return `เริ่มอ่าน ${str(p.ref) ?? "งานวิจัย"}`;
     case "extracted": {
       const ref = str(p.ref) ?? "งานวิจัย";
-      if (!p.ok) return `อ่าน ${ref} ไม่สำเร็จ`;
-      return p.uncertain ? `อ่าน ${ref} เสร็จ · สองโมเดลอ่านต่างกัน` : `อ่าน ${ref} เสร็จ`;
+      if (p.ok !== true) return `อ่าน ${ref} ไม่สำเร็จ`;
+      return p.uncertain === true ? `อ่าน ${ref} เสร็จ · สองโมเดลอ่านต่างกัน` : `อ่าน ${ref} เสร็จ`;
     }
     case "synthesizing": return `เริ่มสังเคราะห์จาก ${num(p.papers)} ฉบับ`;
     case "localizing": return "แปลรายงานเป็นภาษาไทย";
@@ -237,7 +256,11 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
     return expect === state.expectLocalize ? state : { ...state, expectLocalize: expect };
   }
   const ev = a.ev;
-  if (!ev || typeof ev.seq !== "number" || ev.seq <= state.lastSeq) return state;
+  if (!ev || typeof ev.seq !== "number" || !Number.isFinite(ev.seq) || ev.seq <= state.lastSeq) return state;
+  // A terminal event arriving after the scene is already terminal (SSE then polling) is a duplicate: no second row.
+  if (TERMINAL_STATUS.has(state.status) && TERMINAL_STATUS.has(ev.type as Scene["status"])) {
+    return { ...state, lastSeq: ev.seq };
+  }
   const p: Record<string, unknown> = ev.payload && typeof ev.payload === "object" ? ev.payload : {};
   const s: Scene = {
     ...state, lastSeq: ev.seq, agents: { ...state.agents }, edges: { ...state.edges },
@@ -245,7 +268,7 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
   };
   const el = toNum(p.elapsed_s);
   if (el !== null) s.elapsed = el;
-  if (s.status === "waiting" && ev.type !== "queued") setStatus(s, "running");
+  if (s.status === "waiting" && ev.type !== "queued" && KNOWN.has(ev.type)) setStatus(s, "running");
 
   switch (ev.type) {
     case "queued":
@@ -301,7 +324,10 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
       const kept = num(p.kept);
       s.counts.kept = kept;
       s.counts.screenedTotal = num(p.total);
-      s.slots = Array.from({ length: Math.min(Math.max(kept, 0), MAX_SLOTS) }, () => ({ ref: null, state: "waiting" as SlotState }));
+      // Idempotent (a restarted worker may re-emit `screened`): keep slots that have a ref, resize only the waiting tail.
+      const want = Math.min(Math.max(kept, 0), MAX_SLOTS);
+      while (s.slots.length > want && s.slots[s.slots.length - 1].ref === null) s.slots.pop();
+      while (s.slots.length < want) s.slots.push({ ref: null, state: "waiting" });
       recountSlots(s);
       advanceTo(s, "read", "working", "screen");
       pushPulse(s, ev.seq, "screen>read", "kept", Math.min(kept, 8));
@@ -324,7 +350,7 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
     }
     case "extracted": {
       if (!isRunning(s.agents.read) && s.agents.read !== "done") advanceTo(s, "read", "active");
-      const next: SlotState = p.ok ? (p.uncertain ? "uncertain" : "ok") : "failed";
+      const next: SlotState = p.ok === true ? (p.uncertain === true ? "uncertain" : "ok") : "failed";
       const i = slotFor(s, str(p.ref));
       if (i >= 0) {
         const changed = s.slots[i].state !== next;
@@ -392,6 +418,7 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
     default:
       break; // unknown event: trace row only (forward compatible)
   }
+  if (TERMINAL_STATUS.has(s.status)) retireLiveEdges(s);
   pushTrace(s, ev, p);
   return s;
 }

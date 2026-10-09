@@ -61,6 +61,20 @@ describe("useReview", () => {
     expect(result.current.scene.lastSeq).toBe(2);
   });
 
+  it("does not add a second terminal row when polling confirms an SSE error", async () => {
+    getReview
+      .mockResolvedValueOnce({ ...base, status: "running", result: null })
+      .mockResolvedValue({ ...base, status: "error", error: "boom", result: null });
+    followReview.mockImplementation(async (_id: string, opts: FollowOptions) => {
+      opts.onEvent({ seq: 1, type: "reading", payload: { ref: "P1" } });
+      opts.onEvent({ seq: 2, type: "error", payload: { message: "boom" } });
+      return "terminal";
+    });
+    const { result } = renderHook(() => useReview("r1", { pollMs: 5 }));
+    await waitFor(() => expect(result.current.phase).toBe("terminal"));
+    expect(result.current.scene.trace.filter((r) => r.type === "error")).toHaveLength(1);
+  });
+
   it("falls back to polling when the stream cannot be kept open", async () => {
     getReview
       .mockResolvedValueOnce({ ...base, status: "running", result: null })
