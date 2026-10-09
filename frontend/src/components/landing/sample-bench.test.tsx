@@ -11,6 +11,12 @@ describe("SampleBench", () => {
     expect(screen.getByText(/ตัวอย่างจากรีวิวจริง/)).toBeInTheDocument();
   });
 
+  it("explains the tape and the hatched blank next to the receipt", () => {
+    render(<SampleBench />);
+    expect(screen.getByText(/ตัวเลขที่มีเส้นเทปลายทแยงตรวจกับบทคัดย่อแล้ว/)).toBeInTheDocument();
+    expect(screen.getByText(/ช่องลายเส้นคือค่าที่ตรวจไม่ผ่าน/)).toBeInTheDocument();
+  });
+
   it("opens on P1 with its verified number marked inside the source sentence", () => {
     render(<SampleBench />);
     expect(within(rail()).getByText("0.77", { selector: "mark" })).toBeInTheDocument();
