@@ -157,7 +157,7 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   - it cites two or more papers;
   - it uses pooled wording (pooled, overall, combined, meta-analysis, aggregate).
 
-  A sentence that cites exactly one paper and has no pooled wording is a single-study quote, so it is kept. Sentences split only before an uppercase letter or `[`, so "et al." and "vs." do not split a sentence. The `quality` stage `pooled_numbers` reports `{removed, kept_single_study}`.
+  A sentence that cites exactly one paper and has no pooled wording is a single-study quote, so it is kept. Sentences split only before an uppercase letter or `[`, so "et al." and "vs." do not split a sentence. The `quality` stage `pooled_numbers` reports `{removed, kept_single_study}`, and the result carries it as `result.quality.pooled_numbers` (meta_analysis only; absent for other types).
 
 **Synthesis.** `synthesis.consensus` explanations name any dissenting minority. Consensus needs at least 70 % of at least 3 studies to agree. `synthesis.conflicts` lists real splits, each with its likely reasons.
 

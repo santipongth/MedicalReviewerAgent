@@ -104,6 +104,8 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const hasEvidenceMap = showsSection(type, "evidence_map") && (map.byConcept.rows.length > 0 || map.byYear.rows.length > 0);
   const filterStatus = <FilterStatus filters={filters} onChange={setFilters} shown={visible.length} total={papers.length} lang={lang} />;
   // Sections after the findings, in the order SECTIONS_BY_TYPE declares them (forest and prisma share Charts).
+  // A meta review with no papers renders the "Try this" block and no section nav, like every other type: nothing could be
+  // pooled or excluded, and an empty pooled section (with its banner) would only repeat that there are no studies.
   const hasMeta = showsSection(type, "meta") && hasPapers;
   // The pool's outcome is an English matrix row: directions come from the English rows (the shown ones for an English review).
   const metaRows = result.synthesis_en?.comparison?.length ? result.synthesis_en.comparison : result.synthesis?.comparison ?? [];

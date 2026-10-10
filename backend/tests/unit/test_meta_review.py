@@ -109,10 +109,19 @@ async def test_meta_run_pools_grades_and_strips_pooled_numbers():
     assert s["research_gaps"] == ["RCTs"]
     stage = next(q for q in values["quality"] if q["stage"] == "pooled_numbers")
     assert stage == {"stage": "pooled_numbers", "removed": 3, "kept_single_study": 1}
+    assert r["quality"]["pooled_numbers"] == {"removed": 3, "kept_single_study": 1}  # carried into result.quality
     assert meta["grade"]["design_group"] == "observational"
     # still graded like an SLR, and conflicts are still explained
     assert s["evidence_strength"] is not None and s["grade_baseline"] is not None
     assert len(deps.llms.conflict_explainer.calls) == 1
+
+
+def test_summarize_quality_carries_the_latest_pooled_numbers_stage():
+    from app.harness.quality import summarize_quality
+    q = summarize_quality([{"stage": "pooled_numbers", "removed": 1, "kept_single_study": 0},
+                           {"stage": "pooled_numbers", "removed": 2, "kept_single_study": 1}], None)
+    assert q["pooled_numbers"] == {"removed": 2, "kept_single_study": 1}
+    assert "pooled_numbers" not in summarize_quality([{"stage": "narrative", "seconds": 1.0}], None)
 
 
 async def test_meta_outcome_display_is_localized():
@@ -130,6 +139,7 @@ async def test_slr_run_has_no_meta_and_an_unchanged_path():
     assert r["meta_analysis"] is None and "pool_effects" not in nodes
     assert "pooled" not in [e["type"] for e in events]
     assert not any(q["stage"] in ("pool", "pooled_numbers") for q in values["quality"])
+    assert "pooled_numbers" not in values["result"]["quality"]  # SLR result.quality keeps its shape
     system, user = deps.llms.synthesizer.calls[0][:2]
     assert system == prompts.narrative_system("slr") and "pooled_analysis" not in user
 

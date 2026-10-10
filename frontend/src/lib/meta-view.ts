@@ -140,7 +140,13 @@ const near = (a: number | null | undefined, b: number) => a != null && Math.abs(
 function sourceOutcome(paper: Paper | undefined, measure: string | null, effect: number | null, lo: number | null, hi: number | null) {
   const card = paper?.card_en ?? paper?.card;
   if (!card || effect == null) return null;
-  const hits = card.outcomes.filter((o) => (measure == null || o.effect_measure === measure) && near(o.effect_value, effect));
+  const sameMeasure = card.outcomes.filter((o) => measure == null || o.effect_measure === measure);
+  // Exact values first (the pool copies the card's numbers), so two near-equal effects never open the wrong quote;
+  // the tolerance only catches float noise.
+  const exact = sameMeasure.filter((o) => o.effect_value === effect);
+  const exactCi = exact.find((o) => (lo == null || o.ci_lower === lo) && (hi == null || o.ci_upper === hi));
+  if (exactCi) return exactCi;
+  const hits = exact.length ? exact : sameMeasure.filter((o) => near(o.effect_value, effect));
   return hits.find((o) => (lo == null || near(o.ci_lower, lo)) && (hi == null || near(o.ci_upper, hi))) ?? hits[0] ?? null;
 }
 

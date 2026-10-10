@@ -44,6 +44,16 @@ describe("meta-view", () => {
     expect(p7.weightText).toBe("36.6%");
   });
 
+  it("links a study to the outcome with exactly its numbers before a near-equal one", () => {
+    const p3 = result.papers!.find((p) => p.ref === "P3")!;
+    const base = p3.card_en!.outcomes[0];
+    const near = { ...base, outcome: "Near outcome", effect_value: 0.841, ci_lower: 0.721, ci_upper: 0.981, evidence_quote: "HR 0.841 (95% CI 0.721-0.981)" };
+    const card = { ...p3.card_en!, outcomes: [near, base] };
+    const papers = result.papers!.map((p) => (p.ref === "P3" ? { ...p, card, card_en: card } : p));
+    const s = metaView(metaAnalysisFixture, papers, rowsEn, "th").pools[0].studies[0];
+    expect(s).toMatchObject({ outcomeKey: "Primary outcome", effectText: "0.84" });
+  });
+
   it("uses the English outcome names when the reader switched a Thai review to English", () => {
     const v = metaView(metaAnalysisFixture, result.papers!, rowsEn, "en", true);
     expect(v.pools[0].outcome).toBe("Primary outcome");

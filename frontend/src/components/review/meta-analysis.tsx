@@ -114,7 +114,7 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
       <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-display text-[0.9rem] tabular-nums">
         <span>k = {pool.k}</span>
         <span>I² <ComputedNumber value={pool.i2Text} lang={lang} tag={false} /></span>
-        <span>τ² <ComputedNumber value={pool.tau2Text} lang={lang} tag={false} /></span>
+        <span>τ²{pool.ratio ? " (ln)" : ""} <ComputedNumber value={pool.tau2Text} lang={lang} tag={false} /></span>
         <span>Q <ComputedNumber value={pool.qText} lang={lang} tag={false} /> (df {pool.df}, p {pool.pText.startsWith("<") ? "" : "= "}<ComputedNumber value={pool.pText} lang={lang} tag={false} />)</span>
         <Term k="heterogeneity" lang={lang}>{L(lang, "ค่าเหล่านี้คืออะไร", "what these mean")}</Term>
       </p>

@@ -457,6 +457,20 @@ describe("Report per review type", () => {
     expect(slr.container.querySelector("#h-meta")).toBeNull();
   });
 
+  it("meta-analysis with no papers: the 'try this' state, no pooled section or banner", () => {
+    const empty = { ...metaReviewFixture, result: { ...emptyReviewFixture.result!, review_type: "meta_analysis" as const,
+      meta_analysis: { version: "meta-1", pools: [], excluded: [], reference: [], grade: { primary_outcome: null, reasons: [] } } } };
+    const { container } = render(<Report review={empty} />);
+    expect(screen.getByRole("heading", { name: "ลองแบบนี้" })).toBeInTheDocument();
+    expect(container.querySelector("#h-meta")).toBeNull();
+    expect(screen.queryByText(/ไม่ใช่ผลจากงานวิจัยฉบับใด/)).toBeNull();
+  });
+
+  it("meta-analysis: τ² is labelled with its ln scale for ratio measures", () => {
+    render(<Report review={metaReviewFixture} />);
+    expect(screen.getByRole("article", { name: /ผลลัพธ์หลัก/ })).toHaveTextContent("τ² (ln) 0.025");
+  });
+
   it("slr with a grade keeps the strength bar", () => {
     const slr = { ...reviewFixture, result: { ...reviewFixture.result!, review_type: "slr" as const } };
     render(<Report review={slr} />);
