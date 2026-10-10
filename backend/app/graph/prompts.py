@@ -119,6 +119,20 @@ _EXTRACT_META_BLOCK = OVERRIDE_LEAD + """
   printed in the abstract. If the abstract labels an estimate as adjusted or unadjusted (crude), keep that word
   inside the evidence_quote."""
 
+# Appended only when the user ticks Qualitative or Mixed methods (limited support: themes from the abstract, no numbers).
+QUALITATIVE_LEAD = "\nThe user's criteria include qualitative or mixed-methods studies; these rules extend the rules above:"
+
+_SCREEN_QUALITATIVE_BLOCK = QUALITATIVE_LEAD + """
+- Qualitative studies (interviews, focus groups, thematic analysis) and mixed-methods studies that address the
+  question are eligible even though they report no numeric outcome; set design_guess accordingly."""
+
+_EXTRACT_QUALITATIVE_BLOCK = QUALITATIVE_LEAD + """
+- design_category may also be qualitative (interviews, focus groups, thematic or phenomenological analysis) or
+  mixed_methods (a qualitative and a quantitative component).
+- For qualitative and mixed_methods papers, outcomes are the themes the abstract reports: put the theme in outcome,
+  a one-sentence finding in result and the verbatim sentence in evidence_quote; effect_measure "none", numeric
+  fields null and direction "unclear". Never turn a theme into a number."""
+
 _NARRATIVE_META_BLOCK = OVERRIDE_LEAD + """
 Review type: meta-analysis. The evidence includes pooled_analysis: random-effects pools computed by the system from
 the verified numbers of the primary studies (not results of any single study). Use them to judge the overall direction,
@@ -146,8 +160,9 @@ def plan_system(review_type: str = "slr") -> str:
     return PLAN_SYSTEM + {"narrative": _PLAN_NARRATIVE_BLOCK, "scoping": _PLAN_SCOPING_BLOCK}.get(review_type, "")
 
 
-def screen_system(review_type: str = "slr") -> str:
-    return SCREEN_SYSTEM + {"narrative": _SCREEN_NARRATIVE_BLOCK, "scoping": _SCREEN_SCOPING_BLOCK}.get(review_type, "")
+def screen_system(review_type: str = "slr", qualitative: bool = False) -> str:
+    return (SCREEN_SYSTEM + {"narrative": _SCREEN_NARRATIVE_BLOCK, "scoping": _SCREEN_SCOPING_BLOCK}.get(review_type, "")
+            + (_SCREEN_QUALITATIVE_BLOCK if qualitative else ""))
 
 
 def narrative_system(review_type: str = "slr") -> str:
@@ -264,8 +279,9 @@ EXTRACT_CHECKLIST = """Checklist before answering:
 - unreported numbers are null (never estimated); all text fields are in English"""
 
 
-def extract_system(review_type: str = "slr") -> str:  # extraction is always English
-    return EXTRACT_SYSTEM + {"scoping": _EXTRACT_SCOPING_BLOCK, "meta_analysis": _EXTRACT_META_BLOCK}.get(review_type, "")
+def extract_system(review_type: str = "slr", qualitative: bool = False) -> str:  # extraction is always English
+    return (EXTRACT_SYSTEM + {"scoping": _EXTRACT_SCOPING_BLOCK, "meta_analysis": _EXTRACT_META_BLOCK}.get(review_type, "")
+            + (_EXTRACT_QUALITATIVE_BLOCK if qualitative else ""))
 
 
 def extract_user(*, question: str, outcomes: list[str], candidate: dict[str, Any], source: str, text: str) -> str:

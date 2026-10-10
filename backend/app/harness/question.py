@@ -51,8 +51,14 @@ def question_problems(q: ReviewQuestion, options: dict[str, Any], review_type: s
     year_from = options.get("year_from")
     if year_from and str(year_from) not in (q.timeframe or ""):
         problems.append(f"timeframe must state that only studies from {year_from} onward are included")
-    designs = " ".join(q.study_designs).lower()
+    designs = _loose(" ".join(q.study_designs))
     for study_type in options.get("study_types") or []:
-        if study_type.lower() not in designs:
-            problems.append(f"study_designs must include {study_type} (requested by the user)")
+        name = study_type.split(":", 1)[1].strip() if study_type.startswith("Other:") else study_type
+        if name and _loose(name) not in designs:
+            problems.append(f"study_designs must include {name} (requested by the user)")
     return problems
+
+
+def _loose(text: str) -> str:
+    """Case-, hyphen- and space-insensitive form, so "Case-control" matches "case control studies"."""
+    return "".join(ch for ch in text.lower() if ch.isalnum())

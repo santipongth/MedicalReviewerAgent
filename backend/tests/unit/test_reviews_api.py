@@ -62,7 +62,7 @@ async def test_recent_done_review_is_reused_but_old_one_is_not(client, queue, se
 
 async def test_validation_rejects_blank_long_and_bad_language(client):
     assert (await client.post("/api/v1/reviews", json={"topic": "   "})).status_code == 422
-    assert (await client.post("/api/v1/reviews", json={"topic": "x" * 301})).status_code == 422
+    assert (await client.post("/api/v1/reviews", json={"topic": "x" * 601})).status_code == 422
     assert (
         await client.post("/api/v1/reviews", json={"topic": "ok topic", "language": "fr"})
     ).status_code == 422

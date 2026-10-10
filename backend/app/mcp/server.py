@@ -19,8 +19,13 @@ from app.schemas.review import CreateReviewRequest, ReviewOptions
 from app.services.report import render_markdown
 from app.services.review_service import Identity, RateLimited, ServiceError, Unavailable
 
-INSTRUCTIONS = """Medical literature review agent. It refines the question, screens about 60 candidate papers that have
-abstracts and analyses the abstracts of the best 5-30 (default 30); every number shown is checked against the abstract.
+INSTRUCTIONS = """Medical literature review agent (abstracts only). It turns a topic or question into a structured
+question (PICO, or PCC for scoping reviews), searches PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv,
+DOAJ and OpenAIRE through its own SearXNG, screens about 60 candidates that have abstracts and analyses the abstracts
+of the best 5-30 (default 30); every number shown is checked against the abstract, and numbers that fail are blanked.
+Review types: slr (default), meta_analysis (adds labelled, system-computed pooled estimates), scoping, narrative.
+Reports include a comparison matrix, a literature matrix, a concept map and, when metadata is available, a citation
+network between the reviewed papers (OpenAlex / Europe PMC reference lists).
 Typical flow: start_review(topic) → poll get_review_status every ~10 seconds until the status is terminal: done, error,
 rejected or cancelled (done usually takes 1-3 minutes) → on done call get_review_result (or read
 review://{id}/report.md); on error/rejected/cancelled read the error field. search_papers answers quick literature
@@ -103,9 +108,10 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
     @mcp.tool()
     async def start_review(topic: str, ctx: Context, language: Literal["th", "en"] = "th",
                            max_papers: int = 30,
-                           review_type: Literal["narrative", "slr", "scoping", "meta_analysis"] = "slr"
+                           review_type: Literal["narrative", "slr", "scoping", "meta_analysis"] = "slr",
+                           study_types: list[str] | None = None, year_from: int | None = None
                            ) -> dict[str, Any]:
-        """Start a literature review of a disease, drug or chemical (e.g. "metformin and colorectal cancer").
+        """Start a literature review of a topic or question (e.g. "metformin and colorectal cancer", up to 600 characters).
         The agent refines the question, screens ~60 papers that have abstracts, analyses the abstracts of the best
         `max_papers` (clamped into 5-30, default 30) and compares their findings.
         `review_type` picks the kind of review:
@@ -114,13 +120,18 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
         - "scoping": maps what research exists (types, years) with a PCC question; no quality or effect judgement.
         - "meta_analysis": a systematic review plus DerSimonian-Laird random-effects pools of the verified effect
           estimates (result.meta_analysis); pooled numbers are computed by the system, not reported by any study.
+        `study_types` (optional) limits the designs: RCT, Cohort, Case-control, Cross-sectional, Non-randomized trial,
+        Qualitative, Mixed methods (qualitative/mixed are summarised as themes, never with numbers), Systematic
+        review, Meta-analysis, or one "Other: <text>" (60 characters). `year_from` keeps studies from that year on.
         Returns review_id, status, cached
         and status_url. The same topic, language and options within 24 hours (or still running) return that review
         (cached=true). Fails with a reason and a wait time when the service is busy."""
         try:
             req = CreateReviewRequest(topic=topic, language=language,
                                       options=ReviewOptions.clamped({"max_papers": max_papers,
-                                                                             "review_type": review_type}))
+                                                                             "review_type": review_type,
+                                                                             "study_types": study_types or [],
+                                                                             "year_from": year_from}))
             created = await get_deps().service.create(req, identity=await identity(ctx), human_check=False)
         except (ServiceError, ValueError) as exc:
             raise _error(exc) from exc
