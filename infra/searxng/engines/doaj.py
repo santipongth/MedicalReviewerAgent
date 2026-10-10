@@ -55,7 +55,10 @@ max_wait = 5.0  # seconds; the engine timeout is 8 s
 
 logger = logging.getLogger(__name__)  # replaced by SearXNG with the engine logger
 
-_TAG = re.compile(r"<[^>]+>")
+# Real tags only: a literal "<" ("p<0.001") must survive. Inline markup joins ("CO<sub>2</sub>" -> "CO2"), other tags
+# become a space.
+_INLINE_TAG = re.compile(r"</?(?:sub|sup|i|b|em|strong|span|u|small)(?:\s[^<>]*)?/?>", re.IGNORECASE)
+_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9:_-]*(?:\s[^<>]*)?/?>")
 # Elasticsearch query-string syntax characters that would turn a plain topic into a parse error.
 _ES_SPECIAL = re.compile(r'[\\/:!^~{}\[\]()"]')
 _lock = threading.Lock()
@@ -79,7 +82,7 @@ def _throttle() -> bool:
 def _clean(value: t.Any) -> str:
     if not value:
         return ""
-    return " ".join(html.unescape(_TAG.sub(" ", str(value))).split())
+    return " ".join(html.unescape(_TAG.sub(" ", _INLINE_TAG.sub("", str(value)))).split())
 
 
 def build_url(query: str, pageno: int) -> str:

@@ -53,13 +53,16 @@ explore_url = "https://explore.openaire.eu/search/result?id="
 pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/"
 page_size = 10
 
-_TAG = re.compile(r"<[^>]+>")
+# Real tags only: a literal "<" ("p<0.001") must survive. Inline markup joins ("CO<sub>2</sub>" -> "CO2"), other tags
+# become a space.
+_INLINE_TAG = re.compile(r"</?(?:sub|sup|i|b|em|strong|span|u|small)(?:\s[^<>]*)?/?>", re.IGNORECASE)
+_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9:_-]*(?:\s[^<>]*)?/?>")
 
 
 def _clean(value: t.Any) -> str:
     if not value:
         return ""
-    return " ".join(html.unescape(_TAG.sub(" ", str(value))).split())
+    return " ".join(html.unescape(_TAG.sub(" ", _INLINE_TAG.sub("", str(value)))).split())
 
 
 def build_url(query: str, pageno: int) -> str:

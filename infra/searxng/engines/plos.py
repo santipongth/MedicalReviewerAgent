@@ -56,7 +56,10 @@ per_hour = 300
 
 logger = logging.getLogger(__name__)  # replaced by SearXNG with the engine logger
 
-_TAG = re.compile(r"<[^>]+>")
+# Real tags only: a literal "<" ("p<0.001") must survive. Inline markup joins ("CO<sub>2</sub>" -> "CO2"), other tags
+# become a space.
+_INLINE_TAG = re.compile(r"</?(?:sub|sup|i|b|em|strong|span|u|small)(?:\s[^<>]*)?/?>", re.IGNORECASE)
+_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9:_-]*(?:\s[^<>]*)?/?>")
 # Solr query syntax characters; a plain topic should not become a syntax error.
 _SOLR_SPECIAL = re.compile(r'[\\+\-!():^\[\]"{}~*?|&/]')
 _lock = threading.Lock()
@@ -81,7 +84,7 @@ def _clean(value: t.Any) -> str:
         return ""
     if isinstance(value, list):
         value = " ".join(str(v) for v in value)
-    return " ".join(html.unescape(_TAG.sub(" ", str(value))).split())
+    return " ".join(html.unescape(_TAG.sub(" ", _INLINE_TAG.sub("", str(value)))).split())
 
 
 def build_url(query: str, pageno: int) -> str:

@@ -9,6 +9,8 @@ from app.services.text import arxiv_id_from_url, normalize_doi, pmid_from_url, s
 
 # Engines whose `content` is the paper's full abstract (arXiv: the summary). Other engines return a search snippet,
 # which is often truncated and only counts as an abstract when it looks complete (see retrieval.usable_abstract).
+# A short or visibly cut-off engine result is still only a snippet.
+MIN_ENGINE_ABSTRACT_CHARS = 150
 FULL_ABSTRACT_ENGINES = frozenset({"pubmed", "europe pmc", "doaj", "plos", "openaire"})
 _PMCID_URL = re.compile(r"europepmc\.org/article/PMC/(?:PMC)?(\d+)", re.IGNORECASE)
 _PMCID_TEXT = re.compile(r"\bPMCID:\s*(?:PMC)?(\d+)", re.IGNORECASE)
@@ -20,12 +22,13 @@ def pmcid_from_result(r: dict[str, Any]) -> str | None:
     return f"PMC{match.group(1)}" if match else None
 
 
-def abstract_source_for(engines: list[str], has_abstract: bool) -> str | None:
-    if not has_abstract:
+def abstract_source_for(engines: list[str], abstract: str | None) -> str | None:
+    if not abstract:
         return None
     if "arxiv" in engines:
         return "arxiv"
-    return "engine" if FULL_ABSTRACT_ENGINES.intersection(engines) else "snippet"
+    complete = len(abstract) >= MIN_ENGINE_ABSTRACT_CHARS and not abstract.endswith(("…", "..."))
+    return "engine" if complete and FULL_ABSTRACT_ENGINES.intersection(engines) else "snippet"
 
 
 def parse_searxng_result(r: dict[str, Any]) -> Candidate | None:
@@ -39,7 +42,7 @@ def parse_searxng_result(r: dict[str, Any]) -> Candidate | None:
         authors = [a.strip() for a in authors.split(",") if a.strip()]
     engines = list(r.get("engines") or ([r["engine"]] if r.get("engine") else []))
     abstract = strip_markup(r.get("content")) or None
-    source = abstract_source_for(engines, abstract is not None)
+    source = abstract_source_for(engines, abstract)
     return Candidate(
         title=title,
         abstract=abstract,

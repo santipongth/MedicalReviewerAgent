@@ -55,3 +55,13 @@ def test_a_real_abstract_beats_a_longer_search_snippet():
                    abstract_source="snippet")
     m = merge_candidates([sx, epmc])[0]
     assert m.abstract == "Background: the real abstract." and m.abstract_source == "europepmc"
+
+
+def test_a_europepmc_abstract_beats_a_longer_engine_abstract():
+    epmc = Candidate(title="Official Title", doi="10.1/y", abstract="Background: curated abstract.",
+                     abstract_source="europepmc")
+    eng = Candidate(title="Official Title", doi="10.1/y", abstract="Background: " + "much longer text " * 30,
+                    abstract_source="engine")
+    for order in ([eng, epmc], [epmc, eng]):
+        m = merge_candidates(order)[0]
+        assert m.abstract == "Background: curated abstract." and m.abstract_source == "europepmc"

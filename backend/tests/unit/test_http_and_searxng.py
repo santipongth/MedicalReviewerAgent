@@ -120,7 +120,7 @@ async def test_searxng_client_passes_per_request_timeout():
 
 def test_searxng_full_abstract_engines_are_not_snippets():
     def parse(engines, **extra):
-        return parse_searxng_result({"title": "A cohort study", "content": "Some text", "engines": engines, **extra})
+        return parse_searxng_result({"title": "A cohort study", "content": "Some text. " * 20, "engines": engines, **extra})
 
     arxiv = parse_searxng_result({"title": "A preprint", "content": "Full summary", "engines": ["arxiv"],
                                   "url": "https://arxiv.org/abs/2401.00001"})
@@ -133,6 +133,35 @@ def test_searxng_full_abstract_engines_are_not_snippets():
     multi = parse(["crossref", "pubmed", "semantic scholar"])
     assert multi.abstract_source == "engine" and multi.engines == ["crossref", "pubmed", "semantic scholar"]
     assert parse(["pubmed"], content="").abstract_source is None
+    # short or visibly truncated engine content stays a snippet
+    assert parse(["pubmed"], content="Too short").abstract_source == "snippet"
+    assert parse(["pubmed"], content="x" * 300 + "…").abstract_source == "snippet"
+    assert parse(["doaj"], content="x" * 300 + "...").abstract_source == "snippet"
+
+
+def test_europe_pmc_med_urls_give_a_pmid():
+    c = parse_searxng_result({"title": "T", "engines": ["europe pmc"], "url": "https://europepmc.org/article/MED/36862776"})
+    assert c.pmid == "36862776"
+    for url in ("https://europepmc.org/article/PPR/PPR1307357", "https://europepmc.org/article/PMC/PMC111",
+                "https://europepmc.org/article/MED/abc"):
+        assert parse_searxng_result({"title": "T", "url": url}).pmid is None
+
+
+@pytest.mark.parametrize(("raw", "clean"), [
+    ("p<0.001) in patients aged >65", "p<0.001) in patients aged >65"),
+    ("HR<1 and >0.5", "HR<1 and >0.5"),
+    ("a < b > c", "a < b > c"),
+    ("CO<sub>2</sub> rose", "CO2 rose"),
+    ("10<sup>-3</sup> mol", "10-3 mol"),
+    ("<i>In vitro</i> and <b>in vivo</b>", "In vitro and in vivo"),
+    ("<p>Methods</p><p>Results</p>", "Methods Results"),
+    ("<jats:p>Background</jats:p>", "Background"),
+    ("x &lt;0.05 and y &gt; 3", "x <0.05 and y > 3"),
+    ("&lt;sub&gt;kept&lt;/sub&gt; p&lt;0.01", "<sub>kept</sub> p<0.01"),
+])
+def test_strip_markup_keeps_literal_angle_brackets(raw, clean):
+    from app.services.text import strip_markup
+    assert strip_markup(raw) == clean
 
 
 def test_searxng_pmcid_from_europe_pmc_fields():
@@ -141,7 +170,7 @@ def test_searxng_pmcid_from_europe_pmc_fields():
                               "html_url": "https://europepmc.org/article/PMC/PMC9876543"})
     assert (a.pmid, a.pmcid) == ("123", "PMC9876543")
     b = parse_searxng_result({**base, "url": "https://europepmc.org/article/MED/5", "comments": "PMCID: PMC111"})
-    assert b.pmid is None and b.pmcid == "PMC111"
+    assert b.pmid == "5" and b.pmcid == "PMC111"
     # preprints: no PMID, no PMCID, identified by DOI only
     c = parse_searxng_result({**base, "url": "https://europepmc.org/article/PPR/PPR1307357",
                               "doi": "10.21203/rs.3.rs-10413213/v1", "comments": "Preprint"})
