@@ -8,7 +8,12 @@ from app.graph import prompts
 from app.graph.nodes.synthesis import _evidence
 from app.harness.design import NO_DIRECTION_CATEGORIES, infer_design_category
 from app.harness.question import _loose
-from app.schemas.review import CreateReviewRequest, ReviewOptions, normalize_study_types, wants_qualitative
+from app.schemas.review import (
+    CreateReviewRequest,
+    ReviewOptions,
+    normalize_study_types,
+    wants_qualitative,
+)
 
 
 @pytest.mark.parametrize(("raw", "expected"), [

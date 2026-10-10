@@ -24,13 +24,13 @@ from app.graph.schemas import (
     SynthesisNarrative,
 )
 from app.graph.state import ReviewState
+from app.harness.design import NO_DIRECTION_CATEGORIES
 from app.harness.grade import (
     LEVELS,
     analyse_meta,
     clamp_to_baseline,
     grade_baseline,
 )
-from app.harness.design import NO_DIRECTION_CATEGORIES
 from app.harness.localize import localize_strings
 from app.harness.matrix import (
     build_matrix,
