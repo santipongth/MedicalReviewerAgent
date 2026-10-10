@@ -52,6 +52,22 @@ describe("timelineGroups", () => {
     expect(g.find((x) => x.agent === "read")).toMatchObject({ durationS: 14, current: false });
     expect(g.at(-1)).toMatchObject({ agent: "synth", summary: "จาก 2 ฉบับ", current: true });
   });
+  it("citations_fetched and pooled stay inside their agent's group (no status group, no split)", () => {
+    const s = run([...HEAD, ev(11, "screened", { kept: 3, total: 20, elapsed_s: 16 }),
+      ev(12, "reading", { ref: "P1" }), ev(13, "reading", { ref: "P2" }),
+      ev(14, "extracted", { ref: "P1", ok: true, elapsed_s: 20 }),
+      ev(15, "citations_fetched", { edges: 2, covered: 2, total: 2, elapsed_s: 21 }),
+      ev(16, "extracted", { ref: "P2", ok: true, elapsed_s: 25 }),
+      ev(17, "synthesizing", { papers: 2, elapsed_s: 26 }),
+      ev(18, "pooled", { pools: 1, k_total: 3, elapsed_s: 27 })]);
+    const g = timelineGroups(s);
+    expect(g.filter((x) => x.agent === "read")).toHaveLength(1);
+    expect(g.find((x) => x.agent === "read")!.rows.map((r) => r.type)).toContain("citations_fetched");
+    expect(g.filter((x) => x.agent === "synth")).toHaveLength(1);
+    expect(g.find((x) => x.agent === "synth")!.rows.map((r) => r.type)).toEqual(["synthesizing", "pooled"]);
+    expect(g.some((x) => x.agent === null && x.rows.some((r) => r.type === "citations_fetched" || r.type === "pooled"))).toBe(false);
+    expect(s.trace.some((r) => r.text === "citations_fetched" || r.text === "pooled")).toBe(false);
+  });
   it("trace cap still yields summaries from counts", () => {
     const many = Array.from({ length: 120 }, (_, i) => ev(100 + i, i % 2 ? "refining" : "question_refined"));
     const s = run([ev(1, "planning", { queries: ["a", "b"] }), ev(2, "searching", { found: 7, queries: 2 }),

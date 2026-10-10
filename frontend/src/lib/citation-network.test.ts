@@ -73,6 +73,11 @@ describe("citationNetwork", () => {
     expect(isPartial(partial)).toBe(true);
     expect(citationNetwork(papers, partial, "th").partial).toBe(true);
     expect(isPartial(citationsFixture)).toBe(false);
+    // the backend flag wins over the note text, so a timed-out empty block (note "unavailable") is still partial
+    const empty = { ...citationsFixture, source_note: "Citation data was unavailable for this review", partial: true };
+    expect(isPartial(empty)).toBe(true);
+    expect(isPartial({ ...citationsFixture, source_note: "x; partial: the lookup timed out", partial: false })).toBe(false);
+    expect(citationNetwork(papers, empty, "th").partial).toBe(true);
     expect(isPartial(null)).toBe(false);
   });
 

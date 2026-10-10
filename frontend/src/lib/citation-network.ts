@@ -85,8 +85,10 @@ export function markerSize(citedBy: number | null): number {
 
 const PARTIAL = /partial: the lookup timed out/i;
 
+/** The backend's `partial` flag; the note text is only a fallback for a block that predates the flag. */
 export function isPartial(c: Citations | null | undefined): boolean {
-  return !!c && PARTIAL.test(c.source_note ?? "");
+  if (!c) return false;
+  return typeof c.partial === "boolean" ? c.partial : PARTIAL.test(c.source_note ?? "");
 }
 
 const isSource = (s: unknown): s is CitationSource => s === "openalex" || s === "europepmc";
@@ -130,7 +132,7 @@ export function citationNetwork(papers: Paper[], citations: Citations, lang: Lan
       design, designText: design ? designLabel(design, lang) : lang === "th" ? "ไม่ทราบรูปแบบ" : "Design unknown",
       group: designGroup(design),
       citedBy: count,
-      // An older block has no cited_by_source; a count then came from OpenAlex (the only source before the fallback).
+      // Defensive: a block without cited_by_source (malformed or hand-made) reads its counts as OpenAlex's.
       citedBySource: count == null ? null : isSource(src) ? src : citations.cited_by_source ? null : "openalex",
       coverage: isSource(cov) ? cov : null,
       cites: edges.filter((e) => e.from === p.ref).map((e) => e.to).sort(byRef),

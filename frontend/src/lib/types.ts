@@ -241,6 +241,8 @@ export interface Citations {
   cited_by_source?: Record<string, "openalex" | "europepmc" | null>;
   coverage: Record<string, "openalex" | "europepmc" | null>;
   source_note: string;
+  /** The lookup timed out and only the data gathered so far is shown. Absent in results stored before it existed. */
+  partial?: boolean;
 }
 
 export interface Stats {

@@ -153,7 +153,7 @@ function refreshEdges(s: Scene): void {
 const TERMINAL_STATUS = new Set<Scene["status"]>(["done", "error", "rejected", "cancelled"]);
 const KNOWN = new Set([
   "queued", "started", "checking_topic", "refining", "question_refined", "planning", "searching", "enriching", "screening",
-  "screened", "external_lookup", "reading", "extracted", "synthesizing", "pooled", "localizing", "finalizing", "interrupted", "done",
+  "screened", "external_lookup", "reading", "extracted", "citations_fetched", "synthesizing", "pooled", "localizing", "finalizing", "interrupted", "done",
   "error", "rejected", "cancelled",
 ]);
 
@@ -274,6 +274,8 @@ function traceText(type: string, p: Record<string, unknown>, s: Scene): string {
       if (p.ok !== true) return `อ่าน ${ref} ไม่สำเร็จ`;
       return p.uncertain === true ? `อ่าน ${ref} เสร็จ · สองโมเดลอ่านต่างกัน` : `อ่าน ${ref} เสร็จ`;
     }
+    case "citations_fetched":
+      return `ดึงข้อมูลการอ้างอิง: เชื่อม ${num(p.edges)} เส้น จาก ${num(p.covered)}/${num(p.total)} งาน`;
     case "synthesizing": return `เริ่มสังเคราะห์จาก ${num(p.papers)} ฉบับ`;
     case "pooled": return `คำนวณค่ารวม ${num(p.pools)} ชุด จากผลของงานวิจัย ${num(p.k_total)} รายการ`;
     case "localizing": return "แปลรายงานเป็นภาษาไทย";
@@ -292,7 +294,7 @@ const MERGE = new Set(["screening", "reading"]);
 const TRACE_AGENT: Record<string, AgentId> = {
   checking_topic: "guard", refining: "refine", question_refined: "refine", planning: "plan", searching: "search",
   enriching: "enrich", screening: "screen", screened: "screen", external_lookup: "external", reading: "read",
-  extracted: "read", synthesizing: "synth", pooled: "synth", localizing: "localize", finalizing: "finish",
+  extracted: "read", citations_fetched: "read", synthesizing: "synth", pooled: "synth", localizing: "localize", finalizing: "finish",
 };
 
 /** The agent a trace row belongs to (status rows such as queued/started/done -> null). */
