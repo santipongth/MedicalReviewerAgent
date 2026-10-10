@@ -11,7 +11,7 @@ from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate, PaperCard
 from app.harness.design import design_problems, settle_design_category, strip_non_quantitative
 from app.harness.runner import HarnessResult
-from app.harness.verify import card_problems, compare_cards, null_unverified_numbers
+from app.harness.verify import NUMERIC_FIELDS, card_problems, compare_cards, null_unverified_numbers
 from app.services.llm import LLMError
 
 
@@ -22,11 +22,16 @@ def paper_text(cand: Candidate) -> str | None:
 
 
 def _blanked(before: PaperCard, after: PaperCard) -> list[dict[str, Any]]:
-    """Values the verifier blanked, so the UI can show "not verified" instead of "not reported"."""
+    """Values the verifier blanked, so the UI can show "not verified" instead of "not reported".
+
+    Fields are blanked one at a time, so an outcome is listed when its estimate was blanked: its effect_value, or,
+    for an outcome without one, all of its numbers. A blanked p-value or CI next to a verified effect is not listed
+    (the effect is still verified). This mirrors the unit counts of `null_unverified_numbers`."""
     out: list[dict[str, Any]] = []
     for b, a in zip(before.outcomes, after.outcomes, strict=True):
-        had = any(v is not None for v in (b.effect_value, b.ci_lower, b.ci_upper, b.p_value))
-        if had and all(v is None for v in (a.effect_value, a.ci_lower, a.ci_upper, a.p_value)):
+        had = any(getattr(b, k) is not None for k in NUMERIC_FIELDS)
+        lost_effect = b.effect_value is not None and a.effect_value is None
+        if had and (lost_effect or all(getattr(a, k) is None for k in NUMERIC_FIELDS)):
             out.append({"field": "effect", "outcome": b.outcome})
     if before.sample_size is not None and after.sample_size is None:
         out.append({"field": "sample_size", "outcome": None})

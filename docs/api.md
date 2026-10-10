@@ -124,6 +124,12 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   - `effect_measure` is `"none"`, the numbers are null and `direction` is `"unclear"`.
   - Like narrative reviews, they add no matrix cells, conflicts, pools or grade.
   - Scoping reviews still map them.
+- `verification` (Plan 19): a number is kept only when its exact value is in the abstract where the outcome's
+  `evidence_quote` is found (formats such as `P = .003`, `111 725`, `0,85` and `0·85` are normalised first). Fields are
+  blanked one at a time, so an unverifiable p-value leaves a verified effect and CI in place; a CI is kept only whole
+  and only with its effect. `numbers_total` counts the outcomes that carry numbers plus the sample size;
+  `numbers_verified` counts those whose estimate survived; `unverified` lists the rest
+  (`numbers_total - numbers_verified == len(unverified)`).
 - Narrative reviews are listed, but they never count as evidence, except in scoping reviews, which count them. A narrative-type review also gives them to the synthesis and can cite them, but keeps them out of the comparison table.
 
 **Citations.** `citations` is `{edges[], cited_by{}, cited_by_source{}, coverage{}, source_note, partial}` (null for results stored before Plan 14b and for reviews where the step did not run). `edges[]` is `{from, to}` (citing paper -> cited paper), only between papers of the same review, no self-loops, deduplicated. `cited_by[ref]` is the cited-by count over all literature (not just this review): OpenAlex's, else Europe PMC's `citedByCount`, else null. `cited_by_source[ref]` says which (`"openalex"`, `"europepmc"` or null); the two sources count differently, so do not compare across sources. On a timeout of the whole step the data gathered so far is kept, `partial` is `true` and `source_note` says so (`partial` is `false` otherwise, and is absent from results stored before it was added). OpenAlex gets at most half of the step budget and is not retried, so a slow OpenAlex still leaves time for the Europe PMC fallback. `coverage[ref]` is `"openalex"`, `"europepmc"` (reference list fallback) or null; null means no data, so a missing edge for such a paper does not mean it cites nothing. Metadata only (no full text); a failure gives null coverage and never fails the review; a timeout (about 20 s) keeps whatever arrived (coverage null for the rest, `partial: true`). Under `GRAPH_MODE=stub` the citation data is illustrative. Optional `OPENALEX_API_KEY` / `OPENALEX_MAILTO`.
