@@ -93,6 +93,10 @@ def chi2_sf(x: float, df: int) -> float:
     """Survival function P(X > x) of the chi-square distribution with `df` degrees of freedom."""
     if df <= 0:
         raise ValueError("df must be positive")
+    if math.isnan(x):
+        raise ValueError("x must not be NaN")
+    if math.isinf(x):
+        return 0.0 if x > 0 else 1.0
     if x <= 0:
         return 1.0
     a, half = df / 2.0, x / 2.0
@@ -132,31 +136,54 @@ def _fold(text: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch)).lower()
 
 
-def first_author_surname(authors: list[str] | None) -> str | None:
-    """Surname of the first author: "Smith J" (Europe PMC), "Smith, John" and "John Smith" all give "smith"."""
+def _split_name(authors: list[str] | None) -> tuple[str, str] | None:
+    """(surname, given part) of the first author: "Smith J" (Europe PMC), "Smith, John", "John Smith"."""
     if not authors or not str(authors[0]).strip():
         return None
     name = str(authors[0]).strip()
     if "," in name:
-        surname = name.split(",", 1)[0]
+        surname, given = name.split(",", 1)
     else:
         parts = name.replace(".", " ").split()
         initials = len(parts) > 1 and parts[-1].isupper() and len(parts[-1]) <= 3
-        surname = " ".join(parts[:-1]) if initials else parts[-1]
-    surname = _fold(surname).strip()
-    return surname or None
+        surname, given = (" ".join(parts[:-1]), parts[-1]) if initials else (parts[-1], " ".join(parts[:-1]))
+    return _fold(surname).strip(), _fold(given).strip()
 
 
-def _paper_identity(paper: dict[str, Any]) -> tuple[str, int, int] | None:
+def first_author_surname(authors: list[str] | None) -> str | None:
+    """Surname of the first author: "Smith J" (Europe PMC), "Smith, John" and "John Smith" all give "smith"."""
+    split = _split_name(authors)
+    return (split[0] or None) if split else None
+
+
+def first_author_initial(authors: list[str] | None) -> str:
+    """First given-name initial of the first author ("Smith J", "Smith, John", "John Smith" give "j"); "" if none."""
+    split = _split_name(authors)
+    return split[1][:1] if split and split[1] else ""
+
+
+def _as_int(value: Any) -> int | None:
+    """An integer year or sample size, or None for anything non-numeric or fractional (LLM cards are untrusted)."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return int(number) if math.isfinite(number) and number == int(number) else None
+
+
+def _paper_identity(paper: dict[str, Any]) -> tuple[str, str, int, int] | None:
+    """Duplicate-cohort key: (first-author surname, first initial or "", year, n); None if any is unknown."""
     candidate = paper.get("candidate") or {}
     authors = paper.get("authors") or candidate.get("authors")
-    year = paper.get("year") or candidate.get("year")
+    year = _as_int(paper.get("year") or candidate.get("year"))
     card = paper.get("card_en") or paper.get("card") or {}
-    n = card.get("sample_size")
+    n = _as_int(card.get("sample_size"))
     surname = first_author_surname(authors)
     if surname is None or year is None or n is None:
         return None
-    return surname, int(year), int(n)
+    return surname, first_author_initial(authors), year, n
 
 
 def _study_input(cell: dict[str, Any], scale: str) -> tuple[float, float] | str:
@@ -164,7 +191,10 @@ def _study_input(cell: dict[str, Any], scale: str) -> tuple[float, float] | str:
     values = (cell.get("effect_value"), cell.get("ci_lower"), cell.get("ci_upper"))
     if any(x is None for x in values):
         return "missing_numbers"
-    eff, lo, hi = (float(x) for x in values)
+    try:
+        eff, lo, hi = (float(x) for x in values)
+    except (TypeError, ValueError):
+        return "invalid_numbers"
     if not all(math.isfinite(x) for x in (eff, lo, hi)):
         return "invalid_numbers"
     if scale == "log" and min(eff, lo, hi) <= 0:
@@ -182,7 +212,24 @@ def _exclusion(row: str, cell: dict[str, Any], reason: str, **extra: Any) -> dic
 
 
 def pool_outcomes(matrix: dict[str, Any], papers: list[dict[str, Any]]) -> dict[str, Any]:
-    """Pool every matrix row that the rules allow. See docs in the Plan 14b task-3 report for the schema."""
+    """Pool every matrix row that the rules allow (see the module docstring).
+
+    Returns {"version": "meta-1", "pools": [...], "excluded": [...], "reference": [...]}.
+
+    Each pool: outcome, measure (HR/OR/RR/RD/MD/SMD), scale ("log" for HR/OR/RR, else "raw"), design_group
+    ("rct"/"observational"), k (>= 3), studies, pooled, tau2, i2, q, df, p_het, method, version, warnings (codes).
+    Scales, which matter for display:
+    - studies[].effect / ci_lower / ci_upper: as reported (natural scale, e.g. HR 0.8);
+    - studies[].y / se / variance: ANALYSIS scale (ln(effect) when scale == "log", else the effect itself);
+    - studies[].weight: random-effects weight in PERCENT (sums to 100);
+    - pooled.est / ci_lower / ci_upper: natural (display) scale, exp() applied when scale == "log";
+    - pooled.y / y_ci_lower / y_ci_upper / se and tau2: ANALYSIS scale;
+    - i2: PERCENT (0-100); q, df, p_het: heterogeneity test (chi-square, df = k - 1).
+    excluded[]: {outcome, ref, measure, design_category, reason, [duplicate_of], [k, design_group]}, where reason is one
+    of design_not_poolable, measure_not_poolable, missing_numbers, invalid_numbers, non_positive_ratio, invalid_ci,
+    effect_outside_ci, duplicate_study, duplicate_cohort, too_few_studies.
+    reference[]: SR/MA cells, never pooled: {outcome, ref, design_category, measure, effect, ci_lower, ci_upper}.
+    """
     identity = {p["ref"]: _paper_identity(p) for p in papers if p.get("ref")}
     pools: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
@@ -218,7 +265,8 @@ def pool_outcomes(matrix: dict[str, Any], papers: list[dict[str, Any]]) -> dict[
             warnings: list[str] = []
             studies: list[dict[str, Any]] = []
             seen_refs: set[str] = set()
-            seen_ids: dict[tuple[str, int, int], str] = {}
+            seen_ids: dict[tuple[str, str, int, int], str] = {}
+            source: dict[str, dict[str, Any]] = {}  # ref -> the cell that became the study
             for cell in groups[(group, measure)]:
                 ref = cell["ref"]
                 if ref in seen_refs:  # a paper with two outcomes in one row counts once (the first is kept)
@@ -238,13 +286,13 @@ def pool_outcomes(matrix: dict[str, Any], papers: list[dict[str, Any]]) -> dict[
                 if ident is not None:
                     seen_ids[ident] = ref
                 y, se = parsed
+                source[ref] = cell
                 studies.append({"ref": ref, "effect": float(cell["effect_value"]),
                                 "ci_lower": float(cell["ci_lower"]), "ci_upper": float(cell["ci_upper"]),
                                 "y": y, "se": se, "variance": se * se, "weight": None})
 
             if len(studies) < MIN_STUDIES:
-                cell_of = {c["ref"]: c for c in reversed(groups[(group, measure)])}  # first cell per ref
-                excluded += [_exclusion(outcome, cell_of[s["ref"]], "too_few_studies", k=len(studies),
+                excluded += [_exclusion(outcome, source[s["ref"]], "too_few_studies", k=len(studies),
                                         design_group=group) for s in studies]
                 continue
 

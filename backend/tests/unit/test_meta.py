@@ -7,6 +7,7 @@ from app.harness.meta import (
     VERSION,
     chi2_sf,
     dersimonian_laird,
+    first_author_initial,
     first_author_surname,
     pool_outcomes,
     se_from_ci,
@@ -155,7 +156,9 @@ def test_pool_bcg_on_the_log_scale_with_back_transform():
     assert pool["pooled"]["se"] == pytest.approx(0.1787, abs=TOL)
     assert pool["pooled"]["est"] == pytest.approx(math.exp(pool["pooled"]["y"]))
     assert pool["pooled"]["ci_lower"] == pytest.approx(math.exp(pool["pooled"]["y_ci_lower"]))
-    assert pool["pooled"]["ci_upper"] == pytest.approx(math.exp(-0.7141 + 1.959964 * 0.1787), abs=1e-3)
+    assert pool["pooled"]["y_ci_lower"] == pytest.approx(-1.06445, abs=TOL)  # metafor DL: [-1.0644, -0.3638]
+    assert pool["pooled"]["y_ci_upper"] == pytest.approx(-0.36378, abs=TOL)
+    assert pool["pooled"]["ci_upper"] == pytest.approx(math.exp(-0.36378), abs=TOL)
     assert pool["tau2"] == pytest.approx(0.3088, abs=TOL)
     assert pool["i2"] == pytest.approx(92.12, abs=0.01)
     assert pool["q"] == pytest.approx(152.233, abs=1e-3) and pool["df"] == 12
@@ -278,3 +281,105 @@ def test_first_author_surname_formats():
     assert first_author_surname(["Müller H"]) == "muller"
     assert first_author_surname(["van der Berg A"]) == "van der berg"
     assert first_author_surname([]) is None and first_author_surname(None) is None
+
+
+# ---- fix round 1 ---------------------------------------------------------------------------
+@pytest.mark.parametrize(("x", "df", "expected"), [(43.772972, 30, 0.05), (67.504807, 50, 0.05),
+                                                   (29.336030, 30, 0.5)])
+def test_chi2_sf_larger_df(x, df, expected):
+    assert chi2_sf(x, df) == pytest.approx(expected, rel=1e-5)
+
+
+@pytest.mark.parametrize("x", [10.0, 100.0, 600.0])
+def test_chi2_sf_df1_large_x_matches_erfc(x):
+    assert chi2_sf(x, 1) == pytest.approx(math.erfc(math.sqrt(x / 2)), rel=1e-9)
+
+
+def test_chi2_sf_non_finite():
+    assert chi2_sf(math.inf, 3) == 0.0
+    assert chi2_sf(-math.inf, 3) == 1.0
+    with pytest.raises(ValueError):
+        chi2_sf(math.nan, 3)
+
+
+def test_dl_two_studies_and_negative_variance():
+    res = dersimonian_laird([0.0, 1.0], [0.1, 0.1])
+    assert res["df"] == 1 and res["est"] == pytest.approx(0.5)
+    with pytest.raises(ValueError):
+        dersimonian_laird([0.1, 0.2, 0.3], [0.1, -0.1, 0.1])
+
+
+def test_identical_effects_pool_with_zero_heterogeneity():
+    out = run([cell("P1", 0.8, 0.6, 1.0), cell("P2", 0.8, 0.7, 0.9), cell("P3", 0.8, 0.5, 1.2)])
+    [pool] = out["pools"]
+    assert pool["q"] == pytest.approx(0.0, abs=1e-12)
+    assert pool["tau2"] == 0.0 and pool["i2"] == 0.0 and pool["p_het"] == pytest.approx(1.0)
+    assert pool["pooled"]["est"] == pytest.approx(0.8)
+    assert "high_heterogeneity" not in pool["warnings"]
+
+
+def test_effect_on_the_ci_bound_is_accepted():
+    out = run([cell("P1", 0.6, 0.6, 1.0), cell("P2", 0.9, 0.5, 0.9), cell("P3", -1.0, -1.0, 1.0, "MD"),
+               cell("P4", 0.8, 0.6, 1.0)])
+    [pool] = [p for p in out["pools"] if p["measure"] == "RR"]
+    assert [s["ref"] for s in pool["studies"]] == ["P1", "P2", "P4"]
+    assert ("P3", "too_few_studies") in reasons(out)
+
+
+@pytest.mark.parametrize(("year", "n"), [("abc", 100), (2019, "abc"), ("2019a", 100), (2019, 12.5), (2019, True),
+                                         (None, 100), (2019, float("nan"))])
+def test_non_numeric_year_or_n_disables_the_guard_without_crashing(year, n):
+    cells = [cell("P1", 0.8, 0.6, 1.0), cell("P2", 0.7, 0.5, 0.9), cell("P3", 0.9, 0.7, 1.1)]
+    papers = [paper("P1", "Smith J", 2019, 100), paper("P2", "Smith J", year, n), paper("P3")]
+    [pool] = run(cells, papers)["pools"]
+    assert pool["k"] == 3 and "duplicate_cohort_skipped" not in pool["warnings"]
+
+
+def test_numeric_strings_still_feed_the_guard():
+    cells = [cell("P1", 0.8, 0.6, 1.0), cell("P2", 0.7, 0.5, 0.9), cell("P3", 0.9, 0.7, 1.1),
+             cell("P4", 0.85, 0.65, 1.05)]
+    papers = [paper("P1", "Smith J", 2019, 100), paper("P2", "Smith J", "2019", "100"), paper("P3"), paper("P4")]
+    out = run(cells, papers)
+    assert ("P2", "duplicate_cohort") in reasons(out)
+
+
+def test_duplicate_key_uses_the_first_initial():
+    cells = [cell("P1", 0.8, 0.6, 1.0), cell("P2", 0.7, 0.5, 0.9), cell("P3", 0.9, 0.7, 1.1)]
+    papers = [paper("P1", "Wang L", 2019, 100), paper("P2", "Wang Y", 2019, 100), paper("P3", "Chen X", 2019, 100)]
+    out = run(cells, papers)
+    [pool] = out["pools"]
+    assert pool["k"] == 3 and not out["excluded"]
+    # "Li Wang" is Wang L in another name order: still a duplicate of P1
+    dup = run([*cells, cell("P4", 0.85, 0.65, 1.05)], [*papers, paper("P4", "Li Wang", 2019, 100)])
+    assert ("P4", "duplicate_cohort") in reasons(dup)
+    assert first_author_initial(["Wang L"]) == "l"
+    assert first_author_initial(["Wang, Li"]) == "l"
+    assert first_author_initial(["Li Wang"]) == "l"
+    assert first_author_initial(["Wang"]) == ""
+    assert first_author_initial([]) == ""
+
+
+def test_too_few_studies_rows_come_from_the_cells_that_became_studies():
+    cells = [cell("P1", 1.5, 0.6, 1.0, design="cohort"),  # invalid (outside its CI): not the study
+             cell("P1", 0.8, 0.6, 1.0, design="cohort"), cell("P2", 0.7, 0.5, 0.9, design="cohort")]
+    out = run(cells)
+    assert out["pools"] == []
+    rows = [(e["ref"], e["reason"]) for e in out["excluded"]]
+    assert rows == [("P1", "effect_outside_ci"), ("P1", "too_few_studies"), ("P2", "too_few_studies")]
+    assert all(e["design_group"] == "observational" for e in out["excluded"] if e["reason"] == "too_few_studies")
+
+
+def test_other_measures_warning_fires_only_when_another_measure_is_present():
+    base = [cell("P1", 0.8, 0.6, 1.0), cell("P2", 0.7, 0.5, 0.9), cell("P3", 0.9, 0.7, 1.1)]
+    [alone] = run(base)["pools"]
+    assert "other_measures_not_pooled" not in alone["warnings"]
+    [mixed] = run([*base, cell("P4", 0.7, 0.5, 0.9, "OR")])["pools"]
+    assert "other_measures_not_pooled" in mixed["warnings"]
+    # a different measure in the other design group does not count
+    [split] = run([*base, cell("P4", 0.7, 0.5, 0.9, "OR", design="cohort")])["pools"]
+    assert "other_measures_not_pooled" not in split["warnings"]
+
+
+def test_non_numeric_cell_values_are_invalid_not_a_crash():
+    out = run([cell("P1", "abc", 0.6, 1.0), cell("P2", 0.7, 0.5, 0.9)])
+    assert ("P1", "invalid_numbers") in reasons(out)
