@@ -1,0 +1,33 @@
+{
+ "total": 2,
+ "offset": 0,
+ "next": 2,
+ "data": [
+  {
+   "paperId": "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+   "externalIds": {"DOI": "10.1007/s00384-020-03676-x", "PubMed": "32592092"},
+   "url": "https://www.semanticscholar.org/paper/0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+   "title": "Metformin and colorectal cancer: a systematic review, meta-analysis and meta-regression",
+   "abstract": "Metformin may have a role in reducing the incidence of colorectal cancer (CRC) and improving survival outcome. This meta-analysis explored the effect of metformin use on colorectal adenoma and cancer incidence, and colorectal oncological outcomes.",
+   "venue": "International Journal of Colorectal Disease",
+   "year": 2020,
+   "journal": {"name": "International Journal of Colorectal Disease", "volume": "35", "pages": "1501 - 1512"},
+   "publicationDate": "2020-06-26",
+   "authors": [{"authorId": "1", "name": "Cheng-Ann Winston Ng"}, {"authorId": "2", "name": "Amy Aimei Jiang"}],
+   "openAccessPdf": null
+  },
+  {
+   "paperId": "1b2c3d4e5f60718293a4b5c6d7e8f9012345678a",
+   "externalIds": {"CorpusId": 123456},
+   "url": "https://www.semanticscholar.org/paper/1b2c3d4e5f60718293a4b5c6d7e8f9012345678a",
+   "title": "Metformin in colorectal cancer: molecular mechanism, preclinical and clinical aspects",
+   "abstract": null,
+   "venue": "",
+   "year": 2019,
+   "journal": null,
+   "publicationDate": null,
+   "authors": [],
+   "openAccessPdf": {"url": "https://example.org/paper.pdf", "status": "GOLD"}
+  }
+ ]
+}

@@ -42,9 +42,23 @@ services:
     environment:
       SEARXNG_SECRET: ${SEARXNG_SECRET:-change-me-to-a-long-random-string}
       SEARXNG_BASE_URL: http://searxng:8080/
+      # Optional academic API keys (read by our engine modules; empty = keyless, works as before).
+      NCBI_API_KEY: ${NCBI_API_KEY:-}
+      OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+      S2_API_KEY: ${S2_API_KEY:-}
+      CORE_API_KEY: ${CORE_API_KEY:-}
     volumes:
       - ./infra/searxng:/etc/searxng
       - searxngdata:/var/lib/searxng
+      # Our engine modules (infra/searxng/engines), one read-only file each: mounting the directory
+      # would hide the fork's own engines. Add a line here for every new module.
+      - ./infra/searxng/engines/mra_pubmed.py:/usr/local/searxng/searx/engines/mra_pubmed.py:ro
+      - ./infra/searxng/engines/mra_openalex.py:/usr/local/searxng/searx/engines/mra_openalex.py:ro
+      - ./infra/searxng/engines/mra_semantic_scholar.py:/usr/local/searxng/searx/engines/mra_semantic_scholar.py:ro
+      - ./infra/searxng/engines/mra_openaire.py:/usr/local/searxng/searx/engines/mra_openaire.py:ro
+      - ./infra/searxng/engines/europepmc.py:/usr/local/searxng/searx/engines/europepmc.py:ro
+      - ./infra/searxng/engines/doaj.py:/usr/local/searxng/searx/engines/doaj.py:ro
+      - ./infra/searxng/engines/plos.py:/usr/local/searxng/searx/engines/plos.py:ro
     ports:
       - "8080:8080"
     healthcheck:

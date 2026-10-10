@@ -1,0 +1,80 @@
+{
+ "response": {
+  "numFound": 409,
+  "start": 0,
+  "docs": [
+   {
+    "id": "10.1371/journal.pone.0097781",
+    "journal": "PLoS ONE",
+    "publication_date": "2014-05-21T00:00:00Z",
+    "article_type": "Research Article",
+    "author_display": [
+     "Xinbing Sui",
+     "Yinghua Xu",
+     "Jie Yang",
+     "Yong Fang",
+     "Haizhou Lou",
+     "Weidong Han",
+     "Maolin Zhang",
+     "Wei Chen",
+     "Kaifeng Wang",
+     "Da Li",
+     "Wei Jin",
+     "Fang Lou",
+     "Yu Zheng",
+     "Hong Hu",
+     "Liu Gong",
+     "Xiaoyun Zhou",
+     "Qin Pan",
+     "Hongming Pan",
+     "Xian Wang",
+     "Chao He"
+    ],
+    "abstract": [
+     "\nColorectal cancer (CRC) is still the third most common cancer and the second most common causes of cancer-related death around the world. Metformin, a biguanide, which is widely used for treating diabetes mellitus, has recently been shown to have a suppressive effect on CRC risk and mortality, but not all laboratory studies suggest that metformin has antineoplastic activity. Here, we investigated the effect of metformin and AMPK activator AICAR on CRC cells proliferation. As a result, metformin did not inhibit cell proliferation or induce apoptosis for CRC cell lines in vitro and in vivo. Different from metformin, AICAR emerged antitumor activity and sensitized anticancer effect of 5-FU on CRC cells in vitro and in vivo. In further analysis, we show that AMPK activation may be a key molecular mechanism for the additive effect of AICAR. Taken together, our results suggest that metformin has not antineoplastic activity for CRC cells as a single agent but AMPK activator AICAR can induce apoptosis and enhance the cytotoxic effect of 5-FU through AMPK activation.\n"
+    ],
+    "title_display": "Use of Metformin Alone Is Not Associated with Survival Outcomes of Colorectal Cancer Cell but AMPK Activator AICAR Sensitizes Anticancer Effect of 5-Fluorouracil through AMPK Activation"
+   },
+   {
+    "id": "10.1371/journal.pone.0091818",
+    "journal": "PLoS ONE",
+    "publication_date": "2014-03-19T00:00:00Z",
+    "article_type": "Research Article",
+    "author_display": [
+     "Zu-Bing Mei",
+     "Zhi-Jiang Zhang",
+     "Chen-Ying Liu",
+     "Yun Liu",
+     "Ang Cui",
+     "Zhong-Lin Liang",
+     "Guang-Hui Wang",
+     "Long Cui"
+    ],
+    "abstract": [
+     "Background: Several studies suggest that metformin has the potential effect of reducing cancer risk. However, its survival benefit in patients with colorectal cancer (CRC) and diabetes is unknown. The aim of our study is to address the effect of metformin on outcomes for CRC based on a systematic review and meta-analysis. Methods and Findings: We searched EMBASE and MEDLINE databases from inception through August, 2013, using search terms related to metformin, diabetes, colorectal cancer, and prognostic outcome. The outcome measures were hazard ratios (HRs) with 95% CIs comparing CRC survival in diabetic patients using metformin and without using metformin. The primary end points were overall survival (OS) and CRC specific survival (CS). A total of six cohort studies including 2,461 patients met full eligibility criteria. The pooled HR favoring metformin users was 0.56 for OS (95% CI, 0.41 to 0.77) and 0.66 for CRC-specific survival (95% CI, 0.50 to 0.87). Thus metformin therapy reduced the risk of all cause of death by 44% and the risk of CRC specific death by 34% in CRC patients compared to those in non-users. However, evidence of heterogeneity and possible publication bias was noted for OS. Conclusions: Patients with CRC and diabetes treated with metformin appear to have an improved survival outcome. Prospective study should be warranted to examine the association between metformin exposure intensity as well as some other confounding variables and survival outcome in diabetic CRC patients. "
+    ],
+    "title_display": "Survival Benefits of Metformin for Colorectal Cancer Patients with Diabetes: A Systematic Review and Meta-Analysis"
+   },
+   {
+    "id": "10.1371/journal.pone.0205449",
+    "journal": "PLOS ONE",
+    "publication_date": "2018-10-11T00:00:00Z",
+    "article_type": "Research Article",
+    "author_display": [
+     "Sanghee Kang",
+     "Bo Ram Kim",
+     "Myoung-Hee Kang",
+     "Dae-Young Kim",
+     "Dae-Hee Lee",
+     "Sang Cheul Oh",
+     "Byung Wook Min",
+     "Jun Won Um"
+    ],
+    "abstract": [
+     "\nMetformin, a first-line drug used to treat type 2 diabetes, has also been shown to have anticancer effects against a variety of malignancies, including colorectal cancer. Although inhibition of the mTOR pathway is known to be the most important mechanism for the antitumor effects of metformin, other mechanisms remain unclear. The purpose of this study was to identify the antitumor mechanism of metformin in colorectal cancer using high-throughput data, and then test the mechanism experimentally. We identified the gene signature of metformin-treated colon cancer cells. This signature was processed for prediction using colon adenocarcinoma patient data from the Cancer Genome Atlas to classify the patients showing a gene expression pattern similar to that in metformin-treated cells. This patient group showed better overall and disease-free survival. Furthermore, pathway analysis revealed that the metformin-predicted group was characterized by decreased interleukin (IL)-6 pathway signaling, epithelial–mesenchymal transition, and colon cancer metastatic signaling. We induced epithelial–mesenchymal transition in colon cancer cell lines via IL-6 treatment, which increased cell motility and promoted invasion. However, these effects were blocked by metformin. These findings suggest that blockade of IL-6-induced epithelial–mesenchymal transition is an antitumor mechanism of metformin.\n"
+    ],
+    "title_display": "Anti-metastatic effect of metformin via repression of interleukin 6-induced epithelial–mesenchymal transition in human colon cancer cells"
+   }
+  ]
+ }
+}

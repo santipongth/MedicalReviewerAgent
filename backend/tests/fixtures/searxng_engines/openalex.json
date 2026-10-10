@@ -1,0 +1,1874 @@
+{
+ "meta": {
+  "count": 29900,
+  "db_response_time_ms": 59,
+  "page": 1,
+  "per_page": 3,
+  "groups_count": null,
+  "x_query": {
+   "oql": "get works where full text has (metformin colorectal cancer)",
+   "oqo": {
+    "get_rows": "works",
+    "filter_rows": [
+     {
+      "column_id": "fulltext.search",
+      "value": "metformin colorectal cancer",
+      "operator": "has"
+     }
+    ]
+   },
+   "url": "/works?filter=fulltext.search:metformin colorectal cancer&per_page=3"
+  },
+  "cost_usd": 0.001
+ },
+ "results": [
+  {
+   "id": "https://openalex.org/W2897184001",
+   "doi": "https://doi.org/10.3389/fendo.2018.00622",
+   "title": "Metformin and Colorectal Cancer",
+   "display_name": "Metformin and Colorectal Cancer",
+   "relevance_score": 152.29471,
+   "publication_year": 2018,
+   "publication_date": "2018-10-23",
+   "ids": {
+    "openalex": "https://openalex.org/W2897184001",
+    "doi": "https://doi.org/10.3389/fendo.2018.00622",
+    "mag": "2897184001",
+    "pmid": "https://pubmed.ncbi.nlm.nih.gov/30405532"
+   },
+   "language": "en",
+   "primary_location": {
+    "id": "doi:10.3389/fendo.2018.00622",
+    "doi": "https://doi.org/10.3389/fendo.2018.00622",
+    "is_oa": true,
+    "landing_page_url": "https://doi.org/10.3389/fendo.2018.00622",
+    "pdf_url": "https://www.frontiersin.org/articles/10.3389/fendo.2018.00622/pdf",
+    "source": {
+     "id": "https://openalex.org/S2597401208",
+     "display_name": "Frontiers in Endocrinology",
+     "issn_l": "1664-2392",
+     "issn": [
+      "1664-2392"
+     ],
+     "is_oa": true,
+     "is_in_doaj": true,
+     "is_core": true,
+     "listed_in": [
+      "cwts-core",
+      "doaj",
+      "ki-jl-1",
+      "medline",
+      "norway-1"
+     ],
+     "host_organization": "https://openalex.org/P4310320527",
+     "host_organization_name": "Frontiers Media",
+     "host_organization_lineage": [
+      "https://openalex.org/P4310320527"
+     ],
+     "host_organization_lineage_names": [
+      "Frontiers Media"
+     ],
+     "type": "journal"
+    },
+    "license": "cc-by",
+    "license_id": "https://openalex.org/licenses/cc-by",
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "Frontiers in Endocrinology",
+    "raw_type": "journal-article"
+   },
+   "type": "article",
+   "indexed_in": [
+    "crossref",
+    "doaj",
+    "pubmed"
+   ],
+   "open_access": {
+    "is_oa": true,
+    "oa_status": "gold",
+    "oa_url": "https://www.frontiersin.org/articles/10.3389/fendo.2018.00622/pdf",
+    "any_repository_has_fulltext": true
+   },
+   "authorships": [
+    {
+     "author": {
+      "display_name": "Takuma Higurashi"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Atsushi Nakajima"
+     }
+    }
+   ],
+   "institutions": [],
+   "countries_distinct_count": 1,
+   "institutions_distinct_count": 1,
+   "corresponding_author_ids": [
+    "https://openalex.org/A5002514925"
+   ],
+   "corresponding_institution_ids": [
+    "https://openalex.org/I89630735"
+   ],
+   "apc_list": {
+    "value": 3150,
+    "currency": "CHF",
+    "value_usd": 3801
+   },
+   "apc_paid": {
+    "value": 3150,
+    "currency": "CHF",
+    "value_usd": 3801
+   },
+   "fwci": 2.361,
+   "has_fulltext": true,
+   "cited_by_count": 60,
+   "citation_normalized_percentile": {
+    "value": 0.90028542,
+    "is_in_top_1_percent": false,
+    "is_in_top_10_percent": true
+   },
+   "cited_by_percentile_year": {
+    "min": 97,
+    "max": 100
+   },
+   "biblio": {
+    "volume": "9",
+    "issue": null,
+    "first_page": "622",
+    "last_page": "622"
+   },
+   "is_retracted": false,
+   "is_paratext": false,
+   "is_xpac": false,
+   "primary_topic": {
+    "id": "https://openalex.org/T11339",
+    "display_name": "Metabolism, Diabetes, and Cancer",
+    "score": 1.0,
+    "subfield": {
+     "id": "https://openalex.org/subfields/1312",
+     "display_name": "Molecular Biology"
+    },
+    "field": {
+     "id": "https://openalex.org/fields/13",
+     "display_name": "Biochemistry, Genetics and Molecular Biology"
+    },
+    "domain": {
+     "id": "https://openalex.org/domains/1",
+     "display_name": "Life Sciences"
+    }
+   },
+   "locations_count": 5,
+   "best_oa_location": {
+    "id": "doi:10.3389/fendo.2018.00622",
+    "doi": "https://doi.org/10.3389/fendo.2018.00622",
+    "is_oa": true,
+    "landing_page_url": "https://doi.org/10.3389/fendo.2018.00622",
+    "pdf_url": "https://www.frontiersin.org/articles/10.3389/fendo.2018.00622/pdf",
+    "source": {
+     "id": "https://openalex.org/S2597401208",
+     "display_name": "Frontiers in Endocrinology",
+     "issn_l": "1664-2392",
+     "issn": [
+      "1664-2392"
+     ],
+     "is_oa": true,
+     "is_in_doaj": true,
+     "is_core": true,
+     "listed_in": [
+      "cwts-core",
+      "doaj",
+      "ki-jl-1",
+      "medline",
+      "norway-1"
+     ],
+     "host_organization": "https://openalex.org/P4310320527",
+     "host_organization_name": "Frontiers Media",
+     "host_organization_lineage": [
+      "https://openalex.org/P4310320527"
+     ],
+     "host_organization_lineage_names": [
+      "Frontiers Media"
+     ],
+     "type": "journal"
+    },
+    "license": "cc-by",
+    "license_id": "https://openalex.org/licenses/cc-by",
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "Frontiers in Endocrinology",
+    "raw_type": "journal-article"
+   },
+   "sustainable_development_goals_aurora": [
+    {
+     "score": 0.8199999928474426,
+     "id": "https://metadata.un.org/sdg/3",
+     "display_name": "Good health and well-being"
+    }
+   ],
+   "study_designs": [],
+   "awards": [
+    {
+     "id": "https://openalex.org/G8203923444",
+     "display_name": "Development of comprehensive analysis system for chemopreventive effect of colon tumor using organoid",
+     "funder_award_id": "18K07950",
+     "funder_id": "https://openalex.org/F4320334764",
+     "funder_display_name": "Japan Society for the Promotion of Science"
+    }
+   ],
+   "funders": [
+    {
+     "id": "https://openalex.org/F4320334764",
+     "display_name": "Japan Society for the Promotion of Science",
+     "ror": "https://ror.org/00hhkn466"
+    }
+   ],
+   "has_content": {
+    "grobid_xml": true,
+    "pdf": true
+   },
+   "content_urls": {
+    "pdf": "https://content.openalex.org/works/W2897184001.pdf",
+    "grobid_xml": "https://content.openalex.org/works/W2897184001.grobid-xml"
+   },
+   "referenced_works_count": 59,
+   "abstract_inverted_index": {
+    "Colorectal": [
+     0
+    ],
+    "Cancer": [
+     1
+    ],
+    "(CRC)": [
+     2
+    ],
+    "is": [
+     3,
+     37
+    ],
+    "one": [
+     4
+    ],
+    "of": [
+     5,
+     15,
+     46,
+     75,
+     101,
+     115
+    ],
+    "the": [
+     6,
+     44,
+     73,
+     98,
+     113
+    ],
+    "most": [
+     7
+    ],
+    "frequently": [
+     8
+    ],
+    "encountered": [
+     9
+    ],
+    "neoplasms": [
+     10
+    ],
+    "in": [
+     11,
+     66,
+     71,
+     112,
+     118
+    ],
+    "humans.": [
+     12
+    ],
+    "The": [
+     13
+    ],
+    "incidence": [
+     14,
+     32
+    ],
+    "CRC": [
+     16
+    ],
+    "has": [
+     17,
+     62
+    ],
+    "been": [
+     18
+    ],
+    "increasing": [
+     19
+    ],
+    "and": [
+     20,
+     33,
+     54,
+     104
+    ],
+    "new": [
+     21
+    ],
+    "strategies": [
+     22
+    ],
+    "for": [
+     23,
+     43,
+     91,
+     121
+    ],
+    "prevention,": [
+     24
+    ],
+    "including": [
+     25
+    ],
+    "chemoprevention,": [
+     26
+    ],
+    "are": [
+     27
+    ],
+    "required": [
+     28
+    ],
+    "to": [
+     29
+    ],
+    "lower": [
+     30
+    ],
+    "its": [
+     31
+    ],
+    "associated": [
+     34
+    ],
+    "mortality.": [
+     35
+    ],
+    "Metformin": [
+     36
+    ],
+    "a": [
+     38,
+     87
+    ],
+    "biguanide": [
+     39
+    ],
+    "compound": [
+     40
+    ],
+    "commonly": [
+     41
+    ],
+    "used": [
+     42
+    ],
+    "treatment": [
+     45,
+     103
+    ],
+    "diabetes": [
+     47,
+     67
+    ],
+    "mellitus.": [
+     48
+    ],
+    "Many": [
+     49
+    ],
+    "recent": [
+     50
+    ],
+    "basic": [
+     51
+    ],
+    "research,": [
+     52
+    ],
+    "epidemiological": [
+     53
+    ],
+    "clinical": [
+     55
+    ],
+    "trial": [
+     56
+    ],
+    "studies": [
+     57,
+     81
+    ],
+    "have": [
+     58
+    ],
+    "indicated": [
+     59
+    ],
+    "that": [
+     60,
+     83
+    ],
+    "metformin": [
+     61,
+     84,
+     102,
+     116
+    ],
+    "benefits": [
+     63
+    ],
+    "not": [
+     64
+    ],
+    "only": [
+     65
+    ],
+    "treatment,": [
+     68
+    ],
+    "but": [
+     69
+    ],
+    "also": [
+     70
+    ],
+    "lowering": [
+     72
+    ],
+    "risk": [
+     74
+    ],
+    "developing": [
+     76
+    ],
+    "cancer": [
+     77
+    ],
+    "(including": [
+     78
+    ],
+    "CRC).": [
+     79
+    ],
+    "These": [
+     80
+    ],
+    "indicate": [
+     82
+    ],
+    "may": [
+     85
+    ],
+    "be": [
+     86
+    ],
+    "candidate": [
+     88
+    ],
+    "chemoprevention": [
+     89,
+     119
+    ],
+    "agent": [
+     90
+    ],
+    "CRC.": [
+     92
+    ],
+    "This": [
+     93
+    ],
+    "review": [
+     94
+    ],
+    "article": [
+     95
+    ],
+    "shall": [
+     96
+    ],
+    "discuss": [
+     97
+    ],
+    "present": [
+     99
+    ],
+    "evidence": [
+     100
+    ],
+    "CRC,": [
+     105
+    ],
+    "as": [
+     106,
+     108
+    ],
+    "well": [
+     107
+    ],
+    "outline": [
+     109
+    ],
+    "our": [
+     110
+    ],
+    "challenge": [
+     111
+    ],
+    "investigation": [
+     114
+    ],
+    "use": [
+     117
+    ],
+    "therapy": [
+     120
+    ],
+    "colorectal": [
+     122
+    ],
+    "tumors.": [
+     123
+    ]
+   },
+   "updated_date": "2026-10-08T09:06:37.294493",
+   "created_date": "2025-10-10T00:00:00"
+  },
+  {
+   "id": "https://openalex.org/W2996301762",
+   "doi": "https://doi.org/10.1186/s13046-019-1495-2",
+   "title": "Metformin in colorectal cancer: molecular mechanism, preclinical and clinical aspects",
+   "display_name": "Metformin in colorectal cancer: molecular mechanism, preclinical and clinical aspects",
+   "relevance_score": 137.68825,
+   "publication_year": 2019,
+   "publication_date": "2019-12-01",
+   "ids": {
+    "openalex": "https://openalex.org/W2996301762",
+    "doi": "https://doi.org/10.1186/s13046-019-1495-2",
+    "mag": "2996301762",
+    "pmid": "https://pubmed.ncbi.nlm.nih.gov/31831021"
+   },
+   "language": "en",
+   "primary_location": {
+    "id": "doi:10.1186/s13046-019-1495-2",
+    "doi": "https://doi.org/10.1186/s13046-019-1495-2",
+    "is_oa": true,
+    "landing_page_url": "https://doi.org/10.1186/s13046-019-1495-2",
+    "pdf_url": "https://jeccr.biomedcentral.com/track/pdf/10.1186/s13046-019-1495-2",
+    "source": {
+     "id": "https://openalex.org/S33781645",
+     "display_name": "Journal of Experimental & Clinical Cancer Research",
+     "issn_l": "0392-9078",
+     "issn": [
+      "0392-9078",
+      "1756-9966"
+     ],
+     "is_oa": true,
+     "is_in_doaj": true,
+     "is_core": true,
+     "listed_in": [
+      "cwts-core",
+      "doaj",
+      "doyens",
+      "jufo-2",
+      "ki-jl-2",
+      "medline",
+      "norway-2"
+     ],
+     "host_organization": "https://openalex.org/P4310320256",
+     "host_organization_name": "BioMed Central",
+     "host_organization_lineage": [
+      "https://openalex.org/P4310320256",
+      "https://openalex.org/P4310319965"
+     ],
+     "host_organization_lineage_names": [
+      "BioMed Central",
+      "Springer Nature"
+     ],
+     "type": "journal"
+    },
+    "license": "cc-by",
+    "license_id": "https://openalex.org/licenses/cc-by",
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "Journal of Experimental &amp; Clinical Cancer Research",
+    "raw_type": "journal-article"
+   },
+   "type": "article",
+   "indexed_in": [
+    "crossref",
+    "doaj",
+    "pubmed"
+   ],
+   "open_access": {
+    "is_oa": true,
+    "oa_status": "gold",
+    "oa_url": "https://jeccr.biomedcentral.com/track/pdf/10.1186/s13046-019-1495-2",
+    "any_repository_has_fulltext": true
+   },
+   "authorships": [
+    {
+     "author": {
+      "display_name": "Muhamad Noor Alfarizal Kamarudin"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Md. Moklesur Rahman Sarker"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Jin‐Rong Zhou"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Ishwar S. Parhar"
+     }
+    }
+   ],
+   "institutions": [],
+   "countries_distinct_count": 3,
+   "institutions_distinct_count": 4,
+   "corresponding_author_ids": [
+    "https://openalex.org/A5033782445",
+    "https://openalex.org/A5083087663"
+   ],
+   "corresponding_institution_ids": [
+    "https://openalex.org/I11662577",
+    "https://openalex.org/I138617543"
+   ],
+   "apc_list": {
+    "value": 3290,
+    "currency": "USD",
+    "value_usd": 3290
+   },
+   "apc_paid": {
+    "value": 3290,
+    "currency": "USD",
+    "value_usd": 3290
+   },
+   "fwci": 6.0918,
+   "has_fulltext": true,
+   "cited_by_count": 192,
+   "citation_normalized_percentile": {
+    "value": 0.97740161,
+    "is_in_top_1_percent": false,
+    "is_in_top_10_percent": true
+   },
+   "cited_by_percentile_year": {
+    "min": 89,
+    "max": 100
+   },
+   "biblio": {
+    "volume": "38",
+    "issue": "1",
+    "first_page": "491",
+    "last_page": "491"
+   },
+   "is_retracted": false,
+   "is_paratext": false,
+   "is_xpac": false,
+   "primary_topic": {
+    "id": "https://openalex.org/T11339",
+    "display_name": "Metabolism, Diabetes, and Cancer",
+    "score": 1.0,
+    "subfield": {
+     "id": "https://openalex.org/subfields/1312",
+     "display_name": "Molecular Biology"
+    },
+    "field": {
+     "id": "https://openalex.org/fields/13",
+     "display_name": "Biochemistry, Genetics and Molecular Biology"
+    },
+    "domain": {
+     "id": "https://openalex.org/domains/1",
+     "display_name": "Life Sciences"
+    }
+   },
+   "locations_count": 6,
+   "best_oa_location": {
+    "id": "doi:10.1186/s13046-019-1495-2",
+    "doi": "https://doi.org/10.1186/s13046-019-1495-2",
+    "is_oa": true,
+    "landing_page_url": "https://doi.org/10.1186/s13046-019-1495-2",
+    "pdf_url": "https://jeccr.biomedcentral.com/track/pdf/10.1186/s13046-019-1495-2",
+    "source": {
+     "id": "https://openalex.org/S33781645",
+     "display_name": "Journal of Experimental & Clinical Cancer Research",
+     "issn_l": "0392-9078",
+     "issn": [
+      "0392-9078",
+      "1756-9966"
+     ],
+     "is_oa": true,
+     "is_in_doaj": true,
+     "is_core": true,
+     "listed_in": [
+      "cwts-core",
+      "doaj",
+      "doyens",
+      "jufo-2",
+      "ki-jl-2",
+      "medline",
+      "norway-2"
+     ],
+     "host_organization": "https://openalex.org/P4310320256",
+     "host_organization_name": "BioMed Central",
+     "host_organization_lineage": [
+      "https://openalex.org/P4310320256",
+      "https://openalex.org/P4310319965"
+     ],
+     "host_organization_lineage_names": [
+      "BioMed Central",
+      "Springer Nature"
+     ],
+     "type": "journal"
+    },
+    "license": "cc-by",
+    "license_id": "https://openalex.org/licenses/cc-by",
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "Journal of Experimental &amp; Clinical Cancer Research",
+    "raw_type": "journal-article"
+   },
+   "sustainable_development_goals_aurora": [
+    {
+     "score": 0.8199999928474426,
+     "id": "https://metadata.un.org/sdg/3",
+     "display_name": "Good health and well-being"
+    }
+   ],
+   "study_designs": [],
+   "awards": [],
+   "funders": [],
+   "has_content": {
+    "grobid_xml": true,
+    "pdf": true
+   },
+   "content_urls": {
+    "pdf": "https://content.openalex.org/works/W2996301762.pdf",
+    "grobid_xml": "https://content.openalex.org/works/W2996301762.grobid-xml"
+   },
+   "referenced_works_count": 134,
+   "abstract_inverted_index": {
+    "Growing": [
+     0
+    ],
+    "evidence": [
+     1
+    ],
+    "showed": [
+     2
+    ],
+    "the": [
+     3,
+     36,
+     64,
+     85,
+     89,
+     104,
+     156
+    ],
+    "increased": [
+     4,
+     35
+    ],
+    "prevalence": [
+     5
+    ],
+    "of": [
+     6,
+     39,
+     68,
+     91,
+     106,
+     126,
+     187
+    ],
+    "cancer": [
+     7,
+     69,
+     100,
+     121,
+     163
+    ],
+    "incidents,": [
+     8
+    ],
+    "particularly": [
+     9
+    ],
+    "colorectal": [
+     10,
+     99,
+     120,
+     162,
+     216
+    ],
+    "cancer,": [
+     11
+    ],
+    "among": [
+     12,
+     50,
+     98,
+     179
+    ],
+    "type": [
+     13
+    ],
+    "2": [
+     14
+    ],
+    "diabetic": [
+     15,
+     43,
+     71,
+     180
+    ],
+    "mellitus": [
+     16
+    ],
+    "patients.": [
+     17,
+     44,
+     101,
+     183
+    ],
+    "Antidiabetic": [
+     18
+    ],
+    "medications": [
+     19
+    ],
+    "such": [
+     20
+    ],
+    "as,": [
+     21
+    ],
+    "insulin,": [
+     22
+    ],
+    "sulfonylureas,": [
+     23
+    ],
+    "dipeptyl": [
+     24
+    ],
+    "peptidase": [
+     25
+    ],
+    "(DPP)": [
+     26
+    ],
+    "4": [
+     27
+    ],
+    "inhibitors": [
+     28
+    ],
+    "and": [
+     29,
+     52,
+     66,
+     95,
+     116,
+     137,
+     152,
+     161,
+     169,
+     175,
+     181,
+     211
+    ],
+    "glucose-dependent": [
+     30
+    ],
+    "insulinotropic": [
+     31
+    ],
+    "peptide": [
+     32
+    ],
+    "(GLP-1)": [
+     33
+    ],
+    "analogues": [
+     34
+    ],
+    "additional": [
+     37
+    ],
+    "risk": [
+     38,
+     164
+    ],
+    "different": [
+     40,
+     167,
+     173
+    ],
+    "cancers": [
+     41
+    ],
+    "to": [
+     42,
+     83,
+     131,
+     203
+    ],
+    "Conversely,": [
+     45
+    ],
+    "metformin": [
+     46,
+     92,
+     107,
+     127,
+     159,
+     188
+    ],
+    "has": [
+     47
+    ],
+    "drawn": [
+     48
+    ],
+    "attention": [
+     49
+    ],
+    "physicians": [
+     51
+    ],
+    "researchers": [
+     53
+    ],
+    "since": [
+     54
+    ],
+    "its": [
+     55,
+     132
+    ],
+    "use": [
+     56,
+     90
+    ],
+    "as": [
+     57,
+     73,
+     75,
+     108,
+     189,
+     195,
+     207
+    ],
+    "antidiabetic": [
+     58
+    ],
+    "drug": [
+     59,
+     193
+    ],
+    "exhibited": [
+     60
+    ],
+    "beneficial": [
+     61
+    ],
+    "effect": [
+     62
+    ],
+    "in": [
+     63,
+     70,
+     118,
+     134,
+     142
+    ],
+    "prevention": [
+     65
+    ],
+    "treatment": [
+     67
+    ],
+    "patients": [
+     72
+    ],
+    "well": [
+     74
+    ],
+    "an": [
+     76,
+     109,
+     208
+    ],
+    "independent": [
+     77
+    ],
+    "anticancer": [
+     78,
+     213
+    ],
+    "drug.": [
+     79
+    ],
+    "This": [
+     80,
+     123
+    ],
+    "review": [
+     81,
+     157
+    ],
+    "aims": [
+     82
+    ],
+    "provide": [
+     84,
+     198
+    ],
+    "comprehensive": [
+     86
+    ],
+    "information": [
+     87,
+     200
+    ],
+    "on": [
+     88,
+     166
+    ],
+    "at": [
+     93
+    ],
+    "preclinical": [
+     94
+    ],
+    "clinical": [
+     96,
+     168
+    ],
+    "stages": [
+     97
+    ],
+    "We": [
+     102
+    ],
+    "highlight": [
+     103
+    ],
+    "efficacy": [
+     105
+    ],
+    "anti-proliferative,": [
+     110
+    ],
+    "chemopreventive,": [
+     111
+    ],
+    "apoptosis": [
+     112
+    ],
+    "inducing": [
+     113
+    ],
+    "agent,": [
+     114
+    ],
+    "adjuvant,": [
+     115
+    ],
+    "radio-chemosensitizer": [
+     117
+    ],
+    "various": [
+     119
+    ],
+    "models.": [
+     122
+    ],
+    "multifarious": [
+     124
+    ],
+    "effects": [
+     125
+    ],
+    "is": [
+     128
+    ],
+    "largely": [
+     129
+    ],
+    "attributed": [
+     130
+    ],
+    "capability": [
+     133
+    ],
+    "modulating": [
+     135
+    ],
+    "upstream": [
+     136
+    ],
+    "downstream": [
+     138
+    ],
+    "molecular": [
+     139
+    ],
+    "targets": [
+     140
+    ],
+    "involved": [
+     141
+    ],
+    "apoptosis,": [
+     143
+    ],
+    "autophagy,": [
+     144
+    ],
+    "cell": [
+     145
+    ],
+    "cycle,": [
+     146
+    ],
+    "oxidative": [
+     147
+    ],
+    "stress,": [
+     148
+    ],
+    "inflammation,": [
+     149
+    ],
+    "metabolic": [
+     150
+    ],
+    "homeostasis,": [
+     151
+    ],
+    "epigenetic": [
+     153
+    ],
+    "regulation.": [
+     154
+    ],
+    "Moreover,": [
+     155
+    ],
+    "highlights": [
+     158
+    ],
+    "intake": [
+     160
+    ],
+    "based": [
+     165
+    ],
+    "epidemiologic": [
+     170
+    ],
+    "results": [
+     171
+    ],
+    "from": [
+     172
+    ],
+    "gender": [
+     174
+    ],
+    "specific": [
+     176
+    ],
+    "population": [
+     177
+    ],
+    "background": [
+     178
+    ],
+    "non-diabetic": [
+     182
+    ],
+    "The": [
+     184
+    ],
+    "improved": [
+     185
+    ],
+    "understanding": [
+     186
+    ],
+    "a": [
+     190
+    ],
+    "potential": [
+     191
+    ],
+    "chemotherapeutic": [
+     192
+    ],
+    "or": [
+     194
+    ],
+    "neo-adjuvant": [
+     196
+    ],
+    "will": [
+     197
+    ],
+    "better": [
+     199
+    ],
+    "for": [
+     201,
+     215
+    ],
+    "it": [
+     202
+    ],
+    "be": [
+     204
+    ],
+    "used": [
+     205
+    ],
+    "globally": [
+     206
+    ],
+    "affordable,": [
+     209
+    ],
+    "well-tolerated,": [
+     210
+    ],
+    "effective": [
+     212
+    ],
+    "agent": [
+     214
+    ],
+    "cancer.": [
+     217
+    ]
+   },
+   "updated_date": "2026-10-08T09:06:37.294493",
+   "created_date": "2025-10-10T00:00:00"
+  },
+  {
+   "id": "https://openalex.org/W2103299694",
+   "doi": "https://doi.org/10.1002/ijc.26421",
+   "title": "The effects of metformin on the survival of colorectal cancer patients with diabetes mellitus",
+   "display_name": "The effects of metformin on the survival of colorectal cancer patients with diabetes mellitus",
+   "relevance_score": 133.74898,
+   "publication_year": 2011,
+   "publication_date": "2011-09-12",
+   "ids": {
+    "openalex": "https://openalex.org/W2103299694",
+    "doi": "https://doi.org/10.1002/ijc.26421",
+    "mag": "2103299694",
+    "pmid": "https://pubmed.ncbi.nlm.nih.gov/21913184"
+   },
+   "language": "en",
+   "primary_location": {
+    "id": "doi:10.1002/ijc.26421",
+    "doi": "https://doi.org/10.1002/ijc.26421",
+    "is_oa": false,
+    "landing_page_url": "https://doi.org/10.1002/ijc.26421",
+    "pdf_url": null,
+    "source": {
+     "id": "https://openalex.org/S5382288",
+     "display_name": "International Journal of Cancer",
+     "issn_l": "0020-7136",
+     "issn": [
+      "0020-7136",
+      "1097-0215"
+     ],
+     "is_oa": false,
+     "is_in_doaj": false,
+     "is_core": true,
+     "listed_in": [
+      "cwts-core",
+      "doyens",
+      "jufo-2",
+      "ki-jl-2",
+      "medline",
+      "norway-2"
+     ],
+     "host_organization": "https://openalex.org/P4310320595",
+     "host_organization_name": "Wiley",
+     "host_organization_lineage": [
+      "https://openalex.org/P4310320595"
+     ],
+     "host_organization_lineage_names": [
+      "Wiley"
+     ],
+     "type": "journal"
+    },
+    "license": null,
+    "license_id": null,
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "International Journal of Cancer",
+    "raw_type": "journal-article"
+   },
+   "type": "article",
+   "indexed_in": [
+    "crossref",
+    "pubmed"
+   ],
+   "open_access": {
+    "is_oa": false,
+    "oa_status": "closed",
+    "oa_url": null,
+    "any_repository_has_fulltext": false
+   },
+   "authorships": [
+    {
+     "author": {
+      "display_name": "Jin Ha Lee"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Tae Il Kim"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Soung Min Jeon"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Sung Pil Hong"
+     }
+    },
+    {
+     "author": {
+      "display_name": "Jae Hee Cheon"
+     }
+    }
+   ],
+   "institutions": [],
+   "countries_distinct_count": 1,
+   "institutions_distinct_count": 2,
+   "corresponding_author_ids": [
+    "https://openalex.org/A5100324553"
+   ],
+   "corresponding_institution_ids": [
+    "https://openalex.org/I193775966",
+    "https://openalex.org/I4210160791"
+   ],
+   "apc_list": {
+    "value": 5030,
+    "currency": "USD",
+    "value_usd": 5030
+   },
+   "apc_paid": null,
+   "fwci": 7.1863,
+   "has_fulltext": false,
+   "cited_by_count": 204,
+   "citation_normalized_percentile": {
+    "value": 0.98193587,
+    "is_in_top_1_percent": false,
+    "is_in_top_10_percent": true
+   },
+   "cited_by_percentile_year": {
+    "min": 97,
+    "max": 100
+   },
+   "biblio": {
+    "volume": "131",
+    "issue": "3",
+    "first_page": "752",
+    "last_page": "759"
+   },
+   "is_retracted": false,
+   "is_paratext": false,
+   "is_xpac": false,
+   "primary_topic": {
+    "id": "https://openalex.org/T11339",
+    "display_name": "Metabolism, Diabetes, and Cancer",
+    "score": 1.0,
+    "subfield": {
+     "id": "https://openalex.org/subfields/1312",
+     "display_name": "Molecular Biology"
+    },
+    "field": {
+     "id": "https://openalex.org/fields/13",
+     "display_name": "Biochemistry, Genetics and Molecular Biology"
+    },
+    "domain": {
+     "id": "https://openalex.org/domains/1",
+     "display_name": "Life Sciences"
+    }
+   },
+   "locations_count": 2,
+   "best_oa_location": null,
+   "sustainable_development_goals_aurora": [
+    {
+     "score": 0.8899999856948853,
+     "id": "https://metadata.un.org/sdg/3",
+     "display_name": "Good health and well-being"
+    }
+   ],
+   "study_designs": [
+    {
+     "id": "https://openalex.org/study-designs/observational-study",
+     "display_name": "Observational Study"
+    }
+   ],
+   "awards": [],
+   "funders": [],
+   "has_content": {
+    "grobid_xml": false,
+    "pdf": false
+   },
+   "content_urls": null,
+   "referenced_works_count": 31,
+   "abstract_inverted_index": {
+    "Metformin": [
+     0,
+     127,
+     185
+    ],
+    "use": [
+     1,
+     35,
+     125,
+     128,
+     154,
+     186
+    ],
+    "has": [
+     2
+    ],
+    "been": [
+     3
+    ],
+    "associated": [
+     4,
+     130,
+     193
+    ],
+    "with": [
+     5,
+     109,
+     131,
+     183,
+     190,
+     194
+    ],
+    "decreased": [
+     6,
+     132
+    ],
+    "cancer": [
+     7,
+     21
+    ],
+    "risk": [
+     8,
+     157,
+     196
+    ],
+    "and": [
+     9,
+     36,
+     52,
+     66,
+     79,
+     97,
+     114,
+     138,
+     169,
+     199
+    ],
+    "mortality.": [
+     10,
+     201
+    ],
+    "However,": [
+     11
+    ],
+    "the": [
+     12,
+     31
+    ],
+    "effects": [
+     13
+    ],
+    "of": [
+     14,
+     19,
+     38,
+     88,
+     158,
+     197
+    ],
+    "metformin": [
+     15,
+     34,
+     65,
+     153
+    ],
+    "on": [
+     16
+    ],
+    "clinical": [
+     17,
+     75
+    ],
+    "outcomes": [
+     18
+    ],
+    "colorectal": [
+     20
+    ],
+    "(CRC)": [
+     22
+    ],
+    "are": [
+     23
+    ],
+    "not": [
+     24,
+     70,
+     124
+    ],
+    "defined.": [
+     25
+    ],
+    "This": [
+     26
+    ],
+    "study": [
+     27
+    ],
+    "aimed": [
+     28
+    ],
+    "to": [
+     29
+    ],
+    "evaluate": [
+     30
+    ],
+    "association": [
+     32
+    ],
+    "between": [
+     33
+    ],
+    "mortality": [
+     37,
+     78,
+     81,
+     134,
+     140,
+     160,
+     171
+    ],
+    "CRC": [
+     39,
+     51,
+     181,
+     188
+    ],
+    "in": [
+     40,
+     180,
+     187
+    ],
+    "diabetic": [
+     41,
+     62,
+     68
+    ],
+    "patients.": [
+     42
+    ],
+    "We": [
+     43
+    ],
+    "identified": [
+     44
+    ],
+    "595": [
+     45
+    ],
+    "patients": [
+     46,
+     63,
+     69,
+     104,
+     121,
+     182,
+     189
+    ],
+    "who": [
+     47,
+     105,
+     122
+    ],
+    "were": [
+     48,
+     56,
+     82,
+     92
+    ],
+    "diagnosed": [
+     49
+    ],
+    "both": [
+     50
+    ],
+    "diabetes": [
+     53,
+     191
+    ],
+    "mellitus.": [
+     54
+    ],
+    "Patients": [
+     55
+    ],
+    "compared": [
+     57,
+     108
+    ],
+    "by": [
+     58,
+     144
+    ],
+    "two": [
+     59
+    ],
+    "groups;": [
+     60
+    ],
+    "258": [
+     61,
+     103
+    ],
+    "taking": [
+     64,
+     71
+    ],
+    "337": [
+     67,
+     120
+    ],
+    "metformin.": [
+     72,
+     126
+    ],
+    "Patient's": [
+     73
+    ],
+    "demographics,": [
+     74
+    ],
+    "characteristics,": [
+     76
+    ],
+    "overall": [
+     77,
+     133,
+     159,
+     200
+    ],
+    "CRC-specific": [
+     80,
+     99,
+     116,
+     139,
+     170,
+     198
+    ],
+    "analyzed.": [
+     83
+    ],
+    "After": [
+     84,
+     147
+    ],
+    "a": [
+     85
+    ],
+    "median": [
+     86
+    ],
+    "follow-up": [
+     87
+    ],
+    "41": [
+     89
+    ],
+    "months,": [
+     90
+    ],
+    "there": [
+     91
+    ],
+    "71": [
+     93
+    ],
+    "total": [
+     94,
+     111
+    ],
+    "deaths": [
+     95,
+     100,
+     112,
+     117
+    ],
+    "(27.5%)": [
+     96
+    ],
+    "55": [
+     98
+    ],
+    "(21.3%)": [
+     101
+    ],
+    "among": [
+     102,
+     119
+    ],
+    "used": [
+     106
+    ],
+    "metformin,": [
+     107
+    ],
+    "136": [
+     110
+    ],
+    "(40.4%)": [
+     113
+    ],
+    "104": [
+     115
+    ],
+    "(30.9%)": [
+     118
+    ],
+    "did": [
+     123
+    ],
+    "was": [
+     129
+    ],
+    "(p": [
+     135,
+     141
+    ],
+    "=": [
+     136,
+     142,
+     167,
+     178
+    ],
+    "0.018)": [
+     137
+    ],
+    "0.042)": [
+     143
+    ],
+    "univariate": [
+     145
+    ],
+    "analysis.": [
+     146
+    ],
+    "adjustment": [
+     148
+    ],
+    "for": [
+     149
+    ],
+    "clinically": [
+     150
+    ],
+    "relevant": [
+     151
+    ],
+    "factors,": [
+     152
+    ],
+    "showed": [
+     155
+    ],
+    "lower": [
+     156,
+     195
+    ],
+    "(HR,": [
+     161,
+     172
+    ],
+    "0.66;": [
+     162,
+     173
+    ],
+    "95%": [
+     163,
+     174
+    ],
+    "CI": [
+     164,
+     175
+    ],
+    "0.476-0.923;": [
+     165
+    ],
+    "p": [
+     166,
+     177
+    ],
+    "0.015)": [
+     168
+    ],
+    "0.45-0.975;": [
+     176
+    ],
+    "0.037)": [
+     179
+    ],
+    "diabetes.": [
+     184
+    ],
+    "is": [
+     192
+    ]
+   },
+   "updated_date": "2026-10-08T09:06:37.294493",
+   "created_date": "2025-10-10T00:00:00"
+  }
+ ]
+}

@@ -13,8 +13,52 @@ search:
   formats:
     - html
     - json
+  suspended_times:
+    # The fork suspends an engine for 3600 s after one HTTP 429. A review fires several queries at
+    # once, so a single burst would remove a source (crossref, pubmed) for an hour of reviews.
+    SearxEngineTooManyRequests: 120
 
 server:
   limiter: false
   public_instance: false
   image_proxy: false
+
+# Academic engines (Plan 16). Entries whose `name` exists in the fork's settings.yml are merged into
+# that entry (same name -> update_dict), so the backend's engine names stay stable while the module
+# changes. Our modules live in infra/searxng/engines/ and are bind-mounted read-only, one file each,
+# into /usr/local/searxng/searx/engines/ (see docker-compose.yml). Optional API keys come from the
+# container environment (NCBI_API_KEY, OPENALEX_API_KEY, S2_API_KEY); with no key every engine works.
+engines:
+  - name: pubmed
+    engine: mra_pubmed          # fork module hard-coded a 3 s esearch timeout -> timeout + suspension
+    timeout: 12.0
+  - name: openalex
+    engine: mra_openalex        # + api_key; journal from primary_location
+    timeout: 8.0
+  - name: semantic scholar
+    engine: mra_semantic_scholar  # x-api-key via the Graph API when S2_API_KEY is set
+    timeout: 8.0
+  - name: europe pmc
+    engine: europepmc           # port of upstream SearXNG's engine
+    shortcut: epmc
+    categories: [academic, life sciences]
+    timeout: 8.0
+    disabled: false
+  - name: doaj
+    engine: doaj
+    shortcut: doaj
+    categories: [academic, open access]
+    timeout: 8.0
+    disabled: false
+  - name: plos
+    engine: plos                # API budget 10/min, 300/h: the module skips requests beyond it
+    shortcut: plos
+    categories: [academic, life sciences]
+    timeout: 8.0
+    disabled: false
+  - name: openaire
+    engine: mra_openaire        # Graph API v1; the fork's openairepublications (legacy API) times out
+    shortcut: oaire
+    categories: [academic, open access]
+    timeout: 8.0
+    disabled: false

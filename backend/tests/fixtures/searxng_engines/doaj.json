@@ -1,0 +1,221 @@
+{
+ "total": 132,
+ "page": 1,
+ "pageSize": 3,
+ "timestamp": "2026-10-10T01:35:09.355028Z",
+ "query": "metformin colorectal cancer",
+ "results": [
+  {
+   "last_updated": "2025-08-19T19:18:16Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "1932-6203",
+      "type": "eissn"
+     },
+     {
+      "id": "10.1371/journal.pone.0097781",
+      "type": "doi"
+     }
+    ],
+    "journal": {
+     "volume": "9",
+     "number": "5",
+     "country": "US",
+     "issns": [
+      "1932-6203"
+     ],
+     "publisher": "Public Library of Science (PLoS)",
+     "language": [
+      "EN"
+     ],
+     "title": "PLoS ONE"
+    },
+    "month": "0",
+    "year": "2014",
+    "start_page": "e97781",
+    "subject": [
+     {
+      "code": "R",
+      "scheme": "LCC",
+      "term": "Medicine"
+     },
+     {
+      "code": "Q",
+      "scheme": "LCC",
+      "term": "Science"
+     }
+    ],
+    "author": [
+     {
+      "name": "Xinbing Sui"
+     },
+     {
+      "name": "Yinghua Xu"
+     },
+     {
+      "name": "Jie Yang"
+     },
+     {
+      "name": "Yong Fang"
+     }
+    ],
+    "link": [
+     {
+      "type": "fulltext",
+      "url": "http://europepmc.org/articles/PMC4029793?pdf=render"
+     }
+    ],
+    "abstract": "Colorectal cancer (CRC) is still the third most common cancer and the second most common causes of cancer-related death around the world. Metformin, a biguanide, which is widely used for treating diabetes mellitus, has recently been shown to have a suppressive effect on CRC risk and mortality, but not all laboratory studies suggest that metformin has antineoplastic activity. Here, we investigated the effect of metformin and AMPK activator AICAR on CRC cells proliferation. As a result, metformin did not inhibit cell proliferation or induce apoptosis for CRC cell lines in vitro and in vivo. Different from metformin, AICAR emerged antitumor activity and sensitized anticancer effect of 5-FU on CRC cells in vitro and in vivo. In further analysis, we show that AMPK activation may be a key molecular mechanism for the additive effect of AICAR. Taken together, our results suggest that metformin has not antineoplastic activity for CRC cells as a single agent but AMPK activator AICAR can induce apoptosis and enhance the cytotoxic effect of 5-FU through AMPK activation.",
+    "title": "Use of metformin alone is not associated with survival outcomes of colorectal cancer cell but AMPK activator AICAR sensitizes anticancer effect of 5-fluorouracil through AMPK activation."
+   },
+   "id": "0089b313f1ef4f52aab09e46d5f3318b",
+   "created_date": "2016-06-15T01:51:03Z"
+  },
+  {
+   "last_updated": "2025-08-19T17:32:11Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "10.1186/1471-2407-12-118",
+      "type": "doi"
+     },
+     {
+      "id": "1471-2407",
+      "type": "pissn"
+     }
+    ],
+    "journal": {
+     "volume": "12",
+     "number": "1",
+     "country": "GB",
+     "issns": [
+      "1471-2407"
+     ],
+     "publisher": "BMC",
+     "language": [
+      "EN"
+     ],
+     "title": "BMC Cancer"
+    },
+    "month": "3",
+    "year": "2012",
+    "start_page": "118",
+    "subject": [
+     {
+      "code": "RC254-282",
+      "scheme": "LCC",
+      "term": "Neoplasms. Tumors. Oncology. Including cancer and carcinogens"
+     }
+    ],
+    "author": [
+     {
+      "name": "Higurashi Takuma"
+     },
+     {
+      "name": "Takahashi Hirokazu"
+     },
+     {
+      "name": "Endo Hiroki"
+     },
+     {
+      "name": "Hosono Kunihiro"
+     }
+    ],
+    "link": [
+     {
+      "type": "fulltext",
+      "url": "http://www.biomedcentral.com/1471-2407/12/118"
+     }
+    ],
+    "abstract": "<p>Abstract</p> <p>Background</p> <p>Colorectal cancer is one of the major neoplasms and a leading cause of cancer death worldwide, and new preventive strategies are needed to lower the burden of this disease. Metformin, a biguanide, which is widely used for treating diabetes mellitus, has recently been suggestive to have a suppressive effect on tumorigenesis and cancer cell growth. In a previous study conducted in non-diabetic subjects, we showed that oral short-term low-dose metformin suppressed the development of colorectal aberrant crypt foci (ACF). ACF have been considered as a useful surrogate biomarker of CRC, although the biological significance of these lesions remains controversial. We devised a prospective randomized controlled trial to evaluate the chemopreventive effect of metformin against metachronous colorectal polyps and the safety of this drug in non-diabetic post-polypectomy patients.</p> <p>Methods/Design</p> <p>This study is a multi-center, double-blind, placebo-controlled, randomized controlled trial to be conducted in non-diabetic patients with a recent history of undergoing colorectal polypectomy. All adult patients visiting the Yokohama City University hospital or affiliated hospitals for polypectomy shall be recruited for the study. Eligible patients will then be allocated randomly into either one of two groups: the metformin group and the placebo group. Patients in the metformin group shall receive oral metformin at 250 mg per day, and those in the placebo group shall receive an oral placebo tablet. At the end of 1 year of administration of metformin/placebo, colonoscopy will be performed to evaluate the polyp formation.</p> <p>Discussion</p> <p>This is the first study proposed to explore the effect of metformin against colorectal polyp formation. Metformin activates AMPK, which inhibits the mammalian target of rapamycin (mTOR) pathway. The mTOR pathway plays an important role in the cellular protein translational machinery and cell proliferation. Patients with type 2 diabetes taking under treatment with metformin have been reported to be at a lower risk of cancer development than those not taking under treatment with metformin. We showed in a previous study that metformin suppressed the formation of human colorectal ACF. We therefore decided to conduct a study to determine whether metformin might suppress the formation of human colorectal polyps.</p> <p>Trial registration</p> <p>This trial has been registered in the University hospital Medical Information Network (UMIN) Clinical Trials Registry as <a href=\"http://www.clinicaltrials.gov/ct2/show/UMIN000006254\">UMIN000006254</a></p>",
+    "title": "Metformin efficacy and safety for colorectal polyps: a double-blind randomized controlled trial"
+   },
+   "created_date": "2013-03-12T01:22:42Z",
+   "id": "00c2e65131474d26b396ea03beeaf3cd"
+  },
+  {
+   "last_updated": "2025-08-20T03:03:40Z",
+   "bibjson": {
+    "identifier": [
+     {
+      "id": "10.1038/s41598-025-09393-1",
+      "type": "doi"
+     },
+     {
+      "id": "2045-2322",
+      "type": "eissn"
+     }
+    ],
+    "journal": {
+     "volume": "15",
+     "number": "1",
+     "country": "GB",
+     "issns": [
+      "2045-2322"
+     ],
+     "publisher": "Nature Portfolio",
+     "language": [
+      "EN"
+     ],
+     "title": "Scientific Reports"
+    },
+    "month": "7",
+    "end_page": "14",
+    "keywords": [
+     "Metformin",
+     "Weight loss medication",
+     "Breast cancer",
+     "Colorectal cancer",
+     "Ovarian cancer",
+     "Endometrial cancer"
+    ],
+    "year": "2025",
+    "start_page": "1",
+    "subject": [
+     {
+      "code": "R",
+      "scheme": "LCC",
+      "term": "Medicine"
+     },
+     {
+      "code": "Q",
+      "scheme": "LCC",
+      "term": "Science"
+     }
+    ],
+    "author": [
+     {
+      "affiliation": "School of Public and Population Health, University of Texas Medical Branch",
+      "name": "Maryam R. Hussain"
+     },
+     {
+      "affiliation": "Graduate School of Biomedical Science, University of Texas Medical Branch, 301 University Blvd",
+      "name": "Omer Abdelgadir"
+     },
+     {
+      "affiliation": "School of Public and Population Health, University of Texas Medical Branch",
+      "name": "Yong-Fang Kuo"
+     },
+     {
+      "affiliation": "Department of Surgery, Division of Urology, UTHealth McGovern Medical School",
+      "name": "Steven Canfield"
+     }
+    ],
+    "link": [
+     {
+      "content_type": "HTML",
+      "type": "fulltext",
+      "url": "https://doi.org/10.1038/s41598-025-09393-1"
+     }
+    ],
+    "abstract": "Abstract While the association between metformin and mortality in obesity-related cancers (ORC: breast (BrCa), colorectal (CRC), endometrial (ECa), and ovarian (OCa)) remains inconsistent, the impact of weight loss medication (WLM) on mortality in ORC is largely unexplored, particularly among older women. This study aims to investigate the association between pre-diagnostic use of metformin and WLM with all-cause and cancer-specific mortality in older women with ORC. A retrospective cohort of 63,907 women (≥ 65 years) with ORC was identified using SEER-Medicare 2007–2015 data. Pre-diagnostic prescriptions of metformin and WLM were ascertained, and inverse probability of treatment weighting using propensity score (IPTW-PS) was utilized to balance baseline patient characteristics. Cox proportional hazards and competing-risks models were conducted. Metformin was associated with all-cause- (HR:1.86; 95% CI: 1.81–1.92) and ORC-specific mortality (HR: 1.71; 95% CI: 1.63–1.77). Likewise, WLM was associated with all-cause- (HR:1.64; 95% CI: 1.59–1.71) and ORC-specific mortality (HR: 1.55; 95% CI: 1.48–1.62). Dual use of metformin and WLM was associated with all-cause- (HR:1.39; 95% CI: 1.34–1.45) and ORC-specific mortality (HR: 1.28; 95% CI: 1.21–1.53). Significant associations were observed in ORC subgroup analyses, except that WLM was inversely associated with ECa-specific morality. Pre-diagnostic metformin and WLM were associated with an increased mortality risk in older women with ORC, with effects more pronounced among metformin users. Further prospective studies are needed to substantiate these findings.",
+    "title": "Metformin and weight loss medication impact on survival outcomes in older women with obesity-related cancers"
+   },
+   "id": "03c2f28c19904224a4d8ee82b4422864",
+   "created_date": "2025-08-15T14:18:58Z"
+  }
+ ],
+ "next": "https://doaj.org/api/v4/search/articles/metformin%20colorectal%20cancer?page=2&pageSize=3",
+ "last": "https://doaj.org/api/v4/search/articles/metformin%20colorectal%20cancer?page=44&pageSize=3"
+}

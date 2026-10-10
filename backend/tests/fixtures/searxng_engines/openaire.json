@@ -1,0 +1,539 @@
+{
+ "header": {
+  "numFound": 795,
+  "maxScore": 15.999996,
+  "queryTime": 197,
+  "page": 1,
+  "pageSize": 3
+ },
+ "results": [
+  {
+   "authors": [
+    {
+     "fullName": "Xiaowen Huang",
+     "name": "Xiaowen",
+     "surname": "Huang",
+     "rank": 1,
+     "pid": {
+      "id": {
+       "scheme": "orcid_pending",
+       "value": "0000-0002-2671-1682"
+      },
+      "provenance": null
+     }
+    },
+    {
+     "fullName": "Tiantian Sun",
+     "name": "Tiantian",
+     "surname": "Sun",
+     "rank": 2,
+     "pid": {
+      "id": {
+       "scheme": "orcid_pending",
+       "value": "0009-0000-2134-8899"
+      },
+      "provenance": null
+     }
+    },
+    {
+     "fullName": "Jilin Wang",
+     "name": "Jilin",
+     "surname": "Wang",
+     "rank": 3,
+     "pid": {
+      "id": {
+       "scheme": "orcid_pending",
+       "value": "0009-0007-5762-3144"
+      },
+      "provenance": null
+     }
+    },
+    {
+     "fullName": "Xialu Hong",
+     "name": "Xialu",
+     "surname": "Hong",
+     "rank": 4,
+     "pid": {
+      "id": {
+       "scheme": "orcid_pending",
+       "value": "0009-0007-9263-0016"
+      },
+      "provenance": null
+     }
+    }
+   ],
+   "openAccessColor": null,
+   "publiclyFunded": false,
+   "type": "publication",
+   "language": {
+    "code": "eng",
+    "label": "English"
+   },
+   "countries": null,
+   "subjects": [
+    {
+     "subject": {
+      "scheme": "keyword",
+      "value": "Immunosuppression Therapy"
+     },
+     "provenance": null
+    },
+    {
+     "subject": {
+      "scheme": "FOS",
+      "value": "03 medical and health sciences"
+     },
+     "provenance": null
+    },
+    {
+     "subject": {
+      "scheme": "FOS",
+      "value": "0302 clinical medicine"
+     },
+     "provenance": null
+    }
+   ],
+   "mainTitle": "Metformin Reprograms Tryptophan Metabolism to Stimulate CD8+ T-cell Function in Colorectal Cancer",
+   "subTitle": null,
+   "descriptions": [
+    "<jats:title>Abstract</jats:title>                   <jats:sec>                     <jats:title/>                     <jats:p>Colorectal carcinogenesis coincides with immune cell dysfunction. Metformin has been reported to play a role in stimulating antitumor immunity, suggesting it could be used to overcome immunosuppression in colorectal cancer. Herein, using single-cell RNA sequencing (scRNA-seq), we showed that metformin remodels the immune landscape of colorectal cancer. In particular, metformin treatment expanded the proportion of CD8+ T cells and potentiated their function. Analysis of the metabolic activities of cells in the colorectal cancer tumor microenvironment (TME) at a single-cell resolution demonstrated that metformin reprogrammed tryptophan metabolism, which was reduced in colorectal cancer cells and increased in CD8+ T cells. Untreated colorectal cancer cells outcompeted CD8+ T cells for tryptophan, leading to impaired CD8+ T-cell function. Metformin in turn reduced tryptophan uptake by colorectal cancer cells, thereby restoring tryptophan availability for CD8+ T cells and increasing their cytotoxicity. Metformin inhibited tryptophan uptake in colorectal cancer cells by downregulating MYC, which led to a reduction in the tryptophan transporter SLC7A5. This work highlights metformin as an essential regulator of T-cell antitumor immunity by reprogramming tryptophan metabolism, suggesting it could be a potential immunotherapeutic strategy for treating colorectal cancer.</jats:p>                   </jats:sec>                   <jats:sec>                     <jats:title>Significance:</jats:title>                     <jats:p>Analysis of the impact of metformin on the colorectal cancer immunometabolic landscape at a single-cell resolution shows that metformin alters cancer cell tryptophan metabolism to stimulate CD8+ T-cell antitumor activity.</jats:p>                   </jats:sec>"
+   ],
+   "publicationDate": "2023-05-17",
+   "publisher": "American Association for Cancer Research (AACR)",
+   "embargoEndDate": null,
+   "sources": [
+    "Crossref"
+   ],
+   "formats": null,
+   "contributors": null,
+   "coverages": null,
+   "bestAccessRight": null,
+   "container": {
+    "name": "Cancer Research",
+    "issnPrinted": "0008-5472",
+    "issnOnline": "1538-7445",
+    "issnLinking": null,
+    "ep": "2371",
+    "iss": null,
+    "sp": "2358",
+    "vol": "83",
+    "edition": null,
+    "conferencePlace": null,
+    "conferenceDate": null
+   },
+   "documentationUrls": null,
+   "codeRepositoryUrl": null,
+   "programmingLanguage": null,
+   "contactPeople": null,
+   "contactGroups": null,
+   "tools": null,
+   "size": null,
+   "version": null,
+   "geoLocations": null,
+   "id": "doi_dedup___::ae2f668573d9a039ff7aee78bef8de6b",
+   "originalIds": [
+    "10.1158/0008-5472.can-22-3042",
+    "50|doiboost____|ae2f668573d9a039ff7aee78bef8de6b",
+    "37195082"
+   ],
+   "pids": [
+    {
+     "scheme": "doi",
+     "value": "10.1158/0008-5472.can-22-3042"
+    },
+    {
+     "scheme": "pmid",
+     "value": "37195082"
+    }
+   ],
+   "dateOfCollection": null,
+   "lastUpdateTimeStamp": null,
+   "indicators": {
+    "citationImpact": {
+     "citationCount": 55.0,
+     "influence": 3.0095682e-09,
+     "popularity": 3.7608896e-08,
+     "impulse": 55.0,
+     "citationClass": "C4",
+     "influenceClass": "C4",
+     "impulseClass": "C3",
+     "popularityClass": "C3"
+    }
+   },
+   "instances": [
+    {
+     "pids": [
+      {
+       "scheme": "doi",
+       "value": "10.1158/0008-5472.can-22-3042"
+      }
+     ],
+     "type": "Article",
+     "urls": [
+      "https://doi.org/10.1158/0008-5472.can-22-3042"
+     ],
+     "publicationDate": "2023-05-17",
+     "refereed": "peerReviewed"
+    },
+    {
+     "pids": [
+      {
+       "scheme": "pmid",
+       "value": "37195082"
+      }
+     ],
+     "alternateIdentifiers": [
+      {
+       "scheme": "doi",
+       "value": "10.1158/0008-5472.can-22-3042"
+      }
+     ],
+     "type": "Article",
+     "urls": [
+      "https://pubmed.ncbi.nlm.nih.gov/37195082"
+     ],
+     "publicationDate": "2023-07-17",
+     "refereed": "nonPeerReviewed"
+    }
+   ],
+   "isGreen": false,
+   "isInDiamondJournal": false
+  },
+  {
+   "authors": [
+    {
+     "fullName": "BENNETT, KATHLEEN",
+     "name": "Kathleen",
+     "surname": "Bennett",
+     "rank": 1,
+     "pid": null
+    }
+   ],
+   "openAccessColor": null,
+   "publiclyFunded": true,
+   "type": "publication",
+   "language": {
+    "code": "eng",
+    "label": "English"
+   },
+   "countries": [
+    {
+     "code": "IE",
+     "label": "Ireland",
+     "provenance": null
+    }
+   ],
+   "subjects": [
+    {
+     "subject": {
+      "scheme": "keyword",
+      "value": "Colorectal Cancer"
+     },
+     "provenance": null
+    },
+    {
+     "subject": {
+      "scheme": "FOS",
+      "value": "03 medical and health sciences"
+     },
+     "provenance": null
+    },
+    {
+     "subject": {
+      "scheme": "FOS",
+      "value": "0302 clinical medicine"
+     },
+     "provenance": null
+    }
+   ],
+   "mainTitle": "A cohort study of metformin exposure and survival in patients with stage I-III colorectal cancer",
+   "subTitle": null,
+   "descriptions": [
+    "Background: Preclinical evidence suggests a beneficial effect of metformin in colorectal cancer. This study aimed to investigate associations between metformin exposure and colorectal cancer–specific survival using population-level data. Methods: Adult patients with stage I–III colorectal cancer diagnosed from 2001 to 2006 were identified from the National Cancer Registry Ireland. Use of metformin and other antidiabetic medications was determined from a linked national prescription claims database. Multivariate Cox regression was used to estimate hazard ratios (HR) with 95% confidence intervals (CI) for associations between prediagnostic metformin exposure (versus nonmetformin antidiabetic drugs) and colorectal cancer–specific mortality. Models were stratified by antidiabetic drug coprescription and intensity of metformin exposure. Results: The cohort included 207 diabetics who received metformin, 108 diabetics not exposed to metformin, and 3,501 nondiabetic patients. In multivariate analyses, a nonsignificant reduction in colorectal cancer–specific mortality was observed for metformin-exposed patients relative to other treated diabetics (HR, 0.61; 95% CI, 0.37–1.01). In stratified analyses, no significant association was observed for patients receiving low-intensity metformin or metformin in combination with other antidiabetic drugs. High-intensity exclusive metformin use was associated with a significant reduction in colorectal cancer–specific mortality (HR, 0.44; 95% CI, 0.20–0.95). Conclusions: Significant associations between metformin exposure and colorectal cancer–specific mortality were observed only for high-intensity exclusive metformin use in the diabetic cohort. Impact: This study provides moderate evidence of an association between metformin exposure and improved colorectal cancer survival in a diabetic population. Additional studies in larger cohorts, with detailed information on diabetes severity, are required to confirm these results.",
+    "PUBLISHED"
+   ],
+   "publicationDate": "2014-12-15",
+   "publisher": null,
+   "embargoEndDate": null,
+   "sources": null,
+   "formats": [
+    "1364",
+    "1373",
+    "application/pdf"
+   ],
+   "contributors": null,
+   "coverages": null,
+   "bestAccessRight": {
+    "code": "c_abf2",
+    "label": "OPEN",
+    "scheme": "http://vocabularies.coar-repositories.org/documentation/access_rights/"
+   },
+   "container": null,
+   "documentationUrls": null,
+   "codeRepositoryUrl": null,
+   "programmingLanguage": null,
+   "contactPeople": null,
+   "contactGroups": null,
+   "tools": null,
+   "size": null,
+   "version": null,
+   "geoLocations": null,
+   "id": "dedup_wf_002::25bb058797dcb84cbe0274ba92dfce2e",
+   "originalIds": [
+    "50|od_______883::0fd1628223b57f987046a6e5da264fca",
+    "oai:tara.tcd.ie:2262/72468",
+    "fttrinitycoll:oai:www.tara.tcd.ie:2262/72468",
+    "50|base_oa_____::fa19e4f29d725bd5a8325f1b0ccc2a4d"
+   ],
+   "pids": [
+    {
+     "scheme": "handle",
+     "value": "2262/72468"
+    }
+   ],
+   "dateOfCollection": null,
+   "lastUpdateTimeStamp": null,
+   "indicators": {
+    "citationImpact": {
+     "citationCount": 0.0,
+     "influence": 2.1746283e-09,
+     "popularity": 5.377389e-10,
+     "impulse": 0.0,
+     "citationClass": "C5",
+     "influenceClass": "C5",
+     "impulseClass": "C5",
+     "popularityClass": "C5"
+    }
+   },
+   "instances": [
+    {
+     "pids": [
+      {
+       "scheme": "handle",
+       "value": "2262/72468"
+      }
+     ],
+     "type": "Article",
+     "urls": [
+      "http://people.tcd.ie/bennettk",
+      "http://hdl.handle.net/2262/72468"
+     ],
+     "publicationDate": "2014-12-15",
+     "refereed": "peerReviewed"
+    },
+    {
+     "pids": [
+      {
+       "scheme": "handle",
+       "value": "2262/72468"
+      }
+     ],
+     "type": "Article",
+     "publicationDate": "2013-01-01",
+     "refereed": "nonPeerReviewed"
+    }
+   ],
+   "isGreen": true,
+   "isInDiamondJournal": false
+  },
+  {
+   "authors": [
+    {
+     "fullName": "Raffaella, Mormile",
+     "name": "Raffaella",
+     "surname": "Mormile",
+     "rank": 1,
+     "pid": null
+    }
+   ],
+   "openAccessColor": "bronze",
+   "publiclyFunded": false,
+   "type": "publication",
+   "language": {
+    "code": "eng",
+    "label": "English"
+   },
+   "countries": null,
+   "subjects": [
+    {
+     "subject": {
+      "scheme": "keyword",
+      "value": "Cohort Studies"
+     },
+     "provenance": null
+    },
+    {
+     "subject": {
+      "scheme": "keyword",
+      "value": "Risk"
+     },
+     "provenance": null
+    },
+    {
+     "subject": {
+      "scheme": "FOS",
+      "value": "03 medical and health sciences"
+     },
+     "provenance": null
+    }
+   ],
+   "mainTitle": "Metformin and Colorectal Cancer Risk—Letter",
+   "subTitle": null,
+   "descriptions": [
+    "In a recent publication, Bradley and colleagues ([1][1]) focused on the association of metformin and colorectal cancer risk among patients with diabetes mellitus ([1][1]). Several epidemiologic studies have labeled strong inverse relationships between metformin use and risk of colorectal cancer,"
+   ],
+   "publicationDate": "2018-11-01",
+   "publisher": "American Association for Cancer Research (AACR)",
+   "embargoEndDate": null,
+   "sources": [
+    "Crossref"
+   ],
+   "formats": null,
+   "contributors": null,
+   "coverages": null,
+   "bestAccessRight": {
+    "code": "c_abf2",
+    "label": "OPEN",
+    "scheme": "http://vocabularies.coar-repositories.org/documentation/access_rights/"
+   },
+   "container": {
+    "name": "Cancer Epidemiology, Biomarkers &amp; Prevention",
+    "issnPrinted": "1055-9965",
+    "issnOnline": "1538-7755",
+    "issnLinking": null,
+    "ep": "1385",
+    "iss": null,
+    "sp": "1385",
+    "vol": "27",
+    "edition": null,
+    "conferencePlace": null,
+    "conferenceDate": null
+   },
+   "documentationUrls": null,
+   "codeRepositoryUrl": null,
+   "programmingLanguage": null,
+   "contactPeople": null,
+   "contactGroups": null,
+   "tools": null,
+   "size": null,
+   "version": null,
+   "geoLocations": null,
+   "id": "doi_dedup___::0a90cc6f3b58c2a57461c01bbdd8ff24",
+   "originalIds": [
+    "10.1158/1055-9965.epi-18-0559",
+    "50|doiboost____|0a90cc6f3b58c2a57461c01bbdd8ff24",
+    "30385499",
+    "2898832915"
+   ],
+   "pids": [
+    {
+     "scheme": "doi",
+     "value": "10.1158/1055-9965.epi-18-0559"
+    },
+    {
+     "scheme": "pmid",
+     "value": "30385499"
+    }
+   ],
+   "dateOfCollection": null,
+   "lastUpdateTimeStamp": null,
+   "indicators": {
+    "citationImpact": {
+     "citationCount": 0.0,
+     "influence": 2.1746283e-09,
+     "popularity": 8.566651e-10,
+     "impulse": 0.0,
+     "citationClass": "C5",
+     "influenceClass": "C5",
+     "impulseClass": "C5",
+     "popularityClass": "C5"
+    }
+   },
+   "instances": [
+    {
+     "pids": [
+      {
+       "scheme": "doi",
+       "value": "10.1158/1055-9965.epi-18-0559"
+      }
+     ],
+     "type": "Article",
+     "urls": [
+      "https://doi.org/10.1158/1055-9965.epi-18-0559"
+     ],
+     "publicationDate": "2018-11-01",
+     "refereed": "peerReviewed"
+    },
+    {
+     "pids": [
+      {
+       "scheme": "doi",
+       "value": "10.1158/1055-9965.epi-18-0559"
+      }
+     ],
+     "type": "Article",
+     "urls": [
+      "https://cebp.aacrjournals.org/content/cebp/27/11/1385.full.pdf"
+     ],
+     "refereed": "nonPeerReviewed"
+    },
+    {
+     "pids": [
+      {
+       "scheme": "pmid",
+       "value": "30385499"
+      }
+     ],
+     "alternateIdentifiers": [
+      {
+       "scheme": "doi",
+       "value": "10.1158/1055-9965.epi-18-0559"
+      }
+     ],
+     "type": "Article",
+     "urls": [
+      "https://pubmed.ncbi.nlm.nih.gov/30385499"
+     ],
+     "publicationDate": "2019-07-18",
+     "refereed": "nonPeerReviewed"
+    },
+    {
+     "alternateIdentifiers": [
+      {
+       "scheme": "mag_id",
+       "value": "2898832915"
+      },
+      {
+       "scheme": "doi",
+       "value": "10.1158/1055-9965.epi-18-0559"
+      }
+     ],
+     "type": "Article",
+     "urls": [
+      "https://dx.doi.org/10.1158/1055-9965.epi-18-0559"
+     ],
+     "refereed": "nonPeerReviewed"
+    },
+    {
+     "alternateIdentifiers": [
+      {
+       "scheme": "mag_id",
+       "value": "2898832915"
+      },
+      {
+       "scheme": "doi",
+       "value": "10.1158/1055-9965.epi-18-0559"
+      }
+     ],
+     "type": "Article",
+     "urls": [
+      "https://dx.doi.org/10.1158/1055-9965.epi-18-0559"
+     ],
+     "refereed": "nonPeerReviewed"
+    }
+   ],
+   "isGreen": false,
+   "isInDiamondJournal": false
+  }
+ ]
+}
