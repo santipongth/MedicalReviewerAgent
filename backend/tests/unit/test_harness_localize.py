@@ -166,16 +166,34 @@ async def test_half_translated_item_keeps_the_better_attempt_when_the_retry_is_w
     assert res.strings["a"] == half and res.untranslated == 1 and res.retried == 1
 
 
+async def test_retry_repairs_only_a_plain_echo_not_a_partial_translation():
+    half = "Significantly higher 2-year OS ในผู้ที่ใช้ Metformin"
+    llm = FakeStructuredLLM("qwen", lambda s, u: thai(u, transform={"a": lambda t: half}))
+    res = await localize_strings(llm, HarnessRunner(max_repairs=2), {"a": "Significantly higher 2-year OS with "
+                                                                           "metformin"}, "th")
+    assert len(llm.calls) == 2  # first pass + one retry call, no repair rounds for a partial translation
+    assert res.untranslated == 1 and res.strings["a"] == half
+
+
 @pytest.mark.parametrize(("source", "text", "expected"), [
     ("Significantly lower risk with metformin", "Significantly lower risk with metformin", True),
     ("Significantly higher 2-year OS with metformin", "Significantly higher 2-year OS ในผู้ที่ใช้ Metformin", True),
     ("Lower risk with metformin", "ความเสี่ยงต่ำกว่าในกลุ่มที่ได้รับ metformin", False),
     # parenthesised English terms, abbreviations and identifiers do not count against the translation
     ("Hazard ratio for overall survival (HR) in NCT01234567",
-     "อัตราส่วนความเสี่ยงอันตราย (hazard ratio, HR) ของอัตราการรอดชีพโดยรวมใน NCT01234567", False),
+     "อัตราส่วนฮาซาร์ด (hazard ratio, HR) ของอัตราการรอดชีพโดยรวมใน NCT01234567", False),
     ("Metformin", "Metformin", False),  # a single name may stay in English
     ("DenseNet-169 and EfficientNet-B5", "DenseNet-169 และ EfficientNet-B5", False),
     ("Prospective cohort study", "Prospective cohort study", True),
+    # review round 1: runs of capitalised words are proper names and may stay in English
+    ("Funded by Novo Nordisk and Eli Lilly", "ได้รับทุนจาก Novo Nordisk และ Eli Lilly", False),
+    ("Swedish Cancer Society, Stockholm County Council", "สมาคมมะเร็งสวีเดน, Stockholm County Council", False),
+    ("Swedish Cancer Society, Stockholm County Council", "Swedish Cancer Society, Stockholm County Council",
+     False),  # an echoed name list is not translatable, so it is never retried
+    ("Transformer-based deep learning model for mammography screening",
+     "Transformer-based deep learning model สำหรับ mammography screening", True),
+    ("Retrospective cohort with propensity score matching",
+     "การศึกษาแบบ retrospective cohort พร้อม propensity score matching", True),
 ])
 def test_untranslated_detector(source, text, expected):
     assert untranslated(source, text, "th") is expected
@@ -190,11 +208,27 @@ def test_citations_are_compared_as_a_multiset():
     assert not citations_preserved("A [P1, P2].", "ก [P1].")
 
 
-def test_broken_citation_is_restored_by_order():
-    assert restore_citations("A [P1]. B [P2, P4].", "ก [P 1]. ข [P2, P5].") == "ก [P1]. ข [P2, P4]."
-    assert restore_citations("A [P1]. B [P2].", "ก [พี1]. ข") is None  # one group dropped: no safe position
-    # a non-citation bracket group copied from the source is not mistaken for a citation
+def test_citation_repair_is_a_respacing_or_a_single_substitution_only():
+    assert restore_citations("A [P1]. B [P2, P4].", "ก [P 1]. ข [P2, P4].") == "ก [P1]. ข [P2, P4]."
+    assert restore_citations("A [P1]. B [P2, P4].", "ก [P1]. ข [P2, P5].") == "ก [P1]. ข [P2, P4]."
+    assert restore_citations("A [P1]. B [P2].", "ก [พี1]. ข") is None  # dropped: no safe position
+    assert restore_citations("A [P1]. B [P2].", "ก [P5]. ข [P6].") is None  # two substitutions
+    assert restore_citations("A [P1]. B [P2].", "ก [P2]. ข [P2].") is None  # the wrong id is also a real one
+    assert restore_citations("A [P1].", "ก [P1]. ข [P3].") is None  # added
+    # a non-citation bracket group copied from the source is left alone
     assert restore_citations("RR [95% CI 0.5-0.8] [P2].", "RR [95% CI 0.5-0.8] [P3].") == "RR [95% CI 0.5-0.8] [P2]."
+    # P1 must not touch P10
+    assert restore_citations("A [P10, P2].", "ก [P10, P1].") == "ก [P10, P2]."
+
+
+def test_citation_repair_survives_reordered_clauses():
+    """Regression (review round 1): Thai put clause B first. Matching groups by position would have attached [P1] to
+    drug B and [P2] to drug A; the single substitution only fixes the one wrong id, where it stands."""
+    source = "Drug A lowered risk [P1] while drug B raised it [P2]; see also [P3]."
+    translated = "ยา B เพิ่มความเสี่ยง [P2] ขณะที่ยา A ลดความเสี่ยง [P1]; ดูเพิ่มเติม [P4]"
+    assert restore_citations(source, translated) == "ยา B เพิ่มความเสี่ยง [P2] ขณะที่ยา A ลดความเสี่ยง [P1]; ดูเพิ่มเติม [P3]"
+    # reordered and two ids wrong: no safe repair, the item falls back to English
+    assert accept(source, translated.replace("[P1]", "[P5]"))[0] is None
 
 
 def test_accept_restores_or_rejects():
@@ -228,7 +262,8 @@ async def test_numbers_survive_unchanged():
 # ---- prompt (I-16) -------------------------------------------------------------------------------
 def test_thai_prompt_has_glossary_and_academic_register():
     system = localize_system("th")
-    for term in ("อัตราส่วนความเสี่ยงอันตราย (HR)", "ช่วงความเชื่อมั่น 95%", "การทบทวนวรรณกรรมอย่างเป็นระบบ",
+    for term in ("อัตราส่วนฮาซาร์ด (HR)", "อัตราส่วนความเสี่ยง (RR)", "ช่วงความเชื่อมั่น 95%",
+                 "การศึกษาแบบผู้ป่วย-กลุ่มควบคุม (case-control)", "ระยะรอดชีพโดยปลอดการลุกลามของโรค (PFS)", "การทบทวนวรรณกรรมอย่างเป็นระบบ",
                  "การวิเคราะห์อภิมาน", "อัตราการเสียชีวิต", "อุบัติการณ์", "อัตราส่วนออดส์ (OR)",
                  "การทดลองแบบสุ่มที่มีกลุ่มควบคุม (RCT)", "การศึกษาแบบโคฮอร์ต"):
         assert term in system

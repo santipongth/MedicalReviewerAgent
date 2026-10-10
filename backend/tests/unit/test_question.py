@@ -21,7 +21,7 @@ from app.graph.schemas import (
 from app.harness.question import question_problems
 from app.services.llm import LLMs
 from app.services.llm_config import HarnessSpec
-from tests.fakes import FakeStructuredLLM
+from tests.fakes import FakeStructuredLLM, to_thai
 
 
 def good_question(**kw):
@@ -55,11 +55,6 @@ def deps_with(refiner=None, critic=None, localizer=None, planner=None, harness=N
                 refiner=refiner, refiner_critic=critic, localizer=localizer,
                 harness=harness or HarnessSpec())
     return GraphDeps(settings=Settings(_env_file=None), llms=llms)
-
-
-def to_thai(text):
-    """A fake translation that the completeness check accepts: every English word becomes Thai."""
-    return "TH " + re.sub(r"\b(?!P\d+\b)[A-Za-z]+\b", "ไทย", text)
 
 
 def thai_localizer():

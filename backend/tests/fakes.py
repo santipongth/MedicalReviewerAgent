@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Callable
 from typing import Any
 
 from app.services.llm import LLMResult
+
+_ENGLISH_WORD = re.compile(r"\b(?!P\d+\b)[A-Za-z]+\b")
+
+
+def to_thai(text: str) -> str:
+    """A fake Thai translation the localisation completeness check accepts: every English word becomes "ไทย";
+    numbers and [Pn] citations stay as written. The "TH " marker is an abbreviation, so the check ignores it."""
+    return "TH " + _ENGLISH_WORD.sub("ไทย", text)
 
 
 class FakeStructuredLLM:

@@ -21,7 +21,7 @@ from app.harness.meta import (
 )
 from app.schemas.review import REVIEW_TYPES, ReviewOptions
 from app.services.report import POOLED_HEADING, render_csv, render_markdown
-from tests.fakes import FakeStructuredLLM
+from tests.fakes import FakeStructuredLLM, to_thai
 from tests.unit.test_review_graph import make_deps
 
 META = {"max_papers": 8, "candidate_limit": 20, "review_type": "meta_analysis"}
@@ -136,7 +136,7 @@ async def test_meta_outcome_display_is_localized():
     values, _, _ = await run_graph(deps, META, language="th", thread="m2")
     [pool] = values["result"]["meta_analysis"]["pools"]
     assert pool["outcome"] == "Colorectal cancer incidence"
-    assert pool["outcome_display"] == "TH Colorectal cancer incidence"
+    assert pool["outcome_display"] == to_thai("Colorectal cancer incidence")
 
 
 async def test_slr_run_has_no_meta_and_an_unchanged_path():

@@ -28,7 +28,7 @@ from app.graph.schemas import (
 )
 from app.services.llm import LLMError, LLMs
 from app.services.llm_config import HarnessSpec
-from tests.fakes import FakeStructuredLLM
+from tests.fakes import FakeStructuredLLM, to_thai
 
 
 def card(outcome="CRC incidence", direction="positive", design="cohort", n=1000, rob="moderate"):
@@ -60,9 +60,12 @@ def deps(**roles):
     return GraphDeps(settings=Settings(_env_file=None), llms=LLMs(**{**base, **roles}))
 
 
+def items_in(user):
+    return json.loads(re.search(r"<items>\n(.*)\n</items>", user, flags=re.DOTALL).group(1))
+
+
 def thai(system, user):
-    items = json.loads(re.search(r"<items>\n(.*)\n</items>", user, flags=re.DOTALL).group(1))
-    return TranslationBatch(items=[TranslationItem(id=i["id"], text="TH " + i["text"]) for i in items])
+    return TranslationBatch(items=[TranslationItem(id=i["id"], text=to_thai(i["text"])) for i in items_in(user)])
 
 
 def state(papers, **extra):
@@ -196,9 +199,12 @@ async def test_cards_are_localized_in_parallel_and_keep_numbers():
                                           localizer=loc))(
         state(papers, matrix=matrix_for(papers), conflict_notes=[]))
     lc = out["localized_cards"]["P1"]
-    assert lc["outcomes"][0]["result"] == "TH lower risk 0.80"
+    assert lc["outcomes"][0]["result"] == to_thai("lower risk 0.80")
     assert lc["outcomes"][0]["evidence_quote"] == "q" and lc["outcomes"][0]["effect_value"] == 0.8
-    assert lc["population"] == "TH adults with T2D" and lc["key_findings"] == ["TH lower CRC"]
+    assert lc["population"] == to_thai("adults with T2D") and lc["key_findings"] == [to_thai("lower CRC")]
+    entry = next(e for e in out["quality"] if e["stage"] == "localize_cards")
+    assert entry["retried"] == entry["untranslated"] == entry["kept_english"] == 0  # the main path, no retry
+    assert len(loc.calls) == 1
     # synthesis itself stays English here
     assert out["synthesis"]["executive_summary"] == "A [P1]. " + CERTAINTY_SENTENCE["moderate"]
 
@@ -228,18 +234,19 @@ async def test_localize_translates_synthesis_and_maps_cells_from_localized_cards
     out = await make_localize(deps(localizer=FakeStructuredLLM("qwen", thai)))(
         state(papers, synthesis=english, localized_cards=localized_cards))
     d = out["synthesis_display"]
-    assert d["executive_summary"] == "TH A [P1]. " + CERTAINTY_SENTENCE["moderate"] and d["research_gaps"] == ["TH RCTs"]
-    assert d["comparison"][0]["outcome"] == "TH CRC incidence"
+    assert d["executive_summary"] == to_thai("A [P1]. " + CERTAINTY_SENTENCE["moderate"])
+    assert d["research_gaps"] == [to_thai("RCTs")]
+    assert d["comparison"][0]["outcome"] == to_thai("CRC incidence")
     assert d["comparison"][0]["cells"][0]["finding"] == "ความเสี่ยงต่ำลง 0.80"
-    assert out["quality"][0]["stage"] == "localize" and out["quality"][0]["kept_english"] == 0
-    assert {"untranslated", "retried", "citations_restored"} <= set(out["quality"][0])
+    q = out["quality"][0]
+    assert q["stage"] == "localize" and q["kept_english"] == q["untranslated"] == q["retried"] == 0
+    assert q["citations_restored"] == 0
 
 
 async def test_card_localization_reports_untranslated_items_after_one_retry():
     papers = [paper("P1", card())]
     def echo_english(system, user):  # the localizer echoes its input, as Qwen did in the audit runs
-        batch = thai(system, user)
-        return TranslationBatch(items=[TranslationItem(id=i.id, text=i.text.removeprefix("TH ")) for i in batch.items])
+        return TranslationBatch(items=[TranslationItem(id=i["id"], text=i["text"]) for i in items_in(user)])
 
     echo = FakeStructuredLLM("qwen", echo_english)
     out = await make_write_synthesis(deps(synthesizer=FakeStructuredLLM("ds", lambda s, u: narrative("A [P1].")),
