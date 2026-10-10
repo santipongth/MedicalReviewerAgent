@@ -41,6 +41,7 @@ async def finalize(state: ReviewState) -> dict:
             "review_type": ReviewOptions.clamped(state.get("options")).review_type,
             "papers": [],
             "comparison": [],
+            "citations": None,
         }
     }
 
@@ -178,6 +179,10 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
 
     async def normalize_outcomes(state: ReviewState) -> dict:
         ok_count = sum(1 for p in state.get("papers") or [] if p.get("ok"))
+        if state.get("selected"):
+            c = stub_result(state["topic"], state["language"])["citations"]
+            progress_writer()({"type": "citations_fetched", "edges": len(c["edges"]),
+                               "covered": sum(1 for v in c["coverage"].values() if v), "total": len(c["coverage"])})
         progress_writer()({"type": "synthesizing", "papers": ok_count})
         await asyncio.sleep(timeline.seconds("normalize", _rng(state, "normalize")))
         return {}

@@ -115,3 +115,26 @@ async def test_epmc_references_pages_when_list_is_larger_than_one_page():
     refs = await EuropePmcClient(http, EPMC).references("MED", "9")
     await http.aclose()
     assert len(refs) == 1005 and route.call_count == 2
+
+
+@respx.mock
+async def test_works_by_ids_keeps_answered_batches_when_one_fails_and_raises_if_all_fail():
+    body = (FIX / "openalex_works.json").read_text(encoding="utf-8")
+
+    def reply(request):
+        if request.url.params["filter"].startswith("ids.pmid"):
+            return httpx.Response(500)
+        return httpx.Response(200, text=body)
+
+    respx.get(f"{OA}/works").mock(side_effect=reply)
+    http = HttpClient(sleep=_nosleep, retries=0)
+    out = await _oa(http).works_by_ids(["10.1000/example.2"], ["99"])
+    assert "doi:10.1000/example.2" in out
+    respx.get(f"{OA}/works").mock(return_value=httpx.Response(500))
+    try:
+        await _oa(http).works_by_ids(["10.1000/example.2"], ["99"])
+        raise AssertionError("expected HTTPStatusError")
+    except httpx.HTTPStatusError:
+        pass
+    finally:
+        await http.aclose()

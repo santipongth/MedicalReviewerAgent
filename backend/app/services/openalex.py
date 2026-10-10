@@ -79,7 +79,11 @@ class OpenAlexClient:
         jobs += [self._batch("ids.pmid", ps[i : i + self.BATCH], gate) for i in range(0, len(ps), self.BATCH)]
         wanted_d, wanted_p = set(ds), set(ps)
         out: dict[str, OpenAlexWork] = {}
-        for batch in await asyncio.gather(*jobs):
+        results = await asyncio.gather(*jobs, return_exceptions=True)
+        failed = [r for r in results if isinstance(r, BaseException)]
+        if failed and len(failed) == len(results):
+            raise failed[0]  # only when every batch failed; otherwise keep the batches that answered
+        for batch in (r for r in results if not isinstance(r, BaseException)):
             for raw in batch:
                 work, doi, pmid = parse_work(raw)
                 if not work.openalex_id:

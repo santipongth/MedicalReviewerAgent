@@ -42,7 +42,7 @@ def test_builder_falls_back_to_europepmc_by_pmid_or_doi():
 
 def test_paper_idents_normalizes_doi():
     got = paper_idents([{"ref": "P1", "candidate": {"doi": "https://doi.org/10.1/A", "pmid": "7"}}])
-    assert got == {"P1": {"doi": "10.1/a", "pmid": "7", "pmcid": None}}
+    assert got == {"P1": {"doi": "10.1/a", "pmid": "7", "pmcid": None, "cited_by": None}}
 
 
 class FakeOA:
@@ -60,7 +60,7 @@ class FakeEpmcRefs:
     def __init__(self, refs=None, fail=False):
         self.refs, self.fail, self.calls = refs or {}, fail, []
 
-    async def references(self, source, id):
+    async def references(self, source, id, **kw):
         self.calls.append((source, id))
         if self.fail:
             raise RuntimeError("epmc down")
@@ -81,7 +81,7 @@ async def test_node_success_uses_only_openalex_when_it_has_references():
     out = (await make_fetch_citations(_deps(oa, epmc))(PAYLOAD))["citations"]
     assert {(e["from"], e["to"]) for e in out["edges"]} == {("P1", "P2"), ("P2", "P1"), ("P3", "P1")}
     assert set(out["coverage"].values()) == {"openalex"} and epmc.calls == []
-    assert len(oa.calls) == 1 and oa.calls[0] == (["10.1/a", "10.1/b"], ["1", "2", "3"])
+    assert len(oa.calls) == 1 and oa.calls[0] == (["10.1/a", "10.1/b"], ["3"])
 
 
 async def test_node_openalex_down_falls_back_to_europepmc():
@@ -140,3 +140,55 @@ def test_stub_result_carries_small_citations_block(review_type):
     assert set(c["coverage"]) == refs == set(c["cited_by"])
     assert c["edges"] and all(e["from"] in refs and e["to"] in refs and e["from"] != e["to"] for e in c["edges"])
     assert c["coverage"]["P6"] is None and c["cited_by"]["P6"] is None
+
+
+def test_cited_by_falls_back_to_europepmc_count_and_records_the_source():
+    idents = {"P1": {"doi": "10.1/a", "pmid": None, "pmcid": None, "cited_by": 40},
+              "P2": {"doi": "10.1/b", "pmid": None, "pmcid": None, "cited_by": 7},
+              "P3": {"doi": "10.1/c", "pmid": None, "pmcid": None, "cited_by": None}}
+    out = build_citations(idents, {"P1": W(1, [], 12), "P2": None, "P3": None}, {})
+    assert out["cited_by"] == {"P1": 12, "P2": 7, "P3": None}
+    assert out["cited_by_source"] == {"P1": "openalex", "P2": "europepmc", "P3": None}
+
+
+def test_paper_idents_carry_candidate_cited_by():
+    assert paper_idents([{"ref": "P1", "candidate": {"cited_by": 3}}])["P1"]["cited_by"] == 3
+
+
+async def test_node_timeout_keeps_partial_data():
+    class SlowEpmc(FakeEpmcRefs):
+        async def references(self, source, id, **kw):
+            await asyncio.sleep(5)
+
+    oa = FakeOA({"doi:10.1/a": W(1, ["https://openalex.org/W2"], 9), "doi:10.1/b": W(2, [], 3)})
+    out = (await make_fetch_citations(_deps(oa, SlowEpmc(), timeout=0.1))(PAYLOAD))["citations"]
+    assert out["coverage"]["P1"] == "openalex" and out["coverage"]["P2"] is None
+    assert out["edges"] == [{"from": "P1", "to": "P2"}] and out["cited_by"]["P1"] == 9
+    assert "timed out" in out["source_note"]
+
+
+def test_europepmc_fallback_is_capped_to_one_page_and_uppercase_openalex_doi_maps():
+    from app.services.openalex import parse_work
+
+    work, doi, pmid = parse_work({"id": "https://openalex.org/W5", "doi": "https://doi.org/10.1000/ABC.DEF",
+                                  "ids": {"pmid": "https://pubmed.ncbi.nlm.nih.gov/55"}})
+    assert (doi, pmid, work.openalex_id) == ("10.1000/abc.def", "55", "https://openalex.org/W5")
+
+
+async def test_node_fallback_requests_one_page():
+    seen = []
+
+    class Epmc(FakeEpmcRefs):
+        async def references(self, source, id, **kw):
+            seen.append(kw)
+            return []
+
+    await make_fetch_citations(_deps(FakeOA(), Epmc()))(PAYLOAD)
+    assert seen and all(kw == {"max_pages": 1} for kw in seen)
+
+
+async def test_untimed_stub_graph_result_has_null_citations():
+    from app.graph.graph import build_stub_graph, initial_state
+
+    out = await build_stub_graph().ainvoke(initial_state("r", "t", "en", {}))
+    assert out["result"]["citations"] is None

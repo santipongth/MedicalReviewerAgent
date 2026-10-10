@@ -17,23 +17,23 @@ NOTE_UNAVAILABLE = "Citation data was unavailable for this review"
 NOTE_NONE = "No citation data was found for these papers"
 
 
-def paper_idents(papers: list[dict[str, Any]]) -> dict[str, dict[str, str | None]]:
-    """ref -> {doi, pmid, pmcid} from selected entries ({ref, candidate})."""
-    out: dict[str, dict[str, str | None]] = {}
+def paper_idents(papers: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """ref -> {doi, pmid, pmcid, cited_by} from selected entries ({ref, candidate})."""
+    out: dict[str, dict[str, Any]] = {}
     for p in papers:
         c = p.get("candidate") or {}
         out[p["ref"]] = {"doi": normalize_doi(c.get("doi")), "pmid": c.get("pmid") or None,
-                         "pmcid": c.get("pmcid") or None}
+                         "pmcid": c.get("pmcid") or None, "cited_by": c.get("cited_by")}
     return out
 
 
 def empty_citations(refs: list[str], note: str = NOTE_UNAVAILABLE) -> dict[str, Any]:
-    return {"edges": [], "cited_by": {r: None for r in refs}, "coverage": {r: None for r in refs},
-            "source_note": note}
+    return {"edges": [], "cited_by": {r: None for r in refs}, "cited_by_source": {r: None for r in refs},
+            "coverage": {r: None for r in refs}, "source_note": note}
 
 
 def build_citations(
-    idents: Mapping[str, Mapping[str, str | None]],
+    idents: Mapping[str, Mapping[str, Any]],
     openalex: Mapping[str, OpenAlexWork | None],
     epmc: Mapping[str, list[EpmcReference] | None],
 ) -> dict[str, Any]:
@@ -45,6 +45,7 @@ def build_citations(
     seen: set[tuple[str, str]] = set()
     coverage: dict[str, str | None] = {}
     cited_by: dict[str, int | None] = {}
+    cited_by_source: dict[str, str | None] = {}
 
     def add(src: str, dst: str | None) -> None:
         if dst and dst != src and (src, dst) not in seen:
@@ -53,7 +54,13 @@ def build_citations(
 
     for ref in refs:
         work = openalex.get(ref)
-        cited_by[ref] = work.cited_by_count if work else None
+        fallback = idents[ref].get("cited_by")
+        if work and work.cited_by_count is not None:
+            cited_by[ref], cited_by_source[ref] = work.cited_by_count, "openalex"
+        elif isinstance(fallback, int):  # Europe PMC's citedByCount via the candidate; the sources count differently
+            cited_by[ref], cited_by_source[ref] = fallback, "europepmc"
+        else:
+            cited_by[ref], cited_by_source[ref] = None, None
         if work and work.referenced_works:
             coverage[ref] = "openalex"
             for oa in work.referenced_works:
@@ -69,4 +76,5 @@ def build_citations(
     used = {v for v in coverage.values() if v}
     note = (NOTE_OPENALEX if used == {"openalex"} else NOTE_EPMC if used == {"europepmc"} else
             f"{NOTE_OPENALEX}; Europe PMC reference lists for papers OpenAlex lacked" if used else NOTE_NONE)
-    return {"edges": edges, "cited_by": cited_by, "coverage": coverage, "source_note": note}
+    return {"edges": edges, "cited_by": cited_by, "cited_by_source": cited_by_source, "coverage": coverage,
+            "source_note": note}

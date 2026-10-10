@@ -19,6 +19,7 @@ REAL_KEYS = {
     "planning": {"queries"},
     "searching": {"found", "queries", "failed"},
     "enriching": {"candidates"},
+    "citations_fetched": {"edges", "covered", "total"},
     "screening": {"batch"},
     "screened": {"kept", "total"},
     "reading": {"ref", "title"},

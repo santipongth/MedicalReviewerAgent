@@ -98,10 +98,10 @@ class EuropePmcClient:
     REF_PAGE = 1000
     REF_MAX_PAGES = 3
 
-    async def references(self, source: str, id: str) -> list[EpmcReference]:
+    async def references(self, source: str, id: str, *, max_pages: int | None = None) -> list[EpmcReference]:
         """Reference list (metadata only) of one Europe PMC record; [] when it has none or is unknown."""
         out: list[EpmcReference] = []
-        for page in range(1, self.REF_MAX_PAGES + 1):
+        for page in range(1, (max_pages or self.REF_MAX_PAGES) + 1):
             resp = await self.http.get(
                 f"{self.base_url}/{source}/{id}/references",
                 params={"format": "json", "pageSize": self.REF_PAGE, "page": page},
