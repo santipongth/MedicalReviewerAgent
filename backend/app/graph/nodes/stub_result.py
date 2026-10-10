@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.harness.design import POOLED_CATEGORIES
+from app.harness.grade import apply_meta_grade, grading_pools
 from app.harness.meta import pool_outcomes, primary_outcome
 from app.schemas.review import SLR_LIKE
 
@@ -18,6 +19,7 @@ _PAPERS = (
     ("narrative_review", "Narrative review", 2017, "unclear", "unclear", None, None, None),
 )
 # meta_analysis only: a third cohort with a verified HR, so the observational pool reaches k = 3 (P3, P4, P7).
+STUB_BASELINE = {"level": "low", "factors": ["start low: illustrative stub evidence"]}  # the stub's "low" grade
 _META_EXTRA = ("cohort", "Population-based cohort study", 2016, "positive", "moderate", 3410, 0.88, (0.79, 0.99))
 
 
@@ -101,17 +103,19 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
     summary = f"Stub review for: {topic}"
     graded = review_type in SLR_LIKE  # narrative and scoping reviews are not graded (same rule as write_synthesis)
     scoping = review_type == "scoping"  # a scoping review makes no claims: no consensus, no conflicts
+    meta_analysis, grade = _stub_meta(comparison, papers) if meta else (None, STUB_BASELINE)
     synthesis = {
         "executive_summary": summary, "comparison": comparison,
         "consensus": [] if scoping else [{"statement": "Most simulated studies point the same way.",
                                           "refs": ["P1", "P3"], "explanation": "Illustrative."}],
         "conflicts": [] if scoping else [{"statement": "One simulated study disagrees.", "refs": ["P4"],
                                           "explanation": "Illustrative.", "likely_reasons": ["Different population"]}],
-        "evidence_strength": "low" if graded else None,
-        "evidence_rationale": "Simulated data." if graded else
-        f"Certainty of evidence is not graded in a {'scoping' if scoping else 'narrative'} review.",
+        "evidence_strength": grade["level"] if graded else None,
+        "evidence_rationale": ("Simulated data." + (f" GRADE-lite: {'; '.join(grade['factors'][1:])}."
+                                                    if grade["factors"][1:] else ""))
+        if graded else f"Certainty of evidence is not graded in a {'scoping' if scoping else 'narrative'} review.",
         "research_gaps": ["No long-term follow-up in the stub data."],
-        "grade_baseline": "low" if graded else None,
+        "grade_baseline": grade["level"] if graded else None,
     }
     return {
         "topic": topic, "english_topic": topic, "language": language, "review_type": review_type,
@@ -137,16 +141,20 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
         "quality": {}, "errors": [], "prompt_version": "stub", "llm_preset": "stub", "models": {},
         "external_context": [],
         "citations": _citations(len(papers)),
-        "meta_analysis": _stub_meta(comparison, papers) if meta else None,
+        "meta_analysis": meta_analysis,
     }
 
 
-def _stub_meta(comparison: list[dict[str, Any]], papers: list[dict[str, Any]]) -> dict[str, Any]:
-    """Pooled by meta.py from the stub matrix (never hand-written numbers), in the same shape as the real result."""
+def _stub_meta(comparison: list[dict[str, Any]],
+               papers: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Pooled by meta.py from the stub matrix (never hand-written numbers), in the same shape as the real result,
+    with the stub baseline adjusted by the real apply_meta_grade. Returns (meta_analysis, adjusted grade)."""
     out = pool_outcomes({"rows": comparison}, papers)
     outcome = primary_outcome(out, ["Primary outcome"])
-    out["grade"] = {"primary_outcome": outcome, "reasons": []}
+    group, pools = grading_pools(out["pools"], outcome)
+    grade, reasons = apply_meta_grade(STUB_BASELINE, pools, outcome, group)  # the real GRADE-lite adjustment
+    out["grade"] = {"primary_outcome": outcome, "design_group": group, "reasons": reasons}
     for kind in ("pools", "excluded", "reference"):
         for item in out[kind]:
             item["outcome_display"] = item["outcome"]
-    return out
+    return out, grade

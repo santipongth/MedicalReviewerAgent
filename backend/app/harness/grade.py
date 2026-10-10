@@ -71,23 +71,42 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
 HIGH_HETEROGENEITY_I2 = 50.0
 
 
-def apply_meta_grade(grade: dict[str, Any], pools: list[dict[str, Any]],
-                     outcome: str | None) -> tuple[dict[str, Any], list[str]]:
-    """Meta-analysis only: adjust the GRADE-lite baseline from the pools that report the primary outcome.
-    Inconsistency: any such pool with I2 >= 50%. Imprecision: any such pool whose 95% CI includes no effect (1 for
-    ratio measures, 0 for differences; i.e. 0 on the analysis scale). Each domain is downgraded at most once: when the
-    baseline already downgraded it (conflicting directions, small total n), the reason is recorded without another
-    level. Returns (grade, the reason strings added). The reasons carry no pooled numbers."""
+GROUP_LABEL = {"rct": "RCTs", "observational": "observational studies"}
+
+
+def grading_pools(pools: list[dict[str, Any]], outcome: str | None) -> tuple[str | None, list[dict[str, Any]]]:
+    """The pools GRADE-lite judges: those of the primary outcome from the best design group. GRADE starts from the
+    best available design, so the RCT pools are used when at least one exists, else the observational ones; a
+    heterogeneous observational pool then never lowers a body of evidence anchored on consistent RCTs.
+    Returns (design group, its pools of that outcome; several when several measures were pooled)."""
+    mine = [p for p in pools if p.get("outcome") == outcome]
+    for group in ("rct", "observational"):
+        chosen = [p for p in mine if p.get("design_group") == group]
+        if chosen:
+            return group, chosen
+    return None, []
+
+
+def apply_meta_grade(grade: dict[str, Any], pools: list[dict[str, Any]], outcome: str | None,
+                     group: str | None = None) -> tuple[dict[str, Any], list[str]]:
+    """Meta-analysis only: adjust the GRADE-lite baseline from the pools chosen by `grading_pools` (one design
+    group of the primary outcome). Inconsistency: any of them with I2 >= 50%. Imprecision: any of them whose 95% CI
+    includes no effect (1 for ratio measures, 0 for differences; i.e. 0 on the analysis scale). Each domain is
+    downgraded at most once: when the baseline already downgraded it (conflicting directions, small total n), the
+    reason is recorded without another level. Note: the baseline's `inconsistency:` counts direction conflicts in ANY
+    outcome, so it can absorb an I2 downgrade of an otherwise consistent primary outcome; accepted for GRADE-lite.
+    Returns (grade, the reason strings added). The reasons carry no pooled numbers."""
     if not pools:
         return grade, []
+    what = f"{outcome} ({GROUP_LABEL.get(group, group)})" if group else f"{outcome}"
     level = LEVELS.index(grade.get("level", "very_low"))
     factors = list(grade.get("factors") or [])
     added: list[str] = []
     checks = (
         ("inconsistency", any(p["i2"] >= HIGH_HETEROGENEITY_I2 for p in pools),
-         f"substantial heterogeneity (I2 >= 50%) in the pooled analysis of {outcome}"),
+         f"substantial heterogeneity (I2 >= 50%) in the pooled analysis of {what}"),
         ("imprecision", any(p["pooled"]["y_ci_lower"] <= 0.0 <= p["pooled"]["y_ci_upper"] for p in pools),
-         f"the pooled 95% CI for {outcome} includes no effect"),
+         f"the pooled 95% CI for {what} includes no effect"),
     )
     for domain, hit, reason in checks:
         if not hit:

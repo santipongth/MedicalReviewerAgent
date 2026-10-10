@@ -179,14 +179,15 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
 
     async def normalize_outcomes(state: ReviewState) -> dict:
         ok_count = sum(1 for p in state.get("papers") or [] if p.get("ok"))
+        review_type = ReviewOptions.clamped(state.get("options")).review_type
+        final = stub_result(state["topic"], state["language"], review_type)  # the result finalize will return
         if state.get("selected"):
-            c = stub_result(state["topic"], state["language"])["citations"]
+            c = final["citations"]
             progress_writer()({"type": "citations_fetched", "edges": len(c["edges"]),
                                "covered": sum(1 for v in c["coverage"].values() if v), "total": len(c["coverage"])})
         progress_writer()({"type": "synthesizing", "papers": ok_count})
-        review_type = ReviewOptions.clamped(state.get("options")).review_type
         if review_type == "meta_analysis" and ok_count:  # same event as the real pool_effects node
-            meta = stub_result(state["topic"], state["language"], review_type)["meta_analysis"]
+            meta = final["meta_analysis"]
             progress_writer()({"type": "pooled", "pools": len(meta["pools"]),
                                "k_total": sum(p["k"] for p in meta["pools"])})
         await asyncio.sleep(timeline.seconds("normalize", _rng(state, "normalize")))

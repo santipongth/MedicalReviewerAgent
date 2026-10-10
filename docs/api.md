@@ -147,12 +147,17 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   - each pool has one effect measure and one design group;
   - r, other and none are never pooled;
   - a study whose first author (surname and first initial), year and n match another study in the same pool is skipped.
-- `grade.primary_outcome` is the pooled outcome that matches the question's first outcome, or else the one with the most studies. `grade.reasons` lists the GRADE-lite downgrades from its pools:
-  - inconsistency when I² ≥ 50%;
-  - imprecision when the pooled 95% CI includes no effect (1 for ratios, 0 for differences).
+- `grade` is `{primary_outcome, design_group, reasons[]}`. `primary_outcome` is the pooled outcome that matches the question's first outcome, or else the one with the most studies. GRADE-lite judges only that outcome's pools of the best design group: its RCT pools when any exist, otherwise its observational pools. That group is `design_group`. `reasons` lists the downgrades from those pools:
+  - inconsistency when any of them has I² ≥ 50%;
+  - imprecision when any pooled 95% CI includes no effect (1 for ratios, 0 for differences).
 
   Each domain is downgraded at most once. These reasons also feed `synthesis.grade_baseline` through the normal baseline and clamp.
-- The narrative never states pooled numbers. A post-check removes any sentence of the summary, rationale or research gaps that contains a pooled estimate or CI bound at 2 or 3 decimals. The `quality` stage `pooled_numbers` counts the removals.
+- The narrative never states pooled numbers. A post-check looks for pooled estimates and CI bounds in the summary, rationale and research gaps, at 2 or 3 decimals and in trimmed forms (`0.8`, `.80`). A sentence containing one is removed when any of these holds:
+  - it cites no paper;
+  - it cites two or more papers;
+  - it uses pooled wording (pooled, overall, combined, meta-analysis, aggregate).
+
+  A sentence that cites exactly one paper and has no pooled wording is a single-study quote, so it is kept. Sentences split only before an uppercase letter or `[`, so "et al." and "vs." do not split a sentence. The `quality` stage `pooled_numbers` reports `{removed, kept_single_study}`.
 
 **Synthesis.** `synthesis.consensus` explanations name any dissenting minority. Consensus needs at least 70 % of at least 3 studies to agree. `synthesis.conflicts` lists real splits, each with its likely reasons.
 
@@ -164,7 +169,7 @@ The web app also serves the whole interactive report as one HTML file that works
 
 | Format | Contents |
 |---|---|
-| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ² and the input refs with their weights. This is the same file as the MCP resource `review://{id}/report.md`. |
+| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
 | `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
 | `json` | `{review_id, topic, language, created_at, finished_at, result}` |
 

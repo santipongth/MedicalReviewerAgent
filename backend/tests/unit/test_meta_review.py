@@ -10,7 +10,7 @@ from app.graph import prompts
 from app.graph.graph import build_graph, initial_state
 from app.graph.nodes.stub_result import stub_result
 from app.graph.schemas import SynthesisNarrative
-from app.harness.grade import apply_meta_grade
+from app.harness.grade import apply_meta_grade, grading_pools
 from app.harness.meta import (
     pool_outcomes,
     pooled_number_strings,
@@ -44,6 +44,7 @@ def summary_with_pooled(system, user):
     return SynthesisNarrative(
         executive_summary=("Metformin is associated with lower CRC risk [P1, P2]. "
                            "The pooled HR was 0.80 (95% CI 0.77 to 0.83) across cohorts [P1]. "
+                           "One cohort reported HR 0.80 [P4]. "
                            "Some cohorts disagree [P3]."),
         evidence_strength="low", evidence_rationale="Observational cohorts [P1]. Pooled estimate 0.800 [P2].",
         research_gaps=["RCTs", "Confirm the pooled 0.80 in trials"])
@@ -102,11 +103,13 @@ async def test_meta_run_pools_grades_and_strips_pooled_numbers():
     assert '"pooled_analysis": [{"outcome": "Colorectal cancer incidence"' in user and '"estimate": 0.8' in user
     # the post-check removed every sentence restating a pooled number, and counted them
     s = r["synthesis_en"]
-    assert s["executive_summary"] == "Metformin is associated with lower CRC risk [P1, P2]. Some cohorts disagree [P3]."
+    assert s["executive_summary"] == ("Metformin is associated with lower CRC risk [P1, P2]. "
+                                      "One cohort reported HR 0.80 [P4]. Some cohorts disagree [P3].")
     assert s["evidence_rationale"] == "Observational cohorts [P1]."
     assert s["research_gaps"] == ["RCTs"]
     stage = next(q for q in values["quality"] if q["stage"] == "pooled_numbers")
-    assert stage["removed"] == 3
+    assert stage == {"stage": "pooled_numbers", "removed": 3, "kept_single_study": 1}
+    assert meta["grade"]["design_group"] == "observational"
     # still graded like an SLR, and conflicts are still explained
     assert s["evidence_strength"] is not None and s["grade_baseline"] is not None
     assert len(deps.llms.conflict_explainer.calls) == 1
@@ -144,9 +147,52 @@ async def test_pooling_failure_never_fails_the_review(monkeypatch):
     assert r["synthesis"]["executive_summary"]
 
 
+@pytest.mark.parametrize("target", ["primary_outcome", "grading_pools", "apply_meta_grade"])
+async def test_a_failure_after_pooling_is_also_soft(monkeypatch, target):
+    from app.graph.nodes import synthesis
+
+    def boom(*args, **kwargs):
+        raise KeyError("i2")
+
+    monkeypatch.setattr(synthesis, target, boom)
+    values, events, _ = await run_graph(make_deps(), META, thread=f"m4-{target}")
+    r = values["result"]
+    assert r["meta_analysis"] is None and "pooling failed: KeyError" in r["errors"]
+    assert "pooled" not in [e["type"] for e in events]
+
+
 # ---- GRADE-lite ------------------------------------------------------------------------------
-def pool(i2=0.0, lo=-0.3, hi=-0.1, outcome="Mortality"):
-    return {"outcome": outcome, "i2": i2, "k": 3, "pooled": {"y_ci_lower": lo, "y_ci_upper": hi}}
+def pool(i2=0.0, lo=-0.3, hi=-0.1, outcome="Mortality", group="rct"):
+    return {"outcome": outcome, "i2": i2, "k": 3, "design_group": group,
+            "pooled": {"y_ci_lower": lo, "y_ci_upper": hi}}
+
+
+def test_grading_uses_the_rct_pools_when_any_exist():
+    pools = [pool(), pool(i2=70.0, lo=-0.2, hi=0.3, group="observational"), pool(outcome="Other", i2=99.0)]
+    group, chosen = grading_pools(pools, "Mortality")
+    assert group == "rct" and chosen == [pools[0]]
+    base = {"level": "high", "factors": []}
+    g, reasons = apply_meta_grade(base, chosen, "Mortality", group)
+    assert g["level"] == "high" and reasons == []  # the heterogeneous observational pool does not count
+
+
+def test_grading_falls_back_to_observational_and_names_the_group():
+    pools = [pool(i2=70.0, group="observational"), pool(group="observational", lo=-0.1, hi=-0.05)]
+    group, chosen = grading_pools(pools, "Mortality")
+    assert group == "observational" and chosen == pools
+    g, reasons = apply_meta_grade({"level": "low", "factors": []}, chosen, "Mortality", group)
+    assert g["level"] == "very_low"
+    assert reasons == [("inconsistency: substantial heterogeneity (I2 >= 50%) in the pooled analysis of "
+                        "Mortality (observational studies)")]
+    assert grading_pools(pools, "Unknown") == (None, [])
+    assert grading_pools([], None) == (None, [])
+
+
+def test_several_measures_in_the_chosen_group_any_counts():
+    pools = [pool(), pool(lo=-0.1, hi=0.2)]  # e.g. HR and OR pools of the same RCT outcome
+    group, chosen = grading_pools(pools, "Mortality")
+    _, reasons = apply_meta_grade({"level": "high", "factors": []}, chosen, "Mortality", group)
+    assert reasons == ["imprecision: the pooled 95% CI for Mortality (RCTs) includes no effect"]
 
 
 def test_meta_grade_downgrades_inconsistency_and_imprecision():
@@ -204,13 +250,53 @@ def test_pooled_number_strings_and_strip():
                       {"pooled": {"est": -1.5, "ci_lower": -2.25, "ci_upper": -0.75}}]}
     strings = pooled_number_strings(meta)
     assert {"0.80", "0.801", "0.72", "0.723", "0.89", "0.888", "1.50", "1.500", "2.25", "0.75"} <= strings
+    assert {"0.8", ".80", ".8", "1.5", "0.75", ".75"} <= strings  # trimmed and leading-dot forms
+    assert not any(s.isdigit() or s.endswith(".") for s in strings)  # never a bare integer such as "1"
     text = ("A lower risk [P1]. Pooled HR 0.80 [P2]! The CI was 0.723-0.888. A trial reported HR 10.80 [P3]. "
             "MD was -1.50 points? Another 0.805 value [P4].")
-    out, removed = strip_pooled_numbers(text, strings)
+    out, removed, single = strip_pooled_numbers(text, strings)
     assert out == "A lower risk [P1]. A trial reported HR 10.80 [P3]. Another 0.805 value [P4]."
-    assert removed == 3
-    assert strip_pooled_numbers("No numbers [P1].", strings) == ("No numbers [P1].", 0)
-    assert strip_pooled_numbers("Pooled 0.80 [P1].", set()) == ("Pooled 0.80 [P1].", 0)
+    assert (removed, single) == (3, 0)
+    assert strip_pooled_numbers("No numbers [P1].", strings) == ("No numbers [P1].", 0, 0)
+    assert strip_pooled_numbers("Pooled 0.80 [P1].", set()) == ("Pooled 0.80 [P1].", 0, 0)
+
+
+STRINGS = pooled_number_strings({"pools": [{"pooled": {"est": 0.80, "ci_lower": 0.71, "ci_upper": 0.90}}]})
+
+
+@pytest.mark.parametrize(("sentence", "kept"), [
+    ("One cohort reported HR 0.80 [P3].", True),                      # single study, no pooled wording
+    ("One cohort reported HR 0.8 (0.71-0.90) [P3].", True),
+    ("The pooled HR 0.80 [P3] favoured metformin.", False),           # pooled wording despite one ref
+    ("Overall, risk fell (HR 0.8) [P3].", False),
+    ("Combined estimates gave .80 [P3].", False),
+    ("In the meta-analysis HR was 0.90 [P3].", False),
+    ("The aggregate HR was 0.71 [P3].", False),
+    ("HR 0.80 across studies [P1, P2].", False),                      # two refs
+    ("HR 0.80 [P1] and [P2].", False),
+    ("Risk was lower, HR 0.8.", False),                                # no citation
+    ("Risk was lower, HR 0.85 [P1, P2].", True),                       # not a pooled number
+])
+def test_post_check_precision_rule(sentence, kept):
+    out, removed, single = strip_pooled_numbers(sentence, STRINGS)
+    assert (out == sentence) is kept
+    assert removed == (0 if kept else 1)
+    assert single == (1 if kept and "0.8" in sentence and "0.85" not in sentence else 0)
+
+
+@pytest.mark.parametrize("text", [
+    "Smith et al. reported a pooled HR of 0.80 in trials.",
+    "Metformin vs. placebo gave a pooled HR of 0.80 overall.",
+    "Doses (e.g. 1 g) gave a pooled HR of 0.80.",
+])
+def test_abbreviations_do_not_split_a_sentence(text):
+    out, removed, _ = strip_pooled_numbers(f"Lower risk [P1]. {text} More trials are needed [P2].", STRINGS)
+    assert out == "Lower risk [P1]. More trials are needed [P2]." and removed == 1
+
+
+def test_splitter_splits_before_an_uppercase_word_or_a_citation():
+    out, removed, _ = strip_pooled_numbers("The pooled HR was 0.80. [P1] Then stable [P2]. Done [P3].", STRINGS)
+    assert out == "[P1] Then stable [P2]. Done [P3]." and removed == 1
 
 
 def test_pools_for_prompt_rounds_like_the_ui():
@@ -242,11 +328,19 @@ def test_stub_meta_result_is_computed_by_meta_py():
     assert {(e["ref"], e["reason"]) for e in meta["excluded"]} >= {("P1", "too_few_studies"), ("P2", "too_few_studies")}
     assert [x["ref"] for x in meta["reference"]] == ["P5"]
     assert meta["grade"]["primary_outcome"] == "Primary outcome"
-    assert r["stats"]["selected"] == len(r["papers"]) == 7
-    assert r["synthesis"]["evidence_strength"] == "low"
+    assert meta["grade"]["design_group"] == "observational"  # no RCT pool for the stub's primary outcome
+    from app.graph.nodes.stub_result import STUB_BASELINE
+    grade, reasons = apply_meta_grade(STUB_BASELINE, meta["pools"], "Primary outcome", "observational")
+    assert meta["grade"]["reasons"] == reasons and reasons  # P4 disagrees: heterogeneous and/or imprecise
+    assert r["synthesis"]["evidence_strength"] == r["synthesis"]["grade_baseline"] == grade["level"]
+    assert r["stats"]["selected"] == r["stats"]["extracted"] == len(r["papers"]) == 7
+    assert len(r["citations"]["coverage"]) == 7
     for rt in ("slr", "narrative", "scoping"):
         other = stub_result("t", "en", rt)
         assert other["meta_analysis"] is None and len(other["papers"]) == 6
+        if rt == "slr":
+            assert other["synthesis"]["evidence_strength"] == "low"
+            assert other["synthesis"]["evidence_rationale"] == "Simulated data."
         assert "design_category" not in other["synthesis"]["comparison"][0]["cells"][0]
 
 
@@ -287,8 +381,20 @@ def test_markdown_pooled_section():
                            f"(95% CI {est['ci_lower']:.2f} to {est['ci_upper']:.2f}) _(computed)_; "
                            f"I² {p['i2']:.0f}%, τ² {p['tau2']:.3f}. Inputs: P3 0.84 [0.72, 0.98] w ")
     assert "P4 1.22 [1.01, 1.47]" in line and "P7 0.88 [0.79, 0.99]" in line
+    assert line.endswith(".") and " Warnings: small number of studies (k<5)" in line
+    assert ("substantial heterogeneity (I² ≥ 50%)" in line) == ("high_heterogeneity" in p["warnings"])
+    assert "abstract_only" not in md and "small_k" not in md
     assert md.index("## Comparison") < md.index(POOLED_HEADING)
     assert "DerSimonian-Laird random effects" in md
+
+
+def test_markdown_warning_labels():
+    from app.services.report import WARNING_LABEL, _warnings
+    assert _warnings(["abstract_only", "ci_assumed_95", "adjustment_unknown"]) == ""
+    assert _warnings(["abstract_only", "small_k", "high_heterogeneity", "duplicate_cohort_skipped",
+                      "other_measures_not_pooled", "md_units_assumed_equal"]) == (
+        " Warnings: " + "; ".join(WARNING_LABEL[c] for c in ("small_k", "high_heterogeneity", "duplicate_cohort_skipped",
+                                                             "other_measures_not_pooled", "md_units_assumed_equal")) + ".")
 
 
 def test_markdown_meta_without_pools_and_slr_without_section():

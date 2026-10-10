@@ -344,31 +344,52 @@ def pools_for_prompt(meta: dict[str, Any] | None) -> list[dict[str, Any]]:
 
 
 def pooled_number_strings(meta: dict[str, Any] | None) -> set[str]:
-    """Every pooled estimate and CI bound (display scale, sign dropped) formatted at 2 and 3 decimals."""
+    """Every pooled estimate and CI bound (display scale, sign dropped) formatted at 2 and 3 decimals, plus their
+    trimmed forms (0.80 -> 0.8) and leading-dot forms (.80, .8). Forms that trim to an integer are left out, so
+    a citation like [P1] can never match."""
     strings: set[str] = set()
     for p in (meta or {}).get("pools") or []:
         for key in ("est", "ci_lower", "ci_upper"):
             value = abs(p["pooled"][key])
-            strings |= {f"{value:.2f}", f"{value:.3f}"}
+            for s in (f"{value:.2f}", f"{value:.3f}"):
+                forms = {s}
+                trimmed = s.rstrip("0")
+                if not trimmed.endswith("."):
+                    forms.add(trimmed)
+                strings |= forms | {f[1:] for f in forms if f.startswith("0.")}
     return strings
 
 
-_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+# A sentence ends at . ! or ? followed by space and an uppercase letter or "[" (so "et al. reported" and
+# "vs. placebo" stay inside their sentence).
+_SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[])")
+_POOLED_WORDING = re.compile(r"pool|overall|combined|meta-?analy|aggregate", re.IGNORECASE)
+_BRACKETS = re.compile(r"\[([^\]]*)\]")
+_REF = re.compile(r"\bP\d+\b")
 
 
-def strip_pooled_numbers(text: str, strings: set[str]) -> tuple[str, int]:
-    """Remove every sentence that contains one of `strings` as a whole number (not inside a longer one).
-    Returns (text, sentences removed)."""
+def _cited_refs(sentence: str) -> set[str]:
+    return {r for group in _BRACKETS.findall(sentence) for r in _REF.findall(group)}
+
+
+def strip_pooled_numbers(text: str, strings: set[str]) -> tuple[str, int, int]:
+    """Remove the sentences that restate a pooled number. A sentence containing one of `strings` as a whole number
+    is removed when it cites no paper, cites two or more papers, or uses pooled wording (pooled, overall, combined,
+    meta-analysis, aggregate). A sentence that cites exactly one paper and has no pooled wording is a single-study
+    quote and is kept. Returns (text, sentences removed, single-study sentences kept despite a matching number)."""
     if not text or not strings:
-        return text, 0
+        return text, 0, 0
     pattern = re.compile("|".join(rf"(?<![\d.]){re.escape(s)}(?!\d)" for s in sorted(strings, key=len, reverse=True)))
-    kept, removed = [], 0
+    kept, removed, single = [], 0, 0
     for sentence in _SENTENCE.split(text.strip()):
-        if pattern.search(sentence):
-            removed += 1
-        else:
+        if not pattern.search(sentence):
             kept.append(sentence)
-    return " ".join(kept), removed
+        elif len(_cited_refs(sentence)) == 1 and not _POOLED_WORDING.search(sentence):
+            kept.append(sentence)
+            single += 1
+        else:
+            removed += 1
+    return " ".join(kept), removed, single
 
 
 def primary_outcome(meta: dict[str, Any] | None, question_outcomes: list[str] | None) -> str | None:

@@ -24,7 +24,13 @@ from app.graph.schemas import (
     SynthesisNarrative,
 )
 from app.graph.state import ReviewState
-from app.harness.grade import LEVELS, apply_meta_grade, clamp_to_baseline, grade_baseline
+from app.harness.grade import (
+    LEVELS,
+    apply_meta_grade,
+    clamp_to_baseline,
+    grade_baseline,
+    grading_pools,
+)
 from app.harness.localize import localize_strings
 from app.harness.matrix import (
     build_matrix,
@@ -172,17 +178,18 @@ def make_pool_effects(deps):
         started = time.perf_counter()
         papers = _evidence(state)
         matrix = state.get("matrix") or {}
-        try:
+        try:  # the whole computation: an unexpected shape anywhere must not fail the review
             meta = pool_outcomes(matrix, papers)
+            outcome = primary_outcome(meta, (state.get("question") or {}).get("outcomes"))
+            group, graded_pools = grading_pools(meta["pools"], outcome)
+            grade, downgrades = apply_meta_grade(matrix.get("grade") or {"level": "very_low", "factors": []},
+                                                 graded_pools, outcome, group)
+            meta["grade"] = {"primary_outcome": outcome, "design_group": group, "reasons": downgrades}
+            k_total = sum(p["k"] for p in meta["pools"])
         except Exception as exc:  # noqa: BLE001 - pooling is an extra; the review goes on without it
             return {"meta_analysis": None, "errors": [f"pooling failed: {type(exc).__name__}"],
                     "quality": [{"stage": "pool", "failed": True,
                                  "seconds": round(time.perf_counter() - started, 3)}]}
-        outcome = primary_outcome(meta, (state.get("question") or {}).get("outcomes"))
-        grade, downgrades = apply_meta_grade(matrix.get("grade") or {"level": "very_low", "factors": []},
-                                             [p for p in meta["pools"] if p["outcome"] == outcome], outcome)
-        meta["grade"] = {"primary_outcome": outcome, "reasons": downgrades}
-        k_total = sum(p["k"] for p in meta["pools"])
         if papers:
             progress_writer()({"type": "pooled", "pools": len(meta["pools"]), "k_total": k_total})
         entry = {"stage": "pool", "pools": len(meta["pools"]), "k_total": k_total,
@@ -326,22 +333,23 @@ def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list
 POOLED_REFERENCE = "The pooled estimates are reported in the pooled analysis section."
 
 
-def _strip_pooled(narrative: SynthesisNarrative, strings: set[str]) -> tuple[SynthesisNarrative, int]:
-    """Remove every sentence of the summary, rationale and gaps that restates a pooled estimate or CI bound."""
-    summary, removed = strip_pooled_numbers(narrative.executive_summary, strings)
-    rationale, n = strip_pooled_numbers(narrative.evidence_rationale, strings)
-    removed += n
+def _strip_pooled(narrative: SynthesisNarrative, strings: set[str]) -> tuple[SynthesisNarrative, int, int]:
+    """Remove every sentence of the summary, rationale and gaps that restates a pooled estimate or CI bound
+    (see meta.strip_pooled_numbers). Returns (narrative, removed, single-study sentences kept)."""
+    summary, removed, single = strip_pooled_numbers(narrative.executive_summary, strings)
+    rationale, n, s = strip_pooled_numbers(narrative.evidence_rationale, strings)
+    removed, single = removed + n, single + s
     gaps = []
     for gap in narrative.research_gaps:
-        text, n = strip_pooled_numbers(gap, strings)
-        removed += n
+        text, n, s = strip_pooled_numbers(gap, strings)
+        removed, single = removed + n, single + s
         if text.strip():
             gaps.append(text)
     if not removed:
-        return narrative, 0
+        return narrative, 0, single
     return narrative.model_copy(update={"executive_summary": summary or POOLED_REFERENCE,
                                         "evidence_rationale": rationale or POOLED_REFERENCE,
-                                        "research_gaps": gaps}), removed
+                                        "research_gaps": gaps}), removed, single
 
 
 def make_write_synthesis(deps):
@@ -440,8 +448,8 @@ def make_write_synthesis(deps):
             entry["citation_fixes"] = int(fixed != narrative)
             narrative = fixed
         if meta and meta.get("pools"):  # pooled numbers render only in the pooled-analysis view, never in prose
-            narrative, removed = _strip_pooled(narrative, pooled_number_strings(meta))
-            quality.append({"stage": "pooled_numbers", "removed": removed})
+            narrative, removed, single = _strip_pooled(narrative, pooled_number_strings(meta))
+            quality.append({"stage": "pooled_numbers", "removed": removed, "kept_single_study": single})
         # not graded: no strength, no baseline, a fixed rationale that localizes like any other text
         synthesis = Synthesis(
             executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),

@@ -18,10 +18,24 @@ TYPE_LABEL = {"narrative": "Narrative review", "slr": "Systematic review", "scop
 POOLED_HEADING = ("## Pooled analysis (computed by the system from abstract-verified numbers — "
                   "not a result of any single study)")
 DESIGN_GROUP = {"rct": "RCTs", "observational": "observational studies"}
+# Per-pool warnings shown on the pool line; abstract_only, ci_assumed_95 and adjustment_unknown are on every pool
+# and go into the method note instead.
+WARNING_LABEL = {
+    "small_k": "small number of studies (k<5)",
+    "high_heterogeneity": "substantial heterogeneity (I² ≥ 50%)",
+    "duplicate_cohort_skipped": "a possible duplicate cohort was left out",
+    "other_measures_not_pooled": "studies reporting another effect measure were not pooled",
+    "md_units_assumed_equal": "mean differences assumed to share units",
+}
 
 
 def _num(value: float, decimals: int = 2) -> str:
     return f"{value:.{decimals}f}"
+
+
+def _warnings(codes: list[str]) -> str:
+    labels = [WARNING_LABEL[c] for c in codes if c in WARNING_LABEL]
+    return f" Warnings: {'; '.join(labels)}." if labels else ""
 
 
 def _pooled_section(meta: dict[str, Any] | None) -> list[str]:
@@ -40,7 +54,8 @@ def _pooled_section(meta: dict[str, Any] | None) -> list[str]:
         out.append(f"- **{_cell(p.get('outcome_display') or p['outcome'])}** — {p['measure']}, "
                    f"{DESIGN_GROUP.get(p['design_group'], p['design_group'])}, k={p['k']}: "
                    f"{_num(est['est'])} (95% CI {_num(est['ci_lower'])} to {_num(est['ci_upper'])}) "
-                   f"_(computed)_; I² {p['i2']:.0f}%, τ² {p['tau2']:.3f}. Inputs: {refs}.")
+                   f"_(computed)_; I² {p['i2']:.0f}%, τ² {p['tau2']:.3f}. Inputs: {refs}."
+                   + _warnings(p.get("warnings") or []))
     if pools:
         out += ["", (f"_Method: {pools[0]['method']} ({meta.get('version')}); 95% CIs; ratio measures pooled on the "
                      "log scale. Inputs are abstracts only; adjusted and unadjusted estimates cannot be told apart._")]

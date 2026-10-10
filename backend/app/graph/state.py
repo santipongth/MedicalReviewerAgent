@@ -27,7 +27,7 @@ class ReviewState(TypedDict, total=False):
     started_at: float  # epoch seconds when the review started (total time in quality.timings)
     matrix: dict[str, Any] | None  # {rows, consensus, conflicts, grade} built by code from the cards
     meta_analysis: dict[str, Any] | None  # meta.pool_outcomes output + {grade}; meta_analysis reviews only
-    conflict_notes:Annotated[list[dict[str, Any]], operator.add]  # ConflictNote per conflicting outcome
+    conflict_notes: Annotated[list[dict[str, Any]], operator.add]  # ConflictNote per conflicting outcome
     localized_cards: dict[str, dict[str, Any]] | None  # ref -> card in the user's language
     synthesis: dict[str, Any] | None  # Synthesis (English)
     synthesis_display: dict[str, Any] | None  # Synthesis in the user's language
