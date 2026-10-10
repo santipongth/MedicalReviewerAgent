@@ -148,7 +148,8 @@ export function StrengthLine({ synthesis, lang, quality, type = "legacy" }: {
           </p>
         ) : null}
       </div>
-      {!ungraded && synthesis.evidence_rationale && <p className="max-w-[65ch] text-[0.88rem] text-muted">{synthesis.evidence_rationale}</p>}
+      {/* a graded type left ungraded (no quantitative studies) says why; narrative/scoping need no reason */}
+      {(!ungraded || isGraded(type)) && synthesis.evidence_rationale && <p className="max-w-[65ch] text-[0.88rem] text-muted">{synthesis.evidence_rationale}</p>}
     </div>
   );
 }

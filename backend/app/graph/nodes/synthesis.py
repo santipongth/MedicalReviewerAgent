@@ -72,6 +72,8 @@ DIRECTION_TEXT = {"positive": "findings support the hypothesised effect",
                   "negative": "findings show the opposite effect or harm",
                   "null": "findings show no significant association"}
 _CITED = re.compile(r"\[P\d+")
+NO_QUANTITATIVE_RATIONALE = ("Certainty of evidence is not graded: no quantitative studies (qualitative themes are "
+                             "summarised only).")
 QUALITATIVE_ONLY_FACTOR = ("no quantitative studies: the included qualitative/mixed-methods studies are summarised "
                            "as themes, which are not graded")
 
@@ -381,7 +383,9 @@ def make_write_synthesis(deps):
         started = time.perf_counter()
         language = state.get("language", "th")
         review_type = _review_type(state)
-        graded = review_type in SLR_LIKE
+        # a graded type with no quantitative evidence (every paper qualitative/mixed) is not graded: themes only
+        no_quantitative = review_type in SLR_LIKE and not _evidence(state)
+        graded = review_type in SLR_LIKE and not no_quantitative
         meta = state.get("meta_analysis") if review_type == "meta_analysis" else None
         # narrative reviews are cited and summarised in narrative/scoping reviews; only the matrix leaves them out.
         # Qualitative/mixed-methods themes reach every narrative, graded or not (never the matrix or the grade).
@@ -424,7 +428,8 @@ def make_write_synthesis(deps):
                                       sub_questions=question.get("sub_questions") or [],
                                       papers=[_brief(p) for p in papers], matrix=prompt_matrix, conflict_notes=notes,
                                       baseline=matrix.get("grade") or {},
-                                      external_context=state.get("external_context") or [], review_type=review_type,
+                                      external_context=state.get("external_context") or [],
+                                      review_type=review_type if not no_quantitative else "narrative",
                                       pooled_analysis=pools_for_prompt(meta) if meta else None)
         narrative_call = harness_runner(deps).call(
             deps.llms.synthesizer, prompts.narrative_system(review_type, _themes_only(papers)), user,
@@ -480,7 +485,8 @@ def make_write_synthesis(deps):
             executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),
             consensus=consensus, conflicts=conflicts,
             evidence_strength=clamp_to_baseline(narrative.evidence_strength, baseline) if graded else None,
-            evidence_rationale=narrative.evidence_rationale if graded else _not_graded_rationale(review_type),
+            evidence_rationale=(narrative.evidence_rationale if graded else
+                                NO_QUANTITATIVE_RATIONALE if no_quantitative else _not_graded_rationale(review_type)),
             research_gaps=narrative.research_gaps, grade_baseline=baseline if graded else None)
         entry["seconds"] = round(time.perf_counter() - started, 3)
         quality.append(entry)

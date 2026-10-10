@@ -13,6 +13,7 @@ from app.graph import prompts
 from app.graph.nodes.reading import make_read_paper
 from app.graph.nodes.synthesis import (
     EXTRACTION_FAILED,
+    NO_QUANTITATIVE_RATIONALE,
     QUALITATIVE_ONLY_FACTOR,
     _narrative_papers,
     make_normalize_outcomes,
@@ -75,6 +76,25 @@ async def test_reading_strips_a_verified_or_from_a_mixed_methods_card():
     assert entry["card"]["design_category"] == "mixed_methods"
     assert o["effect_value"] is None and o["ci_lower"] is None and o["effect_measure"] == "none"
     assert o["direction"] == "unclear" and entry["card"]["overall_direction"] == "unclear"
+    # the counts cover only the numbers that remain: the verified sample size, never the stripped OR
+    v = entry["verification"]
+    assert (v["numbers_verified"], v["numbers_total"]) == (1, 1)
+    assert not [u for u in v["unverified"] if u["field"] == "effect"]
+
+
+async def test_verification_counts_are_zero_when_a_stripped_card_has_no_sample_size():
+    qual = _qual_card("qualitative").model_copy(update={"sample_size": None, "sample_size_quote": None})
+    out = await make_read_paper(reading.deps(FakeStructuredLLM("ds", lambda s, u: qual)))(reading.payload())
+    v = out["papers"][0]["verification"]
+    assert (v["numbers_verified"], v["numbers_total"]) == (0, 0)
+    assert out["quality"][0]["numbers_verified"] == 0 and out["quality"][0]["numbers_total"] == 0
+
+
+async def test_quantitative_card_keeps_its_verification_counts():
+    cohort = reading.card().model_copy(update={"design_category": "cohort"})
+    v = (await make_read_paper(reading.deps(FakeStructuredLLM("ds", lambda s, u: cohort)))(reading.payload()))[
+        "papers"][0]["verification"]
+    assert (v["numbers_verified"], v["numbers_total"]) == (2, 2)
 
 
 # ---- 2. qualitative themes reach the narrative ---------------------------------------------------
@@ -119,24 +139,29 @@ async def test_slr_narrative_gets_qualitative_themes_and_may_cite_them():
     assert out["synthesis"]["executive_summary"] == "Lower risk [P1]; patients fear injections [P2]."
 
 
-async def test_qualitative_only_slr_runs_the_narrative_and_keeps_the_baseline():
+@pytest.mark.parametrize("review_type", ["slr", "meta_analysis"])
+async def test_qualitative_only_review_runs_the_narrative_and_is_not_graded(review_type):
     papers = [paper("P1", _qual()), paper("P2", _qual("Trust in nurses", "mixed_methods"))]
-    st = state(papers, options={"review_type": "slr", "study_types": ["Qualitative"]}, selected=["x"])
+    st = state(papers, options={"review_type": review_type, "study_types": ["Qualitative"]}, selected=["x"])
     norm = await make_normalize_outcomes(deps())(st)
     matrix = norm["matrix"]
     assert matrix["rows"] == [] and matrix["conflicts"] == []
-    assert matrix["grade"] == {"level": grade_baseline([], {})["level"], "factors": [QUALITATIVE_ONLY_FACTOR]}
-    synth = FakeStructuredLLM("ds", lambda s, u: SynthesisNarrative(
-        executive_summary="Patients fear injections [P1] and trust nurses [P2].", evidence_strength="very_low",
-        evidence_rationale="qualitative only", research_gaps=["quantitative studies"]))
+    assert matrix["grade"]["factors"] == [QUALITATIVE_ONLY_FACTOR]
+    synth = FakeStructuredLLM("ds", lambda s, u: NarrativeNoGrade(
+        executive_summary="Patients fear injections [P1] and trust nurses [P2].", research_gaps=["quantitative studies"]))
     out = await make_write_synthesis(deps(synthesizer=synth))({**st, "matrix": matrix, "conflict_notes": [],
                                                                 "language": "en"})
     s = out["synthesis"]
     assert s["executive_summary"] not in EXTRACTION_FAILED.values()
     assert "fear injections [P1]" in s["executive_summary"]
-    assert s["evidence_strength"] == matrix["grade"]["level"] == s["grade_baseline"]
-    assert "no other paper reports an effect" in synth.calls[0][0].lower()
-    assert QUALITATIVE_ONLY_FACTOR in synth.calls[0][1]
+    assert s["evidence_strength"] is None and s["grade_baseline"] is None
+    assert s["evidence_rationale"] == NO_QUANTITATIVE_RATIONALE == (
+        "Certainty of evidence is not graded: no quantitative studies (qualitative themes are summarised only).")
+    system, user = synth.calls[0]
+    assert "no other paper reports an effect" in system.lower()
+    assert "GRADE-lite baseline" not in user and "evidence_strength" not in user  # nothing asks for a grade
+    assert render_markdown(SimpleNamespace(topic="t", status="done", error=None, result={
+        "review_type": review_type, "synthesis": s, "papers": []})).count("**Evidence strength:** not assessed") == 1
 
 
 async def test_ungraded_review_with_themes_gets_the_qualitative_block():

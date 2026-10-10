@@ -277,6 +277,18 @@ describe("Report per review type", () => {
     expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำมาก");
   });
 
+  it("slr with no quantitative studies: strength not assessed (never 'very low'), with the reason", () => {
+    const why = "ไม่ได้ประเมินความแข็งแรงของหลักฐาน: ไม่มีงานวิจัยเชิงปริมาณ";
+    const synthesis = { ...slrReviewFixture.result!.synthesis!, evidence_strength: null, grade_baseline: null, evidence_rationale: why };
+    const review = { ...slrReviewFixture, result: { ...slrReviewFixture.result!, synthesis } };
+    render(<Report review={review} />);
+    const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    expect(within(summary).getByText(/^ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(/)).toBeInTheDocument();
+    expect(within(summary).getByText(why)).toBeInTheDocument();
+    expect(within(summary).queryByRole("button", { name: /^ความแข็งแรงของหลักฐาน/ })).toBeNull();
+    expect(screen.queryByText("ต่ำมาก")).toBeNull();
+  });
+
   it("scoping: badge, PCC, evidence map; no claims, findings matrix, forest or direction tally", () => {
     const { container } = render(<Report review={scopingReviewFixture} />);
     expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การทบทวนขอบเขต");
