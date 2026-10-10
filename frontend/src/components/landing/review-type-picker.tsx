@@ -1,40 +1,29 @@
 "use client";
 
-import { useId } from "react";
 import { REVIEW_TYPE_LABEL, REVIEW_TYPES } from "@/lib/review-type";
 import type { ReviewType } from "@/lib/types";
 
-/** The review type, always visible (not folded into the extra options): it changes the whole report. */
-export function ReviewTypePicker({ value, onChange, available }: {
-  value: ReviewType; onChange: (t: ReviewType) => void; available?: string[] | null;
+/** Display order of the scope form's step 2: the default (systematic) first, then the types that build on it. */
+const ORDER: ReviewType[] = ["slr", "meta_analysis", "scoping", "narrative"];
+
+/** Step 2 of the scope form: a native select, with the chosen type's description shown under it (the type changes the
+ * whole report, so its meaning stays visible instead of hiding in the menu). */
+export function ReviewTypePicker({ id, value, onChange, available }: {
+  id: string; value: ReviewType; onChange: (t: ReviewType) => void; available?: string[] | null;
 }) {
-  const id = useId();
-  const offered = REVIEW_TYPES.filter((t) => (available ?? []).includes(t));
-  const options = offered.length ? offered : REVIEW_TYPES; // unknown status or an empty list: the static four
+  const offered = ORDER.filter((t) => REVIEW_TYPES.includes(t) && (available ?? []).includes(t));
+  const options = offered.length ? offered : ORDER; // unknown status or an empty list: the static four
   return (
-    <fieldset className="grid gap-2 text-[0.92rem]">
-      <legend className="label mb-1.5">รูปแบบการทบทวน</legend>
-      {options.map((t) => {
-        const l = REVIEW_TYPE_LABEL[t];
-        const selected = value === t;
-        return (
-          // The row is clickable as a whole, but only the name is the <label>, so the description (and the English name) do not
-          // leak into label lookups, e.g. the topic field or the "Systematic review" study-type checkbox.
-          <div key={t} onClick={() => onChange(t)}
-            className={`flex min-h-11 cursor-pointer items-start has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary gap-2.5 rounded-sm border px-3 py-2.5 ${selected ? "border-primary" : "border-rule"}`}>
-            <input type="radio" id={`${id}-${t}`} name={`${id}-review-type`} value={t} checked={selected}
-              onChange={() => onChange(t)} onClick={(e) => e.stopPropagation()} aria-describedby={`${id}-${t}-d`}
-              className="mt-1 size-4 flex-none accent-primary" />
-            <span className="grid min-w-0 gap-0.5">
-              <span>
-                <label htmlFor={`${id}-${t}`} className="cursor-pointer font-display font-medium">{l.th}</label>
-                {" "}<span className="text-muted">({l.en})</span>
-              </span>
-              <span id={`${id}-${t}-d`} className="text-sm text-muted">{l.description}</span>
-            </span>
-          </div>
-        );
-      })}
-    </fieldset>
+    <div className="grid gap-1.5">
+      <select
+        id={id} value={value} onChange={(e) => onChange(e.target.value as ReviewType)} aria-describedby={`${id}-d`}
+        className="min-h-11 w-full cursor-pointer rounded-sm border border-rule bg-ground px-3 py-2 text-[1rem] text-ink outline-none focus:border-primary"
+      >
+        {options.map((t) => (
+          <option key={t} value={t}>{REVIEW_TYPE_LABEL[t].th} ({REVIEW_TYPE_LABEL[t].en})</option>
+        ))}
+      </select>
+      <p id={`${id}-d`} className="text-sm text-muted">{REVIEW_TYPE_LABEL[value].description}</p>
+    </div>
   );
 }

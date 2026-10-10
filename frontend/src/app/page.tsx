@@ -1,5 +1,6 @@
 import { AgentBand } from "@/components/landing/agent-band";
 import { Anatomy } from "@/components/landing/anatomy";
+import { Capabilities } from "@/components/landing/capabilities";
 import { RecentReviews } from "@/components/landing/recent-reviews";
 import { SampleBench } from "@/components/landing/sample-bench";
 import { Timeline } from "@/components/landing/timeline";
@@ -8,7 +9,7 @@ import { RequestSlip } from "@/components/landing/request-slip";
 
 export default async function Home(props: PageProps<"/">) {
   const { q } = await props.searchParams;
-  const initialTopic = (Array.isArray(q) ? q[0] : q)?.trim().slice(0, 300) || undefined;
+  const initialTopic = (Array.isArray(q) ? q[0] : q)?.trim().slice(0, 600) || undefined;
   return (
     <div className="grid gap-16">
       <section aria-labelledby="h-home" className="grid items-center gap-8 pt-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
@@ -17,8 +18,8 @@ export default async function Home(props: PageProps<"/">) {
             <span className="nw">อย่าเพิ่งเชื่อเรา</span> <span className="nw">แตะที่ตัวเลข</span><span className="nw">ดูก่อน</span>
           </h1>
           <p className="mt-5 max-w-[52ch] text-[1.05rem] text-muted">
-            ส่งคำถามเรื่องโรค ยา หรือสาร เอเจนต์จะอ่านงานวิจัยที่เกี่ยวข้อง เทียบผลที่ตรงกันและขัดกัน
-            และให้คุณตรวจทุกตัวเลขกับประโยคต้นฉบับได้ ฟรี ไม่ต้องสมัคร
+            กำหนดคำถาม รูปแบบการทบทวน และชนิดงานวิจัย เอเจนต์จะค้น 8 ฐานข้อมูลวิชาการ อ่านบทคัดย่อ
+            เทียบผลที่ตรงกันและขัดกัน แล้วให้คุณตรวจทุกตัวเลขกับประโยคต้นฉบับได้ ฟรี ไม่ต้องสมัคร
           </p>
           <a href="#request" className="mt-5 inline-flex min-h-11 items-center rounded-sm border border-rule px-4 font-display font-medium text-primary hover:border-primary lg:hidden">
             ส่งคำถามของคุณ ↓
@@ -27,6 +28,7 @@ export default async function Home(props: PageProps<"/">) {
         <RequestSlip initialTopic={initialTopic} />
       </section>
       <SampleBench />
+      <Capabilities />
       <Anatomy />
       <Timeline />
       <AgentBand api={await publicApiUrl()} />

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { exportUrl } from "@/lib/api";
+import { isNonQuantitative } from "@/lib/charts-data";
 import { DIRECTION_LABEL, LIT_COLUMN_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import { SOURCE_ABBR, SOURCE_LABEL } from "@/lib/citation-network";
 import { litColumns, litRows, type LitColumn, type LitRow } from "@/lib/lit-matrix";
@@ -166,6 +167,12 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
         </div>
       )}
       {rows.length > 0 && cols.includes("citedBy") && <CitedByNote lang={lang} />}
+      {allPapers.some((p) => isNonQuantitative(p.card_en ?? p.card)) && (
+        <p className="text-[0.82rem] text-muted" data-note="qualitative">
+          {L(lang, "งานเชิงคุณภาพและแบบผสมผสานสรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข และไม่นับในทิศทางผล แผนภาพ หรือค่ารวม",
+            "Qualitative and mixed-methods studies are summarised as themes from the abstract: no effect numbers, and not counted in directions, plots or pooled estimates")}
+        </p>
+      )}
     </section>
   );
 }

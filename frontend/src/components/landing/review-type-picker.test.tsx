@@ -7,44 +7,38 @@ import { ReviewTypePicker } from "./review-type-picker";
 
 function Harness({ available }: { available?: string[] }) {
   const [v, setV] = useState<ReviewType>("slr");
-  return (<><ReviewTypePicker value={v} onChange={setV} available={available} /><output data-testid="v">{v}</output></>);
+  return (
+    <>
+      <label htmlFor="t">รูปแบบการทบทวน</label>
+      <ReviewTypePicker id="t" value={v} onChange={setV} available={available} />
+      <output data-testid="v">{v}</output>
+    </>
+  );
 }
 
 describe("ReviewTypePicker", () => {
-  it("is a visible fieldset with the four types, SLR selected by default", () => {
+  it("is a select with the four types, systematic first and selected by default", () => {
     render(<Harness />);
-    expect(screen.getByRole("group", { name: "รูปแบบการทบทวน" })).toBeInTheDocument();
-    expect(screen.getAllByRole("radio")).toHaveLength(4);
-    expect(screen.getByRole("radio", { name: /การทบทวนวรรณกรรมอย่างเป็นระบบ/ })).toBeChecked();
+    const select = screen.getByLabelText("รูปแบบการทบทวน");
+    expect(select).toHaveValue("slr");
+    const options = screen.getAllByRole("option").map((o) => o.getAttribute("value"));
+    expect(options).toEqual(["slr", "meta_analysis", "scoping", "narrative"]);
+    expect(screen.getByRole("option", { name: "การวิเคราะห์อภิมาน (Meta-analysis)" })).toBeInTheDocument();
   });
-  it("renders each description", () => {
+  it("shows the chosen type's description under the select", async () => {
     render(<Harness />);
-    expect(screen.getByText(/ด้วยกรอบ PCC ไม่ประเมินคุณภาพ/)).toBeInTheDocument();
     expect(screen.getByText(/รายงานขั้นตอนแบบ PRISMA/)).toBeInTheDocument();
-    expect(screen.getByText(/เหมาะกับการทำความเข้าใจหัวข้ออย่างรวดเร็ว/)).toBeInTheDocument();
-    expect(screen.getByText("รวมผลเชิงตัวเลขจากงานวิจัยหลักที่วัดผลแบบเดียวกัน (ตั้งแต่ 3 ฉบับ) ด้วยวิธี random effects ตัวเลขรวมคำนวณโดยระบบ ไม่ใช่ผลจากงานใดงานหนึ่ง")).toBeInTheDocument();
-  });
-  it("offers the meta-analysis as the fourth option, with its English name", async () => {
-    render(<Harness />);
-    const radios = screen.getAllByRole("radio");
-    expect(radios[3]).toHaveAccessibleName("การวิเคราะห์อภิมาน");
-    expect(screen.getByText("(Meta-analysis)")).toBeInTheDocument();
-    await userEvent.click(radios[3]);
-    expect(screen.getByTestId("v")).toHaveTextContent("meta_analysis");
-  });
-  it("reports the chosen type", async () => {
-    render(<Harness />);
-    await userEvent.click(screen.getByRole("radio", { name: /การทบทวนขอบเขต/ }));
+    await userEvent.selectOptions(screen.getByLabelText("รูปแบบการทบทวน"), "scoping");
     expect(screen.getByTestId("v")).toHaveTextContent("scoping");
+    expect(screen.getByText(/ด้วยกรอบ PCC ไม่ประเมินคุณภาพ/)).toBeInTheDocument();
+    expect(screen.getByLabelText("รูปแบบการทบทวน")).toHaveAccessibleDescription(/ด้วยกรอบ PCC/);
   });
   it("limits the options to what the service offers, ignoring unknown values", () => {
     render(<Harness available={["slr", "scoping", "future"]} />);
-    expect(screen.getAllByRole("radio")).toHaveLength(2);
-    expect(screen.queryByRole("radio", { name: /แบบบรรยาย/ })).toBeNull();
-    expect(screen.queryByRole("radio", { name: /อภิมาน/ })).toBeNull();
+    expect(screen.getAllByRole("option")).toHaveLength(2);
   });
   it("falls back to the static four when the list is empty or missing", () => {
     render(<Harness available={[]} />);
-    expect(screen.getAllByRole("radio")).toHaveLength(4);
+    expect(screen.getAllByRole("option")).toHaveLength(4);
   });
 });

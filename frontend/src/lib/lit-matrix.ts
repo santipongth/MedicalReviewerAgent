@@ -1,7 +1,7 @@
 // Literature review matrix rows (Plan 14a). Text comes from the reader's language card, every number from the English
 // card (the one the verifier checked). Nothing here formats or computes a paper number: it only hands out the helpers'
 // output or a marker saying the value is blank, blanked by the verifier, or not reported.
-import { designKey, designLabel } from "./charts-data";
+import { designKey, designLabel, isNonQuantitative } from "./charts-data";
 import { asReported, ciLabel, effectLabel, isBlankedEffect, isBlankedSampleSize } from "./evidence";
 import type { Lang } from "./i18n";
 import { showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "./review-type";
@@ -74,7 +74,7 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
       ...base, failed: false,
       design: { label: designLabel(key, lang), pooled: key.startsWith("sr_ma_") },
       population: card.population, exposure: card.intervention_or_exposure, comparator: card.comparator?.trim() ?? "",
-      outcomes, findings: join(card.key_findings), direction: card.overall_direction, risk: card.risk_of_bias, n,
+      outcomes, findings: join(card.key_findings), direction: isNonQuantitative(card) ? null : card.overall_direction, risk: card.risk_of_bias, n,
       limitations: join(card.limitations),
     };
   });
