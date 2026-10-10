@@ -1,14 +1,16 @@
 "use client";
 
-import { createContext, Fragment, useContext, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useState, type ReactNode } from "react";
 import { designKey, designLabel, isNonQuantitative, questionDirection } from "@/lib/charts-data";
 import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
+import { matrixView } from "@/lib/report-view";
 import { isGraded, REVIEW_TYPE_LABEL, showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ComparisonCell, ComparisonRow, EvidenceCluster, Paper, PaperCard, QuestionBlock, Quality, Synthesis } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, UncertainFlag } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { CertaintyMark } from "./certainty";
+import { ScrollRegion } from "./scroll-region";
 import { L } from "./text";
 
 /** Thai reading text (DESIGN.md: 17px / 1.75) for running prose in the report: answer, findings, claims, gaps. */
@@ -164,7 +166,11 @@ export function ReadingFlag({ lang }: { lang: Lang }) {
 }
 
 /** Outcome × paper; every cell is a glyph button that opens its source in the rail. */
-export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcomeOf, pooledRefs, papers }: {
+/**
+ * Findings matrix (outcome × study): by default the outcomes two or more studies report, most studies first, with a
+ * "show all" toggle and a k column (Plan 20 Task 5); scrolls inside its own region with an edge cue.
+ */
+export function ComparisonMatrix({ rows, refs: allRefs, lang, onSelect, selected, outcomeOf, pooledRefs, papers }: {
   rows: ComparisonRow[]; refs: string[]; papers?: Paper[]; lang: Lang; onSelect: Select; selected?: { ref: string; outcome?: string };
   outcomeOf: (row: ComparisonRow, ref: string) => string | undefined;
   pooledRefs?: Set<string>; // systematic reviews / meta-analyses: may already include the primary studies
@@ -176,20 +182,43 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
     const p = byRef.get(c.ref);
     return isNonQuantitative(p ? p.card_en ?? p.card : { design_category: c.design_category });
   };
+  const [showAll, setShowAll] = useState(false);
+  const view = matrixView(rows, allRefs, showAll);
+  const refs = view.refs;
   let selectedLine = "";
   if (selected?.outcome !== undefined) {
-    for (const row of rows) {
+    for (const { row } of view.rows) {
       const cell = row.cells.find((c) => c.ref === selected.ref);
-      if (cell && outcomeOf(row, selected.ref) === selected.outcome) { selectedLine = `${selected.ref} · ${row.outcome}: ${cell.finding}`; break; }
+      if (cell && outcomeOf(row, selected.ref) === selected.outcome) { selectedLine = `${selected.ref} · ${row.outcome}: ${findingText(cell.finding, lang)}`; break; }
     }
   }
+  const caption = L(lang, "ผลแต่ละการศึกษา", "Findings by study");
   return (
-    <div>
-    <div className="overflow-x-auto rounded-sm border border-rule">
-      <table aria-label={L(lang, "ผลแต่ละการศึกษา", "Findings by study")} className="w-full border-collapse text-[0.88rem] sm:min-w-[620px]">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[0.85rem] text-muted">
+      <p data-matrix-filter>
+        {view.hidden > 0
+          ? L(lang, `แสดง ${view.rows.length} ผลลัพธ์ที่รายงานตั้งแต่ 2 การศึกษา (จาก ${view.total}) เรียงตามจำนวนการศึกษา`,
+            `Showing the ${view.rows.length} outcomes reported by 2 or more studies (of ${view.total}), most studies first`)
+          : L(lang, `${view.total} ผลลัพธ์ เรียงตามจำนวนการศึกษา`, `${view.total} outcomes, most studies first`)}
+      </p>
+      {(view.hidden > 0 || showAll) && (
+        <button type="button" onClick={() => setShowAll((s) => !s)} aria-pressed={showAll}
+          className="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">
+          {showAll ? L(lang, "แสดงเฉพาะที่รายงานตั้งแต่ 2 การศึกษา", "Show only outcomes with 2 or more studies")
+            : L(lang, `แสดงทั้งหมด (${view.total})`, `Show all (${view.total})`)}
+        </button>
+      )}
+    </div>
+    <ScrollRegion lang={lang} label={L(lang, `${caption} (เลื่อนดูได้)`, `${caption} (scrollable)`)}>
+      <table aria-label={caption} className="w-full border-collapse text-[0.88rem] sm:min-w-[620px]">
+        <caption className="sr-only">{caption}</caption>
         <thead>
           <tr className="bg-ground">
             <th scope="col" className="left-0 z-10 min-w-[9rem] bg-ground px-2.5 py-2 text-left label sm:sticky sm:min-w-[190px]">{L(lang, "ผลลัพธ์", "Outcome")}</th>
+            <th scope="col" className="px-2 py-2 text-center label" title={L(lang, "จำนวนการศึกษาที่รายงานผลลัพธ์นี้", "Number of studies reporting this outcome")}>
+              k<span className="sr-only"> {L(lang, "(จำนวนการศึกษา)", "(number of studies)")}</span>
+            </th>
             {refs.map((r) => {
               const paper = byRef.get(r);
               const surname = surnameOf(paper?.authors?.[0]);
@@ -211,7 +240,7 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {view.rows.map(({ row, k }) => {
             const themes = row.cells.filter((c) => isThemeCell(c)).length;
             return (
             <tr key={row.outcome} className="border-t border-rule">
@@ -219,6 +248,7 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
                 {row.outcome}
                 {themes > 0 && <span className="block text-[0.75rem] font-normal text-muted" data-theme-count>{themeFoundText(themes, lang)}</span>}
               </th>
+              <td className="px-2 text-center font-display tabular-nums" data-k>{k}</td>
               {refs.map((ref) => {
                 const cell = row.cells.find((c) => c.ref === ref);
                 if (!cell) return <td key={ref} className="h-9 text-center text-muted">–</td>;
@@ -228,8 +258,8 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
                 return (
                   <td key={ref} className="h-9 text-center">
                     <button type="button" onClick={() => onSelect(ref, outcome)} aria-pressed={isSel}
-                      aria-label={`${ref}: ${row.outcome} — ${theme ? THEME_CELL_LABEL[lang] : DIRECTION_LABEL[lang][cell.direction]}. ${cell.finding}`}
-                      title={cell.finding}
+                      aria-label={`${ref}: ${row.outcome} — ${theme ? THEME_CELL_LABEL[lang] : DIRECTION_LABEL[lang][cell.direction]}. ${findingText(cell.finding, lang)}`}
+                      title={findingText(cell.finding, lang)}
                       className={`inline-grid min-h-11 min-w-11 place-items-center rounded-sm border md:h-7 md:min-h-0 md:min-w-8 ${theme ? "md:px-0.5" : "md:w-8"} ${isSel ? "border-ink bg-rail" : "border-transparent hover:border-ink"}`}>
                       {theme ? <ThemeMark lang={lang} /> : <Glyph direction={cell.direction} lang={lang} />}
                     </button>
@@ -241,10 +271,19 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
           })}
         </tbody>
       </table>
-    </div>
-    <p aria-live="polite" className="mt-2 min-h-[1.4em] text-[0.85rem] break-words">{selectedLine}</p>
+    </ScrollRegion>
+    <p aria-live="polite" className="min-h-[1.4em] text-[0.85rem] break-words">{selectedLine}</p>
     </div>
   );
+}
+
+/** Scoping cells say only that the paper covers the aspect ("✓", Plan 20 Task 10): read as words, never a bare mark. */
+export function isCharted(finding: string | null | undefined): boolean {
+  return (finding ?? "").trim() === "✓";
+}
+
+function findingText(finding: string, lang: Lang): string {
+  return isCharted(finding) ? L(lang, "งานนี้ครอบคลุมประเด็นนี้", "this study covers this aspect") : finding;
 }
 
 const THEME_CELL_LABEL: Record<Lang, string> = {

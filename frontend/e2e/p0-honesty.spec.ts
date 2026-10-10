@@ -103,39 +103,31 @@ for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await mockApi(page, { [`GET /api/v1/reviews/${GLYPH_REVIEW.id}`]: (route) => json(route, 200, GLYPH_REVIEW) });
     await page.goto(`/r/${GLYPH_REVIEW.id}`);
-    const forest = page.getByRole("img", { name: /^Forest plot ของ \d+ ผลลัพธ์/ });
-    await expect(forest.locator("svg path").first()).toBeAttached();
+    // Plan 20 Task 5: the forest is a DOM panel per outcome; markers are the shared glyph paths as rendered
+    const forest = page.getByRole("group", { name: /^Forest plot: CRC incidence, HR/ });
+    await expect(forest.locator("[data-marker=null] path")).toBeAttached();
     await forest.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(800); // entry animation
     const geometry = await forest.evaluate((el) => {
-      const none = getComputedStyle(document.documentElement).getPropertyValue("--none").trim().toLowerCase();
-      const paths = [...el.querySelectorAll("svg path")] as SVGGraphicsElement[];
-      // the no-association marker: a filled path in the --none colour, much wider than tall
-      const bars = paths.filter((p) => (p.getAttribute("fill") ?? "").toLowerCase() === none).map((p) => {
-        const b = p.getBoundingClientRect();
-        // the symbol path is scaled by a transform: its stroke width in screen pixels is width x scale
-        const scale = Math.abs(p.getScreenCTM()?.a ?? 1);
-        return { w: b.width, h: b.height, halo: Number(p.getAttribute("stroke-width") ?? 0) * scale, stroke: p.getAttribute("stroke") };
-      }).filter((b) => b.w > b.h * 2 && b.h > 0);
-      // the CI lines are stroked paths in a direction colour; their stroke width is the line's thickness
-      const ciWidth = Math.max(...paths.filter((p) => p.getAttribute("fill") === "none" && (p.getAttribute("stroke") ?? "").toLowerCase() === none)
-        .map((p) => Number(p.getAttribute("stroke-width") ?? 0)), 0);
-      return { bars, ciWidth };
+      const svg = el.querySelector("[data-marker=null]") as SVGSVGElement;
+      const path = svg.querySelector("path")!;
+      const b = svg.getBoundingClientRect();
+      const ci = el.querySelector("[data-forest-row=P6] [data-ci]")!.getBoundingClientRect();
+      const cs = getComputedStyle(path);
+      return { w: b.width, h: b.height, ci: ci.height, halo: parseFloat(cs.strokeWidth), stroke: cs.stroke,
+        fill: cs.fill, none: getComputedStyle(document.documentElement).getPropertyValue("--none").trim() };
     });
-    expect(geometry.bars.length).toBeGreaterThan(0);
-    for (const b of geometry.bars) {
-      expect(b.h).toBeGreaterThanOrEqual(5); // well over the 2px CI stroke
-      expect(b.h).toBeGreaterThan(geometry.ciWidth * 2);
-      expect(b.halo).toBeGreaterThanOrEqual(2); // a surface outline that cuts the same-coloured line
-      expect(b.stroke).not.toBeNull();
-    }
-    const text = await forest.evaluate((el) => [...el.querySelectorAll("svg text")].map((t) => {
+    expect(geometry.w).toBeGreaterThan(geometry.h * 2); // a flat bar, not a dot
+    expect(geometry.h).toBeGreaterThanOrEqual(5); // well over the 2px CI line
+    expect(geometry.h).toBeGreaterThan(geometry.ci * 2);
+    expect(geometry.halo).toBeGreaterThanOrEqual(2); // a surface outline that cuts the same-coloured line
+    expect(geometry.stroke).not.toBe("none");
+    const ticks = await forest.locator(".tabular-nums").evaluateAll((els) => els.map((t) => {
       const cs = getComputedStyle(t);
-      return { family: cs.fontFamily, features: cs.fontFeatureSettings };
+      return { family: cs.fontFamily, features: cs.fontFeatureSettings, numeric: cs.fontVariantNumeric };
     }));
-    expect(text.length).toBeGreaterThan(0);
-    for (const t of text) {
-      expect(t.features).toContain("tnum");
+    expect(ticks.length).toBeGreaterThan(0);
+    for (const t of ticks) {
+      expect(`${t.features} ${t.numeric}`).toMatch(/tnum|tabular-nums/);
       expect(t.family).not.toMatch(/martian|monospace/i);
     }
     expect(await martianOutsideVerified(page)).toEqual([]);
@@ -156,11 +148,16 @@ function withDir(p: Paper, ref: string, dir: Direction, year: number): Paper {
   return { ...p, ref, year, card, card_en: card };
 }
 const PS = reviewFixture.result!.papers!;
+const GLYPH_ROW = { outcome: "CRC incidence", cells: ([["P1", "mixed"], ["P2", "positive"], ["P3", "positive"], ["P4", "negative"], ["P6", "null"], ["P7", "unclear"]] as const)
+  .map(([ref, direction]) => ({ ref, finding: "x", direction })) };
 const GLYPH_REVIEW: Review = {
   ...reviewFixture, id: "99999999-0000-1111-2222-333333333333",
   result: {
     ...reviewFixture.result!, review_type: "slr",
     papers: [withDir(PS[0], "P1", "mixed", 2019), PS[1], withDir(PS[2], "P3", "positive", 2021), PS[3],
       withDir(PS[2], "P6", "null", 2016), withDir(PS[2], "P7", "unclear", 2023)],
+    // the forest groups by the summary-of-findings rows (Plan 20 Task 5): one English row the cards' outcome matches
+    synthesis: { ...reviewFixture.result!.synthesis!, comparison: [GLYPH_ROW] },
+    synthesis_en: { ...reviewFixture.result!.synthesis_en!, comparison: [GLYPH_ROW] },
   },
 };

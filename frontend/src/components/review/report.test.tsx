@@ -12,7 +12,10 @@ vi.mock("../charts/echart", () => ({
   encodeHTML: (s: unknown) => String(s ?? ""),
 }));
 
+import { desktopViewport } from "@/test/viewport";
 import { Report } from "./report";
+
+desktopViewport(); // desktop layouts unless a test stubs a narrow viewport (Plan 20 Task 5: lit-matrix cards, concept outline)
 
 async function openFilters() {
   await userEvent.click(screen.getByRole("button", { name: /^กรอง \(แสดง/ }));
@@ -64,6 +67,8 @@ describe("Report", () => {
     render(<Report review={reviewFixture} />);
     await userEvent.click(screen.getByRole("button", { name: /^P2: / }));
     expect(rail().getAllByText("ไม่ยืนยัน").length).toBeGreaterThan(0);
+    // the one-study mortality row is behind "show all" (Plan 20 Task 5: k >= 2 by default)
+    await userEvent.click(screen.getByRole("button", { name: "แสดงทั้งหมด (2)" }));
     await userEvent.click(screen.getByRole("button", { name: /^P3: .*การเสียชีวิต/ }));
     expect(rail().getByText(/ไม่ได้รายงานตัวเลข/)).toBeInTheDocument();
   });
@@ -114,7 +119,7 @@ describe("Report", () => {
   it("shows the selected cell as a visible line below the matrix", async () => {
     render(<Report review={reviewFixture} />);
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
-    const live = table.parentElement!.parentElement!.querySelector("p[aria-live=polite]")!;
+    const live = table.closest("section")!.querySelector("p[aria-live=polite]")!;
     expect(live.textContent).toBe("");
     await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
     expect(live).toHaveTextContent(/^P3 · .*อุบัติการณ์.*:/);
@@ -327,13 +332,13 @@ describe("Report per review type", () => {
   it("scoping: the evidence map counts papers per concept and design, as plain counts", () => {
     render(<Report review={scopingReviewFixture} />);
     const section = screen.getByRole("heading", { name: "แผนที่หลักฐาน" }).closest("section")!;
-    expect(within(section).getByText("จำนวนงานที่พบ ไม่ใช่การประเมินว่าได้ผล")).toBeInTheDocument();
+    expect(within(section).getByText(/^จำนวนงานที่พบ ไม่ใช่การประเมินว่าได้ผล/)).toBeInTheDocument();
     const byConcept = within(section).getByRole("table", { name: /ตามประเด็น/ });
     const row = within(byConcept).getByRole("row", { name: /อุบัติการณ์มะเร็งลำไส้ใหญ่/ });
-    expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["2", "1", "1", "4"]);
+    expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["4", "2", "1", "1"]);
     expect(within(byConcept).getByRole("columnheader", { name: "รวม" })).toBeInTheDocument();
     const byYear = within(section).getByRole("table", { name: /ตามช่วงปี/ });
-    expect(within(within(byYear).getByRole("row", { name: /2015–2019/ })).getAllByRole("cell").map((c) => c.textContent)).toEqual(["1", "1", "–", "2"]);
+    expect(within(within(byYear).getByRole("row", { name: /2015–2019/ })).getAllByRole("cell").map((c) => c.textContent)).toEqual(["2", "1", "1", "–"]);
     expect(section.querySelector(".num-verified")).toBeNull();
     expect(section.querySelectorAll("td.tabular-nums.font-display").length).toBeGreaterThan(0);
   });
@@ -378,9 +383,10 @@ describe("Report per review type", () => {
     expect(screen.getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนแบบบรรยาย\)/)).toBeInTheDocument();
     expect(screen.queryByText("ต่ำมาก")).toBeNull();
     expect(navIds(container)).toEqual(["h-answer", "h-characteristics", "h-results", "h-rob", "h-claims", "h-landscape", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
-    expect(headingIds(container)).toEqual(["h-answer", "h-characteristics", "h-litmatrix", "h-results", "h-matrix", "h-charts", "h-rob", "h-claims",
+    // Plan 20 Task 5: no outcome has 3 effect sizes and the study map has < 5 points, so the charts block is left out
+    expect(headingIds(container)).toEqual(["h-answer", "h-characteristics", "h-litmatrix", "h-results", "h-matrix", "h-rob", "h-claims",
       "h-landscape", "h-map", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
-    expect(screen.getByTestId("charts")).toBeInTheDocument();
+    expect(screen.queryByTestId("charts")).toBeNull();
     expect(container.querySelector("[data-prisma-flow]")).toBeNull();
     expect(container.querySelector("#h-sof")).toBeNull();
   });

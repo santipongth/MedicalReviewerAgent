@@ -191,6 +191,10 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
 
   const full = questionText(result, lang);
   const root: MapNode = { id: "root", kind: "root", label: truncate(full, ROOT_MAX), text: full, children: nodes };
+  return finish(root, byDirection);
+}
+
+function finish(root: MapNode, byDirection: boolean): ConceptTree {
   const flat: MapNode[] = [];
   const walk = (n: MapNode) => { flat.push(n); n.children.forEach(walk); };
   walk(root);
@@ -198,4 +202,28 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
     root, nodes: flat, leaves: flat.filter((n) => n.kind === "group").length,
     drawnLeaves: flat.filter((n) => !n.children.length).length, byDirection,
   };
+}
+
+/** Studies under an outcome node: the distinct refs of its groups. */
+function outcomeK(n: MapNode): number {
+  return new Set(n.children.flatMap((g) => g.refs ?? [])).size;
+}
+
+/**
+ * The chart's tree (Plan 20 Task 5): only the `max` outcomes most studies report, most first; the outline keeps the full
+ * tree. `shown`/`total` count outcome nodes. A tree within the limit is returned as is.
+ */
+export function topOutcomes(tree: ConceptTree, max: number): { tree: ConceptTree; shown: number; total: number } {
+  const outcomes = tree.nodes.filter((n) => n.kind === "outcome");
+  if (outcomes.length <= max) return { tree, shown: outcomes.length, total: outcomes.length };
+  const keep = new Set([...outcomes].sort((a, b) => outcomeK(b) - outcomeK(a)).slice(0, max));
+  const rank = new Map([...keep].map((n, i) => [n, i]));
+  const prune = (n: MapNode): MapNode => {
+    if (!n.children.length) return n;
+    const kids = n.children.filter((c) => c.kind !== "outcome" || keep.has(c));
+    const outs = kids.filter((c) => c.kind === "outcome").sort((a, b) => rank.get(a)! - rank.get(b)!);
+    const ordered = kids.map((c) => (c.kind === "outcome" ? outs.shift()! : c));
+    return { ...n, children: ordered.map(prune) };
+  };
+  return { tree: finish(prune(tree.root), tree.byDirection), shown: keep.size, total: outcomes.length };
 }

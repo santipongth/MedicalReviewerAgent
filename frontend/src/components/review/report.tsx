@@ -15,6 +15,7 @@ import {
 } from "@/lib/review-type";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
+import { chartsContent } from "@/lib/charts-content";
 import { Charts } from "./charts";
 import { CitationNetworkSection } from "./citation-network";
 import { ConceptMapSection } from "./concept-map";
@@ -125,6 +126,9 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     [type, synthesis.key_findings, result.synthesis_en?.key_findings, ctx, graded, synthesis.evidence_strength]);
 
   const hasPapers = papers.length > 0;
+  // The results figures follow the filters (like the matrix): built from the visible papers.
+  const charts = useMemo(() => chartsContent(result, visible, rows, result.synthesis_en?.comparison ?? [], lang),
+    [result, visible, rows, lang]);
   // The risk-of-bias summary (Plan 20 Task 4) uses every paper, like the summary of findings; none for scoping.
   const hasRob = useMemo(() => showsSection(type, "rob") && showsRiskOfBias(type) && robSummary(papers, lang) != null, [type, papers, lang]);
   const answer = synthesis.answer?.trim() ?? "";
@@ -154,7 +158,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     evidence_map: { show: hasEvidenceMap, node: <EvidenceMapSection map={map} lang={lang} /> },
     lit_matrix: { show: hasLitMatrix, node: (
       <LitMatrixSection papers={visible} allPapers={papers} lang={lang} type={type} onSelect={select} reviewId={review.id} offline={offline}
-        citations={citations} />
+        citations={citations} question={result.question} />
     ) },
     findings: { show: hasMatrix, node: (
       <section aria-labelledby="h-matrix" className="grid grid-cols-[minmax(0,1fr)] gap-3">
@@ -165,10 +169,10 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
         <MatrixLegend lang={lang} themes={themePapers(papers).length > 0} />
       </section>
     ) },
-    forest: { show: hasPapers && showsSection(type, "forest"), node: (
+    forest: { show: hasPapers && showsSection(type, "forest") && !charts.empty, node: (
       <div className="grid gap-3">
         {filterStatus}
-        <Charts result={result} papers={visible} lang={lang} onSelect={select} />
+        <Charts content={charts} result={result} lang={lang} onSelect={select} />
       </div>
     ) },
     meta: { show: hasMeta, node: (

@@ -83,7 +83,8 @@ test("report: matrix cell opens the verbatim sentence; charts and filters work; 
   const rail = page.getByRole("complementary", { name: "ต้นฉบับ" });
   await expect(rail.locator("mark")).toHaveText("0.80");
   await expect(rail.getByText("HR 0.80", { exact: true })).toHaveClass(/num-verified/);
-  await expect(page.getByRole("img", { name: "Forest plot ของ 3 ผลลัพธ์" })).toBeVisible();
+  // this fixture's Thai rows match no card outcome exactly (no English rows), so the forest says it has nothing to plot
+  await expect(page.locator("section[aria-labelledby=h-charts]")).toContainText("ไม่มีขนาดผลที่ตรวจกับต้นฉบับผ่านสำหรับวาดกราฟ");
   await expect(page.locator("svg").first()).toBeVisible();
   await page.screenshot({ path: shots("report-light"), fullPage: true });
   await noSeriousA11y(page);
@@ -324,16 +325,29 @@ test("axe: report with the source drawer open at 375px", async ({ page }) => {
   await noSeriousA11y(page);
 });
 
-test("phone width: the literature matrix scrolls inside its own container, not the page", async ({ page }) => {
+test("phone width: the literature matrix is ruled cards, never a page-wide table", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, narrativeReviewFixture) });
+  await page.goto(`/r/${RID}`);
+  const cards = page.getByRole("list", { name: "ตารางสรุปงานวิจัย" });
+  await expect(cards).toBeVisible();
+  await expect(page.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).toHaveCount(0);
+  await noHorizontalScroll(page);
+  const box = (await cards.boundingBox())!;
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+});
+
+test("tablet and up: the literature matrix table scrolls inside its own region with a sticky first column", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 900 });
   await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, narrativeReviewFixture) });
   await page.goto(`/r/${RID}`);
   const table = page.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
   await expect(table).toBeVisible();
   await noHorizontalScroll(page);
   const scroller = await table.evaluate((t) => ({ box: t.parentElement!.clientWidth, content: t.parentElement!.scrollWidth }));
-  expect(scroller.box).toBeLessThanOrEqual(390);
   expect(scroller.content).toBeGreaterThan(scroller.box);
+  // the scroll cue: the region's right edge fades and the hint shows
+  await expect(table.locator("xpath=..")).toHaveAttribute("data-fade-end", "true");
   const first = await table.getByRole("rowheader").first().boundingBox();
   await table.evaluate((t) => { t.parentElement!.scrollLeft = 400; });
   const after = await table.getByRole("rowheader").first().boundingBox();
@@ -348,7 +362,8 @@ async function openReport(page: Page, fixture: typeof reviewFixture) {
   await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, fixture) });
   await page.goto(`/r/${RID}`);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
+  // a table from 1024px, ruled cards below it (Plan 20 Task 5)
+  await expect(page.getByRole(page.viewportSize()!.width >= 1024 ? "table" : "list", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
 }
 
 test("landing: the scope form sends the chosen review_type", async ({ page }) => {

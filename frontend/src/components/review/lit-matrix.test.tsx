@@ -2,7 +2,12 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { citationsFixture, narrativeReviewFixture, resultFixture, scopingReviewFixture } from "@/test/fixtures";
 import type { Paper } from "@/lib/types";
+import userEvent from "@testing-library/user-event";
+import { qualitativeReviewFixture } from "@/test/fixtures";
+import { desktopViewport, stubViewport } from "@/test/viewport";
 import { LitMatrixSection } from "./lit-matrix";
+
+desktopViewport();
 
 const papers = resultFixture.papers!;
 const show = (ps: Paper[], type: "narrative" | "slr" | "scoping" | "legacy" = "slr", extra: { offline?: boolean; onSelect?: (r: string) => void } = {}) =>
@@ -14,14 +19,15 @@ describe("LitMatrixSection", () => {
     show(papers);
     const table = screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
     expect(table.parentElement).toHaveClass("overflow-x-auto");
-    expect(table).toHaveClass("min-w-[1100px]");
+    expect(table.parentElement).toHaveAttribute("role", "region");
+    expect(table).toHaveClass("min-w-[880px]");
     expect(within(table).getAllByRole("columnheader").every((h) => h.getAttribute("scope") === "col")).toBe(true);
     expect(within(table).getAllByRole("rowheader")[0]).toHaveClass("sticky", "left-0");
   });
 
   it("SLR and narrative show direction and risk of bias; scoping drops both", () => {
     const { unmount } = show(narrativeReviewFixture.result!.papers!, "narrative");
-    expect(headers()).toEqual(expect.arrayContaining(["ทิศทาง", "ความเสี่ยงอคติ", "ผลลัพธ์", "n"]));
+    expect(headers()).toEqual(["งานวิจัย", "ปี", "รูปแบบการศึกษา", "ประชากร / ขนาดตัวอย่าง", "การรักษาหรือปัจจัย (เทียบกับ)", "ผลลัพธ์", "ทิศทาง", "ความเสี่ยงอคติ"]);
     unmount();
     show(scopingReviewFixture.result!.papers!, "scoping");
     expect(headers()).not.toContain("ทิศทาง");
@@ -63,11 +69,16 @@ describe("LitMatrixSection", () => {
     expect(row.querySelector(".num-verified")).toBeNull();
   });
 
-  it("the comparator column follows all papers, not the filtered ones", () => {
-    const none = papers.map((p) => ({ ...p, card: p.card && { ...p.card, comparator: null }, card_en: p.card_en && { ...p.card_en, comparator: null } }));
-    const some = [{ ...none[0], card: { ...none[0].card!, comparator: "placebo" }, card_en: { ...none[0].card_en!, comparator: "placebo" } }, ...none.slice(1)];
-    render(<LitMatrixSection papers={[some[1]]} allPapers={some} lang="th" type="slr" reviewId="r1" onSelect={() => {}} />);
-    expect(headers()).toContain("ตัวเปรียบเทียบ");
+  it("the comparator sits under the intervention, the sample size under the population", () => {
+    show(papers);
+    const row = screen.getByRole("row", { name: /P1/ });
+    expect(row).toHaveTextContent("เทียบกับ sulfonylurea");
+    expect(row).toHaveTextContent("n = 48,210");
+  });
+
+  it("the framework follows all papers, not the filtered ones", () => {
+    render(<LitMatrixSection papers={[papers[0]]} allPapers={papers} lang="th" type="slr" reviewId="r1" onSelect={() => {}} />);
+    expect(screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" }).closest("section")).toHaveAttribute("data-lit-framework", "pico");
   });
 
   it("without citation data there is no cited-by column", () => {
@@ -78,7 +89,7 @@ describe("LitMatrixSection", () => {
   it("the cited-by column shows counts in the display face with the source; null is a dash titled no data", () => {
     render(<LitMatrixSection papers={papers} lang="th" type="slr" reviewId="r1" onSelect={() => {}} citations={citationsFixture} />);
     const h = headers();
-    expect(h.indexOf("ถูกอ้างอิง")).toBe(h.indexOf("n") + 1);
+    expect(h.at(-1)).toBe("ถูกอ้างอิง");
     const p2row = screen.getByRole("row", { name: /P2/ });
     const p2 = within(p2row).getByText("1,187");
     expect(p2).toHaveClass("font-display", "tabular-nums");
@@ -114,5 +125,50 @@ describe("LitMatrixSection", () => {
     unmount();
     show(papers, "slr", { offline: true });
     expect(screen.queryByRole("link", { name: /CSV/ })).toBeNull();
+  });
+});
+
+describe("LitMatrixSection (Plan 20 Task 5): pages, clamped outcomes, cards, frameworks", () => {
+  const many = Array.from({ length: 32 }, (_, i) => ({ ...papers[2], ref: `P${i + 1}`, title: `Study ${i + 1}` }));
+
+  it("15 rows a page with a pager", async () => {
+    show(many);
+    const table = screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
+    expect(within(table).getAllByRole("rowheader")).toHaveLength(15);
+    const pager = screen.getByRole("navigation", { name: "หน้าของตารางงานวิจัย" });
+    expect(pager).toHaveTextContent("1–15 จาก 32 งาน · หน้า 1/3");
+    await userEvent.click(within(pager).getByRole("button", { name: /ถัดไป/ }));
+    await userEvent.click(within(pager).getByRole("button", { name: /ถัดไป/ }));
+    expect(within(table).getAllByRole("rowheader").map((h) => h.textContent)).toEqual([expect.stringMatching(/^P31/), expect.stringMatching(/^P32/)]);
+    expect(within(pager).getByRole("button", { name: /ถัดไป/ })).toBeDisabled();
+  });
+
+  it("a long outcomes cell is clamped to two lines; 'show all' opens the paper in the rail", async () => {
+    const card = { ...papers[2].card!, outcomes: [0, 1, 2].map((i) => ({ ...papers[2].card!.outcomes[0], outcome: `Outcome ${i}` })) };
+    const onSelect = vi.fn();
+    show([{ ...papers[2], card, card_en: card }], "slr", { onSelect });
+    const row = screen.getByRole("row", { name: /P3/ });
+    expect(row.querySelector("[data-clamped]")).toHaveClass("line-clamp-2");
+    await userEvent.click(within(row).getByRole("button", { name: "แสดงผลลัพธ์ทั้งหมดของ P3 (3)" }));
+    expect(onSelect).toHaveBeenCalledWith("P3");
+  });
+
+  it("below 1024px: one ruled card per study with the same fields, no table", () => {
+    stubViewport(false);
+    show(papers);
+    expect(screen.queryByRole("table", { name: "ตารางสรุปงานวิจัย" })).toBeNull();
+    const cards = screen.getByRole("list", { name: "ตารางสรุปงานวิจัย" });
+    const p3 = cards.querySelector("[data-lit-card=P3]")!;
+    expect(p3).toHaveTextContent("ประชากร / ขนาดตัวอย่าง");
+    expect([...p3.querySelectorAll(".num-verified")].map((e) => e.textContent)).toEqual(expect.arrayContaining(["1,234", "HR 0.80"]));
+  });
+
+  it("a qualitative review uses PICo columns, no direction, and names the context", () => {
+    const qual = qualitativeReviewFixture.result!.papers!.slice(0, 1);
+    render(<LitMatrixSection papers={qual} lang="en" type="narrative" reviewId="r1" onSelect={() => {}}
+      question={{ context: "primary care in Thailand" }} />);
+    const h = within(screen.getByRole("table", { name: "Study summary table" })).getAllByRole("columnheader").map((x) => x.textContent);
+    expect(h).toEqual(["Study", "Year", "Study design", "Population (P)", "Phenomenon of interest (I)", "Themes", "Risk of bias"]);
+    expect(screen.getByText(/Context \(Co\): primary care in Thailand/)).toBeInTheDocument();
   });
 });

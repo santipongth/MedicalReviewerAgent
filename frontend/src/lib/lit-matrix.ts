@@ -7,7 +7,7 @@ import type { Lang } from "./i18n";
 import { showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "./review-type";
 import { surnameOf } from "./author";
 import { citedByCell, type CitedByCell } from "./citation-network";
-import type { Citations, Direction, OutcomeResult, Paper, RiskOfBias } from "./types";
+import type { Citations, Direction, OutcomeResult, Paper, QuestionBlock, RiskOfBias } from "./types";
 
 export type NumberCell =
   | { kind: "value"; text: string }
@@ -39,6 +39,7 @@ export interface LitRow {
   ref: string;
   title: string;
   byline: string;
+  year: number | null;
   failed: boolean;
   design: { label: string; pooled: boolean } | null;
   population: string;
@@ -59,9 +60,17 @@ export interface LitRow {
   citedBy?: CitedByCell;
 }
 
-export type LitColumn =
-  | "ref" | "design" | "population" | "exposure" | "comparator" | "outcomes" | "findings"
-  | "direction" | "risk" | "n" | "citedBy" | "limitations";
+/**
+ * Compact columns (Plan 20 Task 5): the sample size sits with the population, the comparator with the intervention;
+ * key findings and limitations stay in the source rail and the CSV.
+ */
+export type LitColumn = "ref" | "year" | "design" | "population" | "exposure" | "outcomes" | "direction" | "risk" | "citedBy";
+
+/**
+ * Column wording for the question's framework: PICO, PCC (scoping), PICo (qualitative: Population, phenomenon of
+ * Interest, Context) and SPIDER-like (qualitative with mixed methods: Sample, Phenomenon of Interest, Design, Evaluation).
+ */
+export type LitFramework = "pico" | "pcc" | "pico_qual" | "spider";
 
 const join = (xs: string[] | undefined) => (xs ?? []).filter(Boolean).join("; ");
 
@@ -71,7 +80,7 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
     const en = p.card_en ?? p.card;
     const byline = [surnameOf(p.authors?.[0]), p.year].filter(Boolean).join(" ");
     const base = {
-      ref: p.ref, title: p.title, byline, uncertain: !!p.verification?.uncertain,
+      ref: p.ref, title: p.title, byline, year: p.year ?? null, uncertain: !!p.verification?.uncertain,
       designMismatch: !!p.verification?.design_mismatch, theme: isNonQuantitative(p.card_en ?? p.card),
       ...(citations ? { citedBy: citedByCell(citations, p.ref) } : {}),
     };
@@ -106,16 +115,71 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
   });
 }
 
-/** Columns for this review type; the comparator column goes when no row has one, "cited by" needs a count. */
-export function litColumns(type: ReviewTypeOrLegacy, rows: LitRow[]): LitColumn[] {
-  const cols: LitColumn[] = ["ref", "design", "population", "exposure"];
-  if (rows.some((r) => r.comparator)) cols.push("comparator");
-  cols.push("outcomes", "findings");
-  if (showsDirection(type)) cols.push("direction");
+/**
+ * Columns for this review type, in reading order: study, year, design, population/sample, intervention, outcomes, then
+ * direction (not for scoping or a themes review), risk of bias (not for scoping) and "cited by" (needs a count).
+ */
+export function litColumns(type: ReviewTypeOrLegacy, rows: LitRow[], framework: LitFramework = "pico"): LitColumn[] {
+  const cols: LitColumn[] = ["ref", "year", "design", "population", "exposure", "outcomes"];
+  if (showsDirection(type) && (framework === "pico" || framework === "pcc")) cols.push("direction");
   if (showsRiskOfBias(type)) cols.push("risk");
-  cols.push("n");
   // A column of dashes says nothing: it needs at least one count.
   if (rows.some((r) => r.citedBy?.count != null)) cols.push("citedBy");
-  cols.push("limitations");
   return cols;
+}
+
+/** The framework of the matrix: PCC for scoping, PICo / SPIDER-like when every read study reports themes, else PICO. */
+export function litFramework(type: ReviewTypeOrLegacy, papers: Paper[], question: QuestionBlock | null | undefined): LitFramework {
+  if (type === "scoping" || question?.framework === "PCC") return "pcc";
+  const designs = papers.map((p) => (p.card_en ?? p.card)?.design_category).filter((d): d is NonNullable<typeof d> => d != null);
+  if (!designs.length || !designs.every((d) => d === "qualitative" || d === "mixed_methods")) return "pico";
+  return designs.includes("mixed_methods") ? "spider" : "pico_qual";
+}
+
+const LABELS: Record<LitFramework, Partial<Record<LitColumn, [string, string]>>> = {
+  pico: {
+    population: ["ประชากร / ขนาดตัวอย่าง", "Population / sample"],
+    exposure: ["การรักษาหรือปัจจัย (เทียบกับ)", "Intervention (vs comparator)"],
+  },
+  pcc: {
+    population: ["ประชากร / ขนาดตัวอย่าง", "Population / sample"],
+    exposure: ["แนวคิด (Concept)", "Concept"],
+    outcomes: ["ประเด็นที่ทำแผนที่", "Aspects charted"],
+  },
+  pico_qual: {
+    population: ["ประชากร (P)", "Population (P)"],
+    exposure: ["ปรากฏการณ์ที่สนใจ (I)", "Phenomenon of interest (I)"],
+    outcomes: ["ประเด็นที่พบ", "Themes"],
+  },
+  spider: {
+    population: ["กลุ่มตัวอย่าง (S)", "Sample (S)"],
+    exposure: ["ปรากฏการณ์ที่สนใจ (PI)", "Phenomenon of interest (PI)"],
+    design: ["รูปแบบการวิจัย (D, R)", "Design (D, R)"],
+    outcomes: ["การประเมิน (E)", "Evaluation (E)"],
+  },
+};
+
+const BASE_LABEL: Record<LitColumn, [string, string]> = {
+  ref: ["งานวิจัย", "Study"], year: ["ปี", "Year"], design: ["รูปแบบการศึกษา", "Study design"],
+  population: ["ประชากร", "Population"], exposure: ["สิ่งที่ศึกษา", "Intervention"], outcomes: ["ผลลัพธ์", "Outcomes"],
+  direction: ["ทิศทาง", "Direction"], risk: ["ความเสี่ยงอคติ", "Risk of bias"], citedBy: ["ถูกอ้างอิง", "Cited by"],
+};
+
+export function litColumnLabel(col: LitColumn, framework: LitFramework, lang: Lang): string {
+  const [th, en] = LABELS[framework][col] ?? BASE_LABEL[col];
+  return lang === "th" ? th : en;
+}
+
+/** The outcomes cell is clamped to two lines (with "show all" opening the paper in the rail) when it is long. */
+export function outcomesClamped(row: LitRow): boolean {
+  return row.outcomes.length > 2 || row.outcomes.reduce((n, o) => n + o.name.length, 0) > 140;
+}
+
+/** One page of `items` (`size` per page), the page clamped to the range; pages is at least 1. */
+export function paginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; pages: number; start: number; end: number } {
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const p = Math.min(Math.max(0, page), pages - 1);
+  const start = p * size;
+  const end = Math.min(items.length, start + size);
+  return { items: items.slice(start, end), page: p, pages, start, end };
 }

@@ -239,14 +239,50 @@ h4 {
 .nav-fade {
   scrollbar-width: thin;
 }
-.nav-fade[data-fade-end] {
+.nav-fade[data-fade-end],
+.edge-fade[data-fade-end] {
   mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
 }
-.nav-fade[data-fade-start] {
+.nav-fade[data-fade-start],
+.edge-fade[data-fade-start] {
   mask-image: linear-gradient(to right, transparent, #000 2.5rem);
 }
-.nav-fade[data-fade-start][data-fade-end] {
+.nav-fade[data-fade-start][data-fade-end],
+.edge-fade[data-fade-start][data-fade-end] {
   mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+}
+/* A scroll region's mask would also fade its focus ring: drop the mask while it has keyboard focus. */
+.edge-fade:focus-visible {
+  mask-image: none;
+}
+
+/* Plan 20 Task 5 forest panels: one grid per row (label · plot · numbers), the same columns in every row so the
+   numeric column lines up; in a narrow panel the numbers move under the label and the plot keeps the width. */
+.forest {
+  container: forest / inline-size;
+  font-feature-settings: "tnum";
+}
+.forest-row {
+  display: grid;
+  grid-template-columns: minmax(0, 30%) minmax(0, 1fr) 10.5rem;
+  grid-template-areas: "label plot num";
+}
+@container forest (max-width: 34rem) {
+  .forest-row {
+    grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+    grid-template-areas: "label plot" "num plot";
+  }
+  .forest-row > .forest-num {
+    padding-left: 0;
+    padding-top: 0;
+  }
+  .forest-tick-minor {
+    display: none;
+  }
+  /* the favours labels split the axis in halves (not at the null line) so neither is squeezed */
+  .forest-favours > span {
+    width: 50% !important;
+  }
 }
 
 .label {

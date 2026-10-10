@@ -8,6 +8,7 @@ import { CertaintyMark } from "./certainty";
 import { NoEffectText, PooledValue, StudyEffectValue } from "./key-findings";
 import { themeFoundText, type Select } from "./report-parts";
 import { SECTION_H2 } from "./report-nav";
+import { ScrollRegion } from "./scroll-region";
 import { L } from "./text";
 
 const TH = "px-3 py-2 text-left align-bottom label";
@@ -134,7 +135,8 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
         {reviewLevel && <>{" "}<b className="font-semibold" data-review-level>{L(lang, "ระดับเดียวกันทุกผลลัพธ์ (ระดับของทั้งรีวิว ไม่ได้ประเมินแยกตามผลลัพธ์)",
           "The same level for every outcome (the review-level certainty, not graded per outcome).")}</b></>}
       </p>
-      <div role="region" aria-label={caption} tabIndex={0} className="overflow-x-auto rounded-sm md:border md:border-rule">
+      {/* Fits without scrolling since Task 3; the region keeps the scroll cue in case a long word ever widens it. */}
+      <ScrollRegion label={caption} lang={lang} bordered={false} className="rounded-sm md:border md:border-rule">
         <table className="w-full border-collapse text-[0.9rem] max-md:block" aria-describedby="sof-note">
           <caption className="sr-only">
             {caption} {L(lang, "(ระดับความแข็งแรงของหลักฐานประเมินโดยโมเดลภาษา ไม่ใช่ GRADE โดยผู้เชี่ยวชาญ)", "(certainty judged by a language model, not an expert GRADE assessment)")}
@@ -185,7 +187,7 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
             </tbody>
           ))}
         </table>
-      </div>
+      </ScrollRegion>
     </section>
   );
 }

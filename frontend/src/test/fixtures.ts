@@ -587,6 +587,71 @@ export const narrativeP20ReviewFixture: Review = {
   },
 };
 
+// --- Plan 20 Task 5: a diagnostic-accuracy SLR (sensitivity / specificity / AUC as each paper reported them) -------------
+
+function dtaPaper(ref: string, year: number, author: string, n: number | null, sens: [number, number, number] | null,
+  spec: [number, number, number] | null, auc: [number, number, number] | null, percent: boolean, extra: Partial<Paper> = {}): Paper {
+  const f = (v: number) => (percent ? v.toFixed(1) : v.toFixed(2));
+  const u = percent ? "%" : "";
+  const parts = [
+    sens && `sensitivity was ${f(sens[0])}${u} (95% CI ${f(sens[1])}-${f(sens[2])})`,
+    spec && `specificity was ${f(spec[0])}${u} (95% CI ${f(spec[1])}-${f(spec[2])})`,
+    auc && `the AUC was ${auc[0].toFixed(2)} (95% CI ${auc[1].toFixed(2)}-${auc[2].toFixed(2)})`,
+  ].filter(Boolean);
+  const quote = `For AI-assisted reading, ${parts.join(", ")}.`;
+  const o = (outcome: string, v: [number, number, number] | null): PaperCard["outcomes"] => v ? [{
+    outcome, result: `${outcome} of AI-assisted reading`, evidence_quote: quote, effect_size: null, effect_measure: "other",
+    effect_value: v[0], ci_lower: v[1], ci_upper: v[2], p_value: null, direction: "positive",
+  }] : [];
+  const c = card({
+    study_design: "diagnostic accuracy study", design_category: "cross_sectional", population: "adults with suspected hip fracture",
+    sample_size: n, sample_size_quote: n ? `We included ${n.toLocaleString("en-US")} radiographs.` : null,
+    intervention_or_exposure: "AI-assisted radiograph reading", comparator: "radiologists alone",
+    outcomes: [...o("Sensitivity", sens), ...o("Specificity", spec), ...o("AUC", auc)], risk_of_bias: "moderate",
+  });
+  return { ref, title: `AI-assisted detection of hip fractures: study ${ref.slice(1)}`, authors: [author], year, relevance: 90,
+    card: c, card_en: c, verification: verification(), ...extra };
+}
+
+const dtaPapers: Paper[] = [
+  dtaPaper("P1", 2023, "Chen L", 512, [97.4, 94.0, 98.9], [86.5, 82.1, 90.1], [0.93, 0.9, 0.96], true),
+  dtaPaper("P2", 2022, "Okafor N", 1204, [0.79, 0.71, 0.88], [0.87, 0.82, 0.91], null, false),
+  dtaPaper("P3", 2024, "Sato K", 388, [0.91, 0.86, 0.95], [0.78, 0.72, 0.83], [0.89, 0.85, 0.93], false,
+    { verification: verification({ numbers_verified: 2, numbers_total: 3, unverified: [{ field: "effect", outcome: "Specificity" }] }) }),
+  dtaPaper("P4", 2021, "Müller F", 2310, [88.0, 84.2, 91.1], [92.3, 90.0, 94.2], null, true),
+];
+const dtaRow = (outcome: string, refs: string[]): { outcome: string; cells: Cell[] } => ({
+  outcome, cells: refs.map((ref) => ({ ref, finding: `${outcome} of AI-assisted reading`, direction: "positive" as const })),
+});
+
+/** SLR of a diagnostic-accuracy question: sensitivity and specificity panels plus the DTA table (P3's specificity blanked). */
+export const dtaReviewFixture: Review = {
+  ...slrP20ReviewFixture,
+  id: "20200000-0000-4000-8000-000000000006",
+  topic: "AI กับการวินิจฉัยกระดูกสะโพกหัก",
+  result: {
+    ...slrP20ReviewFixture.result!,
+    topic: "AI กับการวินิจฉัยกระดูกสะโพกหัก",
+    question: { ...resultFixture.question!, refined_question: "AI ช่วยเพิ่มความแม่นยำในการวินิจฉัยกระดูกสะโพกหักจากภาพรังสีหรือไม่",
+      pico: { population: "adults with suspected hip fracture", intervention_or_exposure: "AI-assisted reading", comparator: "radiologists alone",
+        outcomes: ["sensitivity", "specificity"], study_designs: ["diagnostic accuracy"], timeframe: null } },
+    synthesis: {
+      ...slrP20ReviewFixture.result!.synthesis!,
+      answer: "AI ช่วยให้ความไวในการวินิจฉัยกระดูกสะโพกหักสูง ความเชื่อมั่นปานกลาง",
+      comparison: [dtaRow("ความไว", ["P1", "P2", "P3", "P4"]), dtaRow("ความจำเพาะ", ["P1", "P2", "P3", "P4"])],
+      key_findings: [{ outcome: "ความไว", statement: "งานทั้งสี่รายงานความไวสูงเมื่อใช้ AI ช่วยอ่าน", refs: ["P1", "P2", "P3", "P4"], k: 4 }],
+      consensus: [], conflicts: [],
+    },
+    synthesis_en: {
+      ...slrP20ReviewFixture.result!.synthesis_en!,
+      comparison: [dtaRow("Sensitivity", ["P1", "P2", "P3", "P4"]), dtaRow("Specificity", ["P1", "P2", "P3", "P4"])],
+      key_findings: [{ outcome: "Sensitivity", statement: "All four studies reported high sensitivity with AI assistance.", refs: ["P1", "P2", "P3", "P4"], k: 4 }],
+    },
+    papers: dtaPapers,
+    citations: null,
+  },
+};
+
 /** Every Plan 20 fixture, for e2e mocks and per-type screenshots. */
 export const P20_FIXTURES: Record<"slr" | "meta" | "metaNoPool" | "scoping" | "narrative" | "legacy", Review> = {
   slr: slrP20ReviewFixture, meta: metaP20ReviewFixture, metaNoPool: metaNoPoolP20ReviewFixture, scoping: scopingP20ReviewFixture,

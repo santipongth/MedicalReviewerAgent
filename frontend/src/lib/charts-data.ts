@@ -1,5 +1,6 @@
 // Chart data built only from verified values. Nothing here estimates, converts or recomputes a number from a paper.
-import { asReported, ciLabel, effectLabel, isBlankedEffect, isVerifiedEffect } from "./evidence";
+import { surnameOf } from "./author";
+import { asReported, ciLabel, effectLabel, isBlankedEffect, isBlankedSampleSize, isVerifiedEffect } from "./evidence";
 import { DESIGN_LABEL, type Lang } from "./i18n";
 import type { DesignCategory, Direction, ExclusionReason, Paper, PaperCard, RiskOfBias } from "./types";
 
@@ -87,6 +88,209 @@ export function hasPooledPapers(papers: Paper[]): boolean {
 
 export type Family = "ratio" | "difference" | "correlation";
 const FAMILY: Record<string, Family> = { HR: "ratio", OR: "ratio", RR: "ratio", MD: "difference", SMD: "difference", RD: "difference", r: "correlation" };
+
+/** The scale family of an effect measure (HR/OR/RR ratio, MD/SMD/RD difference, r correlation), or null. */
+export function measureFamily(measure: string | null | undefined): Family | null {
+  const m = (measure ?? "").trim();
+  if (m === "r") return "correlation";
+  return FAMILY[m.toUpperCase()] ?? null;
+}
+
+/** "P3 · Lindqvist 2021": the ref, then the first author's surname and the year when known. */
+export function studyLabel(p: Pick<Paper, "ref" | "authors" | "year">): string {
+  const byline = [surnameOf(p.authors?.[0]), p.year].filter(Boolean).join(" ");
+  return byline ? `${p.ref} · ${byline}` : p.ref;
+}
+
+// --- Axes (Plan 20 Task 5) --------------------------------------------------------------------------------------------
+// Positions and tick labels only: an axis never shows a paper's number, so it is set in the display face.
+
+export type AxisKind = "ratio" | "difference" | "proportion";
+
+export interface Axis {
+  kind: AxisKind;
+  min: number;
+  max: number;
+  ticks: number[];
+  /** 1 for ratios, 0 for differences, none for proportions (sensitivity and specificity have no "no effect" line). */
+  nullValue: number | null;
+}
+
+/** Log ticks a reader knows (0.25 · 0.5 · 1 · 2 · 4 around 1). */
+const LOG_TICKS = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 4, 10, 20, 50, 100, 200, 500, 1000];
+const MAX_TICKS = 7;
+
+const round = (v: number) => Number(v.toPrecision(12));
+
+/** A 1-2-5 step at least `raw`. */
+function niceStep(raw: number): number {
+  const exp = 10 ** Math.floor(Math.log10(raw));
+  const f = raw / exp;
+  return round((f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp);
+}
+
+/**
+ * Axis bounds and ticks for `values` (estimates and interval ends). Ratios: a log axis whose ends are ticks of LOG_TICKS,
+ * thinned outward from 1 to at most 7; differences: 1-2-5 steps; both keep the null value inside the frame, never on
+ * its edge. Proportions: a fixed 0–100% axis.
+ */
+export function niceAxis(values: number[], kind: AxisKind): Axis {
+  if (kind === "proportion") return { kind, min: 0, max: 100, ticks: [0, 25, 50, 75, 100], nullValue: null };
+  const nullValue = kind === "ratio" ? 1 : 0;
+  const vs = values.filter((v) => Number.isFinite(v) && (kind !== "ratio" || v > 0)).concat(nullValue);
+  const lo = Math.min(...vs);
+  const hi = Math.max(...vs);
+  if (kind === "ratio") {
+    let a = [...LOG_TICKS].reverse().find((t) => t <= lo) ?? lo;
+    let b = LOG_TICKS.find((t) => t >= hi) ?? hi;
+    const step = (t: number, dir: 1 | -1) => LOG_TICKS[LOG_TICKS.indexOf(t) + dir] ?? (dir > 0 ? t * 2 : t / 2);
+    if (a === nullValue) a = step(a, -1);
+    if (b === nullValue) b = step(b, 1);
+    let ticks = LOG_TICKS.filter((t) => t >= a && t <= b);
+    if (ticks.length > MAX_TICKS) {
+      const one = ticks.indexOf(1);
+      ticks = ticks.filter((_, i) => (i - one) % 2 === 0);
+    }
+    return { kind, min: a, max: b, ticks, nullValue };
+  }
+  const step = niceStep(Math.max(hi - lo, 1e-9) / 4);
+  let a = round(Math.floor(lo / step) * step);
+  let b = round(Math.ceil(hi / step) * step);
+  if (a === nullValue) a = round(a - step);
+  if (b === nullValue) b = round(b + step);
+  const ticks: number[] = [];
+  for (let t = a; t <= b + step / 2; t = round(t + step)) ticks.push(t);
+  return { kind, min: a, max: b, ticks, nullValue };
+}
+
+/** Where `v` sits across the axis, 0 (left) to 1 (right), clamped; log for ratios. */
+export function axisFraction(v: number, axis: Axis): number {
+  const f = axis.kind === "ratio"
+    ? (Math.log(v) - Math.log(axis.min)) / (Math.log(axis.max) - Math.log(axis.min))
+    : (v - axis.min) / (axis.max - axis.min);
+  return Number.isFinite(f) ? Math.min(1, Math.max(0, f)) : 0;
+}
+
+/** A tick label: no trailing zeros, a true minus sign. */
+export function tickText(v: number): string {
+  const s = String(Number(v.toPrecision(3)));
+  return s.startsWith("-") ? `−${s.slice(1)}` : s;
+}
+
+/**
+ * Which side of the null line favours the intervention, read from the results' own directions: "left" when every
+ * supporting result sits left of the null and every harmful one right (or the mirror for "right"); null when they
+ * disagree or none has a direction (the chart then says only lower / higher).
+ */
+export function favoursSide(points: { value: number; direction: Direction }[], nullValue: number): "left" | "right" | null {
+  let left = 0;
+  let right = 0;
+  for (const p of points) {
+    if (p.value === nullValue) continue;
+    const below = p.value < nullValue;
+    if (p.direction === "positive") { if (below) left += 1; else right += 1; }
+    else if (p.direction === "negative") { if (below) right += 1; else left += 1; }
+  }
+  if (left && !right) return "left";
+  if (right && !left) return "right";
+  return null;
+}
+
+/** A review about themes: qualitative or mixed-methods studies are at least half of the papers read. */
+export function themesReview(papers: Paper[]): boolean {
+  let themes = 0;
+  let quant = 0;
+  for (const p of papers) {
+    const card = p.card_en ?? p.card;
+    if (!card) continue;
+    if (isNonQuantitative(card)) themes += 1;
+    else quant += 1;
+  }
+  return themes > 0 && themes >= quant;
+}
+
+// --- Diagnostic accuracy (Plan 20 Task 5) ------------------------------------------------------------------------------
+// Sensitivity, specificity and AUC as each paper reported them (verified, or a gap when blanked). Nothing is derived:
+// no PPV/NPV, no pooled sensitivity, no conversion of a printed number.
+
+export type DtaMetric = "sens" | "spec" | "auc";
+
+const DTA_PATTERNS: Record<DtaMetric, RegExp> = {
+  sens: /\bsensitivity\b|\brecall\b|\btrue[- ]positive rate\b/i,
+  spec: /\bspecificity\b|\btrue[- ]negative rate\b/i,
+  auc: /\bAUC\b|\bAUROC\b|\barea under\b|\bc-statistic\b/i,
+};
+
+/** The diagnostic-accuracy metric an outcome name reports, or null (none, a combined name, a sensitivity analysis). */
+export function dtaMetric(outcome: string): DtaMetric | null {
+  if (/sensitivity analys/i.test(outcome)) return null;
+  const hits = (Object.keys(DTA_PATTERNS) as DtaMetric[]).filter((m) => DTA_PATTERNS[m].test(outcome));
+  return hits.length === 1 ? hits[0] : null;
+}
+
+export type DtaValue =
+  | {
+    kind: "verified"; outcomeKey: string; outcome: string;
+    /** as the paper wrote it ("97.4", "0.79"); `percent` = written as a percentage (the "%" is a unit, set apart) */
+    text: string; percent: boolean; ci: string | null;
+    /** plot positions on a 0–100 axis (a position, never shown as a number) */
+    pos: number; lo: number | null; hi: number | null;
+  }
+  | { kind: "blanked"; outcomeKey: string; outcome: string };
+
+export interface DtaStudy {
+  ref: string;
+  label: string;
+  title: string;
+  review: boolean;
+  sens: DtaValue[];
+  spec: DtaValue[];
+  auc: DtaValue[];
+  n: { kind: "value"; text: string } | { kind: "blanked" } | { kind: "none" };
+}
+
+export interface DtaData {
+  studies: DtaStudy[];
+  has: Record<DtaMetric, boolean>;
+}
+
+/** Studies that report sensitivity, specificity or AUC (qualitative cards and other comparisons never do), or null. */
+export function dtaData(papers: Paper[], lang: Lang): DtaData | null {
+  const studies: DtaStudy[] = [];
+  for (const p of papers) {
+    const en = p.card_en ?? p.card;
+    const shown = (lang === "en" ? p.card_en : p.card) ?? en;
+    if (!en || !shown || isNonQuantitative(en)) continue;
+    const values: Record<DtaMetric, DtaValue[]> = { sens: [], spec: [], auc: [] };
+    en.outcomes.forEach((o, i) => {
+      const metric = dtaMetric(o.outcome);
+      if (!metric || o.matches_question === false) return;
+      const outcome = shown.outcomes[i]?.outcome ?? o.outcome;
+      if (isBlankedEffect(p, o.outcome)) {
+        values[metric].push({ kind: "blanked", outcomeKey: o.outcome, outcome });
+        return;
+      }
+      if (!isVerifiedEffect(p, o)) return;
+      const v = o.effect_value as number;
+      if (v < 0 || v > 100) return;
+      const percent = v > 1;
+      const at = (x: number | null | undefined) => (x == null ? null : percent ? x : x * 100);
+      values[metric].push({
+        kind: "verified", outcomeKey: o.outcome, outcome, text: asReported(v, o.evidence_quote), percent, ci: ciLabel(o),
+        pos: at(v) as number, lo: at(o.ci_lower), hi: at(o.ci_upper),
+      });
+    });
+    if (!values.sens.length && !values.spec.length && !values.auc.length) continue;
+    const sample = en.sample_size;
+    studies.push({
+      ref: p.ref, label: studyLabel(p), title: p.title, review: isPooled(p), ...values,
+      n: isBlankedSampleSize(p) ? { kind: "blanked" } : sample != null ? { kind: "value", text: asReported(sample, en.sample_size_quote) } : { kind: "none" },
+    });
+  }
+  if (!studies.length) return null;
+  const has = (m: DtaMetric) => studies.some((s) => s[m].length > 0);
+  return { studies, has: { sens: has("sens"), spec: has("spec"), auc: has("auc") } };
+}
 
 export interface ForestRow {
   ref: string;

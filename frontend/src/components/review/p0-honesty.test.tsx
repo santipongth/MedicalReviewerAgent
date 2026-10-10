@@ -7,6 +7,9 @@ import { conceptTree } from "@/lib/concept-map";
 import { DIRECTION_LABEL } from "@/lib/i18n";
 import { isMetaNotPooled, metaPoolGap } from "@/lib/review-type";
 import { metaNoPoolReviewFixture, metaReviewFixture, qualitativeReviewFixture, reviewFixture } from "@/test/fixtures";
+import { desktopViewport } from "@/test/viewport";
+
+desktopViewport();
 
 vi.mock("./charts", () => ({ Charts: () => <section aria-labelledby="h-charts"><h2 id="h-charts">แผนภาพหลักฐาน</h2></section> }));
 vi.mock("../charts/echart", () => ({
@@ -24,7 +27,7 @@ const litRow = (table: HTMLElement, ref: string) =>
 const glyphsIn = (el: HTMLElement) => within(el).queryAllByRole("img").filter((g) => directionNames.includes(g.getAttribute("aria-label") ?? ""));
 
 describe("(a) qualitative and mixed-methods studies never show a direction", () => {
-  it("findings matrix: a theme cell is 'found', the row counts 'พบใน k การศึกษา', quantitative cells keep their glyph", () => {
+  it("findings matrix: a theme cell is 'found', the row counts 'พบใน k การศึกษา', quantitative cells keep their glyph", async () => {
     render(<Report review={qualitativeReviewFixture} />);
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
     for (const ref of ["P1", "P2"]) {
@@ -36,6 +39,8 @@ describe("(a) qualitative and mixed-methods studies never show a direction", () 
     }
     const themeRow = within(table).getByRole("rowheader", { name: /ความกลัวการฉีดยา/ });
     expect(themeRow).toHaveTextContent("พบใน 2 การศึกษา");
+    // P3's outcome is reported by one study: behind "show all" (Plan 20 Task 5)
+    await userEvent.click(screen.getByRole("button", { name: "แสดงทั้งหมด (2)" }));
     const p3 = within(table).getByRole("button", { name: /^P3: / });
     expect(p3.querySelector(".g-sup")).not.toBeNull();
     // the legend explains the theme mark

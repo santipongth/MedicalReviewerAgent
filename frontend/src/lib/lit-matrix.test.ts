@@ -65,15 +65,14 @@ describe("litColumns", () => {
     expect(cols).not.toContain("direction");
     expect(cols).not.toContain("risk");
   });
-  it("drops the comparator column when no row has one", () => {
-    const none = rows.map((r) => ({ ...r, comparator: "" }));
-    expect(litColumns("slr", none)).not.toContain("comparator");
-    expect(litColumns("slr", rows)).toContain("comparator");
+  it("Plan 20 Task 5: the comparator and n share the intervention and population cells (no columns of their own)", () => {
+    expect(litColumns("slr", rows)).not.toContain("comparator" as never);
+    expect(litColumns("slr", rows)).not.toContain("n" as never);
   });
-  it("adds the cited-by column after n only when the review has citation data", () => {
+  it("adds the cited-by column last only when the review has citation data", () => {
     expect(litColumns("slr", rows)).not.toContain("citedBy");
     const cols = litColumns("slr", litRows(papers, "th", citationsFixture));
-    expect(cols.indexOf("citedBy")).toBe(cols.indexOf("n") + 1);
+    expect(cols.at(-1)).toBe("citedBy");
   });
   it("drops the cited-by column when no paper has a count (a column of dashes says nothing)", () => {
     const none = Object.fromEntries(papers.map((p) => [p.ref, null]));

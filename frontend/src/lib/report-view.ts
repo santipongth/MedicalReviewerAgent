@@ -2,10 +2,10 @@
 // Pure, no React. Nothing here computes a number shown as if from a paper: effects are the cards' verified values
 // (spelled as the paper wrote them), pooled values are the backend's computed values (formatted like meta-view.ts),
 // and the only arithmetic is counting studies and adding up verified sample sizes (a computed number: ComputedNumber).
-import { designKey, designLabel, isNonQuantitative, isPooled } from "./charts-data";
+import { designKey, designLabel, isNonQuantitative, isPooled, measureFamily, studyLabel, type Family } from "./charts-data";
 import { asReported, ciLabel, effectLabel, isBlankedEffect, isBlankedSampleSize } from "./evidence";
 import { DIRECTION_ORDER, type Lang } from "./i18n";
-import { DESIGN_GROUP_LABEL, fixed } from "./meta-view";
+import { DESIGN_GROUP_LABEL, fixed, pText } from "./meta-view";
 import type {
   ComparisonRow, Direction, EvidenceStrength, KeyFinding, MetaAnalysis, OutcomeResult, Paper, Pool, ReviewMethods, ReviewResult,
 } from "./types";
@@ -100,10 +100,14 @@ export interface PooledText {
 
 const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** The pools of one outcome (by the English row name or the shown one): the one matching rule for every view. */
+function matchPools(meta: MetaAnalysis | null | undefined, shown: string, en: string | null | undefined): Pool[] {
+  return (meta?.pools ?? []).filter((p: Pool) => same(p.outcome, en) || same(p.outcome, shown) || same(p.outcome_display, shown));
+}
+
 /** The pools of one outcome, matched by the English row name or the shown one. */
 export function poolsFor(meta: MetaAnalysis | null | undefined, shown: string, en: string | null | undefined, lang: Lang): PooledText[] {
-  return (meta?.pools ?? [])
-    .filter((p: Pool) => same(p.outcome, en) || same(p.outcome, shown) || same(p.outcome_display, shown))
+  return matchPools(meta, shown, en)
     .map((p, i) => ({
       key: `${p.outcome}|${p.design_group}|${p.measure}|${i}`, measure: p.measure, est: fixed(p.pooled.est, 2),
       ci: `${fixed(p.pooled.ci_lower, 2)}–${fixed(p.pooled.ci_upper, 2)}`, group: DESIGN_GROUP_LABEL[p.design_group]?.[lang] ?? p.design_group, k: p.k,
@@ -330,6 +334,164 @@ export function sofRows(findings: KeyFinding[], enFindings: KeyFinding[] | undef
     .sort((a, b) => refsOf(b).length - refsOf(a).length)
     .forEach((r) => out.push(build(r.outcome, r, refsOf(r), null, enName(ctx, r))));
   return out;
+}
+
+// --- Forest panels (Plan 20 Task 5) -----------------------------------------------------------------------------------
+// One panel per outcome (the summary-of-findings rows, matched by `studyEffect`, never a second rule) and per measure
+// inside it, so one axis never mixes measures or scales. Values are the verified ones as the paper wrote them; pooled
+// values are the backend's computed ones, formatted like the meta-analysis section.
+
+export interface ForestRowView {
+  ref: string;
+  label: string; // "P3 · Lindqvist 2021"
+  title: string; // the paper's title (the label's full text)
+  outcomeKey: string; // the card's English outcome name, to open its quote in the rail
+  value: number;
+  lo: number | null;
+  hi: number | null;
+  direction: Direction;
+  num: string; // "0.80", as written
+  ci: string | null; // "0.71–0.90", as written
+}
+
+export interface ForestBlankView {
+  ref: string;
+  label: string;
+  title: string;
+  outcomeKey: string;
+  review: boolean;
+}
+
+export interface ForestPoolView {
+  key: string;
+  group: string; // "RCT" / "งานเชิงสังเกต"
+  k: number;
+  est: number;
+  lo: number;
+  hi: number;
+  estText: string;
+  ciText: string;
+  i2Text: string;
+  tau2Text: string;
+  qText: string;
+  df: number;
+  pText: string;
+}
+
+export interface ForestPanelView {
+  key: string;
+  outcome: string; // shown row name
+  outcomeKey: string; // English row name
+  measure: string;
+  family: Family;
+  primary: ForestRowView[];
+  /** systematic reviews / meta-analyses: their own block, never pooled with the primary studies */
+  reviews: ForestRowView[];
+  /** effects the verifier blanked: a row with a not-verified gap, no marker */
+  blanked: ForestBlankView[];
+  pools: ForestPoolView[];
+}
+
+export interface ForestView {
+  panels: ForestPanelView[];
+  /** blanked effects of outcomes without a panel: named in the "left out" note */
+  unplaced: { ref: string; outcome: string }[];
+}
+
+const measureKey = (m: string | null | undefined) => {
+  const t = (m ?? "").trim();
+  return t === "r" ? t : t.toUpperCase();
+};
+
+/**
+ * Forest panels from the comparison rows. `minEffects` (narrative reviews: 3) drops an outcome with fewer ratio or
+ * difference effects. Qualitative cards, other comparisons and non-positive ratios never become rows.
+ */
+export function forestPanels(ctx: OutcomeContext, opts: { minEffects?: number } = {}): ForestView {
+  const byRef = new Map(ctx.papers.map((p) => [p.ref, p]));
+  const panels: ForestPanelView[] = [];
+  const unplaced: ForestView["unplaced"] = [];
+  ctx.rows.forEach((row, ri) => {
+    const en = enName(ctx, row);
+    const own = new Map<string, ForestPanelView>();
+    const blanks: { view: ForestBlankView; measure: string }[] = [];
+    for (const ref of refsOf(row)) {
+      const paper = byRef.get(ref);
+      const state = studyEffect(paper, row, ref, en);
+      const hit = state && cellOutcomeExact(paper, row, ref, en);
+      if (!paper || !state || !hit) continue;
+      const measure = measureKey(hit.en.effect_measure);
+      const review = isPooled(paper);
+      const base = { ref, label: studyLabel(paper), title: paper.title, outcomeKey: hit.en.outcome };
+      if (state.kind === "blanked") {
+        blanks.push({ view: { ...base, review }, measure });
+        continue;
+      }
+      const family = measureFamily(measure);
+      const o = hit.en;
+      if (!family || o.effect_value == null) continue;
+      const lo = o.ci_lower ?? null;
+      const hi = o.ci_upper ?? null;
+      if (family === "ratio" && (o.effect_value <= 0 || (lo != null && lo <= 0) || (hi != null && hi <= 0))) continue;
+      const panel = own.get(measure) ?? {
+        key: `${ri}|${measure}`, outcome: row.outcome, outcomeKey: en, measure, family, primary: [], reviews: [], blanked: [], pools: [],
+      };
+      own.set(measure, panel);
+      const direction = row.cells.find((c) => c.ref === ref)?.direction ?? o.direction;
+      (review ? panel.reviews : panel.primary).push({
+        ...base, value: o.effect_value, lo, hi, direction, num: state.effect.num, ci: state.effect.ci,
+      });
+    }
+    const list = [...own.values()];
+    const effects = list.filter((p) => p.family === "ratio" || p.family === "difference")
+      .reduce((n, p) => n + p.primary.length + p.reviews.length, 0);
+    if (opts.minEffects && effects < opts.minEffects) return;
+    for (const b of blanks) {
+      const home = own.get(b.measure) ?? (list.length === 1 ? list[0] : undefined);
+      if (home) home.blanked.push(b.view);
+      else unplaced.push({ ref: b.view.ref, outcome: row.outcome });
+    }
+    for (const panel of list) {
+      panel.pools = matchPools(ctx.meta, row.outcome, en)
+        .filter((p) => measureKey(p.measure) === panel.measure)
+        .map((p, i) => ({
+          key: `${p.outcome}|${p.design_group}|${p.measure}|${i}`, group: DESIGN_GROUP_LABEL[p.design_group]?.[ctx.lang] ?? p.design_group,
+          k: p.k, est: p.pooled.est, lo: p.pooled.ci_lower, hi: p.pooled.ci_upper, estText: fixed(p.pooled.est, 2),
+          ciText: `${fixed(p.pooled.ci_lower, 2)}–${fixed(p.pooled.ci_upper, 2)}`, i2Text: `${Math.round(p.i2)}%`,
+          tau2Text: fixed(p.tau2, 3), qText: fixed(p.q, 2), df: p.df, pText: pText(p.p_het),
+        }));
+      panels.push(panel);
+    }
+  });
+  return { panels, unplaced };
+}
+
+// --- Findings matrix (Plan 20 Task 5) ------------------------------------------------------------------------------------
+
+export interface MatrixView {
+  rows: { row: ComparisonRow; k: number }[];
+  /** the studies (columns) of the shown rows, in the given order */
+  refs: string[];
+  /** outcomes with at least one visible study */
+  total: number;
+  /** outcomes the default view leaves out (reported by one study) */
+  hidden: number;
+}
+
+/**
+ * The findings matrix rows: by default the outcomes two or more (visible) studies report, most studies first; all of
+ * them (still by k) with `showAll`, or when no outcome has two. Columns are only the studies of the shown rows.
+ */
+export function matrixView(rows: ComparisonRow[], refs: string[], showAll: boolean): MatrixView {
+  const visible = new Set(refs);
+  const counted = rows
+    .map((row) => ({ row, k: new Set(row.cells.map((c) => c.ref).filter((r) => visible.has(r))).size }))
+    .filter((r) => r.k > 0)
+    .sort((a, b) => b.k - a.k);
+  const multi = counted.filter((r) => r.k >= 2);
+  const shown = showAll || !multi.length ? counted : multi;
+  const used = new Set(shown.flatMap((r) => r.row.cells.map((c) => c.ref)));
+  return { rows: shown, refs: refs.filter((r) => used.has(r)), total: counted.length, hidden: counted.length - shown.length };
 }
 
 // --- Title block ---------------------------------------------------------------------------------------------------------

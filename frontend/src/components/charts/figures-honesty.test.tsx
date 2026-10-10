@@ -15,6 +15,7 @@ vi.mock("./echart", () => ({
 }));
 vi.mock("../theme-toggle", () => ({ useTheme: () => "light" }));
 
+import { chartsContent } from "@/lib/charts-content";
 import { Charts } from "../review/charts";
 import { MetaAnalysisSection } from "../review/meta-analysis";
 import { readTokens } from "./tokens";
@@ -33,7 +34,13 @@ function collect(node: unknown, key: string, out: unknown[] = []): unknown[] {
 
 function renderAll() {
   options.length = 0;
-  render(<Charts result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
+  // five studies with a year and a verified n: the study map draws from 5 points (Plan 20 Task 5)
+  const base = resultFixture.papers![2];
+  const papers = ["positive", "negative", "null", "mixed", "unclear"].map((d, i) => ({
+    ...base, ref: `P${i + 1}`, year: 2016 + i, card: { ...base.card!, overall_direction: d as "positive" }, card_en: { ...base.card_en!, overall_direction: d as "positive" },
+  }));
+  const result = { ...resultFixture, review_type: "slr" as const, papers };
+  render(<Charts content={chartsContent(result, papers, [], [], "en")} result={result} lang="en" onSelect={() => {}} />);
   const meta = metaReviewFixture.result!;
   render(<MetaAnalysisSection meta={meta.meta_analysis} papers={meta.papers!} rows={meta.synthesis_en!.comparison!} lang="en" english
     filtered={false} onSelect={() => {}} />);
@@ -45,7 +52,7 @@ describe("chart text never uses the verified-number face", () => {
     const t = readTokens();
     expect("fontNum" in t).toBe(false); // charts have no verified-face token at all
     const all = renderAll();
-    expect(all.length).toBeGreaterThanOrEqual(3); // forest, study map, pooled forest (PRISMA is a DOM flow since Plan 20 Task 4)
+    expect(all.length).toBeGreaterThanOrEqual(2); // study map, pooled forest (the per-outcome forest and PRISMA are DOM since Plan 20 Tasks 4–5)
     const fonts = collect(all, "fontFamily");
     expect(fonts.length).toBeGreaterThan(0);
     expect(new Set(fonts)).toEqual(new Set([t.fontDisplay]));
@@ -55,7 +62,7 @@ describe("chart text never uses the verified-number face", () => {
     const all = renderAll();
     const formatters = collect(all, "tooltip").map((tip) => (tip as { formatter?: unknown }).formatter)
       .filter((f): f is (p: unknown) => string => typeof f === "function");
-    expect(formatters.length).toBeGreaterThanOrEqual(3);
+    expect(formatters.length).toBeGreaterThanOrEqual(2);
     const html = formatters.map((f) => f({ dataIndex: 0, data: { idx: 0, value: "", ref: "P1" }, seriesName: "" })).join("\n");
     expect(html).toMatch(/<b style="font-variant-numeric:tabular-nums">/);
     expect(html).not.toMatch(/martian|monospace|font-family/i);

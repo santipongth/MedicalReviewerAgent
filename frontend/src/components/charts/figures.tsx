@@ -1,17 +1,19 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo } from "react";
 import { edgeCurves, SOURCE_LABEL, type CitationNetwork, type DesignGroup, type EdgeCurve, type NetNode } from "@/lib/citation-network";
-import type { ConceptTree, MapNode } from "@/lib/concept-map";
-import { forestAxis, type ForestData, type ForestGroup, type StudyPoint } from "@/lib/charts-data";
+import { topOutcomes, type ConceptTree, type MapNode } from "@/lib/concept-map";
+import type { StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
 import { glyphSize, haloWidth } from "@/lib/glyphs";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
 import type { MetaPoolView } from "@/lib/meta-view";
+import { wrapLabel } from "@/lib/text-wrap";
 import { L } from "../review/text";
 import { ComputedNumber, Glyph, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { EChart, encodeHTML, type EChartsOption } from "./echart";
+import { Figure } from "./figure";
 import { SYMBOL, type ChartTokens } from "./tokens";
 
 type Select = (ref: string, outcome?: string) => void;
@@ -20,30 +22,9 @@ type Select = (ref: string, outcome?: string) => void;
  * tape) only; the verified value and its source are one click away in the table view and the rail. */
 const TIP_NUM = "font-variant-numeric:tabular-nums";
 
-/** A figure with a title, the chart, and a table-view twin (the accessible equivalent). */
-function Figure({ title, caption, lang, chart, table }: {
-  title: ReactNode; caption?: ReactNode; lang: Lang; chart: ReactNode; table: ReactNode;
-}) {
-  const [asTable, setAsTable] = useState(false);
-  return (
-    <figure className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <figcaption className="font-display text-base font-semibold">{title}</figcaption>
-        <button type="button" onClick={() => setAsTable((t) => !t)} aria-pressed={asTable}
-          className="rounded-sm border border-rule px-2.5 py-0.5 font-display text-[0.8rem] hover:border-ink">
-          {asTable ? L(lang, "ดูเป็นแผนภาพ", "Show chart") : L(lang, "ดูเป็นตาราง", "Show table")}
-        </button>
-      </div>
-      {asTable ? <div className="overflow-x-auto">{table}</div> : chart}
-      {caption && <div className="text-[0.82rem] text-muted">{caption}</div>}
-    </figure>
-  );
-}
-
 const MEASURE_NOTE: Record<string, [string, string]> = {
   ratio: ["อัตราส่วน (HR, OR, RR) บนสเกล log · เส้นตั้งที่ 1 = ไม่มีผล · ซ้ายของ 1 = ความเสี่ยงต่ำลง", "Ratios (HR, OR, RR) on a log scale · line at 1 = no effect · left of 1 = lower risk"],
   difference: ["ผลต่าง (MD, SMD, RD) · เส้นตั้งที่ 0 = ไม่มีผล", "Differences (MD, SMD, RD) · line at 0 = no effect"],
-  correlation: ["สหสัมพันธ์ (r) · เส้นตั้งที่ 0 = ไม่มีความสัมพันธ์", "Correlation (r) · line at 0 = no association"],
 };
 
 const MEASURE_TERM: Record<string, TermKey> = { HR: "hr", OR: "or", RR: "rr", MD: "md", SMD: "smd", RD: "rd" };
@@ -56,132 +37,6 @@ function MeasureGlossary({ measures, lang }: { measures: string[]; lang: Lang })
       <dt className="label">{L(lang, "คำย่อในแผนภาพ", "Abbreviations in the chart")}</dt>
       {known.map((m) => <dd key={m}><Term k={MEASURE_TERM[m]} lang={lang}>{m}</Term></dd>)}
     </dl>
-  );
-}
-
-function forestOption(g: ForestGroup, t: ChartTokens, lang: Lang): EChartsOption {
-  const [min, max] = forestAxis(g);
-  const nullValue = g.family === "ratio" ? 1 : 0;
-  const rows = g.rows;
-  return {
-    animation: !t.reducedMotion,
-    animationDuration: 500,
-    aria: { enabled: false },
-    grid: { left: 8, right: 24, top: 12, bottom: 32, containLabel: true },
-    tooltip: {
-      trigger: "item",
-      backgroundColor: t.surface,
-      borderColor: t.rule,
-      textStyle: { color: t.ink, fontFamily: t.fontDisplay },
-      formatter: (p: { dataIndex: number }) => {
-        const r = rows[p.dataIndex];
-        if (!r) return "";
-        const ci = r.ciText ? ` <span style="color:${t.muted}">95% CI</span> ${encodeHTML(r.ciText)}` : "";
-        return `<b style="${TIP_NUM}">${encodeHTML(r.valueText)}</b>${ci}<br/><span style="color:${t.muted}">${encodeHTML(r.label)} · ${encodeHTML(DIRECTION_LABEL[lang][r.direction])}</span>`;
-      },
-    },
-    xAxis: {
-      type: g.family === "ratio" ? "log" : "value", min, max, logBase: 10,
-      axisLine: { lineStyle: { color: t.rule } }, splitLine: { lineStyle: { color: t.rule, type: "solid", opacity: 0.6 } },
-      // Ticks are axis positions, not paper numbers: display face (tabular figures), never the verified face.
-      axisLabel: { color: t.muted, fontFamily: t.fontDisplay, fontSize: 11, formatter: (v: number) => String(Number(v.toPrecision(2))) },
-    },
-    yAxis: {
-      type: "category", inverse: true, data: rows.map((r) => r.label),
-      axisLine: { show: false }, axisTick: { show: false },
-      axisLabel: { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, width: 220, overflow: "truncate" },
-    },
-    series: [
-      {
-        type: "custom",
-        data: rows.map((r, i) => [r.lo ?? r.value, r.hi ?? r.value, i]),
-        encode: { x: [0, 1], y: 2 },
-        silent: true,
-        z: 1,
-        renderItem: (params: { dataIndex: number }, api: { value: (i: number) => number; coord: (v: [number, number]) => number[] }) => {
-          const a = api.coord([api.value(0), api.value(2)]);
-          const b = api.coord([api.value(1), api.value(2)]);
-          return { type: "line", shape: { x1: a[0], y1: a[1], x2: b[0], y2: b[1] },
-            style: { stroke: t.direction[rows[params.dataIndex].direction], lineWidth: 2, lineCap: "round" } };
-        },
-      },
-      {
-        type: "scatter",
-        z: 2,
-        symbolSize: 12,
-        symbolKeepAspect: true,
-        cursor: "pointer",
-        data: rows.map((r, i) => ({
-          value: [r.value, i], ref: r.ref, outcome: r.outcomeKey, symbol: SYMBOL[r.direction], symbolSize: glyphSize(r.direction, 12),
-          itemStyle: { color: t.direction[r.direction], borderColor: t.surface, borderWidth: haloWidth(r.direction) },
-        })),
-        emphasis: { scale: 1.3 },
-        markLine: {
-          silent: true, symbol: "none", label: { show: false },
-          lineStyle: { color: t.ink, width: 1, type: "solid" }, data: [{ xAxis: nullValue }],
-        },
-      },
-    ],
-  };
-}
-
-export function ForestFigure({ data, tokens, lang, onSelect }: { data: ForestData; tokens: ChartTokens; lang: Lang; onSelect: Select }) {
-  const options = useMemo(() => data.groups.map((g) => forestOption(g, tokens, lang)), [data, tokens, lang]);
-  if (!data.groups.length && !data.unverified.length) return null;
-  const unverifiedNote = data.unverified.length ? (
-    <p>
-      <span className="hole mr-2">{L(lang, "ไม่ยืนยัน", "not verified")}</span>
-      {L(lang, "ไม่แสดงในกราฟเพราะตรวจกับต้นฉบับไม่ผ่าน:", "Left out because they failed verification:")}{" "}
-      {data.unverified.map((u) => `${u.ref} (${u.outcome})`).join(", ")}
-    </p>
-  ) : null;
-  if (!data.groups.length) {
-    return (
-      <div className="grid gap-2">
-        <h3 className="font-display text-base font-semibold">{L(lang, "ขนาดผล (forest plot)", "Effect sizes (forest plot)")}</h3>
-        <p className="text-[0.9rem] text-muted">{L(lang, "ไม่มีขนาดผลที่ตรวจกับต้นฉบับผ่านสำหรับวาดกราฟ", "No verified effect sizes to plot")}</p>
-        <div className="text-[0.82rem] text-muted">{unverifiedNote}</div>
-      </div>
-    );
-  }
-  return (
-    <div className="grid gap-6">
-      {data.groups.map((g, gi) => (
-        <Figure key={g.family} lang={lang}
-          title={`${L(lang, "ขนาดผล", "Effect sizes")} · ${g.measures.join(", ")}`}
-          caption={<>
-            {MEASURE_NOTE[g.family][lang === "th" ? 0 : 1]}
-            {g.family === "ratio" && <> (<Term k="logScale" lang={lang}>{L(lang, "สเกล log คืออะไร", "what is a log scale")}</Term>)</>}
-            <MeasureGlossary measures={g.measures} lang={lang} />
-            {gi === 0 && unverifiedNote}
-          </>}
-          chart={
-            <EChart option={options[gi]} height={Math.max(160, g.rows.length * 34 + 56)}
-              label={L(lang, `Forest plot ของ ${g.rows.length} ผลลัพธ์`, `Forest plot of ${g.rows.length} effects`)}
-              onItemClick={(d) => { const x = d as { ref?: string; outcome?: string }; if (x?.ref) onSelect(x.ref, x.outcome); }} />
-          }
-          table={
-            <table className="w-full min-w-[480px] border-collapse text-[0.88rem]">
-              <thead><tr className="border-b border-rule text-left">
-                <th className="py-1.5 label">{L(lang, "งานวิจัย · ผลลัพธ์", "Study · outcome")}</th>
-                <th className="py-1.5 label">{L(lang, "ขนาดผล", "Effect")}</th><th className="py-1.5 label">95% CI</th>
-                <th className="py-1.5 label">{L(lang, "ทิศทาง", "Direction")}</th>
-              </tr></thead>
-              <tbody>
-                {g.rows.map((r) => (
-                  <tr key={r.label} className="border-b border-rule">
-                    <td className="py-1.5 pr-3 break-words">{r.label}</td>
-                    <td className="py-1.5 pr-3"><VerifiedNumber value={r.valueText} onSelect={() => onSelect(r.ref, r.outcomeKey)} /></td>
-                    <td className="py-1.5 pr-3">{r.ciText ? <VerifiedNumber value={r.ciText} /> : "–"}</td>
-                    <td className="py-1.5"><span className="inline-flex items-center gap-1.5"><Glyph direction={r.direction} lang={lang} />{DIRECTION_LABEL[lang][r.direction]}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          }
-        />
-      ))}
-    </div>
   );
 }
 
@@ -340,10 +195,12 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
 }) {
   const option = useMemo<EChartsOption>(() => {
     const years = points.map((p) => p.year);
+    const axisName = { color: tokens.ink, fontFamily: tokens.fontDisplay, fontSize: 12, fontWeight: 600 };
     return {
       animation: !tokens.reducedMotion,
       aria: { enabled: false },
-      grid: { left: 8, right: 24, top: 16, bottom: 28, containLabel: true },
+      // the axis names sit outside the plot: room for them on the left and below
+      grid: { left: 28, right: 16, top: 16, bottom: 36, containLabel: true },
       tooltip: {
         trigger: "item", backgroundColor: tokens.surface, borderColor: tokens.rule, textStyle: { color: tokens.ink, fontFamily: tokens.fontDisplay },
         formatter: (p: { data: { idx: number } }) => {
@@ -352,35 +209,50 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
         },
       },
       xAxis: { type: "value", min: Math.min(...years) - 1, max: Math.max(...years) + 1, minInterval: 1,
+        name: L(lang, "ปีที่ตีพิมพ์", "Publication year"), nameLocation: "middle", nameGap: 26, nameTextStyle: axisName,
         axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11, formatter: (v: number) => String(v) },
         axisLine: { lineStyle: { color: tokens.rule } }, splitLine: { show: false } },
       yAxis: { type: "log", logBase: 10,
-        axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11 }, splitLine: { lineStyle: { color: tokens.rule, opacity: 0.6 } } },
+        name: L(lang, "ขนาดตัวอย่าง (n, สเกล log)", "Sample size (n, log scale)"), nameLocation: "middle", nameGap: 40, nameTextStyle: axisName,
+        axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11 }, splitLine: { lineStyle: { color: tokens.rule, opacity: 0.6, type: "dashed" } } },
       series: [{
         type: "scatter", symbolSize: 14, symbolKeepAspect: true, cursor: "pointer",
         data: points.map((p, idx) => ({ value: [p.year, p.n], idx, ref: p.ref, symbol: SYMBOL[p.direction], symbolSize: glyphSize(p.direction, 14),
           itemStyle: { color: tokens.direction[p.direction], borderColor: tokens.surface, borderWidth: haloWidth(p.direction) } })),
-        label: { show: true, formatter: (p: { data: { ref: string } }) => p.data.ref, position: "right", color: tokens.ink, fontFamily: tokens.fontDisplay, fontSize: 11 },
+        // no point labels: neighbouring refs overlapped; the tooltip and the table view name every study
+        label: { show: false },
         emphasis: { scale: 1.3 },
       }],
     };
-  }, [points, tokens]);
+  }, [points, tokens, lang]);
   if (!points.length) return null;
+  const title = L(lang, "แผนที่งานวิจัย: ปี × ขนาดตัวอย่าง × ทิศทางผล", "Study map: year × sample size × direction");
   return (
-    <Figure lang={lang} title={L(lang, "แผนที่งานวิจัย: ปี × ขนาดตัวอย่าง × ทิศทางผล", "Study map: year × sample size × direction")}
+    <Figure lang={lang} title={title}
       caption={missing ? L(lang, `ไม่ได้แสดง ${missing} ฉบับที่ไม่มีปีหรือจำนวนผู้เข้าร่วมที่ตรวจผ่าน`, `${missing} studies without a year or a verified sample size are not shown`) : undefined}
-      chart={<EChart option={option} height={280} label={L(lang, `แผนที่ ${points.length} งานวิจัย`, `Map of ${points.length} studies`)}
+      chart={<EChart option={option} height={300} label={L(lang, `แผนที่ ${points.length} งานวิจัย`, `Map of ${points.length} studies`)}
         onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />}
       table={
-        <table className="w-full min-w-[420px] border-collapse text-[0.88rem]"><tbody>
-          {points.map((p) => (
-            <tr key={p.ref} className="border-b border-rule">
-              <td className="py-1.5 pr-3 font-display">{p.ref}</td><td className="py-1.5 pr-3">{p.year}</td>
-              <td className="py-1.5 pr-3">n = <VerifiedNumber value={p.nText} /></td><td className="py-1.5 pr-3">{p.design}</td>
-              <td className="py-1.5"><span className="inline-flex items-center gap-1.5"><Glyph direction={p.direction} lang={lang} />{DIRECTION_LABEL[lang][p.direction]}</span></td>
-            </tr>
-          ))}
-        </tbody></table>
+        <table className="w-full min-w-[420px] border-collapse text-[0.88rem]">
+          <caption className="pb-1 text-left font-display text-[0.85rem] font-semibold">{title}</caption>
+          <thead><tr className="border-b border-rule text-left">
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "งานวิจัย", "Study")}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "ปี", "Year")}</th>
+            <th scope="col" className="py-1.5 pr-3 label">n</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "รูปแบบ", "Design")}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, "ทิศทาง", "Direction")}</th>
+          </tr></thead>
+          <tbody>
+            {points.map((p) => (
+              <tr key={p.ref} className="border-b border-rule">
+                <th scope="row" className="py-1.5 pr-3 text-left font-display font-normal">{p.ref}</th>
+                <td className="py-1.5 pr-3 font-display tabular-nums">{p.year}</td>
+                <td className="py-1.5 pr-3"><VerifiedNumber value={p.nText} /></td><td className="py-1.5 pr-3">{p.design}</td>
+                <td className="py-1.5"><span className="inline-flex items-center gap-1.5"><Glyph direction={p.direction} lang={lang} />{DIRECTION_LABEL[lang][p.direction]}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       }
     />
   );
@@ -394,8 +266,10 @@ type TreeDatum = { name: string; ref?: string; value: string; tip?: string; symb
 function treeData(n: MapNode, t: ChartTokens, lang: Lang): TreeDatum {
   const leaf = n.kind === "group";
   const colour = leaf && n.direction ? t.direction[n.direction] : t.muted;
+  const name = n.kind === "root" ? L(lang, "คำถาม", "Question") : n.label;
   return {
-    name: n.kind === "root" ? L(lang, "คำถาม", "Question") : n.label, value: n.text, ref: n.refs?.[0],
+    // Full labels, wrapped on word boundaries (Thai included) instead of truncated mid-word.
+    name: leaf ? name : wrapLabel(name, 22).join("\n"), value: n.text, ref: n.refs?.[0],
     tip: leaf && n.refs?.length ? L(lang, `คลิกเพื่อเปิด ${n.refs[0]} · ดูทั้งหมดในโครงร่าง`, `Click to open ${n.refs[0]} · see all in the outline`) : undefined,
     // Shapes no direction glyph uses (circle, diamond, flat bar, half circle, dashed ring): rounded square for structure,
     // pin for design groups and qualitative themes.
@@ -409,10 +283,10 @@ function treeData(n: MapNode, t: ChartTokens, lang: Lang): TreeDatum {
   };
 }
 
-const CONCEPT_LABEL_TOP = { position: "top", distance: 6, verticalAlign: "bottom", align: "center", fontSize: 12, width: 150, overflow: "truncate", padding: [1, 3] };
+const CONCEPT_LABEL_TOP = { position: "top", distance: 6, verticalAlign: "bottom", align: "center", fontSize: 12, lineHeight: 15, padding: [1, 3] };
 
 function conceptOption(tree: ConceptTree, t: ChartTokens, lang: Lang): EChartsOption {
-  const label = { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, overflow: "truncate", backgroundColor: t.surface, padding: [1, 3] };
+  const label = { color: t.ink, fontFamily: t.fontDisplay, fontSize: 12, lineHeight: 15, backgroundColor: t.surface, padding: [1, 3] };
   return {
     animation: !t.reducedMotion,
     animationDuration: 400,
@@ -427,8 +301,8 @@ function conceptOption(tree: ConceptTree, t: ChartTokens, lang: Lang): EChartsOp
       type: "tree", data: [treeData(tree.root, t, lang)], layout: "orthogonal", orient: "LR",
       initialTreeDepth: 3, expandAndCollapse: true, roam: false, top: 28, bottom: 8, left: 34, right: 196,
       lineStyle: { color: t.muted, width: 1.5, curveness: 0 },
-      label: { ...label, position: "top", distance: 6, verticalAlign: "bottom", align: "center", width: 150 },
-      leaves: { label: { ...label, position: "right", distance: 8, verticalAlign: "middle", align: "left", width: 180 } },
+      label: { ...label, position: "top", distance: 6, verticalAlign: "bottom", align: "center" },
+      leaves: { label: { ...label, position: "right", distance: 8, verticalAlign: "middle", align: "left" } },
       emphasis: { focus: "descendant" },
       animationDurationUpdate: t.reducedMotion ? 0 : 300,
     }],
@@ -462,18 +336,33 @@ function ConceptOutline({ node, lang, onSelect }: { node: MapNode; lang: Lang; o
   );
 }
 
-export function ConceptMapFigure({ tree, tokens, lang, onSelect }: { tree: ConceptTree; tokens: ChartTokens; lang: Lang; onSelect: Select }) {
-  const option = useMemo(() => conceptOption(tree, tokens, lang), [tree, tokens, lang]);
+/** The concept map's chart holds the outcomes most studies report; the outline twin keeps every one. */
+export const CONCEPT_TOP_OUTCOMES = 8;
+
+/**
+ * The concept map: the chart (the top 8 outcomes by number of studies, full wrapped labels) and its outline twin, which
+ * is the default view below 1024px (`wide` false), where the tree cannot be read. No title: the section heading names it.
+ */
+export function ConceptMapFigure({ tree, tokens, lang, onSelect, wide }: {
+  tree: ConceptTree; tokens: ChartTokens; lang: Lang; onSelect: Select; wide: boolean;
+}) {
+  const top = useMemo(() => topOutcomes(tree, CONCEPT_TOP_OUTCOMES), [tree]);
+  const option = useMemo(() => conceptOption(top.tree, tokens, lang), [top, tokens, lang]);
   const note = tree.byDirection ? L(lang, "ทิศทางตามที่เอเจนต์อ่านจากบทคัดย่อ", "Directions as the agent read them in the abstracts") : null;
+  const cut = top.shown < top.total
+    ? L(lang, `แผนภาพแสดง ${top.shown} จาก ${top.total} ผลลัพธ์ที่มีงานวิจัยมากที่สุด ดูครบทุกผลลัพธ์ในโครงร่าง`,
+      `The chart shows the ${top.shown} of ${top.total} outcomes with the most studies; the outline lists every outcome`)
+    : null;
   return (
-    <Figure lang={lang} title={L(lang, "แผนที่ความรู้: คำถาม ผลลัพธ์ และงานวิจัยที่รายงาน", "Concept map: question, outcomes and the studies that report them")}
-      caption={<>{L(lang, CONCEPT_CAPTION[0], CONCEPT_CAPTION[1])}{note && <> · {note}</>}</>}
+    <Figure key={wide ? "wide" : "narrow"} lang={lang} defaultTable={!wide} label={L(lang, "แผนที่ความรู้", "Concept map")}
+      caption={<>{L(lang, CONCEPT_CAPTION[0], CONCEPT_CAPTION[1])}{note && <> · {note}</>}{cut && <> · <span data-concept-cut>{cut}</span></>}</>}
       chart={
         <div className="@container overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, "แผนที่ความรู้ (เลื่อนดูได้)", "Concept map (scrollable)")}>
           {/* Fills the column; only a container narrower than 600px keeps a 720px canvas and scrolls inside this region. */}
           <div className="@max-[600px]:min-w-[720px]">
-            <EChart option={option} height={Math.max(260, tree.drawnLeaves * 34)}
-              label={L(lang, `แผนที่ความรู้ ${tree.leaves} กลุ่มงานวิจัย`, `Concept map with ${tree.leaves} study groups`)}
+            {/* 64px per drawn row: a label above its node may wrap to two lines without touching the row above */}
+            <EChart option={option} height={Math.max(300, top.tree.drawnLeaves * 64)}
+              label={L(lang, `แผนที่ความรู้ ${top.tree.leaves} กลุ่มงานวิจัย`, `Concept map with ${top.tree.leaves} study groups`)}
               onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />
           </div>
         </div>

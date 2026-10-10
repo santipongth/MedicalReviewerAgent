@@ -47,6 +47,12 @@ function paperDesign(p: Paper | undefined): string | null {
   return card ? designKey(card) : null;
 }
 
+/** The tint step (0 = none, 1–4) of a count on a one-hue ramp up to the table's largest count; the number is always shown too. */
+export function rampLevel(n: number | undefined, max: number): number {
+  if (!n || n <= 0 || max <= 0) return 0;
+  return Math.min(4, Math.max(1, Math.ceil((4 * n) / max)));
+}
+
 export function yearBin(year: number): { key: string; label: string } {
   const start = Math.floor(year / 5) * 5;
   return { key: String(start), label: `${start}–${start + 4}` };
@@ -73,6 +79,7 @@ export function evidenceMap(papers: Paper[], comparison: ComparisonRow[], lang: 
     }
     if (seen.size) conceptRows.push({ key: `${index}:${row.outcome}`, label: row.outcome, counts, total: seen.size });
   }
+  conceptRows.sort((a, b) => b.total - a.total); // most studies first (stable: ties keep the synthesis order)
 
   const bins = new Map<string, MapRow>();
   let unplaced = 0;
