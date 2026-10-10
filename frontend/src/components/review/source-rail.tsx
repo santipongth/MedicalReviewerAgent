@@ -46,6 +46,12 @@ function OutcomeEvidence({ paper, o, en, lang, selected, visible, direction }: {
         <b className="font-display text-[0.95rem]">{o.outcome}</b>
         {direction && <span className="text-sm text-muted">{DIRECTION_LABEL[lang][o.direction]}</span>}
       </div>
+      {(en?.matches_question ?? o.matches_question) === false && (
+        <p className="text-sm text-muted" data-other-comparison>
+          {L(lang, "การเปรียบเทียบอื่น (ไม่ใช่คำถามของการทบทวน ไม่นำไปสรุป)", "Other comparison (not the review question; not used in the synthesis)")}
+          {o.comparison ? `: ${o.comparison}` : ""}
+        </p>
+      )}
       <p className="text-[0.92rem]"><MaskedText text={o.result} lang={lang} /></p>
       <p className="text-[0.92rem]">
         {hasEffect ? (

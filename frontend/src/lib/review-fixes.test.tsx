@@ -40,6 +40,14 @@ describe("final review fixes (Plan 4)", () => {
     expect(screen.getAllByText("ไม่ยืนยัน").length).toBeGreaterThan(0);
   });
 
+  it("Plan 19: another comparison is labelled on the card with what it compares", () => {
+    const p = structuredClone(resultFixture.papers![0]);
+    p.card!.outcomes[0] = { ...p.card!.outcomes[0], matches_question: false, comparison: "GLP-1RA vs insulin" };
+    p.card_en = structuredClone(p.card);
+    render(<SourceRail paper={p} lang="en" />);
+    expect(screen.getByText(/^Other comparison .*: GLP-1RA vs insulin$/)).toBeInTheDocument();
+  });
+
   it("I7: matrix cells are 44px tap targets on phones", () => {
     const rows = resultFixture.synthesis!.comparison!;
     render(<ComparisonMatrix rows={rows} refs={["P1"]} lang="th" onSelect={() => {}} outcomeOf={() => undefined} />);

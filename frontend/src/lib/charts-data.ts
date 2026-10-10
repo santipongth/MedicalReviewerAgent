@@ -110,6 +110,7 @@ export function forestData(papers: Paper[], lang: Lang): ForestData {
     // qualitative/mixed-methods cards are themes: never a forest row, even if a number slipped through
     if (!en || !shown || isNonQuantitative(en)) continue;
     en.outcomes.forEach((o, i) => {
+      if (o.matches_question === false) return; // another comparison: on the card only, never a forest row
       if (isBlankedEffect(p, o.outcome)) {
         unverified.push({ ref: p.ref, outcome: shown.outcomes[i]?.outcome ?? o.outcome });
         return;

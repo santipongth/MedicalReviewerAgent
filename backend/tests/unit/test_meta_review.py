@@ -9,6 +9,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from app.graph import prompts
 from app.graph.graph import build_graph, initial_state
 from app.graph.nodes.stub_result import stub_result
+from app.graph.nodes.synthesis import CERTAINTY_SENTENCE
 from app.graph.schemas import SynthesisNarrative
 from app.harness.grade import apply_meta_grade, grading_pools
 from app.harness.meta import (
@@ -103,8 +104,10 @@ async def test_meta_run_pools_grades_and_strips_pooled_numbers():
     assert '"pooled_analysis": [{"outcome": "Colorectal cancer incidence"' in user and '"estimate": 0.8' in user
     # the post-check removed every sentence restating a pooled number, and counted them
     s = r["synthesis_en"]
+    # (Plan 19: the summary lacked low-certainty wording, so the fixed GRADE sentence is appended)
     assert s["executive_summary"] == ("Metformin is associated with lower CRC risk [P1, P2]. "
-                                      "One cohort reported HR 0.80 [P4]. Some cohorts disagree [P3].")
+                                      "One cohort reported HR 0.80 [P4]. Some cohorts disagree [P3]. "
+                                      + CERTAINTY_SENTENCE[s["evidence_strength"]])
     assert s["evidence_rationale"] == "Observational cohorts [P1]."
     assert s["research_gaps"] == ["RCTs"]
     stage = next(q for q in values["quality"] if q["stage"] == "pooled_numbers")

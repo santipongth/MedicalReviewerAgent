@@ -16,6 +16,10 @@ export interface OutcomeResult {
   ci_upper?: number | null;
   p_value?: number | null;
   direction: Direction;
+  /** Plan 19: the two groups this estimate compares, e.g. "metformin vs sulfonylureas" (absent on older results). */
+  comparison?: string | null;
+  /** Plan 19: false = an "other comparison", not the question's intervention vs comparator; absent counts as true. */
+  matches_question?: boolean;
 }
 
 export type DesignCategory =

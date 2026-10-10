@@ -47,12 +47,29 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
         last = pooled[-1]  # a resumed run may log the stage again; the latest narrative is the one in the result
         extra["pooled_numbers"] = {"removed": int(last.get("removed", 0)),
                                    "kept_single_study": int(last.get("kept_single_study", 0))}
+    # Plan 19 grounded prose: what the post-check changed in the summary/rationale (latest narrative) and in the
+    # conflict explanations. Absent for results that never ran it.
+    prose = by_stage.get("prose_check")
+    if prose:
+        last = prose[-1]
+        conflicts = by_stage.get("conflict", [])
+        extra["prose_check"] = {
+            **{k: int(last.get(k, 0)) for k in ("numbers_removed", "measures_fixed", "population_removed",
+                                                 "certainty_added")},
+            "conflict_sentences_removed": sum(e.get("prose_numbers_removed", 0) + e.get("prose_population_removed", 0)
+                                              for e in conflicts),
+            "conflict_measures_fixed": sum(e.get("prose_measures_fixed", 0) for e in conflicts),
+        }
     return {
         **extra,
         "numbers_verified": verified,
         "numbers_total": total,
         "verification_rate": _r(verified / total) if total else None,
         "papers_uncertain": sum(1 for e in read if e.get("uncertain")),
+        # Plan 19: outcomes kept on the cards as other comparisons (not the review's intervention vs comparator),
+        # and how many of them the deterministic backstop flagged
+        "other_comparisons": sum(e.get("other_comparisons", 0) for e in read),
+        "comparison_backstop": sum(e.get("comparison_backstop", 0) for e in read),
         "agreement_mean": _r(sum(agreements) / len(agreements)) if agreements else None,
         "extraction_escalations": sum(1 for e in read if e.get("escalated")),
         "extraction_repairs": sum(1 for e in read if e.get("repaired")),

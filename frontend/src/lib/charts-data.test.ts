@@ -35,6 +35,13 @@ describe("forestData", () => {
     expect(d.unverified).toEqual([{ ref: "P2", outcome: "CRC incidence" }]);
   });
 
+  it("never plots another comparison (matches_question false), even with verified numbers", () => {
+    const other = papers.map((p) => p.ref !== "P4" ? p : {
+      ...p, card_en: { ...p.card_en!, outcomes: p.card_en!.outcomes.map((o) => ({ ...o, matches_question: false, comparison: "GLP-1RA vs insulin" })) },
+    });
+    expect(forestData(other, "en").groups[0].rows.map((r) => r.ref)).toEqual(["P1", "P3"]);
+  });
+
   it("axis bounds contain every interval and the null line", () => {
     const g = forestData(papers, "en").groups[0];
     const [lo, hi] = forestAxis(g);

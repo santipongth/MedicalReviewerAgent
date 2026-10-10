@@ -99,19 +99,20 @@ without results, other otherwise."""
 
 _EXTRACT_SCOPING_BLOCK = OVERRIDE_LEAD + """
 - Scoping review: outcomes are the aspects of the concept that the abstract reports (not necessarily effects); effect
-  fields are usually none, so use null and effect_measure "none" unless the abstract states a number."""
+  fields are usually none, so use null and effect_measure "none" unless the abstract states a number. A scoping
+  review compares nothing: comparison may be null and matches_question is always true."""
 
 _NARRATIVE_NARRATIVE_BLOCK = OVERRIDE_LEAD + """
 Review type: narrative review. Write a thematic synthesis: group the papers by theme, describe where they agree or
 differ, and cite the papers inline. This review is not graded: do not describe the evidence as strong or weak in the
-summary. Certainty of evidence is not graded: ignore any GRADE-lite baseline and output only executive_summary and
-research_gaps."""
+summary. Certainty of evidence is not graded: ignore any GRADE-lite baseline and the certainty wording rule, and
+output only executive_summary and research_gaps."""
 
 _NARRATIVE_SCOPING_BLOCK = OVERRIDE_LEAD + """
 Review type: scoping review. Write an evidence-map narrative: describe what kinds of studies exist (designs, years,
 populations, settings), which aspects of the concept are covered and where the gaps are. Do not judge whether the
 intervention works and do not grade the evidence. Certainty of evidence is not graded: ignore any GRADE-lite
-baseline and output only executive_summary and research_gaps."""
+baseline and the certainty wording rule, and output only executive_summary and research_gaps."""
 
 # Meta-analysis = SLR plus pooled effects: only extraction and the narrative get an appended block.
 _EXTRACT_META_BLOCK = OVERRIDE_LEAD + """
@@ -268,6 +269,12 @@ the abstract states.
 - sample_size must come from sample_size_quote (verbatim); use null for both if not reported.
 - direction is relative to the review question's hypothesised effect: positive (supports it / benefit), negative
   (opposite effect or harm), null (no significant association), mixed, unclear.
+- comparison: the two groups this estimate compares, as the abstract states them (e.g. "metformin vs sulfonylureas",
+  "eGFR decline >10% vs <=10%"). matches_question: true only when it compares the review question's
+  intervention/exposure with its comparator (or with no intervention, placebo or usual care); false for any other
+  comparison, e.g. another drug vs a comparator, the association of a biomarker, baseline factor or subgroup with the
+  outcome, or a dose or interaction analysis. List outcomes that match the question first; other comparisons may
+  follow, flagged false, and their direction is still relative to their own comparison.
 - design_category: exactly one of rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series,
   mendelian_randomization, sr_ma_rct (systematic review/meta-analysis of RCTs), sr_ma_observational (of observational
   studies), sr_ma_mixed (of both, or unclear), narrative_review (a review without systematic methods), other.
@@ -280,11 +287,13 @@ EXTRACT_EXAMPLE = """Format example for one outcome (illustrative, not from this
 {"outcome": "colorectal cancer incidence", "result": "Lower incidence with metformin than with sulfonylureas",
  "evidence_quote": "Metformin use was associated with a lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90; p = 0.003).",
  "effect_size": "HR 0.80 (95% CI 0.71-0.90)", "effect_measure": "HR", "effect_value": 0.80,
- "ci_lower": 0.71, "ci_upper": 0.90, "p_value": 0.003, "direction": "positive"}"""
+ "ci_lower": 0.71, "ci_upper": 0.90, "p_value": 0.003, "direction": "positive",
+ "comparison": "metformin vs sulfonylureas", "matches_question": true}"""
 
 EXTRACT_CHECKLIST = """Checklist before answering:
 - every evidence_quote and sample_size_quote is copied verbatim from the paper text above
 - every number in a numeric field appears in its quote; ci_lower <= effect_value <= ci_upper
+- every outcome states its comparison; matches_question is false unless it is the question's intervention vs comparator
 - unreported numbers are null (never estimated); all text fields are in English"""
 
 
@@ -324,6 +333,8 @@ Use only the paper cards given; never invent facts or numbers.
 - likely_reasons: 1-4 short items, chosen from differences in population, dose or exposure definition, comparator,
   study design, follow-up length, confounding control, sample size, outcome definition or risk of bias.
 - explanation: 2-4 English sentences that cite the papers inline like [P2]; cite only the papers in the conflict.
+  State numbers only as the cards show them, name each measure as the card's effect_measure, and describe each
+  paper's population as its card states.
 - outcome and refs: copy them from the conflict."""
 
 
@@ -345,6 +356,17 @@ paper cards; build on them and do not contradict them.
 - evidence_strength: start from the GRADE-lite baseline; you may move at most one level, and only with a reason.
 - evidence_rationale: 1-3 sentences explaining the rating (design, risk of bias, consistency, precision).
 - research_gaps: 2-5 concrete open questions.
+- Other comparisons: card outcomes with matches_question false compare something other than the review question's
+  intervention and comparator (e.g. another drug vs the comparator). They are not in the comparison table and are
+  never evidence for or against the question; mention them only as context, naming their comparison.
+- Numbers: state only numbers shown on the cards, exactly as given, with the card's effect_measure (an RR is a risk
+  ratio, never an "odds ratio"); never compute, convert, round or combine numbers.
+- Populations: describe each cited paper's population and subgroup exactly as its card states (a trial in preserved
+  ejection fraction is never evidence "in reduced ejection fraction").
+- Certainty wording (GRADE): word the main conclusions to match evidence_strength. high: "reduces"; moderate:
+  "probably reduces"; low: "may reduce"; very_low: "the evidence is very uncertain about the effect of ...". For
+  observational evidence say "is associated with", never a causal verb, and never "significantly" as a certainty
+  claim.
 Use only the information given; never invent papers, numbers or citations."""
 
 

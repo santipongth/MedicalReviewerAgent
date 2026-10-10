@@ -8,6 +8,7 @@ from langgraph.types import Send
 from app.config import Settings
 from app.graph.graph import GraphDeps
 from app.graph.nodes.synthesis import (
+    CERTAINTY_SENTENCE,
     make_explain_conflict,
     make_finalize,
     make_localize,
@@ -167,7 +168,8 @@ async def test_narrative_citation_check_repairs_then_strips_and_clamps_grade():
         state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en"))
     s = out["synthesis"]
     assert "unknown citation P9" in synth.calls[1][1]
-    assert s["executive_summary"] == "Lower risk [P1]."  # still invalid after repair → unknown refs stripped
+    # still invalid after repair → unknown refs stripped; no "probably" → the moderate GRADE sentence is appended
+    assert s["executive_summary"] == "Lower risk [P1]. " + CERTAINTY_SENTENCE["moderate"]
     assert s["evidence_strength"] == "moderate" and s["grade_baseline"] == "low"  # high clamped to baseline+1
     assert s["comparison"][0]["outcome"] == "CRC incidence"
     assert s["consensus"][0]["refs"] == ["P1", "P2"]
@@ -197,7 +199,8 @@ async def test_cards_are_localized_in_parallel_and_keep_numbers():
     assert lc["outcomes"][0]["result"] == "TH lower risk 0.80"
     assert lc["outcomes"][0]["evidence_quote"] == "q" and lc["outcomes"][0]["effect_value"] == 0.8
     assert lc["population"] == "TH adults with T2D" and lc["key_findings"] == ["TH lower CRC"]
-    assert out["synthesis"]["executive_summary"] == "A [P1]."  # synthesis itself stays English here
+    # synthesis itself stays English here
+    assert out["synthesis"]["executive_summary"] == "A [P1]. " + CERTAINTY_SENTENCE["moderate"]
 
 
 async def test_narrative_failure_keeps_table_with_fallback_summary():
@@ -225,7 +228,7 @@ async def test_localize_translates_synthesis_and_maps_cells_from_localized_cards
     out = await make_localize(deps(localizer=FakeStructuredLLM("qwen", thai)))(
         state(papers, synthesis=english, localized_cards=localized_cards))
     d = out["synthesis_display"]
-    assert d["executive_summary"] == "TH A [P1]." and d["research_gaps"] == ["TH RCTs"]
+    assert d["executive_summary"] == "TH A [P1]. " + CERTAINTY_SENTENCE["moderate"] and d["research_gaps"] == ["TH RCTs"]
     assert d["comparison"][0]["outcome"] == "TH CRC incidence"
     assert d["comparison"][0]["cells"][0]["finding"] == "ความเสี่ยงต่ำลง 0.80"
     assert out["quality"][0]["stage"] == "localize" and out["quality"][0]["kept_english"] == 0

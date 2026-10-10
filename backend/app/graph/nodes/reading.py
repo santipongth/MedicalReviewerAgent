@@ -9,6 +9,7 @@ from app.graph import prompts
 from app.graph.nodes.intake import harness_runner, harness_spec
 from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate, PaperCard
+from app.harness.comparison import settle_comparisons
 from app.harness.design import design_problems, settle_design_category, strip_non_quantitative
 from app.harness.runner import HarnessResult
 from app.harness.verify import NUMERIC_FIELDS, card_problems, compare_cards, null_unverified_numbers
@@ -109,6 +110,7 @@ def make_read_paper(deps):
 
         verified = total = 0
         unverified: list[dict[str, Any]] = []
+        comparison_counts: dict[str, int] = {}
         if card is None:
             failure = primary if isinstance(primary, BaseException) else None
             message = (f"{type(failure).__name__}: {failure}" if failure else
@@ -120,6 +122,11 @@ def make_read_paper(deps):
                 before = card
                 card, verified, total = null_unverified_numbers(card, text, threshold)
                 unverified = _blanked(before, card)
+            # an estimate of another comparison stays on the card, flagged, and never becomes evidence (Plan 19)
+            card, flipped = settle_comparisons(card, payload.get("question_detail"),
+                                               payload.get("review_type") or "slr")
+            comparison_counts = {"other_comparisons": sum(1 for o in card.outcomes if not o.matches_question),
+                                 "comparison_backstop": flipped}
             # after verification: a qualitative/mixed card never carries effect numbers or a direction
             settled = settle_design_category(card, pub_types)
             stripped = strip_non_quantitative(settled)
@@ -135,7 +142,7 @@ def make_read_paper(deps):
                                  "unverified": unverified}
         quality = {"stage": "read", "ref": paper["ref"], "source": "abstract",
                    **{k: v for k, v in entry["verification"].items() if k != "unverified"},
-                   "seconds": round(time.perf_counter() - started, 3)}
+                   **comparison_counts, "seconds": round(time.perf_counter() - started, 3)}
         extracted = {"type": "extracted", "ref": paper["ref"], "ok": entry["card"] is not None,
                      "verified": verified, "uncertain": uncertain,
                      "direction": entry["card"]["overall_direction"] if entry["card"] else None,

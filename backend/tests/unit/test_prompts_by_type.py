@@ -22,8 +22,11 @@ SYSTEM_HASHES = {
     "critique_system": (prompts.critique_system, "20dcf2409037bf9ae5854d99b6f9e870af67ac11f80060fe90edc460f86d02d4"),
     "plan_system": (prompts.plan_system, "4511213da99591cdf2d72fa93f128ca7fde79a50495585e8689cca18bf71bd58"),
     "screen_system": (prompts.screen_system, "b5c17e3a4db2afe4da614f31d2bc63613f25b142392f5b2b90840c6dd3fadfb2"),
-    "extract_system": (prompts.extract_system, "74dc03786fb0fa75155f52a4005026ebc361162d834cd97f8b557cd6381dd82f"),
-    "narrative_system": (prompts.narrative_system, "a67d0d9906785bbff2a6f6ac6d673853c8bfe7e62141a199a7a67a8881461082"),
+    # Plan 19 (prompt_version 2026-10-10.3): extraction states each outcome's comparison and matches_question
+    # (audit I-2a); the narrative gets the other-comparison, number/measure, population and GRADE certainty-wording
+    # rules (audit I-2b/c, I-14).
+    "extract_system": (prompts.extract_system, "be79abbcebcf454162d8f7d58245103387e748d2c33e52e066bae146ac5841fa"),
+    "narrative_system": (prompts.narrative_system, "c7e562f733bf0f9c21e1ce74f887d6369374500602858d4685964547834615ed"),
 }
 
 
@@ -40,7 +43,7 @@ def test_slr_later_stage_user_prompts_are_unchanged():
     assert sha(prompts.screen_user(english_topic="Q?", plan={"population": "P", "inclusion_criteria": ["a"]},
                                    items=[("C1", CARD), ("C2", {"title": "U"})])) ==         "3e9906647439f78cf429360bc578915c6e5d3180ad29d01537f4c095a0378c70"
     assert sha(prompts.extract_user(question="Q?", outcomes=["o"], candidate=CARD, source="abstract",
-                                    text="Text")) ==         "9f4efc581a01f8e2ef37aeb8e05ff3de75ace31f96ceaa0190a1e9d55eebd6fb"
+                                    text="Text")) ==         "16c0dfb7d2a853fec55729acff0ba3814e4a6e8bb86557ae5ff87e05010cbab0"  # Plan 19: comparison in example + checklist
     assert sha(prompts.normalize_user(question="Q?", pairs=[("P1", "o")])) ==         "a8f11049113c154762d69c6a196ff66233f7fdf824dcfd7724f007a17d1f26ce"
     assert sha(prompts.conflict_user(question="Q?", conflict={"outcome": "o", "refs": ["P1"]},
                                      papers=[{"ref": "P1"}])) ==         "3db817d97a68c42a77255b9dfb6a3919f7cf838e75a874241b6b9ef303f533c2"

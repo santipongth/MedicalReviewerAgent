@@ -8,6 +8,7 @@ import asyncio
 import copy
 import re
 import time
+from collections import Counter
 from typing import Any
 
 from langgraph.types import Send
@@ -24,6 +25,7 @@ from app.graph.schemas import (
     SynthesisNarrative,
 )
 from app.graph.state import ReviewState
+from app.harness.comparison import question_card
 from app.harness.design import NO_DIRECTION_CATEGORIES, NON_QUANTITATIVE_CATEGORIES
 from app.harness.grade import (
     LEVELS,
@@ -46,6 +48,7 @@ from app.harness.meta import (
     strip_pooled_numbers,
     with_display,
 )
+from app.harness.prose import ProseContext, context_numbers, fix_prose, paper_facts, prose_problems
 from app.harness.quality import summarize_quality
 from app.harness.verify import check_citations, strip_unknown_citations
 from app.schemas.review import SLR_LIKE, ReviewOptions
@@ -76,6 +79,19 @@ NO_QUANTITATIVE_RATIONALE = ("Certainty of evidence is not graded: no quantitati
                              "summarised only).")
 QUALITATIVE_ONLY_FACTOR = ("no quantitative studies: the included qualitative/mixed-methods studies are summarised "
                            "as themes, which are not graded")
+OTHER_COMPARISONS_ONLY_FACTOR = ("no extracted estimate compares the review's intervention with its comparator; the "
+                                 "papers' other comparisons are listed on their cards and are not graded")
+# GRADE certainty wording the summary must carry (audit I-14); appended in code when the narrative lacks it.
+CERTAINTY_WORDING = {"moderate": re.compile(r"\bprobabl[ey]\b|\blikely\b", re.IGNORECASE),
+                     "low": re.compile(r"\bmay\b|\bmight\b", re.IGNORECASE),
+                     "very_low": re.compile(r"\bvery uncertain\b", re.IGNORECASE)}
+CERTAINTY_SENTENCE = {
+    "moderate": "The certainty of the evidence is moderate: the effects described here are probably close to the "
+                "true effects.",
+    "low": "The certainty of the evidence is low: the true effects may differ substantially from those described here.",
+    "very_low": "The certainty of the evidence is very low: the evidence is very uncertain about the effects described "
+                "here.",
+}
 
 
 def _ref_num(ref: str) -> int:
@@ -95,13 +111,29 @@ def _with_cards(state: ReviewState) -> list[dict[str, Any]]:
     return [p for p in unique_papers(state) if p.get("card")]
 
 
-def _evidence(state: ReviewState) -> list[dict[str, Any]]:
-    """Papers that count as direction evidence: narrative reviews (they restate other studies) and qualitative or
-    mixed-methods studies (themes, no effect numbers) stay in the paper list but add no matrix cells, conflicts,
-    pools or grade. A scoping review maps everything, so it counts them."""
+def _direction_papers(state: ReviewState) -> list[dict[str, Any]]:
+    """Papers of a design that can be direction evidence: narrative reviews (they restate other studies) and
+    qualitative or mixed-methods studies (themes, no effect numbers) stay in the paper list but add no matrix cells,
+    conflicts, pools or grade. A scoping review maps everything, so it counts them."""
     if _review_type(state) == "scoping":
         return _with_cards(state)
     return [p for p in _with_cards(state) if p["card"].get("design_category") not in NO_DIRECTION_CATEGORIES]
+
+
+def _evidence(state: ReviewState) -> list[dict[str, Any]]:
+    """The direction papers with their cards restricted to the outcomes that answer the question (Plan 19): an
+    estimate of another comparison (`matches_question` false) never reaches the matrix, consensus, conflicts, pools
+    or grade, and a paper that reports only other comparisons is no evidence at all. The stored cards keep every
+    outcome; this is a view."""
+    papers = _direction_papers(state)
+    if _review_type(state) == "scoping":
+        return papers
+    out = []
+    for p in papers:
+        card = question_card(p["card"])
+        if card is not None:
+            out.append(p if card is p["card"] else {**p, "card": card})
+    return out
 
 
 def _narrative_papers(state: ReviewState) -> list[dict[str, Any]]:
@@ -174,7 +206,9 @@ def make_normalize_outcomes(deps):
             entry["fallback"] = clusters is None
         matrix = build_matrix(papers, clusters or fallback_clusters(papers))
         matrix["grade"] = grade_baseline(papers, matrix)
-        if not papers and _themes_only(_narrative_papers(state)):  # the level stays as the baseline gives it
+        if not papers and _direction_papers(state):  # every quantitative paper reports only other comparisons
+            matrix["grade"]["factors"] = [OTHER_COMPARISONS_ONLY_FACTOR]
+        elif not papers and _themes_only(_narrative_papers(state)):  # the level stays as the baseline gives it
             matrix["grade"]["factors"] = [QUALITATIVE_ONLY_FACTOR]
         entry |= {"outcomes": len(matrix["rows"]), "conflicts": len(matrix["conflicts"]),
                   "seconds": round(time.perf_counter() - started, 3)}
@@ -253,6 +287,9 @@ def make_explain_conflict(deps):
         entry: dict[str, Any] = {"stage": "conflict", "outcome": conflict["outcome"], "fallback": True,
                                  "repaired": False}
         note, cost, errors = None, 0.0, []
+        prose = ProseContext(facts=paper_facts(payload["papers"]),
+                             allowed=context_numbers([payload["question"]], [len(conflict["refs"])]),
+                             max_count=len(conflict["refs"]))
 
         def validate(n: ConflictNote) -> list[str]:
             problems = check_citations(n.explanation, allowed)
@@ -260,7 +297,7 @@ def make_explain_conflict(deps):
                 problems.append("explanation must not be empty")
             if not 1 <= len(n.likely_reasons) <= 4:
                 problems.append("likely_reasons must list 1-4 reasons")
-            return problems
+            return problems + prose_problems(n.explanation, prose, "explanation")
 
         llm = getattr(deps.llms, "conflict_explainer", None)
         if llm is not None:
@@ -271,11 +308,16 @@ def make_explain_conflict(deps):
                     schema=ConflictNote, validate=validate, trigger="conflict")
                 cost += res.cost
                 entry["repaired"] = res.repaired
-                if res.value is not None and res.value.explanation.strip():
-                    # outcome and refs are owned by code; unknown citations are removed if repair failed
+                explanation = ""
+                if res.value is not None:
+                    # unknown citations are removed if repair failed, then every sentence with an untraceable
+                    # number or population is dropped and wrong measure names are corrected
+                    explanation, counts = fix_prose(strip_unknown_citations(res.value.explanation, allowed), prose)
+                    entry |= {f"prose_{k}": v for k, v in counts.items()}
+                if explanation.strip():
+                    # outcome and refs are owned by code
                     note = {"outcome": conflict["outcome"], "refs": conflict["refs"],
-                            "likely_reasons": res.value.likely_reasons[:4],
-                            "explanation": strip_unknown_citations(res.value.explanation, allowed)}
+                            "likely_reasons": res.value.likely_reasons[:4], "explanation": explanation}
                     entry["fallback"] = False
             except LLMError as exc:
                 errors.append(f"conflict explanation failed for {conflict['outcome']}: {type(exc).__name__}")
@@ -295,6 +337,8 @@ def _card_strings(ref: str, card: dict[str, Any]) -> dict[str, str]:
     for i, o in enumerate(card.get("outcomes", [])):
         out[f"{ref}.outcomes.{i}.outcome"] = o["outcome"]
         out[f"{ref}.outcomes.{i}.result"] = o["result"]
+        if o.get("comparison"):
+            out[f"{ref}.outcomes.{i}.comparison"] = o["comparison"]
     for key in ("key_findings", "limitations"):
         out |= {f"{ref}.{key}.{i}": s for i, s in enumerate(card.get(key, [])) if s}
     return out
@@ -307,6 +351,8 @@ def _apply_card_strings(ref: str, card: dict[str, Any], strings: dict[str, str])
     for i, o in enumerate(out.get("outcomes", [])):
         o["outcome"] = strings.get(f"{ref}.outcomes.{i}.outcome", o["outcome"])
         o["result"] = strings.get(f"{ref}.outcomes.{i}.result", o["result"])
+        if o.get("comparison"):
+            o["comparison"] = strings.get(f"{ref}.outcomes.{i}.comparison", o["comparison"])
     for key in ("key_findings", "limitations"):
         out[key] = [strings.get(f"{ref}.{key}.{i}", s) for i, s in enumerate(out.get(key, []))]
     return out
@@ -378,13 +424,57 @@ def _strip_pooled(narrative: SynthesisNarrative, meta: dict[str, Any]) -> tuple[
                                         "research_gaps": gaps}), removed, single
 
 
+PROSE_REMOVED = ("The narrative summary was withheld: its statements could not be traced to the verified paper cards. "
+                 "See the comparison table and the paper cards.")
+_PICO_TEXT = ("population", "intervention_or_exposure", "comparator", "timeframe", "concept", "context")
+
+
+def _prose_context(state: ReviewState, papers: list[dict[str, Any]], matrix: dict[str, Any],
+                   meta: dict[str, Any] | None) -> ProseContext:
+    """What the summary and rationale may state (see app.harness.prose): the cards of the papers the narrative
+    reads, the review's own question text, the pooled values and the pipeline counts."""
+    q = state.get("question") or {}
+    texts = [review_question(state), state.get("english_topic"), *(q.get("sub_questions") or []),
+             *(q.get(k) for k in _PICO_TEXT), *(q.get("outcomes") or []), *(q.get("study_designs") or []),
+             *((matrix.get("grade") or {}).get("factors") or [])]
+    stats = state.get("search_stats") or {}
+    rows = matrix.get("rows") or []
+    counts: list[Any] = [v for v in stats.values() if isinstance(v, int)]
+    counts += [len(state.get("candidates") or []), len(state.get("selected") or []),
+               len({d.get("key") for d in state.get("screened") or []}), len(papers), len(_evidence(state)),
+               len(rows), ReviewOptions.clamped(state.get("options")).year_from]
+    counts += [len(r.get("cells") or []) for r in rows]
+    for c in [*(matrix.get("consensus") or []), *(matrix.get("conflicts") or [])]:
+        counts += [len(c.get("refs") or []), *(len(refs) for refs in (c.get("dissent") or {}).values())]
+    if meta:
+        counts += [*pooled_number_strings(meta), *(p.get("k") for p in meta.get("pools") or [])]
+    return ProseContext(facts=paper_facts(papers), allowed=context_numbers(texts, [c for c in counts if c]),
+                        max_count=len(papers))
+
+
+def _check_prose(narrative: SynthesisNarrative | NarrativeNoGrade, prose: ProseContext, graded: bool,
+                 factors: list[str]) -> tuple[SynthesisNarrative | NarrativeNoGrade, Counter[str]]:
+    """Correct measure names and drop the sentences of the summary (and, graded, the rationale) whose numbers or
+    population claims cannot be traced to the cards (app.harness.prose). Nothing is invented: an emptied summary
+    becomes a fixed notice, an emptied rationale the GRADE-lite factors."""
+    summary, counts = fix_prose(narrative.executive_summary, prose)
+    update: dict[str, Any] = {"executive_summary": summary or PROSE_REMOVED}
+    if graded:
+        rationale, more = fix_prose(narrative.evidence_rationale, prose)
+        counts += more
+        update["evidence_rationale"] = rationale or "; ".join(factors)
+    if not counts:
+        return narrative, counts
+    return narrative.model_copy(update=update), counts
+
+
 def make_write_synthesis(deps):
     async def write_synthesis(state: ReviewState) -> dict:
         started = time.perf_counter()
         language = state.get("language", "th")
         review_type = _review_type(state)
         # a graded type with no quantitative evidence (every paper qualitative/mixed) is not graded: themes only
-        no_quantitative = review_type in SLR_LIKE and not _evidence(state)
+        no_quantitative = review_type in SLR_LIKE and not _direction_papers(state)
         graded = review_type in SLR_LIKE and not no_quantitative
         meta = state.get("meta_analysis") if review_type == "meta_analysis" else None
         # narrative reviews are cited and summarised in narrative/scoping reviews; only the matrix leaves them out.
@@ -408,6 +498,7 @@ def make_write_synthesis(deps):
         notes = sorted({n["outcome"]: n for n in state.get("conflict_notes") or []}.values(),
                        key=lambda n: n["outcome"].lower())
         question = state.get("question") or {}
+        prose =_prose_context(state, papers, matrix, meta)
 
         def validate(n: SynthesisNarrative | NarrativeNoGrade) -> list[str]:
             rationale = getattr(n, "evidence_rationale", "")
@@ -417,6 +508,9 @@ def make_write_synthesis(deps):
             if graded and abs(LEVELS.index(n.evidence_strength) - LEVELS.index(baseline)) > 1:
                 problems.append(f"evidence_strength {n.evidence_strength} is more than one level away from the "
                                 f"GRADE-lite baseline {baseline}")
+            problems += prose_problems(n.executive_summary, prose, "executive_summary")
+            if graded:
+                problems += prose_problems(rationale, prose, "evidence_rationale")
             return problems
 
         prompt_matrix = matrix
@@ -480,11 +574,22 @@ def make_write_synthesis(deps):
         if meta and meta.get("pools"):  # pooled numbers render only in the pooled-analysis view, never in prose
             narrative, removed, single = _strip_pooled(narrative, meta)
             quality.append({"stage": "pooled_numbers", "removed": removed, "kept_single_study": single})
+        factors = (matrix.get("grade") or {}).get("factors") or []
+        narrative, prose_counts = _check_prose(narrative, prose, graded, factors)
+        strength = clamp_to_baseline(narrative.evidence_strength, baseline) if graded else None
+        summary = narrative.executive_summary
+        certainty_added = 0
+        wording = CERTAINTY_WORDING.get(strength or "")
+        if wording and not entry["fallback"] and summary != PROSE_REMOVED and not wording.search(summary):
+            summary, certainty_added = f"{summary} {CERTAINTY_SENTENCE[strength]}", 1
+        quality.append({"stage": "prose_check", "numbers_removed": prose_counts["numbers_removed"],
+                        "measures_fixed": prose_counts["measures_fixed"],
+                        "population_removed": prose_counts["population_removed"],
+                        "certainty_added": certainty_added})
         # not graded: no strength, no baseline, a fixed rationale that localizes like any other text
         synthesis = Synthesis(
-            executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),
-            consensus=consensus, conflicts=conflicts,
-            evidence_strength=clamp_to_baseline(narrative.evidence_strength, baseline) if graded else None,
+            executive_summary=summary, comparison=matrix.get("rows", []),
+            consensus=consensus, conflicts=conflicts, evidence_strength=strength,
             evidence_rationale=(narrative.evidence_rationale if graded else
                                 NO_QUANTITATIVE_RATIONALE if no_quantitative else _not_graded_rationale(review_type)),
             research_gaps=narrative.research_gaps, grade_baseline=baseline if graded else None)

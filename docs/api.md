@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-10.2`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-10.3`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.
@@ -142,6 +142,19 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   `numbers_verified` counts those whose estimate survived; `unverified` lists the rest
   (`numbers_total - numbers_verified == len(unverified)`).
 - Narrative reviews are listed, but they never count as evidence, except in scoping reviews, which count them. A narrative-type review also gives them to the synthesis and can cite them, but keeps them out of the comparison table.
+- Other comparisons (Plan 19): each `card.outcomes[]` (and `card_en.outcomes[]`) item also has `comparison` (string
+  or null: the two groups the estimate compares, e.g. `"metformin vs sulfonylureas"`; in the review language in
+  `card`, English in `card_en`) and `matches_question` (boolean). `matches_question: false` marks an "other
+  comparison", an estimate that is not the review question's intervention vs comparator (e.g. GLP-1RA vs insulin in
+  a metformin review, or the association of an eGFR decline with outcomes inside an SGLT2 trial). Such outcomes stay
+  on the card, with their verified numbers, but never reach `synthesis.comparison`, consensus, conflicts,
+  `meta_analysis` pools or the grade; a paper whose outcomes are all other comparisons adds nothing to them. The
+  extractor sets the flag; a deterministic backstop also sets it to false when the refined question names its
+  intervention and neither the outcome's `comparison` nor the card's `intervention_or_exposure` names it or one of its
+  key-term synonyms (it never sets it to true). Scoping outcomes always have `matches_question: true`. Outcomes
+  stored before Plan 19 have neither field and count as matching. Clients should label `matches_question: false`
+  outcomes as other comparisons and keep them out of forest plots. When every quantitative paper reports only other
+  comparisons, the grade is `very_low` with a factor that says so.
 
 **Citations.** `citations` is `{edges[], cited_by{}, cited_by_source{}, coverage{}, source_note, partial}` (null for results stored before Plan 14b and for reviews where the step did not run). `edges[]` is `{from, to}` (citing paper -> cited paper), only between papers of the same review, no self-loops, deduplicated. `cited_by[ref]` is the cited-by count over all literature (not just this review): OpenAlex's, else Europe PMC's `citedByCount`, else null. `cited_by_source[ref]` says which (`"openalex"`, `"europepmc"` or null); the two sources count differently, so do not compare across sources. On a timeout of the whole step the data gathered so far is kept, `partial` is `true` and `source_note` says so (`partial` is `false` otherwise, and is absent from results stored before it was added). OpenAlex gets at most half of the step budget and is not retried, so a slow OpenAlex still leaves time for the Europe PMC fallback. `coverage[ref]` is `"openalex"`, `"europepmc"` (reference list fallback) or null; null means no data, so a missing edge for such a paper does not mean it cites nothing. Metadata only (no full text); a failure gives null coverage and never fails the review; a timeout (about 20 s) keeps whatever arrived (coverage null for the rest, `partial: true`). Under `GRAPH_MODE=stub` the citation data is illustrative. Optional `OPENALEX_API_KEY` / `OPENALEX_MAILTO`.
 
@@ -194,6 +207,35 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   A sentence that cites exactly one paper and has no pooled wording is a single-study quote, so it is kept. I² and τ² values are removed whatever the sentence cites, but only when written right after an I², τ²/tau or heterogeneity label. Sentences split only before an uppercase letter or `[`, so "et al." and "vs." do not split a sentence. The `quality` stage `pooled_numbers` reports `{removed, kept_single_study}`, and the result carries it as `result.quality.pooled_numbers` (meta_analysis only; absent for other types).
 
 **Synthesis.** `synthesis.consensus` explanations name any dissenting minority. Consensus needs at least 70 % of at least 3 studies to agree. `synthesis.conflicts` lists real splits, each with its likely reasons.
+
+**Grounded prose (Plan 19).** The executive summary, the evidence rationale (graded types) and each conflict
+explanation are checked sentence by sentence, in English before translation. A sentence's scope is the papers it
+cites, or every paper when it cites none.
+- Numbers: every number must be a verified number of the scope's cards (surviving numeric fields, sample size, and the
+  numbers of their verified `result`, `effect_size` and `key_findings` texts), a number of the review's context (the
+  question and PICO text, the cited papers' titles, years, population, intervention, comparator, outcome and
+  comparison texts), a pooled value, or a pipeline count (search and selection counts, matrix row and pool sizes, the
+  GRADE-lite factors, a `95%` CI level, or an integer count of studies up to the number of papers that is not a
+  percentage). A derived, rounded or invented number fails.
+- Measure names: "odds ratio"/OR, "risk ratio"/"relative risk"/RR, "hazard ratio"/HR, "risk difference"/RD, "mean
+  difference"/MD and "standardized mean difference"/SMD must match the card's `effect_measure` of the estimates they
+  introduce (else one of the scope's measures; a bare abbreviation is judged only when it introduces a card
+  estimate, since "OR" or "HR" can mean something else). A wrong name is corrected in code, to the right measure or,
+  when the estimates use several measures, to "effect estimate(s)".
+- Populations: a sentence that ascribes reduced vs preserved/mildly reduced ejection fraction, type 1 vs type 2
+  diabetes, or children vs adults to a cited paper fails when that paper's title or population names the opposite
+  subgroup and not the claimed one (a sentence naming both subgroups is not judged). The check is lexical and covers
+  only these subgroups.
+
+Failures are first sent back to the model as repair problems; whatever still fails is fixed in code: measure names are
+corrected and failing sentences are removed (numbers are never replaced). An emptied summary becomes a fixed notice;
+an emptied rationale becomes the GRADE-lite factors; an emptied conflict explanation becomes the deterministic note.
+Graded summaries use GRADE certainty wording (moderate "probably", low "may", very low "very uncertain"); when the
+summary lacks the wording for its final `evidence_strength`, a fixed certainty sentence is appended.
+`result.quality.prose_check` is `{numbers_removed, measures_fixed, population_removed, certainty_added,
+conflict_sentences_removed, conflict_measures_fixed}` (absent for results stored before Plan 19).
+`result.quality.other_comparisons` counts the outcomes flagged as other comparisons and
+`result.quality.comparison_backstop` how many of them the deterministic backstop flagged.
 
 ### Exports
 
