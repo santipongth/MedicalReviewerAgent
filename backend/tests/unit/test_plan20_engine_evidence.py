@@ -121,6 +121,19 @@ async def test_related_reports_leave_the_evidence_and_are_linked_in_the_result()
     assert final["stats"]["related_reports"] == 2
 
 
+def test_markdown_labels_a_related_report():
+    from types import SimpleNamespace
+
+    from app.graph.nodes.stub_result import stub_result
+    from app.services.report import render_markdown
+    r = stub_result("t", "en", "slr")
+    r["papers"][1] |= {"related_to": "P1", "related_reason": "same trial (EMPEROR-Preserved)"}
+    md = render_markdown(SimpleNamespace(topic="t", status="done", error=None, result=r))
+    line = next(x for x in md.splitlines() if x.startswith("- [P2]"))
+    assert line.endswith("Related report of [P1] (same trial (EMPEROR-Preserved)), not counted again.")
+    assert "Related report" not in next(x for x in md.splitlines() if x.startswith("- [P1]"))
+
+
 async def test_scoping_keeps_every_report():
     st = state([PRIMARY, COMMENTARY], language="en", options={"review_type": "scoping"})
     final = (await make_finalize(deps())({**st, "synthesis": None}))["result"]

@@ -342,7 +342,8 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   are left out of the comparison, consensus, conflicts, pools, GRADE-lite, every k and (graded types) the narrative.
   They stay in `papers` with `related_to` (the primary's ref) and `related_reason` ("same trial (EMPEROR-Preserved)",
   "same trial (NCT03057951)" or "near-identical title, same first author and year"); the primary lists them in
-  `related_reports[]`. `stats.related_reports` counts them (PRISMA 2020 counts studies and reports apart). Scoping
+  `related_reports[]`. The Markdown export ends such a paper's line with "Related report of [P1] (same trial
+  (...)), not counted again.". `stats.related_reports` counts them (PRISMA 2020 counts studies and reports apart). Scoping
   reviews map every report and link none. Results stored before Plan 20 Task 10 have none of these keys.
 - No direction logic at all (empty consensus and conflicts, every cell `direction` `"unclear"`) for scoping reviews,
   for themes reviews (every ticked study type is Qualitative or Mixed methods), for `prevalence` and `diagnosis`

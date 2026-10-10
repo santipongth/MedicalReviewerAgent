@@ -136,8 +136,11 @@ def render_markdown(review) -> str:
             card = p.get("card") or {}
             link = f" https://doi.org/{p['doi']}" if p.get("doi") else ""
             design = f" — {card.get('study_design')}, n={card.get('sample_size') or '?'}" if card else " — not extracted"
+            # Plan 20 Task 10: a further report of a trial counted once, under its primary report
+            related = (f" Related report of [{p['related_to']}] ({p.get('related_reason') or 'same trial'}), not "
+                       f"counted again." if p.get("related_to") else "")
             out.append(f"- [{p['ref']}] {p.get('title')} ({p.get('year') or 'n.d.'}, {p.get('journal') or ''})"
-                       f"{design}.{link}{_other_comparisons(p.get('card_en') or card)}")
+                       f"{design}.{link}{_other_comparisons(p.get('card_en') or card)}{related}")
         out.append("")
     quality = result.get("quality") or {}
     if quality:
