@@ -64,6 +64,11 @@ function Outcomes({ row, lang }: { row: LitRow; lang: Lang }) {
           {o.effect && "blanked" in o.effect ? <Hole lang={lang} />
             : o.effect ? <><VerifiedNumber value={o.effect.label} />{o.effect.ci && <> (95% CI <VerifiedNumber value={o.effect.ci} />)</>}</>
             : <span className="text-muted">{L(lang, "ไม่รายงานตัวเลข", "no numbers reported")}</span>}
+          {o.otherComparison && (
+            <span className="text-sm text-muted" data-other-comparison>
+              {" "}({L(lang, "การเปรียบเทียบอื่น ไม่นำไปสรุป", "other comparison, not used in the synthesis")}{o.comparison ? `: ${o.comparison}` : ""})
+            </span>
+          )}
         </li>
       ))}
     </ul>

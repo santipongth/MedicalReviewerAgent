@@ -34,7 +34,7 @@ from app.harness.comparison import (
     question_card,
     settle_comparisons,
 )
-from app.harness.prose import ProseContext, context_numbers, fix_prose, paper_facts, prose_problems
+from app.harness.prose import _sentences, fix_prose, prose_context, prose_problems
 from app.harness.quality import summarize_quality
 from tests.fakes import FakeStructuredLLM
 from tests.unit.test_nodes_synthesis import deps, state
@@ -114,8 +114,8 @@ META_SUMMARY_1 = ("SGLT2 inhibitors reduce the risk of heart failure hospitaliza
                   "patients with reduced ejection fraction, as demonstrated by dapagliflozin [P1] and empagliflozin [P2].")
 
 
-def ctx(papers, texts=(), values=()):
-    return ProseContext(facts=paper_facts(papers), allowed=context_numbers(texts, values), max_count=len(papers))
+def ctx(papers, texts=(), values=(), search=()):
+    return prose_context(papers, texts=texts, values=values, search=search)
 
 
 # ---- (a) schema ---------------------------------------------------------------------------------
@@ -177,7 +177,7 @@ def test_comparison_text_is_localized_with_the_card():
 
 # ---- (a) deterministic backstop -----------------------------------------------------------------
 METFORMIN_Q = {"intervention_or_exposure": "Long-term metformin therapy",
-               "key_terms": [{"term": "metformin", "synonyms": ["biguanide", "Glucophage"], "mesh": "Metformin"},
+               "key_terms": [{"term": "metformin", "synonyms": ["biguanide"], "mesh": "Metformin"},
                              {"term": "colorectal cancer", "synonyms": ["CRC"], "mesh": "Colorectal Neoplasms"}]}
 SGLT2_Q = {"intervention_or_exposure": "SGLT2 inhibitors",
            "key_terms": [{"term": "SGLT2 inhibitors", "synonyms": ["dapagliflozin", "empagliflozin"], "mesh": None}]}
@@ -190,13 +190,18 @@ def pc(intervention, comparison, matches=True):
 
 def test_lexicon_takes_synonyms_only_from_the_intervention_key_term():
     lex = intervention_lexicon(METFORMIN_Q)
-    assert {"metfo", "bigua", "gluco"} <= lex and "color" not in lex and "crc" not in lex
+    assert {"metfo", "bigua"} <= lex and "color" not in lex and "crc" not in lex
     assert {"sglt2", "dapag", "empag"} <= intervention_lexicon(SGLT2_Q)
     assert intervention_lexicon(None) == set() and intervention_lexicon({"intervention_or_exposure": ""}) == set()
 
 
-def test_backstop_flags_another_drug_the_model_called_matching():
-    flagged, n = settle_comparisons(pc("Prescription of GLP-1RAs", "GLP-1RAs vs insulin"), METFORMIN_Q)
+@pytest.mark.parametrize("intervention,comparison,question", [
+    ("Prescription of GLP-1RAs", "GLP-1RAs vs insulin", METFORMIN_Q),  # the audit case (84edcb5d P3)
+    ("Sulfonylurea use", "glimepiride vs insulin", METFORMIN_Q),  # recognised agents outside the question
+    ("Atorvastatin", "atorvastatin vs placebo", SGLT2_Q),  # an INN stem of another family
+])
+def test_backstop_flags_a_named_agent_outside_the_question(intervention, comparison, question):
+    flagged, n = settle_comparisons(pc(intervention, comparison), question)
     assert n == 1 and flagged.outcomes[0].matches_question is False
 
 
@@ -204,6 +209,12 @@ def test_backstop_flags_another_drug_the_model_called_matching():
     ("Metformin therapy", "metformin vs sulfonylureas", METFORMIN_Q),  # names the intervention
     ("Prescription of GLP-1RAs", "GLP-1RAs vs metformin", METFORMIN_Q),  # the comparison names it
     ("Dapagliflozin 10 mg", "dapagliflozin vs placebo", SGLT2_Q),  # a drug of the class, by key-term synonym
+    ("Canagliflozin", "canagliflozin vs placebo", {"intervention_or_exposure": "SGLT2 inhibitors",
+                                                   "key_terms": []}),  # same family by INN stem, no synonyms
+    ("Glucophage", "Glucophage vs placebo", METFORMIN_Q),  # a brand name the synonyms lack: unknown, not other
+    ("Dimethylbiguanide", "DMBG vs none", METFORMIN_Q),  # an abbreviation: unknown, not other
+    ("antidiabetic drugs", "users vs nonusers", METFORMIN_Q),  # no agent named at all
+    ("Dapagliflozin", "initial eGFR decline >10% vs <=10%", METFORMIN_Q),  # no agent in the comparison
     ("Prescription of GLP-1RAs", None, METFORMIN_Q),  # no comparison text: the model's flag stands
     ("Prescription of GLP-1RAs", "GLP-1RAs vs insulin", None),  # no refined question: nothing to judge
 ])
@@ -249,6 +260,46 @@ def test_counts_are_not_percentages_and_context_numbers_are_allowed():
     assert fix_prose("It included 13 cancers [P3].", ctx(SLR_PAPERS))[1] == {}  # P3's title
 
 
+def test_other_comparison_numbers_never_support_the_prose():
+    # P3's only outcome is GLP-1RA vs insulin (HR 0.54): verified on the card, but no support for a metformin claim
+    c = ctx(SLR_PAPERS)
+    assert fix_prose("Metformin lowered CRC risk (HR 0.54) [P3].", c)[1] == {"numbers_removed": 1}
+    mixed = [paper("P1", card([outcome("CRC", "HR", 0.8, 0.7, 0.9),
+                               outcome("CRC", "HR", 0.54, 0.46, 0.64, matches=False, comparison="GLP-1RA vs insulin")],
+                              n=None) | {"key_findings": ["HR 0.54 vs insulin", "HR 0.80 for metformin"]})]
+    c = ctx(mixed)
+    assert fix_prose("Metformin lowered CRC risk (HR 0.80) [P1].", c)[1] == {}
+    assert fix_prose("Metformin lowered CRC risk (HR 0.54) [P1].", c)[1] == {"numbers_removed": 1}  # nor key findings
+
+
+def test_search_counts_only_in_a_sentence_about_the_search():
+    c = ctx(SLR_PAPERS, search=[289, 216])
+    assert fix_prose("The search found 289 records, of which 216 had abstracts [P1].", c)[1] == {}
+    assert fix_prose("Risk fell in 289 patients [P1].", c)[1] == {"numbers_removed": 1}
+
+
+def test_a_context_label_number_does_not_admit_a_percentage():
+    c = ctx(SLR_PAPERS[:1], texts=["Does metformin reduce CRC in type 2 diabetes?"])
+    assert fix_prose("It was studied in type 2 diabetes [P1].", c)[1] == {}
+    assert fix_prose("About 2% of patients stopped [P1].", c)[1] == {"numbers_removed": 1}
+    hf = ctx(META_PAPERS[1:2])  # P2's population: "an ejection fraction of more than 40%"
+    assert fix_prose("It enrolled patients with an ejection fraction above 40% [P2].", hf)[1] == {}
+
+
+@pytest.mark.parametrize("text", [
+    "Dapagliflozin vs. Placebo lowered worsening heart failure (HR 0.74) [P1].",
+    "Some trials, e.g. DAPA-HF, lowered worsening heart failure (HR 0.74) [P1].",
+    "As shown by McMurray et al. DAPA-HF lowered worsening heart failure (HR 0.74) [P1].",
+    "See Fig. 2 for the trial; it lowered worsening heart failure (HR 0.74) [P1].",
+    "The relative reduction, i.e. HR 0.74, came from one trial [P1].",
+    "It enrolled approx. 2 trials (HR 0.74) [P1].",
+])
+def test_abbreviations_do_not_split_a_sentence(text):
+    assert _sentences(text) == [text]  # one whole sentence, its citation still attached
+    assert fix_prose(text, ctx(META_PAPERS)) == (text, {})
+    assert _sentences(text + " Next sentence [P2].") == [text, "Next sentence [P2]."]
+
+
 def test_a_count_above_the_paper_count_is_not_a_count():
     c = ctx(SLR_PAPERS[:2])
     assert fix_prose("Seven cohorts with 3 sites [P1].", c)[1] == {"numbers_removed": 1}
@@ -265,7 +316,7 @@ def test_audit_odds_ratios_for_rrs_is_corrected():
     assert "pooled effect estimates ranging from 0.63 to 0.78" in fixed and "odds" not in fixed
     assert counts == {"measures_fixed": 1}
     [problem] = prose_problems(SLR_SUMMARY_1, ctx(SLR_PAPERS, texts=["type 2 diabetes"]))
-    assert 'calls the estimate "odds ratios"' in problem
+    assert 'names "odds ratios"' in problem and 'correct wording: "effect estimates"' in problem
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -273,11 +324,26 @@ def test_audit_odds_ratios_for_rrs_is_corrected():
      "Two reviews reported risk ratios of 0.63 and 0.75 [P2, P4]."),
     ("The OR was 0.63 [P2].", "The RR was 0.63 [P2]."),
     ("ORs of 0.63 and 0.75 [P2, P4].", "RRs of 0.63 and 0.75 [P2, P4]."),
-    ("Hazard ratio data favoured metformin [P2].", "Risk ratio data favoured metformin [P2]."),  # no number: P2 = RR
     ("The OR was 0.78 and the RR 0.63 [P1, P2].", "The OR was 0.78 and the RR 0.63 [P1, P2]."),  # both right
 ])
 def test_measure_names_follow_the_cards(text, expected):
-    assert fix_prose(text, ctx(SLR_PAPERS))[0] == expected
+    assert fix_prose(text, ctx(SLR_PAPERS)) == (expected, {"measures_fixed": 1} if text != expected else {})
+
+
+@pytest.mark.parametrize("text", [
+    "Hazard ratio data favoured metformin [P2].",  # P2 reports an RR, and no number follows the name
+    "Mean difference between arms was noted [P1].",  # P1 reports an OR: no rewrite into "Odds ratio between arms"
+    "The odds ratio was, after adjustment for age, sex, BMI and smoking, 0.63 [P2].",  # the number is 9 words away
+])
+def test_a_wrong_measure_without_a_nearby_number_removes_the_sentence(text):
+    assert fix_prose(text, ctx(SLR_PAPERS)) == ("", {"measures_removed": 1})
+    [problem] = prose_problems(text, ctx(SLR_PAPERS))
+    assert "correct wording" not in problem
+
+
+def test_relative_risk_reduction_is_not_a_measure_name():
+    text = "A relative risk reduction was reported for dapagliflozin [P1]."  # P1 reports HRs only
+    assert fix_prose(text, ctx(META_PAPERS)) == (text, {})
 
 
 @pytest.mark.parametrize("text", ["Time in the OR was shorter [P2].", "HR monitoring was routine [P2].",
@@ -339,6 +405,15 @@ async def test_conflict_explanation_is_repaired_then_fixed():
     assert note["explanation"] == "Doses differed [P1, P2]."  # the sentence with 0.55 is removed
     entry = out["quality"][0]
     assert entry["prose_numbers_removed"] == 1 and entry["fallback"] is False
+    assert entry["prose_repairs"] == 1  # one round sent back by the grounded-prose check
+
+
+async def test_conflict_explanation_left_without_citations_falls_back():
+    text = "[P1] reported a 22% lower risk. Doses differed between the cohorts."
+    llm = FakeStructuredLLM("c", lambda s, u: ConflictNote(outcome="x", refs=["P1"], likely_reasons=["dose"],
+                                                           explanation=text))
+    out = await make_explain_conflict(deps(conflict_explainer=llm))(conflict_payload())
+    assert out["conflict_notes"][0]["explanation"].startswith("Studies report different directions")
 
 
 async def test_conflict_explanation_emptied_by_the_check_falls_back_to_the_deterministic_note():
@@ -369,15 +444,15 @@ async def test_narrative_repairs_then_fixes_numbers_measures_and_appends_certain
     out = await make_write_synthesis(deps(synthesizer=synth))(slr_state())
     assert len(synth.calls) == 2  # one repair with the prose problems
     repair = synth.calls[1][1]
-    assert 'calls the estimate "odds ratios"' in repair and "states 37" in repair and "evidence_rationale" in repair
+    assert 'names "odds ratios"' in repair and "states 37" in repair and "evidence_rationale" in repair
     s = out["synthesis"]
     assert "pooled effect estimates ranging from 0.63 to 0.78" in s["executive_summary"]
     assert "37%" not in s["executive_summary"]
     assert s["executive_summary"].endswith(CERTAINTY_SENTENCE["low"])  # "may" was missing
     assert s["evidence_rationale"] == "start low: 3/3 non-randomized studies"  # emptied → GRADE-lite factors
     q = next(e for e in out["quality"] if e["stage"] == "prose_check")
-    assert q == {"stage": "prose_check", "numbers_removed": 2, "measures_fixed": 1, "population_removed": 0,
-                 "certainty_added": 1}
+    assert q == {"stage": "prose_check", "numbers_removed": 2, "measures_fixed": 1, "measures_removed": 0,
+                 "population_removed": 0, "certainty_added": 1, "repairs": 1}
 
 
 @pytest.mark.parametrize("strength,summary,added", [
@@ -405,6 +480,16 @@ async def test_summary_emptied_by_the_check_is_withheld_not_invented():
     assert out["synthesis"]["executive_summary"] == PROSE_REMOVED
 
 
+async def test_summary_left_without_citations_is_withheld():
+    # the only cited sentence states a derived number; the uncited rest cannot stand as the answer
+    synth = FakeStructuredLLM("s", lambda s, u: narrative(
+        "Metformin may lower the risk by 37% [P2]. More research is needed. Results may vary."))
+    out = await make_write_synthesis(deps(synthesizer=synth))(slr_state())
+    assert out["synthesis"]["executive_summary"] == PROSE_REMOVED
+    q = next(e for e in out["quality"] if e["stage"] == "prose_check")
+    assert q["numbers_removed"] == 1 and q["certainty_added"] == 0
+
+
 async def test_ungraded_reviews_are_checked_but_get_no_certainty_sentence():
     synth = FakeStructuredLLM("s", lambda s, u: NarrativeNoGrade(
         executive_summary="Reviews report odds ratios of 0.63 [P2]. Cohorts differ [P1, P3].", research_gaps=[]))
@@ -417,14 +502,16 @@ def test_quality_summarizes_prose_check_and_other_comparisons():
     entries = [{"stage": "read", "numbers_verified": 1, "numbers_total": 1, "other_comparisons": 2,
                 "comparison_backstop": 1},
                {"stage": "read", "numbers_verified": 1, "numbers_total": 1},
-               {"stage": "conflict", "prose_numbers_removed": 1, "prose_measures_fixed": 2},
+               {"stage": "conflict", "prose_numbers_removed": 1, "prose_measures_fixed": 2,
+                "prose_measures_removed": 1, "prose_repairs": 2},
                {"stage": "prose_check", "numbers_removed": 9},
                {"stage": "prose_check", "numbers_removed": 1, "measures_fixed": 1, "population_removed": 1,
-                "certainty_added": 1}]
+                "certainty_added": 1, "repairs": 2}]
     q = summarize_quality(entries, None)
     assert q["other_comparisons"] == 2 and q["comparison_backstop"] == 1
-    assert q["prose_check"] == {"numbers_removed": 1, "measures_fixed": 1, "population_removed": 1,
-                                "certainty_added": 1, "conflict_sentences_removed": 1, "conflict_measures_fixed": 2}
+    assert q["prose_check"] == {"numbers_removed": 1, "measures_fixed": 1, "measures_removed": 0,
+                                "population_removed": 1, "certainty_added": 1, "repairs": 2,
+                                "conflict_sentences_removed": 2, "conflict_measures_fixed": 2, "conflict_repairs": 2}
     assert "prose_check" not in summarize_quality([], None)
 
 
@@ -481,13 +568,15 @@ async def test_graph_keeps_other_comparisons_out_of_the_evidence_and_grounds_the
     assert len(cells) == 4 and all(c["effect_value"] == 0.8 for c in cells)
     assert r["synthesis"]["conflicts"] == [] and deps_.llms.conflict_explainer.calls == []
     assert r["quality"]["other_comparisons"] == 4 and r["quality"]["comparison_backstop"] == 0
-    # the prose: the measure is corrected, the derived 20% sentence removed, the certainty sentence appended
+    # the prose: the measure is corrected; the derived 20% sentence and the sentence that leans on the other
+    # comparison's HR 1.30 are removed; the certainty sentence is appended
     summary = r["synthesis"]["executive_summary"]
-    assert "hazard ratios of 0.80" in summary and "HR 1.30" in summary and "20%" not in summary
+    assert "hazard ratios of 0.80" in summary and "1.30" not in summary and "20%" not in summary
     assert summary.endswith(CERTAINTY_SENTENCE["low"])
-    assert r["quality"]["prose_check"] == {"numbers_removed": 1, "measures_fixed": 1, "population_removed": 0,
-                                           "certainty_added": 1, "conflict_sentences_removed": 0,
-                                           "conflict_measures_fixed": 0}
+    assert r["quality"]["prose_check"] == {"numbers_removed": 2, "measures_fixed": 1, "measures_removed": 0,
+                                           "population_removed": 0, "certainty_added": 1, "repairs": 1,
+                                           "conflict_sentences_removed": 0, "conflict_measures_fixed": 0,
+                                           "conflict_repairs": 0}
     assert len(deps_.llms.synthesizer.calls) == 2  # the narrative got one repair round with the problems
     assert "Other comparisons" in deps_.llms.synthesizer.calls[0][0]
     # the extractor was asked for the comparison

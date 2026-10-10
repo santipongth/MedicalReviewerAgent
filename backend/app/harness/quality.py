@@ -54,11 +54,12 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
         last = prose[-1]
         conflicts = by_stage.get("conflict", [])
         extra["prose_check"] = {
-            **{k: int(last.get(k, 0)) for k in ("numbers_removed", "measures_fixed", "population_removed",
-                                                 "certainty_added")},
+            **{k: int(last.get(k, 0)) for k in ("numbers_removed", "measures_fixed", "measures_removed",
+                                                 "population_removed", "certainty_added", "repairs")},
             "conflict_sentences_removed": sum(e.get("prose_numbers_removed", 0) + e.get("prose_population_removed", 0)
-                                              for e in conflicts),
+                                              + e.get("prose_measures_removed", 0) for e in conflicts),
             "conflict_measures_fixed": sum(e.get("prose_measures_fixed", 0) for e in conflicts),
+            "conflict_repairs": sum(e.get("prose_repairs", 0) for e in conflicts),
         }
     return {
         **extra,

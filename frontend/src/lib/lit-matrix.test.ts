@@ -26,6 +26,21 @@ describe("litRows", () => {
     expect(row.outcomes[0].effect).toEqual({ blanked: true });
   });
 
+  it("Plan 19: other comparisons are marked and leave the row direction to the matching outcomes", () => {
+    const p3 = structuredClone(papers.find((p) => p.ref === "P3")!);
+    const mark = (c: NonNullable<Paper["card"]>) => {
+      c.overall_direction = "negative";
+      c.outcomes[0] = { ...c.outcomes[0], direction: "positive" };
+      c.outcomes[1] = { ...c.outcomes[1], direction: "negative", matches_question: false, comparison: "GLP-1RA vs insulin" };
+    };
+    mark(p3.card!); mark(p3.card_en!);
+    const [row] = litRows([p3], "en");
+    expect(row.outcomes.map((o) => [o.otherComparison, o.comparison])).toEqual([[false, null], [true, "GLP-1RA vs insulin"]]);
+    expect(row.direction).toBe("positive");  // from the matching outcome, not the card's overall direction
+    for (const c of [p3.card!, p3.card_en!]) c.outcomes = c.outcomes.map((o) => ({ ...o, matches_question: false }));
+    expect(litRows([p3], "en")[0].direction).toBeNull();  // only other comparisons: no evidence direction
+  });
+
   it("a paper without a card is a failed row", () => {
     const [row] = litRows([{ ...papers[0], card: null, card_en: null }], "th");
     expect(row.failed).toBe(true);

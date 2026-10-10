@@ -150,9 +150,12 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   a metformin review, or the association of an eGFR decline with outcomes inside an SGLT2 trial). Such outcomes stay
   on the card, with their verified numbers, but never reach `synthesis.comparison`, consensus, conflicts,
   `meta_analysis` pools or the grade; a paper whose outcomes are all other comparisons adds nothing to them. The
-  extractor sets the flag; a deterministic backstop also sets it to false when the refined question names its
-  intervention and neither the outcome's `comparison` nor the card's `intervention_or_exposure` names it or one of its
-  key-term synonyms (it never sets it to true). Scoping outcomes always have `matches_question: true`. Outcomes
+  extractor sets the flag; a deterministic backstop also sets it to false, but only when the outcome's `comparison`
+  names a recognised agent (a drug-class word such as insulin or GLP-1, or an INN stem such as -gliflozin or -statin)
+  outside the question's intervention family, while neither the comparison nor the card's `intervention_or_exposure`
+  names the question's intervention, its key-term synonyms or its drug family. An unknown brand name or abbreviation
+  ("Glucophage", "DMBG") or a comparison that names no agent ("users vs nonusers") never flips; the backstop never
+  sets the flag to true and needs a refined question. Scoping outcomes always have `matches_question: true`. Outcomes
   stored before Plan 19 have neither field and count as matching. Clients should label `matches_question: false`
   outcomes as other comparisons and keep them out of forest plots. When every quantitative paper reports only other
   comparisons, the grade is `very_low` with a factor that says so.
@@ -211,30 +214,37 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 
 **Grounded prose (Plan 19).** The executive summary, the evidence rationale (graded types) and each conflict
 explanation are checked sentence by sentence, in English before translation. A sentence's scope is the papers it
-cites, or every paper when it cites none.
-- Numbers: every number must be a verified number of the scope's cards (surviving numeric fields, sample size, and the
-  numbers of their verified `result`, `effect_size` and `key_findings` texts), a number of the review's context (the
-  question and PICO text, the cited papers' titles, years, population, intervention, comparator, outcome and
-  comparison texts), a pooled value, or a pipeline count (search and selection counts, matrix row and pool sizes, the
-  GRADE-lite factors, a `95%` CI level, or an integer count of studies up to the number of papers that is not a
-  percentage). A derived, rounded or invented number fails.
+cites, or every paper when it cites none. Sentences split at `.`, `!` or `?` before an uppercase letter or `[`, never
+after "vs.", "e.g.", "i.e.", "Fig.", "et al.", "approx." or "cf.".
+- Numbers: every number must be a verified number of the scope's cards, taken from the outcomes that answer the
+  question only (surviving numeric fields, sample size, the numbers of their verified `result` and `effect_size`
+  texts, and `key_findings` numbers that are not other-comparison numbers); a pooled value; a pipeline count (matrix
+  row and pool sizes, the GRADE-lite factors, a `95%` CI level, or an integer count of studies up to the number of
+  papers that is not a percentage); a search or selection count, only in a sentence about the search (records,
+  screened, included, ...); or a number of the review's context (the question and PICO text, the cited papers'
+  titles, years, population, intervention, comparator, and matching outcome and comparison names). A context number
+  admits a percentage only when the context wrote it as one ("type 2" never admits "2%"). A derived, rounded or
+  invented number, or an estimate of an other comparison, fails.
 - Measure names: "odds ratio"/OR, "risk ratio"/"relative risk"/RR, "hazard ratio"/HR, "risk difference"/RD, "mean
-  difference"/MD and "standardized mean difference"/SMD must match the card's `effect_measure` of the estimates they
-  introduce (else one of the scope's measures; a bare abbreviation is judged only when it introduces a card
-  estimate, since "OR" or "HR" can mean something else). A wrong name is corrected in code, to the right measure or,
-  when the estimates use several measures, to "effect estimate(s)".
+  difference"/MD and "standardized mean difference"/SMD ("relative risk reduction" is not a measure name) must match
+  the card's `effect_measure` of the estimates they introduce (else one of the scope's measures; a bare abbreviation
+  is judged only when it introduces a card estimate, since "OR" or "HR" can mean something else). A wrong name is
+  rewritten only when a number follows it within 5 words: to the right measure or, when the estimates use several
+  measures, to "effect estimate(s)". Otherwise the sentence is removed.
 - Populations: a sentence that ascribes reduced vs preserved/mildly reduced ejection fraction, type 1 vs type 2
   diabetes, or children vs adults to a cited paper fails when that paper's title or population names the opposite
   subgroup and not the claimed one (a sentence naming both subgroups is not judged). The check is lexical and covers
   only these subgroups.
 
 Failures are first sent back to the model as repair problems; whatever still fails is fixed in code: measure names are
-corrected and failing sentences are removed (numbers are never replaced). An emptied summary becomes a fixed notice;
-an emptied rationale becomes the GRADE-lite factors; an emptied conflict explanation becomes the deterministic note.
+corrected and failing sentences are removed (numbers are never replaced). An emptied summary, or one left with no
+`[Pn]` citation after the removals, becomes a fixed notice; an emptied rationale becomes the GRADE-lite factors; an
+emptied or uncited conflict explanation becomes the deterministic note.
 Graded summaries use GRADE certainty wording (moderate "probably", low "may", very low "very uncertain"); when the
 summary lacks the wording for its final `evidence_strength`, a fixed certainty sentence is appended.
-`result.quality.prose_check` is `{numbers_removed, measures_fixed, population_removed, certainty_added,
-conflict_sentences_removed, conflict_measures_fixed}` (absent for results stored before Plan 19).
+`result.quality.prose_check` is `{numbers_removed, measures_fixed, measures_removed, population_removed,
+certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, conflict_repairs}` (absent for results
+stored before Plan 19); `repairs` and `conflict_repairs` count the model rounds the check sent back for repair.
 `result.quality.other_comparisons` counts the outcomes flagged as other comparisons and
 `result.quality.comparison_backstop` how many of them the deterministic backstop flagged.
 

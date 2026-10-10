@@ -2,20 +2,26 @@
 and the conflict explanations, the free text the narrative model writes about the cards.
 
 Checks, sentence by sentence. A sentence's scope is the papers it cites ([P2, P4]); a sentence that cites none is
-checked against every paper.
-- Numbers. Every number must trace to the scope's verified card numbers (the numeric fields that survived
-  verification, and the numbers of the verified `result`, `effect_size` and `key_findings` texts), to the review's
-  context (question and PICO text, and the cited papers' titles, years, population, intervention, comparator,
-  outcome and comparison texts), to a pooled value (`ComputedNumber`) or to a pipeline count (search and selection
-  counts, row and pool sizes, the numbers in the GRADE-lite factors, a CI level written "95%", and a plain count of
-  studies, an integer up to the number of papers that is not a percentage). Anything else, e.g. a rounded, derived
-  or invented number, fails.
+checked against every paper. Sentences split at . ! ? before an uppercase letter or "[", never after "vs.", "e.g.",
+"i.e.", "Fig.", "et al.", "approx." or "cf.".
+- Numbers. Every number must trace to one of:
+  - the scope's verified card numbers, taken from the outcomes that answer the question only (an other-comparison
+    estimate is never support): surviving numeric fields, sample size, the numbers of their verified `result` and
+    `effect_size` texts, and the `key_findings` numbers that are not other-comparison numbers;
+  - a pooled value (`ComputedNumber`) or a pipeline count (matrix row and pool sizes, the GRADE-lite factors, a CI
+    level written "95%", an integer count of studies up to the number of papers that is not a percentage);
+  - the search and selection counts, only in a sentence about the search (records, screened, included, ...);
+  - context: the question and PICO text and the cited papers' titles, years, population, intervention, comparator,
+    and matching outcome and comparison names. A context number admits a percentage only when the context wrote it as
+    one ("type 2" never admits "2%"; "ejection fraction of more than 40%" admits "40%").
+  Anything else, e.g. a rounded, derived or invented number, fails.
 - Measure names. A named measure (odds ratio/OR, risk ratio/relative risk/RR, hazard ratio/HR, risk difference/RD,
-  mean difference/MD, standardized mean difference/SMD) must be the card's `effect_measure` of the estimates it
-  introduces (the numbers after it, up to the next measure name), else one of the scope's measures. A bare
-  abbreviation is judged only when it introduces a card estimate ("OR" may be the operating room, "HR" heart rate,
-  "MD" a doctor). A wrong name is corrected in code: to the right measure when the estimates share one, else to the
-  neutral "effect estimate".
+  mean difference/MD, standardized mean difference/SMD; never "relative risk reduction") must be the card's
+  `effect_measure` of the estimates it introduces (the numbers after it, up to the next measure name), else one of the
+  scope's measures. A bare abbreviation is judged only when it introduces a card estimate ("OR" may be the operating
+  room, "HR" heart rate, "MD" a doctor). A wrong name is rewritten only when a number follows it within 5 words: to
+  the right measure when the estimates share one, else to the neutral "effect estimate". Otherwise the sentence is
+  removed (a rewrite there would only produce another wrong phrase).
 - Populations. A sentence that ascribes a subgroup (reduced vs preserved/mildly reduced ejection fraction, type 1 vs
   type 2 diabetes, children vs adults) to a cited paper fails when that paper's title or population names the
   opposite subgroup and not the claimed one. A sentence that names both subgroups (a comparison) is not judged.
@@ -37,10 +43,13 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from app.harness.comparison import answers_question
 from app.harness.verify import _CI_LEVELS, NUMERIC_FIELDS, Tok, _dec, _tokens
 
-# A sentence ends at . ! or ? followed by space and an uppercase letter or "[" (as in meta.strip_pooled_numbers).
-_SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[])")
+# A sentence ends at . ! or ? followed by space and an uppercase letter or "[" (as in meta.strip_pooled_numbers),
+# but not after a common abbreviation ("vs. Placebo", "e.g. Smith", "Fig. 2").
+_SENTENCE = re.compile(r"(?<=[.!?])(?<!\bvs\.)(?<!\bVs\.)(?<!\be\.g\.)(?<!\bi\.e\.)(?<!\bFig\.)(?<!\bfig\.)"
+                       r"(?<!\bet al\.)(?<!\bapprox\.)(?<!\bcf\.)\s+(?=[A-Z\[])")
 _BRACKETS = re.compile(r"\[([^\]]*)\]")
 _REF = re.compile(r"\bP\d+\b")
 
@@ -50,13 +59,18 @@ _MEASURE_PATTERNS: tuple[tuple[str, str], ...] = (
     ("RD", r"(?i:\brisk differences?)|\bRDs?\b"),
     ("HR", r"(?i:\bhazard ratios?)|\ba?HRs?\b"),
     ("OR", r"(?i:\bodds ratios?)|\ba?ORs?\b"),
-    ("RR", r"(?i:\b(?:relative risks?|risk ratios?|rate ratios?))|\ba?I?RRs?\b"),
+    ("RR", r"(?i:\b(?:relative risks?|risk ratios?|rate ratios?)(?! reduction))|\ba?I?RRs?\b"),
 )
 _MEASURE = re.compile("|".join(f"(?P<{m}>{p})" for m, p in _MEASURE_PATTERNS))
 _NAMES = {"HR": "hazard ratio", "OR": "odds ratio", "RR": "risk ratio", "RD": "risk difference",
           "MD": "mean difference", "SMD": "standardized mean difference"}
 KNOWN_MEASURES = frozenset(_NAMES)
 GENERIC = "effect estimate"
+NEAR_WORDS = 5  # a measure name is rewritten only when a number follows within this many words
+_WORDS = re.compile(r"[^\W\d_]+")
+# A sentence about the search may state the search and selection counts.
+_SEARCH = re.compile(r"(?i)\b(?:search\w*|records?|identified|retrieved|screen\w*|candidates?|abstracts?|"
+                     r"included|selected|excluded|databases?|duplicates?|found|hits)\b")
 
 # "reduced and preserved ejection fraction" names both; "mildly reduced" is never reduced ejection fraction
 _EF = r"(?:left[- ]ventricular )?ejection fraction"
@@ -85,19 +99,41 @@ _SUBGROUPS: tuple[tuple[str, re.Pattern[str], re.Pattern[str], str], ...] = tupl
 Key = Decimal | str
 
 
+def _is_pct(t: Tok, text: str) -> bool:
+    return text[t.end:].lstrip().startswith("%")
+
+
+@dataclass
+class ContextNumbers:
+    """Numbers written in descriptive text: `plain` may be restated only without "%", `pct` (written as a
+    percentage there) also as a percentage."""
+    plain: set[Key] = field(default_factory=set)
+    pct: set[Key] = field(default_factory=set)
+
+    def add(self, text: str | None) -> None:
+        for t in _tokens(text) if text else ():
+            (self.pct if _is_pct(t, text) else self.plain).add(t.key)
+
+    def admits(self, t: Tok, sentence: str) -> bool:
+        return t.key in self.pct or (t.key in self.plain and not _is_pct(t, sentence))
+
+
 @dataclass
 class RefFacts:
     """What one paper's card lets the prose say."""
-    numbers: set[Key] = field(default_factory=set)  # verified numbers plus the paper's descriptive context
+    numbers: set[Key] = field(default_factory=set)  # verified numbers of the outcomes that answer the question
+    context: ContextNumbers = field(default_factory=ContextNumbers)  # title, year, population, ...
     measures_by_value: dict[Decimal, set[str]] = field(default_factory=dict)  # estimate or CI bound -> measures
-    measures: set[str] = field(default_factory=set)  # every known effect_measure of the card
+    measures: set[str] = field(default_factory=set)  # every known effect_measure of the matching outcomes
     population: str = ""  # title + population text, for the subgroup check
 
 
 @dataclass
 class ProseContext:
     facts: dict[str, RefFacts]
-    allowed: set[Key]  # review-wide numbers: question, pooled values, pipeline counts
+    allowed: set[Key] = field(default_factory=set)  # pooled values and pipeline counts, any form
+    context: ContextNumbers = field(default_factory=ContextNumbers)  # the review question's text
+    search: set[Key] = field(default_factory=set)  # search/selection counts: only in a sentence about the search
     max_count: int = 0  # integers 1..max_count (not percentages) are counts of studies
 
 
@@ -108,23 +144,27 @@ def _keys(text: str | None) -> set[Key]:
 def _card_facts(card: dict[str, Any], title: str | None, year: Any) -> RefFacts:
     f = RefFacts(population=" ".join(x for x in (title, card.get("population")) if x))
     for text in (title, card.get("population"), card.get("intervention_or_exposure"), card.get("comparator"),
-                 card.get("study_design"), *(card.get("key_findings") or [])):
-        f.numbers |= _keys(text)
-    if year is not None:
-        f.numbers |= _keys(str(year))
+                 card.get("study_design"), None if year is None else str(year)):
+        f.context.add(text)
     if card.get("sample_size") is not None:
         f.numbers.add(_dec(card["sample_size"]))
+    other: set[Key] = set()
     for o in card.get("outcomes") or []:
-        for text in (o.get("outcome"), o.get("result"), o.get("effect_size"), o.get("comparison")):
-            f.numbers |= _keys(text)
+        values = {d for k in NUMERIC_FIELDS if o.get(k) is not None and (d := _dec(o[k])) is not None}
+        if not answers_question(o):  # another comparison: its numbers never support the prose
+            other |= values | _keys(o.get("result")) | _keys(o.get("effect_size"))
+            continue
+        f.context.add(o.get("outcome"))
+        f.context.add(o.get("comparison"))
+        f.numbers |= values | _keys(o.get("result")) | _keys(o.get("effect_size"))
         measure = o.get("effect_measure")
-        for k in NUMERIC_FIELDS:
-            if o.get(k) is not None and (d := _dec(o[k])) is not None:
-                f.numbers.add(d)
-                if k != "p_value" and measure in KNOWN_MEASURES:
-                    f.measures_by_value.setdefault(d, set()).add(measure)
         if measure in KNOWN_MEASURES:
             f.measures.add(measure)
+            for k in ("effect_value", "ci_lower", "ci_upper"):
+                if o.get(k) is not None and (d := _dec(o[k])) is not None:
+                    f.measures_by_value.setdefault(d, set()).add(measure)
+    for finding in card.get("key_findings") or []:
+        f.numbers |= {k for k in _keys(finding) if k not in other or k in f.numbers}
     f.numbers.discard(None)
     return f
 
@@ -141,12 +181,8 @@ def paper_facts(papers: Iterable[dict[str, Any]]) -> dict[str, RefFacts]:
     return out
 
 
-def context_numbers(texts: Iterable[str | None] = (), values: Iterable[Any] = ()) -> set[Key]:
-    """Review-wide allowed numbers: those written in `texts` (question, PICO, GRADE-lite factors) and `values`
-    (pipeline counts, pooled numbers as strings or numbers)."""
+def _values(values: Iterable[Any]) -> set[Key]:
     out: set[Key] = set()
-    for t in texts:
-        out |= _keys(t)
     for v in values:
         if isinstance(v, str):
             try:
@@ -158,10 +194,24 @@ def context_numbers(texts: Iterable[str | None] = (), values: Iterable[Any] = ()
     return out
 
 
+def prose_context(papers: Iterable[dict[str, Any]], *, texts: Iterable[str | None] = (), values: Iterable[Any] = (),
+                  search: Iterable[Any] = (), max_count: int | None = None) -> ProseContext:
+    """`texts`: the review's own text (question, PICO, GRADE-lite factors); `values`: pooled values (numbers or their
+    display strings) and pipeline counts; `search`: search and selection counts; `max_count`: defaults to the number
+    of papers."""
+    facts = paper_facts(papers)
+    context = ContextNumbers()
+    for t in texts:
+        context.add(t)
+    return ProseContext(facts=facts, allowed=_values(values), context=context, search=_values(search),
+                        max_count=len(facts) if max_count is None else max_count)
+
+
 @dataclass
 class _Issues:
     numbers: list[str] = field(default_factory=list)
-    measures: list[tuple[int, int, str, str, str]] = field(default_factory=list)  # start, end, written, fix, refs
+    # start, end, written, fix (None: no number follows, so the sentence is removed), refs
+    measures: list[tuple[int, int, str, str | None, str]] = field(default_factory=list)
     population: list[tuple[str, str, str]] = field(default_factory=list)  # claimed, ref, opposite
 
 
@@ -171,8 +221,7 @@ def _scope(sentence: str, ctx: ProseContext) -> list[str]:
 
 
 def _is_count(t: Tok, sentence: str, max_count: int) -> bool:
-    return (t.integer and not t.opaque and 0 < t.value <= max_count
-            and not sentence[t.end:].lstrip().startswith("%"))
+    return t.integer and not t.opaque and 0 < t.value <= max_count and not _is_pct(t, sentence)
 
 
 def _is_abbreviation(written: str) -> bool:
@@ -191,8 +240,12 @@ def _replacement(written: str, measure: str | None) -> str:
     return text + ("s" if plural else "")
 
 
+def _number_follows(sentence: str, end: int, toks: tuple[Tok, ...]) -> bool:
+    return any(t.start >= end and len(_WORDS.findall(sentence[end:t.start])) <= NEAR_WORDS for t in toks)
+
+
 def _measure_issues(sentence: str, refs: list[str], ctx: ProseContext,
-                    toks: tuple[Tok, ...]) -> list[tuple[int, int, str, str, str]]:
+                    toks: tuple[Tok, ...]) -> list[tuple[int, int, str, str | None, str]]:
     mentions = list(_MEASURE.finditer(sentence))
     if not mentions:
         return []
@@ -221,7 +274,8 @@ def _measure_issues(sentence: str, refs: list[str], ctx: ProseContext,
                 continue  # a bare "OR", "HR" or "MD" may be the operating room, heart rate or a doctor
             target = next(iter(known)) if len(known) == 1 else None
         written = m.group(0)
-        out.append((m.start(), m.end(), written, _replacement(written, target), ", ".join(refs)))
+        fix = _replacement(written, target) if _number_follows(sentence, m.end(), toks) else None
+        out.append((m.start(), m.end(), written, fix, ", ".join(refs)))
     return out
 
 
@@ -239,20 +293,23 @@ def _population_issues(sentence: str, refs: list[str], ctx: ProseContext, cited:
     return out
 
 
+def _admitted(t: Tok, sentence: str, refs: list[str], ctx: ProseContext, about_search: bool) -> bool:
+    if t.key in ctx.allowed or ctx.context.admits(t, sentence) or _is_count(t, sentence, ctx.max_count):
+        return True
+    if about_search and t.key in ctx.search:
+        return True
+    if t.value in _CI_LEVELS and sentence[t.end:t.end + 1] == "%":
+        return True
+    return any(t.key in ctx.facts[r].numbers or ctx.facts[r].context.admits(t, sentence) for r in refs)
+
+
 def _analyse(sentence: str, ctx: ProseContext) -> _Issues:
     refs = _scope(sentence, ctx)
     cited = any(_REF.findall(g) for g in _BRACKETS.findall(sentence))
     toks = _tokens(sentence)
-    allowed = set(ctx.allowed)
-    for r in refs:
-        allowed |= ctx.facts[r].numbers
+    about_search = bool(_SEARCH.search(sentence))
     issues = _Issues()
-    for t in toks:
-        if t.key in allowed or _is_count(t, sentence, ctx.max_count):
-            continue
-        if t.value in _CI_LEVELS and sentence[t.end:t.end + 1] == "%":
-            continue
-        issues.numbers.append(t.text)
+    issues.numbers = [t.text for t in toks if not _admitted(t, sentence, refs, ctx, about_search)]
     issues.measures = _measure_issues(sentence, refs, ctx, toks)
     issues.population = _population_issues(sentence, refs, ctx, cited)
     return issues
@@ -277,9 +334,9 @@ def prose_problems(text: str, ctx: ProseContext, label: str = "text") -> list[st
                             f"verified number of the cited papers ({refs}); use only numbers shown on their cards, "
                             "exactly as given, or leave the number out")
         for _, _, written, fix, mrefs in issues.measures:
-            problems.append(f"{label}: \"{_short(sentence)}\" calls the estimate \"{written}\", which is not the "
-                            f"effect_measure on the cards of {mrefs} (correct wording: \"{fix}\"); name each measure "
-                            "exactly as its card's effect_measure")
+            wording = f" (correct wording: \"{fix}\")" if fix else ""
+            problems.append(f"{label}: \"{_short(sentence)}\" names \"{written}\", which is not the effect_measure on "
+                            f"the cards of {mrefs}{wording}; name each measure exactly as its card's effect_measure")
         for claimed, ref, opposite in issues.population:
             problems.append(f"{label}: \"{_short(sentence)}\" ascribes {claimed} to [{ref}], whose population is "
                             f"{opposite}; describe each paper's population as its card states")
@@ -287,20 +344,24 @@ def prose_problems(text: str, ctx: ProseContext, label: str = "text") -> list[st
 
 
 def fix_prose(text: str, ctx: ProseContext) -> tuple[str, Counter[str]]:
-    """Correct measure names, then remove each sentence that still states an untraceable number or a population
-    the cited paper did not study. Returns (text, counts: measures_fixed, numbers_removed, population_removed)."""
+    """Correct measure names that introduce a number, then remove each sentence that still names a wrong measure,
+    states an untraceable number or a population the cited paper did not study. Returns (text, counts:
+    measures_fixed, measures_removed, numbers_removed, population_removed)."""
     counts: Counter[str] = Counter()
     kept: list[str] = []
     for sentence in _sentences(text):
         issues = _analyse(sentence, ctx)
-        for start, end, _written, fix, _refs in sorted(issues.measures, reverse=True):
-            sentence = sentence[:start] + fix + sentence[end:]
-            counts["measures_fixed"] += 1
         if issues.numbers:
             counts["numbers_removed"] += 1
             continue
         if issues.population:
             counts["population_removed"] += 1
             continue
+        if any(fix is None for *_, fix, _refs in issues.measures):
+            counts["measures_removed"] += 1
+            continue
+        for start, end, _written, fix, _refs in sorted(issues.measures, reverse=True):
+            sentence = sentence[:start] + fix + sentence[end:]
+            counts["measures_fixed"] += 1
         kept.append(sentence)
     return " ".join(kept), counts

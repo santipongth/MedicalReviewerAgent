@@ -7,7 +7,7 @@ import type { Lang } from "./i18n";
 import { showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "./review-type";
 import { surnameOf } from "./author";
 import { citedByCell, type CitedByCell } from "./citation-network";
-import type { Citations, Direction, Paper, RiskOfBias } from "./types";
+import type { Citations, Direction, OutcomeResult, Paper, RiskOfBias } from "./types";
 
 export type NumberCell =
   | { kind: "value"; text: string }
@@ -17,6 +17,20 @@ export type NumberCell =
 export interface LitOutcome {
   name: string;
   effect: { label: string; ci: string | null } | { blanked: true } | null;
+  /** Plan 19: not the question's intervention vs comparator; shown, never counted as evidence. */
+  otherComparison: boolean;
+  comparison: string | null;
+}
+
+/** The row's direction: none when every outcome is another comparison; when only some are, the matching outcomes'
+ * shared direction (the card-level overall_direction may describe the other comparisons). */
+function evidenceDirection(outcomes: OutcomeResult[], overall: Direction): Direction | null {
+  if (!outcomes.length) return overall;
+  const matching = outcomes.filter((o) => o.matches_question !== false);
+  if (!matching.length) return null;
+  if (matching.length === outcomes.length) return overall;
+  const dirs = new Set(matching.map((o) => o.direction));
+  return dirs.size === 1 ? matching[0].direction : overall;
 }
 
 export interface LitRow {
@@ -64,7 +78,8 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
       let effect: LitOutcome["effect"] = null;
       if (eo && isBlankedEffect(p, eo.outcome)) effect = { blanked: true };
       else if (eo && eo.effect_value != null) effect = { label: effectLabel(eo), ci: ciLabel(eo) };
-      return { name: o.outcome, effect };
+      const other = (eo?.matches_question ?? o.matches_question) === false;
+      return { name: o.outcome, effect, otherComparison: other, comparison: other ? o.comparison ?? eo?.comparison ?? null : null };
     });
     const sample = en.sample_size ?? card.sample_size;
     const n: NumberCell = isBlankedSampleSize(p) ? { kind: "blanked" }
@@ -74,7 +89,7 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
       ...base, failed: false,
       design: { label: designLabel(key, lang), pooled: key.startsWith("sr_ma_") },
       population: card.population, exposure: card.intervention_or_exposure, comparator: card.comparator?.trim() ?? "",
-      outcomes, findings: join(card.key_findings), direction: isNonQuantitative(card) ? null : card.overall_direction, risk: card.risk_of_bias, n,
+      outcomes, findings: join(card.key_findings), direction: isNonQuantitative(card) ? null : evidenceDirection(en.outcomes, card.overall_direction), risk: card.risk_of_bias, n,
       limitations: join(card.limitations),
     };
   });
