@@ -69,9 +69,9 @@ def test_new_settings_defaults():
     s = Settings(_env_file=None)
     assert s.llm_config_path == "config/llm.yaml" and s.llm_preset is None
     assert s.openrouter_api_key == "" and not hasattr(s, "synthesize_model")  # models live in llm.yaml
-    assert s.searxng_engines == "pubmed,arxiv,semantic scholar,openalex,crossref"
+    assert s.searxng_engines == "pubmed,europe pmc,openalex,semantic scholar,crossref,arxiv,doaj,openaire"
     assert s.graph_mode == "real"
-    assert s.searxng_pages == 1 and s.searxng_timeout_seconds == 8.0
+    assert s.searxng_pages == 1 and s.searxng_timeout_seconds == 15.0
     assert s.llm_concurrency == 16  # live run at 8: zero 429s, papers queued behind the limit
     assert not any(n.startswith(("crawl", "fulltext", "unpaywall", "max_fulltext", "contact_email"))
                    for n in type(s).model_fields)  # abstract-only: no full-text settings remain

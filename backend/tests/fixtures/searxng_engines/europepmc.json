@@ -1,0 +1,347 @@
+{
+ "version": "6.9",
+ "hitCount": 12657,
+ "nextCursorMark": "AoIIQIvmtyg1NjAzMDU2Nw==",
+ "nextPageUrl": "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=metformin+colorectal+cancer&cursorMark=AoIIQIvmtyg1NjAzMDU2Nw%3D%3D&resultType=core&format=json",
+ "request": {
+  "queryString": "metformin colorectal cancer",
+  "resultType": "core",
+  "cursorMark": "*",
+  "pageSize": 25,
+  "sort": "",
+  "synonym": false
+ },
+ "resultList": {
+  "result": [
+   {
+    "id": "PPR1307357",
+    "source": "PPR",
+    "doi": "10.21203/rs.3.rs-10413213/v1",
+    "title": "Protective Effect of Oral Antidiabetic Medicines Against Mechanical Ileus Development and Its Impact on Metastatic Colon Cancer Survival",
+    "authorString": "Özgül D, Çolak G, Özbek S, Başer MN, Özgül Y, Turan M.",
+    "authorList": {
+     "author": [
+      {
+       "fullName": "Özgül D",
+       "lastName": "Özgül",
+       "firstName": "Dilara",
+       "initials": "D"
+      },
+      {
+       "fullName": "Çolak G",
+       "lastName": "Çolak",
+       "firstName": "Gökhan",
+       "initials": "G"
+      },
+      {
+       "fullName": "Özbek S",
+       "lastName": "Özbek",
+       "firstName": "Sercan",
+       "initials": "S"
+      },
+      {
+       "fullName": "Başer MN",
+       "lastName": "Başer",
+       "firstName": "Mehmet Nuri",
+       "initials": "MN"
+      },
+      {
+       "fullName": "Özgül Y",
+       "lastName": "Özgül",
+       "firstName": "Yiğit",
+       "initials": "Y"
+      },
+      {
+       "fullName": "Turan M",
+       "lastName": "Turan",
+       "firstName": "Merve",
+       "initials": "M"
+      }
+     ]
+    },
+    "pubYear": "2026",
+    "abstractText": "<title>Abstract</title>  <p>  <bold>Background</bold>  Previous studies have shown that the use of metformin improves overall survival (OS) in colorectal cancer. Furthermore, previous studies have shown that ileus is a poor prognostic factor in colorectal cancer. This study examined the role of metformin and other oral antidiabetic drugs in the development of ileus and their contribution to OS in colorectal cancer, as well as the effect of ileus on OS in metastatic colorectal cancer.  <bold>Materials and Methods</bold>  In this retrospective study, all patients with metastatic colon cancer followed at the Oncology Clinic of Aydın Adnan Menderes University between 2020 and 2025 were retrospectively screened. Patients who developed ileus and those who did not were compared to examine the potential effect of OAD use on ileus development. Additionally, the impact of the presence of ileus on disease prognosis was evaluated. Multivariate binary logistic regression models were constructed to adjust for clinical confounders.  <bold>Results</bold>  The mean age of the 244 patients included in the study was \\(\\:66.19\\pm\\:12.49\\) years. All patients were clinically Stage IV (100%). OAD use was detected in 20.5% (\\(\\:n=50\\)) of the patients, with metformin being the most common (18.9%, \\(\\:n=46\\)). Ileus developed in 13.5% (\\(\\:n=33\\)) of the cohort. In the comparative analysis, the presence of diabetes mellitus (\\(\\:p=0.027\\)), general OAD use (\\(\\:p=0.027\\)), and specifically metformin use (\\(\\:p=0.012\\)) were significantly higher in patients who did not develop ileus. In the multivariate logistic regression analysis, general OAD use was identified as an independent protective factor reducing the risk of ileus (aOR: 0.214, 95% CI: 0.049–0.935, \\(\\:p=0.040\\)). Similarly, metformin use independently reduced the odds of ileus (aOR: 0.112, 95% CI: 0.015–0.847, \\(\\:p=0.034\\)). Conversely, the presence of lung metastasis was associated with a 2.47-fold independent increase in ileus risk (aOR: 2.475, 95% CI: 1.138–5.383, \\(\\:p=0.022\\)). Kaplan-Meier analysis revealed that the median OS was significantly longer in patients who developed ileus compared to those who did not (24.60 months vs. 17.43 months, \\(\\:p=0.046\\)).  <bold>Conclusion</bold>  Metformin and general OAD use significantly and independently reduce the risk of ileus development in patients with metastatic colon cancer. Contrary to conventional expectations, metastatic patients presenting with ileus may achieve longer survival times, potentially due to timely palliative surgical interventions that reduce tumor burden.  </p>",
+    "pubTypeList": {
+     "pubType": [
+      "Preprint"
+     ]
+    },
+    "bookOrReportDetails": {
+     "publisher": "Research Square",
+     "yearOfPublication": 2026
+    },
+    "isOpenAccess": "N",
+    "inEPMC": "N",
+    "inPMC": "N",
+    "citedByCount": 0,
+    "hasReferences": "N",
+    "hasTextMinedTerms": "Y",
+    "hasDbCrossReferences": "N",
+    "hasPDF": "N",
+    "hasBook": "N",
+    "hasSuppl": "N",
+    "hasLabsLinks": "N",
+    "hasData": "N",
+    "authMan": "N",
+    "epmcAuthMan": "N",
+    "nihAuthMan": "N",
+    "hasTMAccessionNumbers": "N",
+    "dateOfCreation": "2026-08-29",
+    "firstPublicationDate": "2026-08-28",
+    "firstIndexDate": "2026-08-30",
+    "versionList": {
+     "version": [
+      {
+       "id": "PPR1307357",
+       "source": "PPR",
+       "versionNumber": 1,
+       "firstPublishDate": "2026-08-28",
+       "pubTypeList": {
+        "pubType": [
+         "preprint"
+        ]
+       },
+       "hasEvaluations": "N"
+      }
+     ]
+    },
+    "versionNumber": 1,
+    "hasEvaluations": "N"
+   },
+   {
+    "id": "42434155",
+    "source": "MED",
+    "pmid": "42434155",
+    "pmcid": "PMC13352196",
+    "fullTextIdList": {
+     "fullTextId": [
+      "PMC13352196"
+     ]
+    },
+    "doi": "10.20524/aog.2026.1078",
+    "title": "Impact of p53 mutations on the synergistic effects of metformin and radiation on colorectal cancer cells.",
+    "authorString": "Sakamoto K, Okabayashi K, Kato Y, Hattori K, Morita S, Shigeta K, Kitagawa Y.",
+    "authorList": {
+     "author": [
+      {
+       "fullName": "Sakamoto K",
+       "lastName": "Sakamoto",
+       "firstName": "Kyoko",
+       "initials": "K"
+      },
+      {
+       "fullName": "Okabayashi K",
+       "lastName": "Okabayashi",
+       "firstName": "Koji",
+       "initials": "K"
+      },
+      {
+       "fullName": "Kato Y",
+       "lastName": "Kato",
+       "firstName": "Yujin",
+       "initials": "Y"
+      },
+      {
+       "fullName": "Hattori K",
+       "lastName": "Hattori",
+       "firstName": "Kaoru",
+       "initials": "K"
+      },
+      {
+       "fullName": "Morita S",
+       "lastName": "Morita",
+       "firstName": "Satoru",
+       "initials": "S"
+      },
+      {
+       "fullName": "Shigeta K",
+       "lastName": "Shigeta",
+       "firstName": "Kohei",
+       "initials": "K"
+      },
+      {
+       "fullName": "Kitagawa Y",
+       "lastName": "Kitagawa",
+       "firstName": "Yuko",
+       "initials": "Y"
+      }
+     ]
+    },
+    "authorIdList": {
+     "authorId": [
+      {
+       "type": "ORCID",
+       "value": "0000-0002-9398-6723"
+      }
+     ]
+    },
+    "journalInfo": {
+     "issue": "4",
+     "volume": "39",
+     "journalIssueId": 4229610,
+     "dateOfPublication": "2026 Jul-Aug",
+     "monthOfPublication": 0,
+     "yearOfPublication": 2026,
+     "journal": {
+      "medlineAbbreviation": "Ann Gastroenterol",
+      "title": "Annals of gastroenterology",
+      "essn": "1792-7463",
+      "issn": "1108-7471",
+      "nlmid": "101121847",
+      "isoabbreviation": "Ann Gastroenterol"
+     },
+     "printPublicationDate": "2026-07-01"
+    },
+    "pubYear": "2026",
+    "pageInfo": "487-494",
+    "abstractText": "<h4>Background</h4>Metformin has been reported to be effective as an adjunctive therapy in cancer treatment. In this study, the synergistic effects of metformin and radiotherapy were investigated in colorectal cancer cell lines and colorectal cancer organoids, as were the underlying mechanisms.<h4>Methods</h4>This was an experimental study conducted <i>in vitro</i>. Cell proliferation was investigated <i>in vitro</i> after treatment of colorectal cancer cell lines with metformin and radiation. Western blotting was used to analyse treatment-induced changes in p53 expression. The combination index for metformin and irradiation was calculated. Organoids were generated via genomic analysis of colorectal cancer cells from surgical specimens from patients with colorectal cancer. Responses of colorectal cancer organoids with and without p53 mutations to metformin and radiation were compared. Organoids cultured from human colorectal cancer and cell lines were used.<h4>Results</h4>In experiments using the colorectal cancer cell lines HCT116 and Lovo, which are p53 wild type cells, the combination treatment of metformin and irradiation appeared to have a synergistic effect. In HCT116 and Lovo cells, metformin treatment increased TP53 expression. No synergistic effect of metformin treatment and irradiation was demonstrated in WiDr and SW620 cells, which contain p53 mutations. Measurements of cell proliferation rates in colorectal cancer organoids also confirmed a similar trend in p53 wild-type organoids and those with p53 mutations.<h4>Conclusion</h4>Mutations in the p53 gene in colorectal cancer cells may influence the synergistic effect of metformin and radiotherapy.",
+    "publicationStatus": "ppublish",
+    "language": "eng",
+    "pubModel": "Print-Electronic",
+    "pubTypeList": {
+     "pubType": [
+      "research-article",
+      "Journal Article"
+     ]
+    },
+    "isOpenAccess": "Y",
+    "inEPMC": "Y",
+    "inPMC": "Y",
+    "citedByCount": 0,
+    "hasReferences": "Y",
+    "hasTextMinedTerms": "Y",
+    "hasDbCrossReferences": "N",
+    "hasPDF": "Y",
+    "hasBook": "N",
+    "hasSuppl": "Y",
+    "hasLabsLinks": "N",
+    "hasData": "Y",
+    "license": "cc by-nc-sa",
+    "authMan": "N",
+    "epmcAuthMan": "N",
+    "nihAuthMan": "N",
+    "hasTMAccessionNumbers": "Y",
+    "dateOfCompletion": "2026-07-11",
+    "dateOfCreation": "2026-07-11",
+    "dateOfRevision": "2026-08-13",
+    "electronicPublicationDate": "2026-06-11",
+    "firstPublicationDate": "2026-06-11",
+    "firstIndexDate": "2026-07-12",
+    "fullTextReceivedDate": "2026-09-03",
+    "hasEvaluations": "N"
+   },
+   {
+    "id": "42628623",
+    "source": "MED",
+    "pmid": "42628623",
+    "doi": "10.1016/j.ejphar.2026.179242",
+    "title": "GLUT1/SGLT1 balance associates with high-glucose buffering of metformin-induced lysosomal deacidification and mTORC1 inhibition in colorectal cancer.",
+    "authorString": "Allal BE, Mendonça S, Bounaama A, Fresco P, Djerdjouri B, Gonçalves J, Velho S.",
+    "authorList": {
+     "author": [
+      {
+       "fullName": "Allal BE",
+       "lastName": "Allal",
+       "firstName": "Badr-Eddine",
+       "initials": "BE"
+      },
+      {
+       "fullName": "Mendonça S",
+       "lastName": "Mendonça",
+       "firstName": "Susana",
+       "initials": "S"
+      },
+      {
+       "fullName": "Bounaama A",
+       "lastName": "Bounaama",
+       "firstName": "Abdelkader",
+       "initials": "A"
+      },
+      {
+       "fullName": "Fresco P",
+       "lastName": "Fresco",
+       "firstName": "Paula",
+       "initials": "P"
+      },
+      {
+       "fullName": "Djerdjouri B",
+       "lastName": "Djerdjouri",
+       "firstName": "Bahia",
+       "initials": "B"
+      },
+      {
+       "fullName": "Gonçalves J",
+       "lastName": "Gonçalves",
+       "firstName": "Jorge",
+       "initials": "J"
+      },
+      {
+       "fullName": "Velho S",
+       "lastName": "Velho",
+       "firstName": "Sergia",
+       "initials": "S"
+      }
+     ]
+    },
+    "authorIdList": {
+     "authorId": [
+      {
+       "type": "ORCID",
+       "value": "0000-0003-2665-8938"
+      }
+     ]
+    },
+    "journalInfo": {
+     "volume": "1033",
+     "journalIssueId": 4260887,
+     "dateOfPublication": "2026 Oct",
+     "monthOfPublication": 10,
+     "yearOfPublication": 2026,
+     "journal": {
+      "medlineAbbreviation": "Eur J Pharmacol",
+      "title": "European journal of pharmacology",
+      "essn": "1879-0712",
+      "issn": "0014-2999",
+      "nlmid": "1254354",
+      "isoabbreviation": "Eur J Pharmacol"
+     },
+     "printPublicationDate": "2026-10-01"
+    },
+    "pubYear": "2026",
+    "pageInfo": "179242",
+    "abstractText": "Metformin has anticancer potential, but benefit in colorectal cancer (CRC) is heterogeneous and determinants of tumor cell response remain unclear. We tested whether extracellular glucose and the relative expression of glucose transporter 1 (GLUT1/SLC2A1) and sodium-glucose cotransporter 1 (SGLT1/SLC5A1), quantified as a glucose transporter ratio score (GTRS), are associated with buffering of metformin effects. We combined a 1,2-dimethylhydrazine (DMH)-induced CRC model, glucose-controlled cell-line experiments, and analyses of public bulk, single-cell, and spatial transcriptomic datasets. In mice, metformin (200 mg/kg/day) reduced DMH-associated neoplastic progression and Cyclin D1 expression. In vitro, metformin (5 mM) reduced viability and clonogenic growth while reducing endolysosomal acidity and inhibiting mTORC1 downstream signaling under normal glucose. Metformin-induced changes were attenuated under high glucose. Buffering of lysosomal acidity loss was stronger in the GTRS-high HCT116 cells than in the GTRS-low HT29 cells, with partial rescue of growth readouts in both lines. In human single-cell datasets, high-GTRS malignant clusters showed higher lysosome-related transcriptional program scores. In spatial transcriptomic datasets, lysosome-related programs were enriched at the tumor-stroma interface, where stromal laminin ligands and epithelial integrin receptors showed enriched spatial co-localization. In human bulk cohorts, higher GTRS was enriched in the aggressive mesenchymal CMS4 subtype. Together, these results support that glucose transporter balance is associated with partial buffering of metformin-induced lysosomal and mTORC1 perturbations under high glucose.",
+    "publicationStatus": "ppublish",
+    "language": "eng",
+    "pubModel": "Print-Electronic",
+    "pubTypeList": {
+     "pubType": [
+      "Journal Article"
+     ]
+    },
+    "isOpenAccess": "N",
+    "inEPMC": "N",
+    "inPMC": "N",
+    "citedByCount": 0,
+    "hasReferences": "Y",
+    "hasTextMinedTerms": "Y",
+    "hasDbCrossReferences": "N",
+    "hasPDF": "N",
+    "hasBook": "N",
+    "hasSuppl": "N",
+    "hasLabsLinks": "N",
+    "hasData": "N",
+    "authMan": "N",
+    "epmcAuthMan": "N",
+    "nihAuthMan": "N",
+    "hasTMAccessionNumbers": "N",
+    "dateOfCompletion": "2026-09-10",
+    "dateOfCreation": "2026-08-21",
+    "dateOfRevision": "2026-09-10",
+    "electronicPublicationDate": "2026-08-21",
+    "firstPublicationDate": "2026-08-21",
+    "firstIndexDate": "2026-08-22",
+    "hasEvaluations": "N"
+   }
+  ]
+ }
+}

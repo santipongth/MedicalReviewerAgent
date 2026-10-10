@@ -25,6 +25,10 @@ def is_non_research(c: Candidate) -> bool:
 MIN_SNIPPET_CHARS = 600
 
 
+def already_enriched(c: Candidate) -> bool:
+    return "europe pmc" in c.engines and c.abstract_source == "engine" and bool(c.pmcid)
+
+
 def usable_abstract(c: Candidate) -> bool:
     text = (c.abstract or "").strip()
     if len(text) < MIN_ABSTRACT_CHARS:
@@ -69,8 +73,11 @@ def make_enrich(deps):
         options = ReviewOptions.clamped(state.get("options"))
         merged = merge_candidates(Candidate.model_validate(c) for c in state.get("candidates") or [])
         errors: list[str] = []
-        dois = [c.doi for c in merged if c.doi]
-        pmids = [c.pmid for c in merged if c.pmid]
+        # Hits that already carry the Europe PMC engine's full abstract and a PMCID have nothing left to gain from
+        # the lookup (its pub types come with the hit); everything else is looked up and Europe PMC metadata wins.
+        lookup = [c for c in merged if not already_enriched(c)]
+        dois = [c.doi for c in lookup if c.doi]
+        pmids = [c.pmid for c in lookup if c.pmid]
         records: list[Candidate] = []
         if dois or pmids:
             try:
@@ -94,6 +101,7 @@ def make_enrich(deps):
                 "search_stats": {**(state.get("search_stats") or {}), "unique": unique,
                                  "with_abstract": len(enriched), "non_research": non_research},
                 "quality": [{"stage": "enrich", "snippet_only": snippet_only,
+                             "looked_up": len(lookup), "skipped_lookup": len(merged) - len(lookup),
                              "seconds": round(time.perf_counter() - started, 3)}]}
 
     return enrich

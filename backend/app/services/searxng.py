@@ -1,10 +1,34 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.graph.schemas import Candidate
 from app.services.http import HttpClient
 from app.services.text import arxiv_id_from_url, normalize_doi, pmid_from_url, strip_markup
+
+# Engines whose `content` is the paper's full abstract (arXiv: the summary). Other engines return a search snippet,
+# which is often truncated and only counts as an abstract when it looks complete (see retrieval.usable_abstract).
+# A short or visibly cut-off engine result is still only a snippet.
+MIN_ENGINE_ABSTRACT_CHARS = 150
+FULL_ABSTRACT_ENGINES = frozenset({"pubmed", "europe pmc", "doaj", "plos", "openaire"})
+_PMCID_URL = re.compile(r"europepmc\.org/article/PMC/(?:PMC)?(\d+)", re.IGNORECASE)
+_PMCID_TEXT = re.compile(r"\bPMCID:\s*(?:PMC)?(\d+)", re.IGNORECASE)
+
+
+def pmcid_from_result(r: dict[str, Any]) -> str | None:
+    """PMCID from the Europe PMC engine: html_url (/article/PMC/<id>) or the `comments` field ("PMCID: PMC...")."""
+    match = _PMCID_URL.search(str(r.get("html_url") or "")) or _PMCID_TEXT.search(str(r.get("comments") or ""))
+    return f"PMC{match.group(1)}" if match else None
+
+
+def abstract_source_for(engines: list[str], abstract: str | None) -> str | None:
+    if not abstract:
+        return None
+    if "arxiv" in engines:
+        return "arxiv"
+    complete = len(abstract) >= MIN_ENGINE_ABSTRACT_CHARS and not abstract.endswith(("…", "..."))
+    return "engine" if complete and FULL_ABSTRACT_ENGINES.intersection(engines) else "snippet"
 
 
 def parse_searxng_result(r: dict[str, Any]) -> Candidate | None:
@@ -18,20 +42,23 @@ def parse_searxng_result(r: dict[str, Any]) -> Candidate | None:
         authors = [a.strip() for a in authors.split(",") if a.strip()]
     engines = list(r.get("engines") or ([r["engine"]] if r.get("engine") else []))
     abstract = strip_markup(r.get("content")) or None
-    # The arXiv engine returns the paper's full summary; other engines return a search snippet.
-    source = None if abstract is None else "arxiv" if engines == ["arxiv"] else "snippet"
+    source = abstract_source_for(engines, abstract)
     return Candidate(
         title=title,
         abstract=abstract,
         abstract_source=source,
         doi=normalize_doi(r.get("doi")),
         pmid=pmid_from_url(url),
+        pmcid=pmcid_from_result(r),
         arxiv_id=arxiv_id_from_url(url),
         year=int(published[:4]) if published[:4].isdigit() else None,
         journal=(r.get("journal") or r.get("publisher") or None),
         authors=[str(a) for a in authors][:20],
         url=url or None,
         pdf_url=r.get("pdf_url") or None,
+        # Europe PMC's pubTypeList (the same list the enrichment lookup returns), for the non-research filter.
+        pub_types=[t.strip() for t in str(r.get("type") or "").split(",") if t.strip()]
+        if "europe pmc" in engines else [],
         engines=engines,
     )
 
@@ -45,10 +72,12 @@ class SearxngClient:
 
     async def search(self, query: str, pageno: int = 1) -> list[Candidate]:
         # engines= only: passing categories= as well would union in non-academic engines.
+        # One retry only: a slow query must not wait out several full timeouts (HttpClient retries default to 3).
         resp = await self.http.get(
             f"{self.base_url}/search",
             params={"q": query, "format": "json", "engines": self.engines, "pageno": pageno},
             timeout=self.timeout,
+            retries=1,
         )
         resp.raise_for_status()
         return [c for r in resp.json().get("results", []) if (c := parse_searxng_result(r))]

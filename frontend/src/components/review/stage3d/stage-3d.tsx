@@ -96,7 +96,7 @@ export function Stage3D({ scene }: { scene: Scene }) {
   if (lost) throw new Error("WebGL context lost");
 
   return (
-    <div role="img" aria-label={sceneSummary(scene)} className="mx-auto aspect-[960/254] w-full rounded-sm" data-stage3d>
+    <div role="img" aria-label={sceneSummary(scene)} className="mx-auto aspect-[960/288] w-full rounded-sm" data-stage3d>
       <Canvas
         aria-hidden="true" frameloop="demand" dpr={[1, 2]} camera={{ position: CAMERA_BASE, fov: STAGE_FOV }}
         gl={{ antialias: true, powerPreference: "low-power" }} onCreated={onCreated}

@@ -5,9 +5,9 @@ import { createContext, useContext } from "react";
  * placeholder does not pull agent-layout into the page chunk. Pinned against layoutFor by stage-placeholder.test.tsx.
  */
 export const PLACEHOLDER_SIZE = {
-  wide: { width: 960, height: 254 }, // constant: the external node sits inside it
-  narrow: { width: 360, height: 734 }, // Thai: localize is in the lane
-  narrowNoLocalize: { width: 360, height: 670 },
+  wide: { width: 960, height: 288 }, // constant: the external node sits inside it
+  narrow: { width: 360, height: 752 }, // Thai: localize is in the lane
+  narrowNoLocalize: { width: 360, height: 688 },
 } as const;
 
 /** Whether the lane will show localize (scene.expectLocalize). Unknown -> Thai, the common case. */

@@ -56,7 +56,7 @@ describe("thoughtFor", () => {
   it("search: query count, first 2 queries and the rest", () => {
     const t = th(6);
     expect(t).toMatchObject({ key: "search", heading: "ค้นฐานข้อมูล", since: 6,
-      body: "ค้นด้วย 4 คำค้นใน PubMed, arXiv, Semantic Scholar, OpenAlex และ Crossref" });
+      body: "ค้นด้วย 4 คำค้นใน PubMed, Europe PMC, OpenAlex และฐานข้อมูลอื่น" });
     expect(t.detail).toEqual({ kind: "queries", items: ["metformin colorectal cancer", "metformin CRC risk"], more: 2 });
     expect(moreQueriesText(2)).toBe("และอีก 2 คำค้น");
     expect(t.short).toBe("ค้นฐานข้อมูล · 4 คำค้น");

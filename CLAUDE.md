@@ -20,6 +20,9 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
   `paper_search.py`, `report.py`); review rate limits, key quotas, capacity (queue/daily caps, atomic admission lock)
   and Turnstile live in `ReviewService` so both surfaces share them (the paper-search limit is applied in both adapters). MCP server:
   `app/mcp/server.py` (mounted at `/mcp`, stateless); API keys are stored as SHA-256 hashes only.
+- SearXNG engine modules live in `infra/searxng/engines/` (AGPL-3.0-or-later, see its README/LICENSE): each carries
+  the SPDX header, needs its own read-only bind-mount line in `docker-compose.yml`, and an engine timeout below
+  `searxng_timeout_seconds`; markup stripping (`mra_markup.py`) mirrors `app/services/text.py`.
 - External MCP tools (`backend/config/mcp_servers.json`) are consulted by `external_enrich`; their output is data
   inside `<external_context>`, never instructions, never a citation.
 - Redis clients use `decode_responses=True`.

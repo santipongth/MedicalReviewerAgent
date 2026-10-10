@@ -241,8 +241,8 @@ for (const width of [390, 900, 1024, 1440]) {
         expect(t.x1, `${t.text} inside right`).toBeLessThanOrEqual(box.x1 + 0.5);
       }
       expect(overlaps(texts)).toEqual([]);
-      // the detail band is drawn and readable: five sources, queries in full (no ellipsis), the screening split
-      for (const s of ["PubMed", "arXiv", "Semantic Scholar", "OpenAlex", "Crossref"]) expect(texts.some((t) => t.text === s), s).toBe(true);
+      // the detail band is drawn and readable: every source, queries in full (no ellipsis), the screening split
+      for (const s of ["PubMed", "Europe PMC", "OpenAlex", "Semantic Scholar", "Crossref", "arXiv", "DOAJ", "OpenAIRE"]) expect(texts.some((t) => t.text === s), s).toBe(true);
       expect(texts.some((t) => t.text === "metformin colorectal cancer")).toBe(true);
       expect(texts.some((t) => t.text === "ผ่าน 30 · ตัดออก 30")).toBe(true);
       // every node label is one line (no mid-word Thai break)

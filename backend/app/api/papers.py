@@ -18,7 +18,8 @@ router = APIRouter()
                        502: {"description": "search unavailable"}})
 async def search_papers(q: str = Query(min_length=2, max_length=300), limit: int = Query(10, ge=1, le=25),
                         deps: AppDeps = Depends(get_deps), identity: Identity = Depends(get_identity)):
-    """Literature search (SearXNG academic engines + Europe PMC metadata). No LLM involved."""
+    """Literature search (SearXNG academic engines: PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ, OpenAIRE; Europe PMC
+    also supplies curated metadata). No LLM involved."""
     try:
         decision = await deps.limits.hit("papers", identity.rate_key, deps.service.settings.paper_search_rate_limit)
         if not decision.allowed:

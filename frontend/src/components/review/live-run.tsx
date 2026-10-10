@@ -18,7 +18,7 @@ import { TraceLog } from "./stage/trace-log";
 const STEP_LABEL: Record<StepKey, string> = {
   queue: "รอคิว",
   refine: "ตีความคำถาม",
-  search: "ค้น PubMed, arXiv และฐานข้อมูลอื่น",
+  search: "ค้น PubMed, Europe PMC และฐานข้อมูลอื่น",
   screen: "คัดกรองงานวิจัย",
   read: "อ่านและตรวจตัวเลขกับต้นฉบับ",
   synthesize: "สังเคราะห์และสรุปผล",
