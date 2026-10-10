@@ -79,6 +79,27 @@ def _is_initials(t: str) -> bool:
     return 1 <= len(bare) <= 3 and bare.isalpha() and bare.isupper()
 
 
+# A word that names a group, not a person; ASCII word boundaries, like JavaScript's \b.
+_ORG_WORD = re.compile(r"\b(?:group|organi[sz]ation|collaborat\w*|consortium|investigators?|committee|society|"
+                       r"association|network|institute|council|team|working|study|trial|foundation|biobank)\b",
+                       re.IGNORECASE | re.ASCII)
+_SUFFIX = re.compile(r"^(?:jr|sr|ii|iii|iv)\.?$", re.IGNORECASE)
+
+
+def _suffix_text(t: str) -> str:
+    bare = t.replace(".", "")
+    return bare.upper() if bare[0] in "iI" else bare[0].upper() + bare[1:].lower()
+
+
+def _is_organisation(name: str) -> bool:
+    """An organisation author, kept as written: it holds an organisation word, or it has 4 or more words that are
+    neither surname particles nor a suffix ("Martin Luther King Jr" and "Anna de la Cruz" are people)."""
+    if _ORG_WORD.search(name):
+        return True
+    words = [w for w in name.replace(",", " ").split() if w.lower() not in _PARTICLES and not _SUFFIX.match(w)]
+    return len(words) >= 4
+
+
 def _initials_of(token: str) -> str:
     """"J.A." -> "JA", "Jean-Pierre" -> "JP", "Andrew" -> "A"; "" when a part has no letter."""
     if _is_initials(token):
@@ -91,27 +112,39 @@ def vancouver_name(name: Any) -> str:
     particles stay with the surname ("van Beethoven L"); hyphenated given names give one initial per part. A single
     word, a non-Latin name or anything that does not parse is kept as written."""
     full = _clean(name)
-    if not full or _non_latin(full):
+    if not full or _non_latin(full) or _is_organisation(full):
         return full
-    if "," in full:
-        head, _, tail = full.partition(",")
-        surname, given = head.split(), tail.split()
+    tokens = full.replace(",", " , ").split()
+    # a generational suffix ("Jr", "Sr", "II"-"IV") goes after the initials: "John Smith Jr" -> "Smith J Jr"
+    suffix = ""
+    if len(tokens) > 1 and _SUFFIX.match(tokens[-1]):
+        suffix = _suffix_text(tokens.pop())
+        while tokens and tokens[-1] == ",":
+            tokens.pop()
+
+    def with_suffix(s: str) -> str:
+        return f"{s} {suffix}" if suffix else s
+
+    rest = " ".join(tokens).replace(" ,", ",")
+    if "," in rest:
+        head, _, tail = rest.partition(",")
+        surname, given = head.split(), tail.replace(",", " ").split()
         while given and given[-1] in _PARTICLES:  # "Beethoven, Ludwig van"
             surname.insert(0, given.pop())
     else:
-        tokens = full.split(" ")
-        if len(tokens) == 1:
-            return full
-        if _is_initials(tokens[-1]):
-            return f"{' '.join(tokens[:-1])} {tokens[-1].replace('.', '')}"
-        start = len(tokens) - 1
-        while start > 1 and tokens[start - 1] in _PARTICLES:
+        words = rest.split(" ")
+        if len(words) == 1:
+            return with_suffix(rest)
+        if _is_initials(words[-1]):
+            return with_suffix(f"{' '.join(words[:-1])} {words[-1].replace('.', '')}")
+        start = len(words) - 1
+        while start > 1 and words[start - 1].lower() in _PARTICLES:  # "De La Cruz" too
             start -= 1
-        surname, given = tokens[start:], tokens[:start]
+        surname, given = words[start:], words[:start]
     initials = [_initials_of(g) for g in given]
     if not surname or not _has_letter("".join(surname)) or not given or not all(initials):
         return full
-    return f"{' '.join(surname)} {''.join(initials)}"
+    return with_suffix(f"{' '.join(surname)} {''.join(initials)}")
 
 
 def author_names(authors: Any) -> list[str]:

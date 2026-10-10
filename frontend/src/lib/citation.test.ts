@@ -69,6 +69,18 @@ const NAME_CASES: [string, string][] = [
   ["WHO Collaborative Group 2", "WHO Collaborative Group 2"],
   ["สมชาย ใจดี", "สมชาย ใจดี"],
   ["  ", ""],
+  // fix round 2: organisations stay as written; suffixes go after the initials
+  ["World Health Organization", "World Health Organization"],
+  ["WHO Collaborative Group", "WHO Collaborative Group"],
+  ["The ATTACK Trial Investigators", "The ATTACK Trial Investigators"],
+  ["UK Biobank", "UK Biobank"],
+  ["Alpha Beta Gamma Delta", "Alpha Beta Gamma Delta"],
+  ["John Smith Jr", "Smith J Jr"],
+  ["Martin Luther King Jr.", "King ML Jr"],
+  ["Smith, John, Jr.", "Smith J Jr"],
+  ["Smith J Jr", "Smith J Jr"],
+  ["Henry Ford III", "Ford H III"],
+  ["Maria De La Cruz", "De La Cruz M"],
 ];
 
 describe("vancouverName", () => {

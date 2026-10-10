@@ -48,6 +48,25 @@ const isInitials = (t: string): boolean => {
   return bare.length >= 1 && bare.length <= 3 && /^\p{Lu}+$/u.test(bare);
 };
 
+/** A word that names a group, not a person ("WHO Collaborative Group", "World Health Organization"). */
+const ORG_WORD = /\b(?:group|organi[sz]ation|collaborat\w*|consortium|investigators?|committee|society|association|network|institute|council|team|working|study|trial|foundation|biobank)\b/i;
+/** "Jr", "Sr", "II"–"IV" (with or without a period). */
+const SUFFIX = /^(?:jr|sr|ii|iii|iv)\.?$/i;
+const suffixText = (t: string): string => {
+  const bare = t.replace(/\./g, "");
+  return /^i/i.test(bare) ? bare.toUpperCase() : bare[0].toUpperCase() + bare.slice(1).toLowerCase();
+};
+
+/**
+ * An organisation author, kept as written: it holds an organisation word, or it has 4 or more words that are neither
+ * surname particles nor a suffix ("Martin Luther King Jr" and "Anna de la Cruz" are people).
+ */
+function isOrganisation(name: string): boolean {
+  if (ORG_WORD.test(name)) return true;
+  const words = name.replace(/,/g, " ").split(" ").filter((w) => w && !PARTICLES.has(w.toLowerCase()) && !SUFFIX.test(w));
+  return words.length >= 4;
+}
+
 /** Initials of one given-name token: "J.A." → "JA", "Jean-Pierre" → "JP", "Andrew" → "A"; "" when it has no letter. */
 function initialsOf(token: string): string {
   if (isInitials(token)) return token.replace(/\./g, "");
@@ -62,26 +81,37 @@ function initialsOf(token: string): string {
  */
 export function vancouverName(name: string): string {
   const full = clean(name);
-  if (!full || nonLatin(full)) return full;
+  if (!full || nonLatin(full) || isOrganisation(full)) return full;
+  const tokens = full.replace(/,/g, " , ").split(" ").filter(Boolean);
+  // a generational suffix ("Jr", "Sr", "II"–"IV") goes after the initials: "John Smith Jr" → "Smith J Jr"
+  let suffix = "";
+  const last = tokens[tokens.length - 1];
+  if (tokens.length > 1 && SUFFIX.test(last)) {
+    suffix = suffixText(last);
+    tokens.pop();
+    while (tokens[tokens.length - 1] === ",") tokens.pop();
+  }
+  const withSuffix = (s: string) => (suffix ? `${s} ${suffix}` : s);
+  const rest = tokens.join(" ").replace(/ ,/g, ",");
   let surname: string[];
   let given: string[];
-  const comma = full.indexOf(",");
+  const comma = rest.indexOf(",");
   if (comma >= 0) {
-    surname = full.slice(0, comma).trim().split(" ").filter(Boolean);
-    given = full.slice(comma + 1).trim().split(" ").filter(Boolean);
+    surname = rest.slice(0, comma).trim().split(" ").filter(Boolean);
+    given = rest.slice(comma + 1).replace(/,/g, " ").trim().split(" ").filter(Boolean);
     while (given.length && PARTICLES.has(given[given.length - 1])) surname = [given.pop()!, ...surname]; // "Beethoven, Ludwig van"
   } else {
-    const tokens = full.split(" ");
-    if (tokens.length === 1) return full;
-    if (isInitials(tokens[tokens.length - 1])) return `${tokens.slice(0, -1).join(" ")} ${tokens[tokens.length - 1].replace(/\./g, "")}`;
-    let start = tokens.length - 1;
-    while (start > 1 && PARTICLES.has(tokens[start - 1])) start -= 1;
-    surname = tokens.slice(start);
-    given = tokens.slice(0, start);
+    const words = rest.split(" ");
+    if (words.length === 1) return withSuffix(rest);
+    if (isInitials(words[words.length - 1])) return withSuffix(`${words.slice(0, -1).join(" ")} ${words[words.length - 1].replace(/\./g, "")}`);
+    let start = words.length - 1;
+    while (start > 1 && PARTICLES.has(words[start - 1].toLowerCase())) start -= 1; // "De La Cruz" too
+    surname = words.slice(start);
+    given = words.slice(0, start);
   }
   const initials = given.map(initialsOf);
   if (!surname.length || !hasLetter(surname.join("")) || !given.length || initials.some((i) => !i)) return full;
-  return `${surname.join(" ")} ${initials.join("")}`;
+  return withSuffix(`${surname.join(" ")} ${initials.join("")}`);
 }
 
 /** The author strings as names: an entry that holds a ";"-separated list is split there (never at a comma). */
