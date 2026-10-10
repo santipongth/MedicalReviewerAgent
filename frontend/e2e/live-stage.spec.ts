@@ -469,3 +469,22 @@ for (const width of [1440, 390]) {
     });
   }
 }
+
+// Plan 20 Task 2: qualitative / mixed-methods reads are themes; they never join a direction pile or column.
+const themeFrames = (): SseFrame[] => [{ delayMs: 0, events: [...PRE_READ.map((s) => s.ev), ...READING,
+  ["extracted", { ref: "P1", ok: true, verified: 2, uncertain: false, direction: "positive", design: "cohort", elapsed_s: 21 }],
+  ["extracted", { ref: "P2", ok: true, verified: 0, uncertain: false, direction: "positive", design: "qualitative", elapsed_s: 22 }],
+  ["extracted", { ref: "P3", ok: true, verified: 0, uncertain: false, direction: "unclear", design: "mixed_methods", elapsed_s: 23 }]] }];
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`live board, ${scheme}: theme reads are counted aside, never by direction; axe clean`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    await openBoard(page, themeFrames(), "อ่านเสร็จ 3/30");
+    await expect(board(page).locator('[data-evidence-dir="positive"]')).toHaveAttribute("data-count", "1");
+    await expect(board(page).locator('[data-evidence-dir="unclear"]')).toHaveAttribute("data-count", "0");
+    await expect(board(page).locator('[data-evidence-chip="P2"], [data-evidence-chip="P3"]')).toHaveCount(0);
+    await expect(board(page).locator("[data-evidence-themes]")).toHaveText(/อีก 2 ฉบับเป็นงานเชิงคุณภาพหรือแบบผสมผสาน/);
+    await noSeriousA11y(page);
+  });
+}

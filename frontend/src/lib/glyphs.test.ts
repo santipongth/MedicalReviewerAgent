@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHART_SYMBOL, GLYPH_PATH, haloWidth } from "./glyphs";
+import { CHART_SYMBOL, GLYPH_PATH, glyphSize, haloWidth } from "./glyphs";
 import { DIRECTION_ORDER } from "./i18n";
 
 describe("one glyph vocabulary for the legend and the charts (DESIGN.md)", () => {
@@ -14,7 +14,7 @@ describe("one glyph vocabulary for the legend and the charts (DESIGN.md)", () =>
   it("shapes: circle = supports, diamond = harm, flat bar = no association, half-filled circle = mixed, dashed ring = unclear", () => {
     expect(GLYPH_PATH.positive).toMatch(/^M50 0A50 50 0 1 1 50 100A50 50 0 1 1 50 0Z$/);
     expect(GLYPH_PATH.negative).toBe("M50 0L100 50L50 100L0 50Z");
-    expect(GLYPH_PATH.null).toBe("M0 0H100V28H0Z"); // flat: 100 x 28, drawn with symbolKeepAspect
+    expect(GLYPH_PATH.null).toBe("M0 0H100V36H0Z"); // flat: 100 x 36 (CSS 14 x 5), drawn with symbolKeepAspect
     // ring (outer clockwise, inner hole counter-clockwise) + a left half disc
     expect(GLYPH_PATH.mixed).toContain("A50 50 0 1 1");
     expect(GLYPH_PATH.mixed).toContain("A36 36 0 1 0");
@@ -29,5 +29,13 @@ describe("one glyph vocabulary for the legend and the charts (DESIGN.md)", () =>
     expect(haloWidth("unclear")).toBe(0);
     expect(haloWidth("positive")).toBeGreaterThan(0);
     expect(haloWidth("negative")).toBeGreaterThan(0);
+  });
+
+  it("the flat bar is drawn larger and with the widest halo, so it cuts through its same-coloured CI line", () => {
+    expect(haloWidth("null")).toBeGreaterThan(haloWidth("positive"));
+    expect(glyphSize("null", 12)).toBeGreaterThan(12);
+    expect(glyphSize("positive", 12)).toBe(12);
+    // rendered height at the forest plot's base size: 12 * 1.4 wide, 36% of that tall, well over the 2px CI stroke
+    expect(glyphSize("null", 12) * 0.36).toBeGreaterThan(5);
   });
 });

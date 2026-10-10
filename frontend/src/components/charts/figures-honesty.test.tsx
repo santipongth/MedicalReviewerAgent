@@ -44,13 +44,22 @@ function renderAll() {
 describe("chart text never uses the verified-number face", () => {
   it("forest, pooled forest, PRISMA and study map: ticks, counts and labels are in the display face", () => {
     const t = readTokens();
-    expect(t.fontNum).not.toBe(t.fontDisplay);
+    expect("fontNum" in t).toBe(false); // charts have no verified-face token at all
     const all = renderAll();
     expect(all.length).toBeGreaterThanOrEqual(4); // forest, study map, PRISMA, pooled forest
     const fonts = collect(all, "fontFamily");
     expect(fonts.length).toBeGreaterThan(0);
-    expect(fonts).not.toContain(t.fontNum);
     expect(new Set(fonts)).toEqual(new Set([t.fontDisplay]));
+  });
+
+  it("tooltips set their numbers in the display face too (no Martian Mono, no monospace)", () => {
+    const all = renderAll();
+    const formatters = collect(all, "tooltip").map((tip) => (tip as { formatter?: unknown }).formatter)
+      .filter((f): f is (p: unknown) => string => typeof f === "function");
+    expect(formatters.length).toBeGreaterThanOrEqual(3);
+    const html = formatters.map((f) => f({ dataIndex: 0, data: { idx: 0, value: "", ref: "P1" }, seriesName: "" })).join("\n");
+    expect(html).toMatch(/<b style="font-variant-numeric:tabular-nums">/);
+    expect(html).not.toMatch(/martian|monospace|font-family/i);
   });
 
   it("every direction marker is a shared glyph path drawn at its own aspect", () => {

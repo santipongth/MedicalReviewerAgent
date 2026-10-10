@@ -9,7 +9,7 @@ import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
 import type { Lang } from "@/lib/i18n";
 import { cellOutcome, keyFindingViews, sameModelReadings, sofRows, type OutcomeContext } from "@/lib/report-view";
 import {
-  REVIEW_TYPE_LABEL, isGraded, isMetaNotPooled, reportLayout, reviewTypeOf, showsRiskOfBias, showsSection,
+  REVIEW_TYPE_LABEL, isGraded, metaPoolGap, reportLayout, reviewTypeOf, showsRiskOfBias, showsSection,
   type BlockId, type TopSectionId,
 } from "@/lib/review-type";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
@@ -81,7 +81,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const matrixRefs = useMemo(() => visible.filter((p) => rows.some((r) => r.cells.some((c) => c.ref === p.ref))).map((p) => p.ref), [visible, rows]);
   const visibleRows = useMemo(() => rows.filter((r) => r.cells.some((c) => matrixRefs.includes(c.ref))), [rows, matrixRefs]);
   const type = reviewTypeOf(result);
-  const notPooled = isMetaNotPooled(result);
+  const poolGap = metaPoolGap(result);
   const map = useMemo(() => (showsSection(type, "evidence_map") ? evidenceMap(visible, rows, lang) : EMPTY_MAP), [type, visible, rows, lang]);
   // Built from the filtered papers, like the lit matrix and the evidence map; null where the type has no concept map.
   const tree = useMemo(
@@ -282,7 +282,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
         {showNav && <ReportToc items={navItems} label={L(lang, "สารบัญ", "Contents")} />}
         <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-10 p-5 sm:p-8 ${hasPapers ? "lg:border-r lg:border-rule" : ""}`}>
           {showNav && <ReportNav items={navItems} label={L(lang, "ในรายงานนี้", "In this report")} />}
-          <TitleBlock review={review} result={result} type={type} lang={lang} original={original} onLang={setLang} notPooled={notPooled} offline={offline} />
+          <TitleBlock review={review} result={result} type={type} lang={lang} original={original} onLang={setLang} poolGap={poolGap} offline={offline} />
 
           {sections.slice(0, 1).map((s) => <Fragment key={s.id}>{s.node}</Fragment>)}
 

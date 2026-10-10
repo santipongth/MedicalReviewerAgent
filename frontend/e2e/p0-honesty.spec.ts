@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
-import { metaNoPoolReviewFixture, qualitativeReviewFixture } from "../src/test/fixtures";
+import { expect, test, type Page } from "@playwright/test";
+import type { Direction, Paper, Review } from "../src/lib/types";
+import { metaNoPoolReviewFixture, qualitativeReviewFixture, reviewFixture } from "../src/test/fixtures";
 import { json, mockApi } from "./mock-api";
 
 // Plan 20 Task 2 (P0 honesty), in the real app at desktop width in both themes.
@@ -53,6 +54,10 @@ for (const scheme of ["light", "dark"] as const) {
     // summary prose: plain text, no verified styling on its "20%"
     await expect(summary.locator("[data-prose] .num-verified, [data-prose] .num-computed")).toHaveCount(0);
 
+    // the legend explains the theme mark; axe below covers it, the matrix and the whole page in this theme
+    await expect(page.getByText("ประเด็นจากงานเชิงคุณภาพ/ผสมผสาน (ไม่มีทิศทางผล)")).toBeVisible();
+    expect(await martianOutsideVerified(page)).toEqual([]);
+
     const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     expect(r.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`)).toEqual([]);
   });
@@ -72,7 +77,89 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.locator("[data-computed=true]")).toHaveCount(0);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    const r = await new AxeBuilder({ page }).include("section[aria-labelledby=h-meta]").withTags(["wcag2a", "wcag2aa"]).analyze();
-    expect(r.violations.map((v) => `${v.impact} ${v.id}`)).toEqual([]);
+    // the whole page: the title-block chip, the bottom-line warn chip and the section
+    const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+    expect(r.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`)).toEqual([]);
+  });
+
+  test(`meta-analysis whose pooling failed, ${scheme}: says 'failed', never 'fewer than 3 studies'`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ colorScheme: scheme });
+    const failed = { ...metaNoPoolReviewFixture, result: { ...metaNoPoolReviewFixture.result!, meta_analysis: null } };
+    await mockApi(page, { [`GET /api/v1/reviews/${MID}`]: (route) => json(route, 200, failed) });
+    await page.goto(`/r/${MID}`);
+    await expect(page.getByLabel("ข้อมูลรายงาน")).toContainText("การวิเคราะห์อภิมาน (รวมผลไม่สำเร็จ)");
+    const answer = page.locator("section[aria-labelledby=h-answer] [data-not-pooled=failed]");
+    await expect(answer).toContainText("ขั้นตอนรวมผลทำงานไม่สำเร็จ");
+    await expect(answer).not.toContainText("3 ฉบับ");
+    await expect(page.getByRole("heading", { name: "การวิเคราะห์อภิมาน: ค่ารวมไม่สำเร็จ" })).toBeVisible();
+    const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+    expect(r.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`)).toEqual([]);
+  });
+
+  test(`charts as rendered, ${scheme}: the flat bar stands out from its CI line; ticks are tabular display face`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ colorScheme: scheme });
+    await mockApi(page, { [`GET /api/v1/reviews/${GLYPH_REVIEW.id}`]: (route) => json(route, 200, GLYPH_REVIEW) });
+    await page.goto(`/r/${GLYPH_REVIEW.id}`);
+    const forest = page.getByRole("img", { name: /^Forest plot ของ \d+ ผลลัพธ์/ });
+    await expect(forest.locator("svg path").first()).toBeAttached();
+    await forest.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(800); // entry animation
+    const geometry = await forest.evaluate((el) => {
+      const none = getComputedStyle(document.documentElement).getPropertyValue("--none").trim().toLowerCase();
+      const paths = [...el.querySelectorAll("svg path")] as SVGGraphicsElement[];
+      // the no-association marker: a filled path in the --none colour, much wider than tall
+      const bars = paths.filter((p) => (p.getAttribute("fill") ?? "").toLowerCase() === none).map((p) => {
+        const b = p.getBoundingClientRect();
+        // the symbol path is scaled by a transform: its stroke width in screen pixels is width x scale
+        const scale = Math.abs(p.getScreenCTM()?.a ?? 1);
+        return { w: b.width, h: b.height, halo: Number(p.getAttribute("stroke-width") ?? 0) * scale, stroke: p.getAttribute("stroke") };
+      }).filter((b) => b.w > b.h * 2 && b.h > 0);
+      // the CI lines are stroked paths in a direction colour; their stroke width is the line's thickness
+      const ciWidth = Math.max(...paths.filter((p) => p.getAttribute("fill") === "none" && (p.getAttribute("stroke") ?? "").toLowerCase() === none)
+        .map((p) => Number(p.getAttribute("stroke-width") ?? 0)), 0);
+      return { bars, ciWidth };
+    });
+    expect(geometry.bars.length).toBeGreaterThan(0);
+    for (const b of geometry.bars) {
+      expect(b.h).toBeGreaterThanOrEqual(5); // well over the 2px CI stroke
+      expect(b.h).toBeGreaterThan(geometry.ciWidth * 2);
+      expect(b.halo).toBeGreaterThanOrEqual(2); // a surface outline that cuts the same-coloured line
+      expect(b.stroke).not.toBeNull();
+    }
+    const text = await forest.evaluate((el) => [...el.querySelectorAll("svg text")].map((t) => {
+      const cs = getComputedStyle(t);
+      return { family: cs.fontFamily, features: cs.fontFeatureSettings };
+    }));
+    expect(text.length).toBeGreaterThan(0);
+    for (const t of text) {
+      expect(t.features).toContain("tnum");
+      expect(t.family).not.toMatch(/martian|monospace/i);
+    }
+    expect(await martianOutsideVerified(page)).toEqual([]);
   });
 }
+
+/** Every element set in Martian Mono that is not a verified number (or inside one): must be empty. */
+function martianOutsideVerified(page: Page) {
+  return page.evaluate(() => [...document.body.querySelectorAll("*")]
+    .filter((el) => /martian/i.test(getComputedStyle(el).fontFamily) && !el.closest(".num-verified"))
+    .map((el) => `${el.tagName.toLowerCase()}.${(el.getAttribute("class") ?? "").split(" ").slice(0, 3).join(".")}: ${el.textContent?.slice(0, 30)}`));
+}
+
+/** An SLR whose forest plot has every direction, including the flat-bar "no association". */
+function withDir(p: Paper, ref: string, dir: Direction, year: number): Paper {
+  const c = p.card_en!;
+  const card = { ...c, overall_direction: dir, outcomes: c.outcomes.map((o, i) => (i === 0 ? { ...o, direction: dir } : o)) };
+  return { ...p, ref, year, card, card_en: card };
+}
+const PS = reviewFixture.result!.papers!;
+const GLYPH_REVIEW: Review = {
+  ...reviewFixture, id: "99999999-0000-1111-2222-333333333333",
+  result: {
+    ...reviewFixture.result!, review_type: "slr",
+    papers: [withDir(PS[0], "P1", "mixed", 2019), PS[1], withDir(PS[2], "P3", "positive", 2021), PS[3],
+      withDir(PS[2], "P6", "null", 2016), withDir(PS[2], "P7", "unclear", 2023)],
+  },
+};

@@ -109,8 +109,10 @@ export function QuestionDetails({ question, lang, type = "legacy" }: { question?
   );
 }
 
-export function StrengthLine({ synthesis, lang, quality, type = "legacy" }: {
+export function StrengthLine({ synthesis, lang, quality, type = "legacy", bar = true }: {
   synthesis: Synthesis; lang: Lang; quality?: Quality; type?: ReviewTypeOrLegacy;
+  /** false for a meta-analysis without a pooled estimate: the grade rests on single studies, so no graded bar */
+  bar?: boolean;
 }) {
   // A typed result with no grade must never read as "very low": only legacy results keep that fallback.
   const ungraded = type !== "legacy" && (!isGraded(type) || synthesis.evidence_strength == null);
@@ -127,7 +129,8 @@ export function StrengthLine({ synthesis, lang, quality, type = "legacy" }: {
         ) : (
         <p className="flex flex-wrap items-center gap-2 font-display font-semibold">
           <Term k="evidenceStrength" lang={lang}>{L(lang, "ความแข็งแรงของหลักฐาน", "Evidence strength")}</Term>: <b>{STRENGTH_LABEL[lang][level]}</b>
-          <CertaintyMark level={level} lang={lang} label={false} />
+          {bar ? <CertaintyMark level={level} lang={lang} label={false} />
+            : <span className="font-normal text-muted" data-no-bar>{L(lang, "(จากงานแต่ละฉบับ ไม่มีค่ารวม)", "(from single studies; nothing pooled)")}</span>}
         </p>
         )}
         {quality?.numbers_total ? (
@@ -227,7 +230,7 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
                     <button type="button" onClick={() => onSelect(ref, outcome)} aria-pressed={isSel}
                       aria-label={`${ref}: ${row.outcome} — ${theme ? THEME_CELL_LABEL[lang] : DIRECTION_LABEL[lang][cell.direction]}. ${cell.finding}`}
                       title={cell.finding}
-                      className={`inline-grid min-h-11 min-w-11 place-items-center rounded-sm border md:h-7 md:min-h-0 md:w-8 md:min-w-0 ${isSel ? "border-ink bg-rail" : "border-transparent hover:border-ink"}`}>
+                      className={`inline-grid min-h-11 min-w-11 place-items-center rounded-sm border md:h-7 md:min-h-0 md:min-w-8 ${theme ? "md:px-0.5" : "md:w-8"} ${isSel ? "border-ink bg-rail" : "border-transparent hover:border-ink"}`}>
                       {theme ? <ThemeMark lang={lang} /> : <Glyph direction={cell.direction} lang={lang} />}
                     </button>
                   </td>
@@ -258,7 +261,7 @@ export function themeFoundText(k: number, lang: Lang): string {
 function ThemeMark({ lang }: { lang: Lang }) {
   return (
     <span aria-hidden="true" data-theme-mark
-      className="rounded-sm border border-ink px-1 font-display text-[0.68rem] leading-[1.35] font-semibold text-ink">
+      className="rounded-sm border border-ink px-1 font-display text-[0.75rem] leading-[1.3] font-semibold text-ink">
       {L(lang, "พบ", "found")}
     </span>
   );

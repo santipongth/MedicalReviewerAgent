@@ -482,7 +482,7 @@ describe("Report per review type", () => {
   it("meta-analysis: a failed pooling says so; no pools says nothing was pooled; other types have no pooled section", () => {
     const failed = { ...metaReviewFixture, result: { ...metaReviewFixture.result!, meta_analysis: null } };
     const a = render(<Report review={failed} />);
-    expect(screen.getByText(/ขั้นตอนรวมผลทำไม่สำเร็จ/)).toBeInTheDocument();
+    expect(screen.getAllByText(/ขั้นตอนรวมผลทำงานไม่สำเร็จ/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/ไม่ใช่ผลจากงานวิจัยฉบับใด/)).toBeNull();
     a.unmount();
     const none = { ...metaReviewFixture, result: { ...metaReviewFixture.result!, meta_analysis: { ...metaReviewFixture.result!.meta_analysis!, pools: [] } } };

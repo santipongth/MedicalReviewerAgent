@@ -1,10 +1,10 @@
 "use client";
 
 import { directionTally, hasPooledPapers, themePapers } from "@/lib/charts-data";
-import { POOLED_OVERLAP_TH } from "@/lib/copy";
+import { META_POOL_COPY, POOLED_OVERLAP_TH } from "@/lib/copy";
 import { DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "@/lib/i18n";
 import { DESIGN_GROUP_LABEL, fixed } from "@/lib/meta-view";
-import { isMetaNotPooled, reviewTypeOf, showsDirection } from "@/lib/review-type";
+import { metaPoolGap, reviewTypeOf, showsDirection } from "@/lib/review-type";
 import type { Paper, Pool, ReviewResult, Synthesis } from "@/lib/types";
 import { ComputedNumber, Glyph } from "../ui/evidence";
 import { Term } from "../ui/term";
@@ -55,24 +55,23 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
   const shown = showsDirection(type) ? DIRECTION_ORDER.filter((d) => tally[d] > 0) : [];
   // Qualitative / mixed-methods studies are never tallied by direction; they are counted as themes instead.
   const themes = type === "scoping" ? 0 : themePapers(papers).length;
-  const notPooled = isMetaNotPooled(result);
+  const poolGap = metaPoolGap(result);
   const pools = type === "meta_analysis" ? orderedPools(result) : [];
   const lead = synthesis.answer?.trim() || synthesis.executive_summary || result.summary || "";
   return (
     <section aria-labelledby="h-answer" className="grid gap-4">
       <h2 id="h-answer" className={SECTION_H2}>{L(lang, "คำตอบโดยสรุป", "Bottom line")}</h2>
-      {notPooled && (
-        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.92rem]" data-not-pooled>
-          <span className="label rounded-sm bg-warn-bg px-2 py-1">{L(lang, "การวิเคราะห์อภิมาน (รวมผลไม่ได้)", "Meta-analysis (not pooled)")}</span>
-          <span className="text-muted">{L(lang, "ไม่มีผลลัพธ์ใดที่มีงานวิจัยหลักตั้งแต่ 3 ฉบับวัดผลแบบเดียวกัน จึงไม่มีค่ารวม",
-            "No outcome had at least 3 primary studies measured the same way, so there is no pooled estimate")}</span>
+      {poolGap && (
+        <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 text-[0.92rem]" data-not-pooled={poolGap}>
+          <span className="label rounded-sm bg-warn-bg px-2 py-1">{META_POOL_COPY[poolGap].label[lang]}</span>
+          <span className="text-muted">{META_POOL_COPY[poolGap].reason[lang]}</span>
         </p>
       )}
       {/* Model prose: plain text only. A number in it is never styled as verified (no tape, no verified face). */}
       <p className={`max-w-[65ch] ${READING}`} data-prose data-answer={synthesis.answer?.trim() ? "" : undefined}>
         <CitedText text={lead} onSelect={onSelect} refs={refs} />
       </p>
-      {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} />}
+      {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} bar={!poolGap} />}
       {pools.length > 0 && (
         <div className="grid gap-1.5" data-bottom-pools>
           <p className="label">{L(lang, "ค่ารวม (คำนวณโดยระบบ ไม่ใช่ตัวเลขจากงานวิจัยฉบับใด)", "Pooled estimate (computed by the system, not from any single study)")}</p>

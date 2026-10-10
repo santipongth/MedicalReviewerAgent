@@ -121,9 +121,21 @@ export function showsCardDirection(type: ReviewTypeOrLegacy, card: { design_cate
   return showsDirection(type) && !isNonQuantitative(card);
 }
 
-/** A meta-analysis with papers whose pooling produced nothing (no `meta_analysis`, or `pools: []`). */
-export function isMetaNotPooled(result: Pick<ReviewResult, "review_type" | "meta_analysis" | "papers"> | null | undefined): boolean {
-  return reviewTypeOf(result) === "meta_analysis" && !!result?.papers?.length && !result?.meta_analysis?.pools?.length;
+type PoolInput = Pick<ReviewResult, "review_type" | "meta_analysis" | "papers"> | null | undefined;
+
+/**
+ * A meta-analysis with papers but no pooled estimate, and why: "none" = the step ran and no outcome qualified
+ * (`pools: []`); "failed" = the step did not complete (`meta_analysis` null or absent). Null otherwise.
+ */
+export function metaPoolGap(result: PoolInput): "none" | "failed" | null {
+  if (reviewTypeOf(result) !== "meta_analysis" || !result?.papers?.length) return null;
+  if (result.meta_analysis == null) return "failed";
+  return result.meta_analysis.pools?.length ? null : "none";
+}
+
+/** The pooling step ran and pooled nothing (never true when the step failed: that is `metaPoolGap(...) === "failed"`). */
+export function isMetaNotPooled(result: PoolInput): boolean {
+  return metaPoolGap(result) === "none";
 }
 
 /** Scoping does no quality appraisal, so no risk-of-bias label or filter is shown. */

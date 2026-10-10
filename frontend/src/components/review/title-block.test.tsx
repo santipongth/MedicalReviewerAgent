@@ -7,9 +7,9 @@ import type { Lang } from "@/lib/i18n";
 import type { Review } from "@/lib/types";
 import { TitleBlock } from "./title-block";
 
-function renderTitle(review: Review, lang: Lang = "th", extra: { offline?: boolean; notPooled?: boolean; onLang?: (l: Lang) => void } = {}) {
+function renderTitle(review: Review, lang: Lang = "th", extra: { offline?: boolean; poolGap?: "none" | "failed"; onLang?: (l: Lang) => void } = {}) {
   return render(<TitleBlock review={review} result={review.result!} type={reviewTypeOf(review.result)} lang={lang} original="th"
-    onLang={extra.onLang ?? (() => {})} notPooled={extra.notPooled ?? false} offline={extra.offline ?? false} />);
+    onLang={extra.onLang ?? (() => {})} poolGap={extra.poolGap ?? null} offline={extra.offline ?? false} />);
 }
 
 describe("TitleBlock", () => {
@@ -54,8 +54,10 @@ describe("TitleBlock", () => {
   it("no recorded sources: the number of queries instead; a meta that pooled nothing says so in the type", () => {
     renderTitle(scopingP20ReviewFixture);
     expect(within(screen.getByLabelText("ข้อมูลรายงาน")).getByText("แหล่งข้อมูล").nextElementSibling).toHaveTextContent("2 คำค้น");
-    const { container } = renderTitle(metaNoPoolP20ReviewFixture, "th", { notPooled: true });
+    const { container } = renderTitle(metaNoPoolP20ReviewFixture, "th", { poolGap: "none" });
     expect(container.querySelector("[data-not-pooled]")).toHaveTextContent("(รวมผลไม่ได้)");
+    const failed = renderTitle(metaNoPoolP20ReviewFixture, "th", { poolGap: "failed" });
+    expect(failed.container.querySelector("[data-not-pooled]")).toHaveTextContent("(รวมผลไม่สำเร็จ)");
   });
 
   it("a legacy result: no type, the review start as the date, no abstract-only claim", () => {

@@ -5,7 +5,7 @@ import { edgeCurves, SOURCE_LABEL, type CitationNetwork, type DesignGroup, type 
 import type { ConceptTree, MapNode } from "@/lib/concept-map";
 import { forestAxis, type exclusionRows, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
-import { haloWidth } from "@/lib/glyphs";
+import { glyphSize, haloWidth } from "@/lib/glyphs";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
 import type { MetaPoolView } from "@/lib/meta-view";
 import { L } from "../review/text";
@@ -15,6 +15,10 @@ import { EChart, encodeHTML, type EChartsOption } from "./echart";
 import { SYMBOL, type ChartTokens } from "./tokens";
 
 type Select = (ref: string, outcome?: string) => void;
+
+/** Tooltip numbers: the tooltip's display face with tabular figures. Martian Mono stays with VerifiedNumber (and its
+ * tape) only; the verified value and its source are one click away in the table view and the rail. */
+const TIP_NUM = "font-variant-numeric:tabular-nums";
 
 /** A figure with a title, the chart, and a table-view twin (the accessible equivalent). */
 function Figure({ title, caption, lang, chart, table }: {
@@ -73,7 +77,7 @@ function forestOption(g: ForestGroup, t: ChartTokens, lang: Lang): EChartsOption
         const r = rows[p.dataIndex];
         if (!r) return "";
         const ci = r.ciText ? ` <span style="color:${t.muted}">95% CI</span> ${encodeHTML(r.ciText)}` : "";
-        return `<b style="font-family:${t.fontNum}">${encodeHTML(r.valueText)}</b>${ci}<br/><span style="color:${t.muted}">${encodeHTML(r.label)} · ${encodeHTML(DIRECTION_LABEL[lang][r.direction])}</span>`;
+        return `<b style="${TIP_NUM}">${encodeHTML(r.valueText)}</b>${ci}<br/><span style="color:${t.muted}">${encodeHTML(r.label)} · ${encodeHTML(DIRECTION_LABEL[lang][r.direction])}</span>`;
       },
     },
     xAxis: {
@@ -108,7 +112,7 @@ function forestOption(g: ForestGroup, t: ChartTokens, lang: Lang): EChartsOption
         symbolKeepAspect: true,
         cursor: "pointer",
         data: rows.map((r, i) => ({
-          value: [r.value, i], ref: r.ref, outcome: r.outcomeKey, symbol: SYMBOL[r.direction],
+          value: [r.value, i], ref: r.ref, outcome: r.outcomeKey, symbol: SYMBOL[r.direction], symbolSize: glyphSize(r.direction, 12),
           itemStyle: { color: t.direction[r.direction], borderColor: t.surface, borderWidth: haloWidth(r.direction) },
         })),
         emphasis: { scale: 1.3 },
@@ -207,7 +211,7 @@ function metaForestOption(pool: MetaPoolView, t: ChartTokens, lang: Lang): EChar
         }
         const s = pool.studies[p.dataIndex];
         if (!s) return "";
-        return `<b style="font-family:${t.fontNum}">${encodeHTML(`${pool.measure} ${s.effectText}`)}</b> <span style="color:${t.muted}">95% CI</span> ${encodeHTML(s.ciText)}<br/><span style="color:${t.muted}">${encodeHTML(s.label)} · ${encodeHTML(L(lang, "น้ำหนัก", "weight"))} ${encodeHTML(s.weightText)} · ${encodeHTML(DIRECTION_LABEL[lang][s.direction])}</span>`;
+        return `<b style="${TIP_NUM}">${encodeHTML(`${pool.measure} ${s.effectText}`)}</b> <span style="color:${t.muted}">95% CI</span> ${encodeHTML(s.ciText)}<br/><span style="color:${t.muted}">${encodeHTML(s.label)} · ${encodeHTML(L(lang, "น้ำหนัก", "weight"))} ${encodeHTML(s.weightText)} · ${encodeHTML(DIRECTION_LABEL[lang][s.direction])}</span>`;
       },
     },
     xAxis: {
@@ -247,7 +251,7 @@ function metaForestOption(pool: MetaPoolView, t: ChartTokens, lang: Lang): EChar
         symbolKeepAspect: true,
         data: pool.studies.map((s, i) => ({
           value: [s.effect, i], ref: s.ref, outcome: s.outcomeKey ?? undefined, symbol: SYMBOL[s.direction],
-          symbolSize: Math.round(8 + 8 * Math.sqrt(s.weight / maxW)),
+          symbolSize: glyphSize(s.direction, Math.round(8 + 8 * Math.sqrt(s.weight / maxW))),
           itemStyle: { color: t.direction[s.direction], borderColor: t.surface, borderWidth: haloWidth(s.direction) },
         })),
         emphasis: { scale: 1.2 },
@@ -415,7 +419,7 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
         trigger: "item", backgroundColor: tokens.surface, borderColor: tokens.rule, textStyle: { color: tokens.ink, fontFamily: tokens.fontDisplay },
         formatter: (p: { data: { idx: number } }) => {
           const s = points[p.data.idx];
-          return `<b style="font-family:${tokens.fontNum}">n = ${encodeHTML(s.nText)}</b> · ${s.year}<br/>${encodeHTML(s.ref)} · ${encodeHTML(s.design)}<br/><span style="color:${tokens.muted}">${encodeHTML(s.title)}</span>`;
+          return `<b style="${TIP_NUM}">n = ${encodeHTML(s.nText)}</b> · ${s.year}<br/>${encodeHTML(s.ref)} · ${encodeHTML(s.design)}<br/><span style="color:${tokens.muted}">${encodeHTML(s.title)}</span>`;
         },
       },
       xAxis: { type: "value", min: Math.min(...years) - 1, max: Math.max(...years) + 1, minInterval: 1,
@@ -425,7 +429,7 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
         axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11 }, splitLine: { lineStyle: { color: tokens.rule, opacity: 0.6 } } },
       series: [{
         type: "scatter", symbolSize: 14, symbolKeepAspect: true, cursor: "pointer",
-        data: points.map((p, idx) => ({ value: [p.year, p.n], idx, ref: p.ref, symbol: SYMBOL[p.direction],
+        data: points.map((p, idx) => ({ value: [p.year, p.n], idx, ref: p.ref, symbol: SYMBOL[p.direction], symbolSize: glyphSize(p.direction, 14),
           itemStyle: { color: tokens.direction[p.direction], borderColor: tokens.surface, borderWidth: haloWidth(p.direction) } })),
         label: { show: true, formatter: (p: { data: { ref: string } }) => p.data.ref, position: "right", color: tokens.ink, fontFamily: tokens.fontDisplay, fontSize: 11 },
         emphasis: { scale: 1.3 },

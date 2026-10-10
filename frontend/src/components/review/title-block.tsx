@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { exportUrl } from "@/lib/api";
+import { META_POOL_COPY } from "@/lib/copy";
 import type { TermKey } from "@/lib/glossary";
 import type { Lang } from "@/lib/i18n";
 import { reportDate, sourceNames } from "@/lib/report-view";
@@ -40,9 +41,10 @@ function Meta({ label, children }: { label: string; children: ReactNode }) {
  * studies included, sources, language, review id), the automated / abstract-only status block, the language switch,
  * the actions and how the agent read the question. Counts use the display face (never the verified-number face).
  */
-export function TitleBlock({ review, result, type, lang, original, onLang, notPooled, offline }: {
+export function TitleBlock({ review, result, type, lang, original, onLang, poolGap = null, offline }: {
   review: Review; result: ReviewResult; type: ReviewTypeOrLegacy; lang: Lang; original: Lang; onLang: (l: Lang) => void;
-  notPooled: boolean; offline: boolean;
+  /** meta-analysis without a pooled estimate: "none" (nothing qualified) or "failed" (the step did not complete) */
+  poolGap?: "none" | "failed" | null; offline: boolean;
 }) {
   const question = result.question;
   const text = lang === "en" && question?.english ? question.english : question;
@@ -67,7 +69,7 @@ export function TitleBlock({ review, result, type, lang, original, onLang, notPo
         {type !== "legacy" && (
           <Meta label={L(lang, "ประเภท", "Review type")}>
             <Term k={TYPE_TERM[type]} lang={lang}>{REVIEW_TYPE_LABEL[type][lang]}</Term>
-            {notPooled && <span data-not-pooled>{" "}{L(lang, "(รวมผลไม่ได้)", "(not pooled)")}</span>}
+            {poolGap && <span data-not-pooled={poolGap}>{" "}{META_POOL_COPY[poolGap].chip[lang]}</span>}
           </Meta>
         )}
         {date && <Meta label={L(lang, "ค้นเมื่อ", "Searched")}>{date}</Meta>}

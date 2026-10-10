@@ -12,10 +12,9 @@ export interface ChartTokens {
   /** The "not verified" hatch tone; used as a neutral fill (never for a direction). */
   hatch: string;
   direction: Record<Direction, string>;
-  /** Every chart text: axes, ticks, counts and labels (the EChart wrapper turns on tabular figures). */
+  /** Every chart text: axes, ticks, counts, labels and tooltips (the EChart wrapper turns on tabular figures). Charts
+   * carry no Martian Mono token: the verified face belongs to VerifiedNumber only. */
   fontDisplay: string;
-  /** Martian Mono, the verified-number face: only for a verified paper number (e.g. in a tooltip), never ticks or counts. */
-  fontNum: string;
   reducedMotion: boolean;
 }
 
@@ -36,7 +35,6 @@ export function readTokens(): ChartTokens {
       unclear: v("--unclear", "#5f6b73"),
     },
     fontDisplay: v("--font-bai-jamjuree", "sans-serif"),
-    fontNum: v("--font-martian-mono", "monospace"),
     reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   };
 }

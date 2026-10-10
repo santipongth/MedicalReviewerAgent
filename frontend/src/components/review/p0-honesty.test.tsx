@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { conceptTree } from "@/lib/concept-map";
 import { DIRECTION_LABEL } from "@/lib/i18n";
+import { isMetaNotPooled, metaPoolGap } from "@/lib/review-type";
 import { metaNoPoolReviewFixture, metaReviewFixture, qualitativeReviewFixture, reviewFixture } from "@/test/fixtures";
 
 vi.mock("./charts", () => ({ Charts: () => <section aria-labelledby="h-charts"><h2 id="h-charts">แผนภาพหลักฐาน</h2></section> }));
@@ -20,7 +21,7 @@ const directionNames = Object.values(DIRECTION_LABEL.th);
 const rail = () => within(screen.getByRole("complementary", { name: /ต้นฉบับ/ }));
 const litRow = (table: HTMLElement, ref: string) =>
   within(table).getByRole("button", { name: new RegExp(`^${ref} `) }).closest("tr") as HTMLElement;
-const glyphsIn =(el: HTMLElement) => within(el).queryAllByRole("img").filter((g) => directionNames.includes(g.getAttribute("aria-label") ?? ""));
+const glyphsIn = (el: HTMLElement) => within(el).queryAllByRole("img").filter((g) => directionNames.includes(g.getAttribute("aria-label") ?? ""));
 
 describe("(a) qualitative and mixed-methods studies never show a direction", () => {
   it("findings matrix: a theme cell is 'found', the row counts 'พบใน k การศึกษา', quantitative cells keep their glyph", () => {
@@ -145,6 +146,41 @@ describe("(e) a meta-analysis that pooled nothing says so", () => {
     expect(container.querySelector("[data-not-pooled]")).toBeNull();
     expect(screen.getByText("คำนวณโดยระบบจากตัวเลขที่ตรวจกับบทคัดย่อแล้ว — ไม่ใช่ผลจากงานวิจัยฉบับใด")).toBeInTheDocument();
     expect(screen.getByText("อาจรวมงานวิจัยหลักชุดเดียวกับค่ารวมข้างบน")).toBeInTheDocument();
+  });
+
+  it("pooling that failed (meta_analysis: null) says 'failed', never 'fewer than 3 studies'", () => {
+    const failed = { ...metaNoPoolReviewFixture, result: { ...metaNoPoolReviewFixture.result!, meta_analysis: null } };
+    const { container } = render(<Report review={failed} />);
+    expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("การวิเคราะห์อภิมาน (รวมผลไม่สำเร็จ)");
+    const summary = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
+    const reason = summary.querySelector("[data-not-pooled]")!;
+    expect(reason).toHaveAttribute("data-not-pooled", "failed");
+    expect(reason).toHaveTextContent("การวิเคราะห์อภิมาน (รวมผลไม่สำเร็จ)");
+    expect(reason).not.toHaveTextContent("3 ฉบับ");
+    expect(screen.getByRole("heading", { name: "การวิเคราะห์อภิมาน: ค่ารวมไม่สำเร็จ" })).toBeInTheDocument();
+    expect(container.querySelector("[data-pool-failed]")).not.toHaveTextContent("3 ฉบับ");
+    expect(container.querySelector("[data-no-pools]")).toBeNull();
+  });
+
+  it("the shared rule: no pools only when the step ran", () => {
+    const base = metaNoPoolReviewFixture.result!;
+    expect(metaPoolGap(base)).toBe("none");
+    expect(isMetaNotPooled(base)).toBe(true);
+    expect(metaPoolGap({ ...base, meta_analysis: null })).toBe("failed");
+    expect(isMetaNotPooled({ ...base, meta_analysis: null })).toBe(false);
+    expect(metaPoolGap(metaReviewFixture.result)).toBeNull();
+    expect(metaPoolGap({ ...base, papers: [] })).toBeNull();
+    expect(metaPoolGap(reviewFixture.result)).toBeNull();
+  });
+
+  it("an unpooled meta-analysis shows no graded strength bar", () => {
+    const { container } = render(<Report review={metaNoPoolReviewFixture} />);
+    const summary = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
+    expect(summary.querySelector("[data-no-bar]")).toHaveTextContent("จากงานแต่ละฉบับ ไม่มีค่ารวม");
+    container.remove();
+    render(<Report review={metaReviewFixture} />);
+    const pooled = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
+    expect(pooled.querySelector("[data-no-bar]")).toBeNull();
   });
 
   it("other review types never show the not-pooled state", () => {

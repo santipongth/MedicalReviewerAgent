@@ -32,7 +32,8 @@ function dashedRing(): string {
 export const GLYPH_PATH: Record<Direction, string> = {
   positive: circle(50, true),
   negative: "M50 0L100 50L50 100L0 50Z",
-  null: "M0 0H100V28H0Z",
+  // 100 x 36 (the CSS glyph is 14 x 5): tall enough to read as a bar, not a thicker stretch of a CI line
+  null: "M0 0H100V36H0Z",
   // ring (outer clockwise, inner counter-clockwise) plus the left half of the inner disc, clockwise
   mixed: `${circle(50, true)}${circle(36, false)}M50 86A36 36 0 0 1 50 14Z`,
   unclear: dashedRing(),
@@ -47,7 +48,16 @@ export const CHART_SYMBOL: Record<Direction, string> = {
   unclear: `path://${GLYPH_PATH.unclear}`,
 };
 
-/** Outlined glyphs (mixed, unclear) lose their thin ring under a surface-coloured halo, so only filled ones get one. */
+/**
+ * Width of the surface-coloured outline around a chart marker. Outlined glyphs (mixed, unclear) get none (it would
+ * erase the ring). The flat bar gets the widest, so it cuts through its own CI line, which has the same colour.
+ */
 export function haloWidth(direction: Direction): number {
-  return direction === "mixed" || direction === "unclear" ? 0 : 1.5;
+  if (direction === "mixed" || direction === "unclear") return 0;
+  return direction === "null" ? 2 : 1.5;
+}
+
+/** Chart marker size: the flat bar is drawn wider (and so, at its kept aspect, taller) than the round glyphs. */
+export function glyphSize(direction: Direction, base: number): number {
+  return direction === "null" ? Math.round(base * 1.4) : base;
 }
