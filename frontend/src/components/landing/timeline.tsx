@@ -1,12 +1,13 @@
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { SAMPLE } from "@/lib/landing-sample";
+import { Gloss } from "../ui/gloss";
 
-const STEPS: [string, string, string][] = [
-  ["0:00", "ตีความคำถาม", "แปลงหัวข้อหรือคำถามเป็นคำถามวิจัยแบบ PICO (หรือ PCC สำหรับการทบทวนขอบเขต) พร้อมบอกสมมติฐานที่เลือกเอง"],
-  ["~0:15", "ค้นหลายฐานข้อมูล", "8 แหล่ง: PubMed, Europe PMC (รวม preprint), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ และ OpenAIRE ตัดซ้ำ เก็บราว 60 ฉบับที่มีบทคัดย่อ"],
-  ["~0:40", "คัดกรอง", "ตามเกณฑ์ของรูปแบบการทบทวนและชนิดงานวิจัยที่เลือก บันทึกเหตุผลที่คัดออก เลือกสูงสุด 30 ฉบับ งานก้ำกึ่งให้สองโมเดลลงคะแนน"],
-  ["~1:00", "อ่านและตรวจ", "สกัดผลจากบทคัดย่อ ตรวจทุกตัวเลขกับประโยคต้นฉบับ แยกงานวิเคราะห์อภิมานออกจากงานปฐมภูมิ ระหว่างนั้นดึงข้อมูลการอ้างอิงจาก OpenAlex"],
-  ["1–3 นาที", "รายงานพร้อม", "ผลที่ตรงกันและขัดกัน ระดับหลักฐาน ตารางงานวิจัย แผนที่ความรู้ เครือข่ายการอ้างอิง และค่ารวม (meta-analysis) ดาวน์โหลด MD, CSV, JSON หรือ HTML ที่เปิดได้ออฟไลน์"],
+const STEPS: [string, string, ReactNode][] = [
+  ["0:00", "ตีความคำถาม", <>แปลงหัวข้อหรือคำถามเป็นคำถามวิจัยตาม <Gloss k="pico" /> หรือ <Gloss k="pcc" /> สำหรับการทบทวนขอบเขต พร้อมบอกว่าตีความส่วนไหนเอง</>],
+  ["~0:15", "ค้นหลายฐานข้อมูล", <>8 แหล่ง: PubMed, Europe PMC (รวม <Gloss k="preprint" />), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ และ OpenAIRE ตัดเรื่องซ้ำ เก็บราว 60 ฉบับที่มีบทคัดย่อ</>],
+  ["~0:40", "คัดกรอง", "ตามเกณฑ์ของรูปแบบการทบทวนและชนิดงานวิจัยที่เลือก บันทึกเหตุผลที่คัดออก เลือกไว้สูงสุด 30 ฉบับ งานที่ก้ำกึ่งให้ AI สองตัวช่วยกันลงคะแนน"],
+  ["~1:00", "อ่านและตรวจ", <>ดึงผลจากบทคัดย่อ ตรวจทุกตัวเลขกับประโยคต้นฉบับ แยกงานที่รวมผลจากงานอื่นออกจาก<Gloss k="primaryStudy" /> ระหว่างนั้นดึงข้อมูลการอ้างอิงจาก OpenAlex</>],
+  ["1–3 นาที", "รายงานพร้อม", <>ผลที่ตรงกันและขัดกัน ระดับหลักฐาน ตารางงานวิจัย แผนที่ความรู้ เครือข่ายการอ้างอิง และค่ารวมจากการวิเคราะห์อภิมาน ดาวน์โหลดเป็น <Gloss k="exportFormats" /> หรือ HTML ที่เปิดได้แม้ไม่มีอินเทอร์เน็ต</>],
 ];
 
 /** The 1–3 minute run, with the sample review's real counts (pipeline counts, not numbers from a paper). */
@@ -32,7 +33,7 @@ export function Timeline() {
       </div>
       <ol aria-label="ขั้นตอนของรีวิว" className="grid border-t border-rule">
         {STEPS.map(([t, title, body]) => (
-          <li key={title} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-4 border-b border-rule py-4">
+          <li key={t}className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-4 border-b border-rule py-4">
             <span className="font-display text-[0.95rem] font-semibold tabular-nums text-muted">{t}</span>
             <div className="min-w-0">
               <h3 className="text-[1.05rem] font-semibold">{title}</h3>

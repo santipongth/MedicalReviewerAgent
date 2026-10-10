@@ -2,8 +2,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
+import { GLOSS, glossText } from "@/lib/glossary";
 import type { ReviewType } from "@/lib/types";
 import { ReviewTypePicker } from "./review-type-picker";
+
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function Harness({ available }: { available?: string[] }) {
   const [v, setV] = useState<ReviewType>("slr");
@@ -27,11 +30,15 @@ describe("ReviewTypePicker", () => {
   });
   it("shows the chosen type's description under the select", async () => {
     render(<Harness />);
-    expect(screen.getByText(/รายงานขั้นตอนแบบ PRISMA/)).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText("รูปแบบการทบทวน"), "scoping");
+    const select = screen.getByLabelText("รูปแบบการทบทวน");
+    // plain words first, then the method with PRISMA glossed
+    expect(select).toHaveAccessibleDescription(new RegExp(`^${GLOSS.slr.plain?.th}`));
+    expect(select).toHaveAccessibleDescription(new RegExp(escape(glossText("prisma"))));
+    await userEvent.selectOptions(select, "scoping");
     expect(screen.getByTestId("v")).toHaveTextContent("scoping");
-    expect(screen.getByText(/ด้วยกรอบ PCC ไม่ประเมินคุณภาพ/)).toBeInTheDocument();
-    expect(screen.getByLabelText("รูปแบบการทบทวน")).toHaveAccessibleDescription(/ด้วยกรอบ PCC/);
+    expect(select).toHaveAccessibleDescription(new RegExp(`^${GLOSS.scopingReview.plain?.th}`));
+    expect(select).toHaveAccessibleDescription(new RegExp(escape(glossText("pcc"))));
+    expect(select).toHaveAccessibleDescription(/ไม่ประเมินคุณภาพ/);
   });
   it("limits the options to what the service offers, ignoring unknown values", () => {
     render(<Harness available={["slr", "scoping", "future"]} />);

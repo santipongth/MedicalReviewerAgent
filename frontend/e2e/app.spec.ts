@@ -371,7 +371,7 @@ test("landing: the scope form sends the chosen review_type", async ({ page }) =>
   const select = page.getByRole("combobox", { name: /รูปแบบการทบทวน/ });
   await expect(select).toHaveValue("slr");
   await select.selectOption("scoping");
-  await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" }).getByText(/ด้วยกรอบ PCC/)).toBeVisible();
+  await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" }).getByText(/ตั้งคำถามด้วย PCC/)).toBeVisible();
   await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("metformin colorectal cancer");
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
   await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
@@ -473,7 +473,7 @@ test("landing: scope form sends study types incl. other text, qualitative note, 
   await page.goto("/");
   await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" })).toBeVisible();
   await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("ประสบการณ์ของผู้ป่วยเบาหวานต่อการใช้อินซูลิน");
-  await page.getByLabel("Cohort", { exact: true }).check();
+  await page.getByLabel(/Cohort/).check();
   await page.getByLabel(/Qualitative/).check();
   await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" }).getByText(/สรุปเป็นประเด็นจากบทคัดย่อ/)).toBeVisible();
   await page.getByLabel(/อื่น ๆ — ระบุ/).check();

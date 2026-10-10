@@ -3,6 +3,7 @@ import { effectLabel, findReported, isBlankedEffect } from "@/lib/evidence";
 import { SAMPLE, SAMPLE_OUTCOME } from "@/lib/landing-sample";
 import type { OutcomeResult, Paper } from "@/lib/types";
 import { Hole, VerifiedNumber } from "../ui/evidence";
+import { Gloss } from "../ui/gloss";
 import { HighlightedQuote } from "../ui/quote";
 
 // The walk-through uses the sample's first paper: its MACE value passed, its recurrent-MI value was blanked.
@@ -35,7 +36,7 @@ export function Anatomy() {
       <div className="grid max-w-[65ch] gap-3">
         <h2 id="h-anatomy" className="text-[1.75rem] font-bold">ตัวเลขหนึ่งตัวต้องผ่านอะไรก่อนถึงหน้าจอคุณ</h2>
         <p className="text-muted">
-          โมเดลภาษาจำตัวเลขผิดได้ เราจึงไม่ให้โมเดลเป็นคนตัดสิน ตัวเลขทุกตัวต้องหาเจอในประโยคของบทคัดย่อแบบตรงทุกตัวอักษร
+<Gloss k="llm" /> อาจจำตัวเลขผิดได้ เราจึงไม่ให้โมเดลเป็นผู้ตัดสิน ตัวเลขทุกตัวต้องหาเจอในประโยคของบทคัดย่อแบบตรงทุกตัวอักษร
           ตัวอย่างนี้มาจาก {paper.ref} ในรายงานด้านบน
         </p>
       </div>

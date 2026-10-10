@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GLOSS } from "@/lib/glossary";
 
 const SOURCES = ["PubMed", "Europe PMC", "OpenAlex", "Semantic Scholar", "Crossref", "arXiv", "DOAJ", "OpenAIRE"];
 
@@ -19,7 +20,10 @@ export function SiteFooter() {
           <h2 className="label">เว็บไซต์</h2>
           <ul className="grid gap-1 text-[0.9rem]">
             <li><Link href="/" className="hover:text-primary">ทบทวนงานวิจัย</Link></li>
-            <li><Link href="/about" className="hover:text-primary">API และ MCP</Link></li>
+            <li>
+              <Link href="/about" className="hover:text-primary">API และ MCP</Link>{" "}
+              <span className="text-muted">({GLOSS.api.name.th})</span>
+            </li>
           </ul>
         </nav>
       </div>
