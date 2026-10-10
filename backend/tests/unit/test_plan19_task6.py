@@ -251,7 +251,13 @@ def test_refine_and_critique_do_not_ask_for_unrequested_safety():
     assert "together cover\nbenefit, harm/safety" not in refine and "Does it cover safety/harm?" not in critique
     assert "only when the topic is a" in refine and "never add outcomes" in refine
     assert "never add new ones" in critique and "stay within the scope" in critique
-    assert "already has that condition" in prompts.screen_system("slr")
+    for rt in ("slr", "meta_analysis"):  # SLR-like only, first occurrence only, with the recurrence exception
+        screen = prompts.screen_system(rt)
+        assert "already has that condition" in screen and "first occurrence of a condition" in screen
+        assert "does not apply when the question itself is about recurrence, progression or secondary " \
+               "prevention" in screen
+    for rt in ("narrative", "scoping"):  # their override blocks switch the rule off
+        assert "The first-occurrence rule above does not apply to this review type." in prompts.screen_system(rt)
 
 
 # ---- I-17: deterministic pre-clustering --------------------------------------------------------------
@@ -259,7 +265,8 @@ def test_refine_and_critique_do_not_ask_for_unrequested_safety():
     ("Incidence of colorectal cancer", "colorectal cancer incidence"),
     ("Hospitalisation for heart failure", "heart failure hospitalization"),
     ("Hypoglycaemia", "hypoglycemia"), ("Cardiovascular deaths", "cardiovascular death"),
-    ("All-cause mortality", "all cause mortality"), ("Oedema", "edema")])
+    ("All-cause mortality", "all cause mortality"), ("Oedema", "edema"), ("Tumour size", "tumor sizes"),
+    ("Risk of stroke in diabetes", "risk of strokes in diabetes")])
 def test_outcome_key_joins_spelling_and_order_variants(a, b):
     assert outcome_key(a) == outcome_key(b)
 
@@ -268,7 +275,13 @@ def test_outcome_key_joins_spelling_and_order_variants(a, b):
     ("LDL cholesterol", "HDL cholesterol"), ("Systolic blood pressure", "Diastolic blood pressure"),
     ("Hyperglycemia", "Hypoglycemia"), ("Major bleeding", "Minor bleeding"), ("Sensitivity", "Specificity"),
     ("Mortality", "Cardiovascular mortality"), ("Cancer after diabetes", "Diabetes after cancer"),
-    ("Type 1 diabetes", "Type 2 diabetes")])
+    ("Type 1 diabetes", "Type 2 diabetes"),
+    # review finding 2: in/on/at/with/without/and/or keep the word order
+    ("Risk of stroke in diabetes", "Risk of diabetes in stroke"),
+    ("HF hospitalization or CV death", "CV hospitalization or HF death"),
+    ("Death with dementia", "Dementia with death"), ("Nausea and vomiting", "Vomiting and nausea"),
+    # review finding 4: stopwords are judged before spelling, so "four" is not the filler "for"
+    ("Four-week mortality", "Week mortality"), ("Mortality at four weeks", "Mortality at weeks")])
 def test_outcome_key_keeps_different_outcomes_apart(a, b):
     assert outcome_key(a) != outcome_key(b)
 
@@ -383,9 +396,18 @@ def _screened(rels, uncertain=()):
 
 
 async def test_low_relevance_includes_are_dropped_unless_disputed():
-    out = await make_select_top(gdeps())(_screened([90, 80, 70, 10, 40], uncertain={4}))
-    assert sorted(p["relevance"] for p in out["selected"]) == [40, 70, 80, 90]
-    assert out["selection_stats"]["low_relevance"] == 1 and MIN_INCLUDE_RELEVANCE == 50
+    out = await make_select_top(gdeps())(_screened([90, 80, 70, 10, 20], uncertain={4}))
+    assert sorted(p["relevance"] for p in out["selected"]) == [20, 70, 80, 90]
+    assert out["selection_stats"]["low_relevance"] == 1 and MIN_INCLUDE_RELEVANCE == 35
+
+
+async def test_agreed_borderline_includes_are_kept():  # review finding 3: the floor is the band's lower edge (35)
+    out = await make_select_top(gdeps())(_screened([90, 80, 70, 49, 40, 35, 34]))
+    assert sorted(p["relevance"] for p in out["selected"]) == [35, 40, 49, 70, 80, 90]
+    assert out["selection_stats"]["low_relevance"] == 1
+    narrow = gdeps(llms=llms(harness=HarnessSpec(screen_borderline=(45, 70))))  # the configured band wins
+    out = await make_select_top(narrow)(_screened([90, 80, 70, 49, 40]))
+    assert sorted(p["relevance"] for p in out["selected"]) == [49, 70, 80, 90]
 
 
 async def test_relevance_floor_never_empties_the_review():
@@ -420,3 +442,98 @@ def test_other_added_numbers_still_fail(translated):
 
 def test_a_dropped_number_still_fails_next_to_a_spelled_type():
     assert not numbers_preserved("T2DM, HR 0.80", "เบาหวานชนิดที่ 2 HR")
+
+
+# ---- Task 6 review fix round 1 ---------------------------------------------------------------------------
+def test_trial_name_lists_are_searched_as_alternatives():  # finding 5
+    from app.services.europepmc import trial_names
+    assert trial_names("DAPA-HF EMPEROR-Reduced DELIVER") == ["DAPA-HF", "EMPEROR-Reduced", "DELIVER"]
+    assert trial_names("SGLT2 inhibitors heart failure") == []  # one acronym in a keyword query: AND as before
+    assert trial_names("empagliflozin hospitalization") == []
+
+
+@respx.mock
+async def test_trial_name_query_uses_or():
+    route = respx.get("https://epmc.test/search").mock(return_value=httpx.Response(200, json={"resultList": {
+        "result": []}}))
+    http = HttpClient(timeout=5)
+    try:
+        await EuropePmcClient(http, "https://epmc.test").search_trials("DAPA-HF EMPEROR-Reduced DELIVER")
+    finally:
+        await http.aclose()
+    assert route.calls[0].request.url.params["query"] == (
+        '("DAPA-HF" OR "EMPEROR-Reduced" OR "DELIVER") AND PUB_TYPE:"Randomized Controlled Trial" AND HAS_ABSTRACT:y')
+
+
+async def test_candidate_cap_shares_slots_between_searxng_and_trial_lists():  # finding 8
+    sx_hits = [Candidate(title=f"SearXNG paper number {i} on SGLT2", doi=f"10.1/s{i}", abstract=ABSTRACT,
+                         abstract_source="engine", engines=["pubmed"]) for i in range(40)]
+    trials = [Candidate(title=f"Trial number {i} of an SGLT2 inhibitor", doi=f"10.1/t{i}", abstract=ABSTRACT,
+                        abstract_source="europepmc", engines=["europe pmc"]) for i in range(25)]
+    sx = Searx({("SGLT2 heart failure", 1): sx_hits})
+    epmc = Epmc(trials={"SGLT2 heart failure": trials})
+    d = gdeps(searxng=sx, europepmc=epmc)
+    found = await make_search(d)({"plan": {"queries": ["SGLT2 heart failure"]},
+                                  "options": {"review_type": "meta_analysis"}})
+    out = await make_enrich(d)({"candidates": found["candidates"], "options": {
+        "review_type": "meta_analysis", "candidate_limit": 20, "max_papers": 10}})
+    dois = [c["doi"] for c in out["candidates"]]
+    assert len(dois) == 20
+    assert sum(x.startswith("10.1/t") for x in dois) == 10 and dois[:4] == ["10.1/s0", "10.1/t0", "10.1/s1", "10.1/t1"]
+
+
+async def test_searxng_requests_per_review_are_capped():  # finding 9
+    import asyncio
+
+    from app.graph.nodes.retrieval import SEARXNG_CONCURRENCY
+    state = {"now": 0, "peak": 0}
+
+    class Slow:
+        async def search(self, query, pageno=1):
+            state["now"] += 1
+            state["peak"] = max(state["peak"], state["now"])
+            await asyncio.sleep(0.01)
+            state["now"] -= 1
+            return []
+    await make_search(gdeps(searxng=Slow(), europepmc=Epmc()))({
+        "plan": {"queries": [f"q{i}" for i in range(5)]}, "options": {"review_type": "meta_analysis"}})
+    assert SEARXNG_CONCURRENCY == 4 and state["peak"] == 4
+
+
+async def test_reading_disagreement_never_escalates_to_a_reader():  # finding 8
+    from app.graph.nodes.reading import make_read_paper
+    from tests.unit.test_nodes_reading import card as rcard
+    from tests.unit.test_nodes_reading import deps as rdeps
+    from tests.unit.test_nodes_reading import payload as rpayload
+    primary = FakeStructuredLLM("qwen", lambda s, u: rcard())
+    secondary = FakeStructuredLLM("gemini", lambda s, u: rcard(direction="negative"))
+    esc = FakeStructuredLLM("gemini", lambda s, u: rcard())  # misconfigured: escalation = the second reader
+    out = await make_read_paper(rdeps(primary, secondary, esc))(rpayload())
+    v = out["papers"][0]["verification"]
+    assert esc.calls == [] and v["escalated"] is False and v["uncertain"] is True
+
+
+def test_cited_refs_expands_groups_and_ranges():  # finding 6
+    from app.graph.nodes.synthesis import cited_refs
+    assert cited_refs("A [P1-P3]; B [P5, P7]; C [P9\u201311] and [P12; P14].") == {
+        "P1", "P2", "P3", "P5", "P7", "P9", "P10", "P11", "P12", "P14"}
+    assert cited_refs("no citations, P4 in prose") == set()
+
+
+async def test_uncited_counts_ranges_and_is_none_without_a_summary():
+    from app.graph.nodes.synthesis import make_write_synthesis
+    from app.services.llm import LLMError
+    from tests.unit.test_nodes_synthesis import card as scard
+    from tests.unit.test_nodes_synthesis import deps as sdeps
+    from tests.unit.test_nodes_synthesis import matrix_for, narrative
+    from tests.unit.test_nodes_synthesis import paper as spaper
+    from tests.unit.test_nodes_synthesis import state as sstate
+    papers = [spaper(f"P{i}", scard()) for i in range(1, 5)]
+    synth = FakeStructuredLLM("ds", lambda s, u: narrative("Lower risk [P1-P3]."))
+    out = await make_write_synthesis(sdeps(synthesizer=synth))(
+        sstate(papers, matrix=matrix_for(papers), conflict_notes=[], language="en"))
+    assert next(e for e in out["quality"] if e["stage"] == "narrative")["uncited"] == 1  # only P4
+    failing = FakeStructuredLLM("ds", lambda s, u: LLMError("down"))
+    out = await make_write_synthesis(sdeps(synthesizer=failing))(
+        sstate(papers, matrix=matrix_for(papers), conflict_notes=[], language="en"))
+    assert next(e for e in out["quality"] if e["stage"] == "narrative")["uncited"] is None

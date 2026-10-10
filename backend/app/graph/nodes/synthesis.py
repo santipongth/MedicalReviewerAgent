@@ -84,6 +84,18 @@ DIRECTION_TEXT = {"positive": "findings support the hypothesised effect",
                   "null": "findings show no significant association"}
 _CITED = re.compile(r"\[P\d+")
 _CITE_GROUPS = re.compile(r"\[([^\]]*)\]")
+_CITE_RANGE = re.compile(r"\bP(\d+)\s*[-–]\s*P?(\d+)\b")
+
+
+def cited_refs(text: str) -> set[str]:
+    """Every [Pn] a text cites, including grouped ("[P1, P4]", "[P2; P3]") and ranged ("[P1-P3]", "[P1–3]") ones."""
+    refs: set[str] = set()
+    for group in _CITE_GROUPS.findall(text or ""):
+        for lo, hi in _CITE_RANGE.findall(group):
+            if int(lo) <= int(hi) <= int(lo) + 100:
+                refs |= {f"P{i}" for i in range(int(lo), int(hi) + 1)}
+        refs |= set(re.findall(r"\bP\d+\b", group))
+    return refs
 NO_QUANTITATIVE_RATIONALE = ("Certainty of evidence is not graded: no quantitative studies (qualitative themes are "
                              "summarised only).")
 QUALITATIVE_ONLY_FACTOR = ("no quantitative studies: the included qualitative/mixed-methods studies are summarised "
@@ -720,7 +732,9 @@ def make_write_synthesis(deps):
         if wording and not entry["fallback"] and summary != PROSE_REMOVED and not wording.search(summary):
             summary, certainty_added = f"{summary} {CERTAINTY_SENTENCE[strength]}", 1
         # coverage telemetry (audit I-22): analysed papers the summary never cites
-        entry["uncited"] = len(allowed - set(re.findall(r"\bP\d+\b", " ".join(_CITE_GROUPS.findall(summary)))))
+        # (None when there is no model-written summary to judge: withheld or failed)
+        entry["uncited"] = (None if entry["fallback"] or summary in (PROSE_REMOVED, "")
+                            else len(allowed - cited_refs(summary)))
         quality.append({"stage": "prose_check", "numbers_removed": prose_counts["numbers_removed"],
                         "measures_fixed": prose_counts["measures_fixed"],
                         "measures_removed": prose_counts["measures_removed"],

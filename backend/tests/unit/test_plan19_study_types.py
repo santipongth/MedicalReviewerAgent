@@ -79,7 +79,7 @@ def test_screen_prompt_carries_the_constraint_only_when_ticked():
 
 def test_slr_pins_unchanged_when_nothing_is_ticked():
     assert hashlib.sha256(prompts.screen_system("slr").encode()).hexdigest() == \
-        "83b5e1624088c25bcebe4bc40a4144370ccbcd9311d5a971bcf22adfa9bc3d29"  # 2026-10-10.5: incidence vs prognosis
+        "f5ae19b693f69e3a1fe2269319bd337de895958530496317e8a6783437175e0c"  # 2026-10-10.6: scoped first-occurrence rule
     same = prompts.screen_user(english_topic="Q?", plan=PLAN, items=ITEMS)
     assert prompts.screen_user(english_topic="Q?", plan=PLAN, items=ITEMS, study_types=[]) == same
     assert prompts.screen_user(english_topic="Q?", plan=PLAN, items=ITEMS, study_types=None) == same

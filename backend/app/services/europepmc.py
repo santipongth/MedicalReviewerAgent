@@ -69,6 +69,17 @@ def parse_epmc_reference(r: Any) -> EpmcReference | None:
     )
 
 
+_TRIAL_NAME = re.compile(r"[A-Z][A-Z0-9]+(?:-[A-Za-z0-9]+)*|[A-Z]+-[A-Za-z0-9-]+")
+
+
+def trial_names(words: str) -> list[str]:
+    """The trial names or acronyms of a query that is a list of them (at least 2, and at least half of its words),
+    else []. Europe PMC ANDs plain words, so such a list must be searched as alternatives."""
+    tokens = words.split()
+    names = [t for t in tokens if len(t) >= 3 and _TRIAL_NAME.fullmatch(t)]
+    return list(dict.fromkeys(names)) if len(names) >= 2 and 2 * len(names) >= len(tokens) else []
+
+
 class EuropePmcClient:
     BATCH = 40
     CONCURRENCY = 3  # batches in flight; HttpClient's per-host spacing still applies
@@ -105,6 +116,9 @@ class EuropePmcClient:
         words = " ".join(re.sub(r"[^\w\s-]", " ", query).split())
         if not words:
             return []
+        names = trial_names(words)
+        if names:  # a list of trial names ("DAPA-HF EMPEROR-Reduced DELIVER"): any of them, not all at once
+            words = " OR ".join(f'"{n}"' for n in names)
         resp = await self.http.get(
             f"{self.base_url}/search",
             params={"query": f'({words}) AND PUB_TYPE:"Randomized Controlled Trial" AND HAS_ABSTRACT:y',

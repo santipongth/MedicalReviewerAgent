@@ -70,6 +70,21 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
     if localized:
         extra["localize"] = {k: sum(int(e.get(k, 0)) for e in localized)
                              for k in ("untranslated", "retried", "citations_restored")}
+    # Plan 19 Task 6 (each absent when its stage did not log it, so older results keep their shape)
+    narrative = by_stage.get("narrative") or []
+    if narrative and "uncited" in narrative[-1]:  # analysed papers the summary never cites; null = no summary
+        extra["summary_uncited"] = narrative[-1]["uncited"]
+    if any(e.get("second_vote") == "same_model" for e in screen):  # second vote skipped: same model as screener
+        extra["second_vote_skipped"] = True
+    normalize = by_stage.get("normalize") or []
+    if normalize and "pairs" in normalize[-1]:  # outcome pre-clustering: pairs found / sent to the model
+        extra["normalization_pairs"] = {"pairs": normalize[-1]["pairs"], "sent": normalize[-1].get("sent", 0)}
+    search = by_stage.get("search") or []
+    if search and search[-1].get("trial_queries"):  # meta_analysis Europe PMC RCT search
+        extra["trial_search"] = {"queries": search[-1]["trial_queries"], "hits": search[-1].get("trial_hits", 0)}
+    templated = [e["templated"] for e in by_stage.get("localize", []) if "templated" in e]
+    if templated:  # consensus/conflict strings rendered from fixed Thai templates in code
+        extra["localize_templated"] = templated[-1]
     return {
         **extra,
         "numbers_verified": verified,

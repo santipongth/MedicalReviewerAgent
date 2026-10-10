@@ -25,11 +25,13 @@ def outcome_pairs(papers: list[dict[str, Any]]) -> list[tuple[str, str]]:
 
 
 # ---- deterministic pre-clustering (audit I-17: the LLM normaliser over ~100 pairs took 71 s) -----------------
-_STOPWORDS = frozenset({"of", "the", "in", "a", "an", "for", "at", "on"})
-# Words that make order meaningful ("cancer after diabetes" is not "diabetes after cancer"): keep the word order.
-_RELATIONAL = frozenset({"after", "before", "vs", "versus", "than", "from", "to", "between", "during", "within"})
+_STOPWORDS = frozenset({"of", "the", "a", "an", "for"})
+# Words that make order meaningful ("stroke in diabetes" is not "diabetes in stroke", "HF hospitalization or CV
+# death" is not "CV hospitalization or HF death"): with any of them the word order is kept.
+_RELATIONAL = frozenset({"after", "before", "vs", "versus", "than", "from", "to", "between", "during", "within",
+                         "in", "on", "at", "with", "without", "and", "or"})
 _SPELLING = ((re.compile(r"isation"), "ization"), (re.compile(r"ise\b"), "ize"), (re.compile(r"ae"), "e"),
-             (re.compile(r"oe"), "e"), (re.compile(r"our\b"), "or"))
+             (re.compile(r"oe"), "e"), (re.compile(r"(?<=\w{2})our\b"), "or"))  # tumour, not four/hour
 
 
 def _word(w: str) -> str:
@@ -43,10 +45,12 @@ def outcome_key(name: str) -> str:
     (when no relational word is present) word order: "Incidence of colorectal cancer" == "colorectal cancer
     incidence", "HF hospitalisations" == "hf hospitalization". Different words never share a key, so "LDL
     cholesterol" and "HDL cholesterol" stay apart."""
-    words = [_word(w) for w in (normalize_title(name) or name.strip().lower()).split()]
-    if any(w in _RELATIONAL for w in words):
+    raw = (normalize_title(name) or name.strip().lower()).split()
+    # stopwords are judged on the raw word, before the spelling rules ("four" never becomes the filler "for")
+    words = [_word(w) for w in raw if w not in _STOPWORDS] or [_word(w) for w in raw]
+    if any(w in _RELATIONAL for w in raw):
         return " ".join(words)
-    return " ".join(sorted({w for w in words if w not in _STOPWORDS}) or words)
+    return " ".join(sorted(set(words)))
 
 
 def precluster(pairs: list[tuple[str, str]]) -> list[list[tuple[str, str]]]:

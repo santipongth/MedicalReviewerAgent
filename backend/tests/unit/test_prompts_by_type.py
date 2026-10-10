@@ -21,10 +21,13 @@ SYSTEM_HASHES = {
     # Plan 19 (prompt_version 2026-10-10.5, audit I-15): refine and critique stay within the user's scope (harm/safety
     # only for an unrestricted therapy/prevention effect question; the critic removes unrequested sub-questions instead
     # of asking for safety), and the screener excludes an already-diagnosed population for an incidence question.
+    # 2026-10-10.6 (Task 6 review): that screener rule is scoped to first-occurrence (incidence / primary prevention)
+    # questions, excepts recurrence, progression and secondary prevention, and applies to SLR-like types only (the
+    # narrative and scoping override blocks switch it off).
     "refine_system": (prompts.refine_system, "f99a1d12f460a02c1007b06f1b026315be1b14e474d5076866210b8834b5084f"),
     "critique_system": (prompts.critique_system, "9ac2baeaa7cfc551d12d82a877851b4993d8f6b9b0ecfab116fc156aadc1be04"),
     "plan_system": (prompts.plan_system, "4511213da99591cdf2d72fa93f128ca7fde79a50495585e8689cca18bf71bd58"),
-    "screen_system": (prompts.screen_system, "83b5e1624088c25bcebe4bc40a4144370ccbcd9311d5a971bcf22adfa9bc3d29"),
+    "screen_system": (prompts.screen_system, "f5ae19b693f69e3a1fe2269319bd337de895958530496317e8a6783437175e0c"),
     # Plan 19 (prompt_version 2026-10-10.3): extraction states each outcome's comparison and matches_question
     # (audit I-2a); the narrative gets the other-comparison, number/measure, population and GRADE certainty-wording
     # rules (audit I-2b/c, I-14).

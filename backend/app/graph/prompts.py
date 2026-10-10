@@ -86,13 +86,18 @@ matters most: give 3-5 queries. One query names the study design ("randomized co
 prevention). When you know the names or acronyms of the major trials on this question, one query lists the most
 important of them (e.g. "DAPA-HF EMPEROR-Reduced DELIVER trial"); never invent a trial name."""
 
-_SCREEN_NARRATIVE_BLOCK = OVERRIDE_LEAD + """
+# Audit I-15, scoped by the Task 6 review: SLR-like types only (narrative and scoping blocks switch it off).
+SCREEN_INCIDENCE_RULE = """
+First occurrence: when the question asks about the first occurrence of a condition in people who do not have it (incidence or primary prevention), a paper whose whole population already has that condition (prognosis, recurrence or survival after diagnosis) does not answer it: exclude it with reason population. This does not apply when the question itself is about recurrence, progression or secondary prevention."""
+_NO_INCIDENCE_RULE = "\nThe first-occurrence rule above does not apply to this review type."
+
+_SCREEN_NARRATIVE_BLOCK = OVERRIDE_LEAD + _NO_INCIDENCE_RULE + """
 Review type: narrative review. Narrative reviews, systematic reviews/meta-analyses and key primary studies are all
 acceptable; include what informs the topic and do not require a reported outcome. design_guess still applies.
 exclusion_reason (null when included): off_topic, population, intervention_exposure, outcome, study_design,
 publication_type (editorial, protocol, letter) or other."""
 
-_SCREEN_SCOPING_BLOCK = OVERRIDE_LEAD + """
+_SCREEN_SCOPING_BLOCK = OVERRIDE_LEAD + _NO_INCIDENCE_RULE + """
 Review type: scoping review. Include any study design or review that addresses the concept in the context; a reported
 outcome or effect is not required and narrative reviews are acceptable. Exclude only off-topic papers, editorials and
 protocols without results.
@@ -249,9 +254,8 @@ def plan_user(*, topic: str, english_topic: str, options: dict[str, Any],
 
 SCREEN_SYSTEM = """You screen titles and abstracts for a literature review.
 For every candidate give relevance (0-100) to the review question and include=true only if it meets the inclusion criteria and none of the exclusion criteria. Prefer primary human studies (RCTs, cohort, case-control, cross-sectional) and systematic reviews/meta-analyses that report outcomes for the question; exclude off-topic papers, editorials, protocols without results, narrative (non-systematic) reviews unless nothing else addresses the question, and papers with no relevant outcome.
-When the question is about developing a condition (incidence, risk or prevention), a population that already has that condition (prognosis, recurrence or survival after diagnosis) does not answer it: exclude with reason population.
 Return exactly one decision per candidate, using the candidate's ref label exactly as given (e.g. "C3"). reason: one short English sentence.
-design_guess: the study design judged from the title and abstract, one of rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review (a review without systematic methods, including commentaries that summarise trials), other."""
+design_guess: the study design judged from the title and abstract, one of rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review (a review without systematic methods, including commentaries that summarise trials), other.""" + SCREEN_INCIDENCE_RULE
 
 
 SCREEN_DESIGN_NOTE = """

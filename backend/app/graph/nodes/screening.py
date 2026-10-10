@@ -136,7 +136,7 @@ def make_screen_batch(deps):
 
 MIN_PRIMARY_FOR_NO_REVIEWS = 3
 MIN_MATCHING_DESIGNS = 3
-MIN_INCLUDE_RELEVANCE = 50
+MIN_INCLUDE_RELEVANCE = 35  # default floor; the configured borderline band's lower edge wins
 
 
 def make_select_top(deps):
@@ -149,9 +149,11 @@ def make_select_top(deps):
                 best[d["key"]] = d
         by_key = {c["key"]: c for c in state.get("candidates") or []}
         included = [d for d in best.values() if d["include"] and d["key"] in by_key]
-        # Relevance floor (audit I-21): an "include" at relevance 10 contradicts itself. Disputed papers kept for
-        # recall (uncertain) are exempt, and the floor never leaves fewer than MIN_MATCHING_DESIGNS papers.
-        above = [d for d in included if d["relevance"] >= MIN_INCLUDE_RELEVANCE or d.get("uncertain")]
+        # Relevance floor (audit I-21): an "include" at relevance 10 contradicts itself. The floor is the bottom of the
+        # borderline band (35), so includes the second vote agreed on are kept; disputed papers kept for recall
+        # (uncertain) are exempt, and the floor never leaves fewer than MIN_MATCHING_DESIGNS papers.
+        floor = min(harness_spec(deps).screen_borderline or (MIN_INCLUDE_RELEVANCE,))
+        above = [d for d in included if d["relevance"] >= floor or d.get("uncertain")]
         low_relevance = 0
         if len(above) >= MIN_MATCHING_DESIGNS:
             low_relevance, included = len(included) - len(above), above

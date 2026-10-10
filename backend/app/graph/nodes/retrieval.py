@@ -42,6 +42,8 @@ def usable_abstract(c: Candidate) -> bool:
     return True
 
 
+# SearXNG requests in flight per review (a meta review issues up to 10): smooths the burst on SearXNG's limiter.
+SEARXNG_CONCURRENCY = 4
 _DESIGN_WORDS = re.compile(r"\b(randomi[sz]ed|controlled|clinical|trials?|rcts?|studies|study)\b", re.IGNORECASE)
 
 
@@ -70,8 +72,14 @@ def make_search(deps):
         jobs = [(q, page) for q in queries for page in range(1, max(1, pages) + 1)]
         trial_queries = (trial_search_queries(queries, settings.trial_search_queries)
                          if wants_trial_search(options) and getattr(deps, "europepmc", None) is not None else [])
+        gate = asyncio.Semaphore(SEARXNG_CONCURRENCY)
+
+        async def searx(q: str, page: int) -> list[Candidate]:
+            async with gate:
+                return await deps.searxng.search(q, pageno=page)
+
         results = await asyncio.gather(
-            *(deps.searxng.search(q, pageno=p) for q, p in jobs),
+            *(searx(q, p) for q, p in jobs),
             *(deps.europepmc.search_trials(q, page_size=settings.trial_search_page_size) for q in trial_queries),
             return_exceptions=True)
         per_query: dict[str, list[Candidate]] = {q: [] for q in queries}
