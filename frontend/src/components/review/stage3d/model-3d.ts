@@ -1,60 +1,64 @@
-// Pure helpers for the 3D stage (no three, no React): status -> visual mapping, packet scheduling, camera goal,
-// reader-pool summary. The components in this folder stay thin wrappers around these, so jsdom can test the logic.
+// Pure helpers for the 3D team stage (no three, no React): member status -> visual mapping, phase tiles, hand-off
+// packet scheduling, camera goal, label anchors. The components in this folder stay thin wrappers around these, so
+// jsdom can test the logic.
 // Attribution: see NOTICE.md (AI-Agent-observatory by sakshigupta372, used with permission).
-import {
-  currentAgent, planDots, readDone, type AgentId, type AgentStatus, type EdgeState, type PulseKind, type Scene,
-  type SlotState,
-} from "@/lib/agent-scene";
-import {
-  PILE_LABEL_DROP, PILE_LABEL_FORWARD, POOL_LABEL_GAP, SLOT_HALF, type Layout3D, type Seg3, type Vec3,
-} from "@/lib/agent-layout-3d";
+import type { PulseKind } from "@/lib/agent-scene";
+import { arcKey, NAME_DROP, PILE_LABEL_DROP, PILE_LABEL_FORWARD, type TeamLayout3D, type Seg3, type Vec3 } from "@/lib/agent-layout-3d";
+import type { MemberId, MemberStatus, Phase } from "@/lib/agent-team";
+import type { HandoffDot } from "@/lib/team-motion";
 import { DIRECTION_ORDER } from "@/lib/i18n";
 import type { Direction } from "@/lib/types";
 import type { Token3D } from "./tokens-3d";
 
-// --- status -> visual --------------------------------------------------------------------------------------------
+// --- member status -> visual -------------------------------------------------------------------------------------
 
-export type RingStyle = "solid" | "dashed" | "wire";
-export interface NodeVisual {
-  color: Token3D;
-  scale: number;
-  ring: RingStyle; // dashed = rotating "working" ring; wire = skipped
-  spin: boolean; // only while working
-  mark: "done" | "failed" | null; // shape cue in the DOM label (check / cross)
-  dim: boolean; // label uses `muted`
+export interface MemberVisual {
+  fill: Token3D; // head and body faces
+  edge: Token3D; // the outline of the head, body and antenna (the 2D avatar's stroke), and the antenna ball
+  eyes: Token3D;
+  ping: boolean; // the antenna ping ring (only while working)
+  mark: "done" | "failed" | null; // shape cue in the DOM name label (check / cross), as the 2D badges
+  dim: boolean; // the name label uses `muted`
 }
 
-export const NODE_VISUAL: Record<AgentStatus, NodeVisual> = {
-  idle: { color: "rule", scale: 1, ring: "solid", spin: false, mark: null, dim: true },
-  active: { color: "primary", scale: 1.12, ring: "solid", spin: false, mark: null, dim: false },
-  working: { color: "primary", scale: 1, ring: "dashed", spin: true, mark: null, dim: false },
-  done: { color: "ink", scale: 1, ring: "solid", spin: false, mark: "done", dim: false },
-  failed: { color: "err", scale: 1, ring: "solid", spin: false, mark: "failed", dim: false },
-  skipped: { color: "muted", scale: 1, ring: "wire", spin: false, mark: null, dim: true },
-  paused: { color: "warn", scale: 1, ring: "solid", spin: false, mark: null, dim: false },
-};
-
-export const EDGE_COLOR: Record<EdgeState, Token3D> = { idle: "rule", visited: "ink", live: "primary" };
-export const SLOT_COLOR: Record<SlotState, Token3D> = {
-  waiting: "rule", reading: "primary", ok: "ok", failed: "err", uncertain: "warn",
-};
 /**
- * Reader-pool instance scale [x, y, z] per slot state, so state is never colour-only (err/warn is a colour-blind pair):
- * waiting a small sphere, reading a large sphere, ok a flat round disc, failed a tall narrow spindle (upright),
- * uncertain a lying capsule along x (unlike the round ok disc, it is narrow in depth). Every state has its own silhouette.
+ * Like the 2D avatar (a `surface` head stroked in its status colour): the speaking member (or any member at work) is
+ * solid `primary`; done is outlined in `ink`; idle is a `rule` body outlined in `muted`; failed `err`, paused `warn`,
+ * stopped `muted`. The eyes take the outline colour.
  */
-export const SLOT_SCALE: Record<SlotState, readonly [number, number, number]> = {
-  waiting: [0.7, 0.7, 0.7], reading: [1.4, 1.4, 1.4], ok: [1.05, 0.45, 1.05], failed: [0.6, 1.3, 0.6], uncertain: [1.5, 0.6, 0.6],
-};
+export function memberVisual(status: MemberStatus, speaking: boolean): MemberVisual {
+  if (speaking || status === "working") {
+    return { fill: "primary", edge: "primary", eyes: "surface", ping: status === "working", mark: null, dim: false };
+  }
+  switch (status) {
+    case "done": return { fill: "surface", edge: "ink", eyes: "ink", ping: false, mark: "done", dim: false };
+    case "failed": return { fill: "surface", edge: "err", eyes: "err", ping: false, mark: "failed", dim: false };
+    case "paused": return { fill: "surface", edge: "warn", eyes: "warn", ping: false, mark: null, dim: false };
+    case "stopped": return { fill: "surface", edge: "muted", eyes: "muted", ping: false, mark: null, dim: true };
+    // idle: a `rule` body (the 2D idle head is dimmed with `muted`, never opacity; a `rule` outline vanished in dark)
+    default: return { fill: "rule", edge: "muted", eyes: "muted", ping: false, mark: null, dim: true };
+  }
+}
+
+export type TileState = "active" | "passed" | "rest";
+export const TILE_COLOR: Record<TileState, Token3D> = { active: "primary", passed: "ink", rest: "rule" };
+
+/** One phase tile's state: the member's current phase is active (raised, primary), passed ones ink, the rest rule. */
+export function tileState(p: Phase, phase: Phase | null, passed: readonly Phase[]): TileState {
+  if (p === phase) return "active";
+  return passed.includes(p) ? "passed" : "rest";
+}
+
+/** True while any member pings (the frame loop must keep running at the throttled rate). */
+export function anyPinging(members: readonly { status: MemberStatus }[]): boolean {
+  return members.some((m) => m.status === "working");
+}
+
+// --- evidence piles ----------------------------------------------------------------------------------------------
 
 export const PACKET_COLOR: Record<PulseKind, Token3D> = {
   query: "ink", paper: "ink", kept: "primary", card: "primary", failed: "err", signal: "muted",
 };
-
-/** Edge tube radius (world units): idle and visited thin, live thicker. */
-export const EDGE_RADIUS: Record<EdgeState, number> = { idle: 0.012, visited: 0.012, live: 0.02 };
-
-// --- evidence piles ----------------------------------------------------------------------------------------------
 
 export type PileShape = "sphere" | "octahedron" | "bar" | "dome" | "torus";
 /**
@@ -69,7 +73,7 @@ export const PILE_SHAPE: Record<Direction, PileShape> = {
 export const PILE_COLOR: Record<Direction, Token3D> = {
   positive: "sup", negative: "harm", null: "none", mixed: "mixed", unclear: "unclear",
 };
-/** The flat "no association" bar (x, y, z); 1.5x the first cut, whose 4-6px tokens read as indistinct specks. */
+/** The flat "no association" bar (x, y, z). */
 export const PILE_BAR: readonly [number, number, number] = [0.33, 0.09, 0.15];
 /** Radii of the round pile tokens (torus: ring radius and a thick tube, so the ring still reads at small sizes). */
 export const PILE_R = { sphere: 0.1, octahedron: 0.12, dome: 0.12, torus: 0.093, torusTube: 0.026 } as const;
@@ -93,12 +97,6 @@ export function planArrivals<T extends { key: number }>(
   };
 }
 
-/** True while any visible node shows the rotating working ring (the frame loop must keep running). */
-export function anySpinning(scene: Scene, layout: Layout3D): boolean {
-  for (const id of Object.keys(layout.nodes) as AgentId[]) if (NODE_VISUAL[scene.agents[id]].spin) return true;
-  return false;
-}
-
 // --- packets -----------------------------------------------------------------------------------------------------
 
 export const FLIGHT_MS = 700;
@@ -111,20 +109,20 @@ export function makeFlights(n: number): Flight[] {
 }
 
 /**
- * Assigns planned dots (from `planDots`) to pool slots round-robin starting at `cursor`, each starting at
- * `now + delayMs`. Dots on an edge the layout does not draw are dropped without taking a slot.
- * Returns the next cursor. Mutates `flights` only.
+ * Assigns hand-off dots (from `handoffDots`) to pool slots round-robin starting at `cursor`, each flying head to head
+ * along the layout's cached arc and starting at `now + delayMs`. A dot between members the layout has no arc for is
+ * dropped without taking a slot. Returns the next cursor. Mutates `flights` only.
  */
 export function schedulePackets(
-  flights: Flight[], cursor: number, dots: ReturnType<typeof planDots>, edges: Layout3D["edges"], now: number,
+  flights: Flight[], cursor: number, dots: readonly HandoffDot[], arcs: TeamLayout3D["arcs"], now: number,
 ): number {
   if (flights.length === 0) return 0;
   let c = ((cursor % flights.length) + flights.length) % flights.length;
   for (const d of dots) {
-    const e = edges.find((x) => x.id === d.edge);
-    if (!e) continue;
+    const seg = arcs[arcKey(d.from, d.to)];
+    if (!seg) continue;
     const f = flights[c];
-    f.seg = e.seg;
+    f.seg = seg;
     f.kind = d.kind;
     f.start = now + Math.max(0, d.delayMs);
     c = (c + 1) % flights.length;
@@ -150,26 +148,29 @@ export function packetScale(t: number): number {
 
 // --- camera ------------------------------------------------------------------------------------------------------
 
-// Framing: the camera keeps a fixed elevation (the Plan 12 view direction, from [0, 3.1, 7] toward [0, -1.1, 0]) and
-// backs off along it just far enough that the whole layout (lane, labels' room, pool, full piles, thought headroom)
-// fits the 960/288 wrapper (the 2D stage's constant box, so toggling never shifts the page) with an 8% side margin
-// and a 2% vertical one, plus a small pan toward the current agent.
+// Framing: the camera keeps a fixed elevation and backs off along it just far enough that the whole team (robots,
+// tiles, the speech bubble's room over any member, name labels, the table, full piles and their labels) fits the
+// 960/288 wrapper (the 2D stage's constant box, so toggling never shifts the page) with an 8% side margin and a 2%
+// vertical one, plus a small pan toward the speaking member.
 export const CAMERA_BASE: Vec3 = [0, 3.1, 7]; // initial Canvas camera only; the rig places the fitted camera at once
-const VIEW_UP = 4.2; // camera offset direction from the look-at point (y, z), i.e. ~31 degrees above the horizon
-const VIEW_BACK = 7;
+// ~24 degrees above the horizon: low enough that the table's depth costs little of the flat box's height, high enough
+// to see the piles on the table
+export const VIEW_UP = 3.1; // camera offset direction from the look-at point (y, z)
+export const VIEW_BACK = 7;
 const VIEW_LEN = Math.hypot(VIEW_UP, VIEW_BACK);
 const DIR_Y = VIEW_UP / VIEW_LEN;
 const DIR_Z = VIEW_BACK / VIEW_LEN;
 export const STAGE_ASPECT = 960 / 288; // = PLACEHOLDER_SIZE.wide (pinned by stage-3d.test.tsx)
-export const STAGE_FOV = 45;
+// A modest vertical FOV: in the flat 960/288 box a 45-degree one spans ~106 degrees across, so the end members leaned
+// visibly (keystone); at 30 the camera simply stands further back.
+export const STAGE_FOV = 30;
 export const FIT_MARGIN = 0.08;
 /**
  * Vertical margin. The wide box is flat (the 2D stage's aspect), so the fit is height-bound; the frame points already
- * include the DOM labels' room (thought headroom, label drop, pile captions), so a slim vertical margin is enough and
- * lets the lane use more of the width.
+ * include the DOM labels' room (bubble headroom, name labels, pile captions), so a slim vertical margin is enough.
  */
 export const FIT_MARGIN_V = 0.02;
-const PAN = 0.1; // fraction of the way from the lane centre toward the current agent (keeps the whole lane framed)
+export const PAN = 0.12; // fraction of the way from the table's centre toward the speaking member
 const NEAR_MIN = 0.5;
 
 const boundsCorners = (b: { min: Vec3; max: Vec3 }): Vec3[] =>
@@ -195,10 +196,9 @@ const fitTarget: Vec3 = [0, 0, 0];
 /**
  * Camera position + look-at (6 numbers into `out`) at the fixed elevation, as close as possible while every one of
  * `points` (default: the 8 corners of `bounds`) stays within (1 - FIT_MARGIN) of the side edges and (1 - FIT_MARGIN_V)
- * of the top and bottom edges of the frustum (pinhole
- * projection, vertical `fovDeg`, `aspect` = width / height). The look-at starts at the bounds centre and is re-centred
- * in view space so the points' projected extent is centred (a perspective view of a deep box is not symmetric).
- * `padX` reserves room for a later sideways pan of that many world units.
+ * of the top and bottom edges of the frustum (pinhole projection, vertical `fovDeg`, `aspect` = width / height). The
+ * look-at starts at the bounds centre and is re-centred in view space so the points' projected extent is centred (a
+ * perspective view of a deep box is not symmetric). `padX` reserves room for a later sideways pan of that many units.
  */
 export function fitCamera(
   bounds: { min: Vec3; max: Vec3 }, aspect = STAGE_ASPECT, fovDeg = STAGE_FOV, out: number[] = new Array(6).fill(0),
@@ -245,35 +245,35 @@ export function fitCamera(
   return out;
 }
 
+/** What the camera keeps in view while `speaking` talks: the whole team, plus that member's bubble. */
+export function framePoints(layout: TeamLayout3D, speaking: MemberId | null): Vec3[] {
+  return speaking ? [...layout.frame, ...layout.bubbles[speaking]] : layout.frame;
+}
+
 /**
- * Camera position + look-at for the current agent (framed centre when none). Writes into `out` (6 numbers). Fits the
- * layout's frame points (what must stay visible: nodes and their labels' room, thought headroom, pool, full piles,
- * tray, captions) with room reserved for the largest pan, so panning toward an end node never crops the far end.
+ * Camera position + look-at toward the speaking member (framed centre when none), into `out` (6 numbers). Fits the
+ * team and the speaker's bubble (so the camera also comes a little closer when a front member speaks), with room
+ * reserved for the largest pan, so easing toward an end member never crops the far one. Called on a speaker change
+ * only, never per frame.
  */
-export function cameraGoal(layout: Layout3D, agent: AgentId | null, out: number[] = new Array(6).fill(0)): number[] {
+export function teamCameraGoal(layout: TeamLayout3D, speaking: MemberId | null, out: number[] = new Array(6).fill(0)): number[] {
   const { min, max } = layout.bounds;
-  const finite = Number.isFinite(min[0] + max[0]);
-  const cx = finite ? (min[0] + max[0]) / 2 : 0;
+  const cx = Number.isFinite(min[0] + max[0]) ? (min[0] + max[0]) / 2 : 0;
   let reach = 0;
-  for (const id of Object.keys(layout.nodes) as AgentId[]) reach = Math.max(reach, Math.abs(layout.nodes[id]![0] - cx) * PAN);
-  fitCamera(layout.bounds, STAGE_ASPECT, STAGE_FOV, out, layout.frame, reach);
-  const node = agent ? layout.nodes[agent] : undefined;
-  const pan = node ? (node[0] - cx) * PAN : 0;
+  for (const m of Object.values(layout.members)) reach = Math.max(reach, Math.abs(m.feet[0] - cx) * PAN);
+  fitCamera(layout.bounds, STAGE_ASPECT, STAGE_FOV, out, framePoints(layout, speaking), reach);
+  const m = speaking ? layout.members[speaking] : undefined;
+  const pan = m ? (m.feet[0] - cx) * PAN : 0;
   out[0] += pan;
   out[3] += pan;
   return out;
-}
-
-/** The agent the camera follows: the scene's current agent (same choice as the 2D zone tint). */
-export function cameraAgent(scene: Scene): AgentId | null {
-  return currentAgent(scene);
 }
 
 /**
  * Moves `cur` toward `goal` in place with frame-rate independent exponential easing. Snaps and returns true once
  * within `eps` (settled), so the caller can stop invalidating. `jump` (reduced motion) snaps immediately.
  */
-export function easeToward(cur: number[], goal: number[], dtSec: number, jump = false, rate = 4, eps = 0.005): boolean {
+export function easeToward(cur: number[], goal: readonly number[], dtSec: number, jump = false, rate = 4, eps = 0.005): boolean {
   const k = jump ? 1 : 1 - Math.exp(-rate * Math.max(0, Math.min(dtSec, 0.1)));
   let far = false;
   for (let i = 0; i < cur.length; i++) {
@@ -284,50 +284,35 @@ export function easeToward(cur: number[], goal: number[], dtSec: number, jump = 
   return !far;
 }
 
-// --- labels ------------------------------------------------------------------------------------------------------
+// --- label anchors -----------------------------------------------------------------------------------------------
 
-export interface PoolSummary { pending: number; ok: number; failed: number; uncertain: number; total: number }
+/** A member's name label: top-centre just under its feet. */
+export function nameAnchor(layout: TeamLayout3D, id: MemberId): Vec3 {
+  const f = layout.members[id].feet;
+  return [f[0], f[1] - NAME_DROP, f[2]];
+}
+
+/** The speech bubble's tail tip: above the member's raised tile arc (the bubble grows upward from here). */
+export function bubbleAnchor(layout: TeamLayout3D, id: MemberId): Vec3 {
+  const m = layout.members[id];
+  return [m.feet[0], m.bubbleY, m.feet[2]];
+}
+
+const LEADER_GAP = 0.05;
 
 /**
- * One summary for the reader pool (never 30 labels). Every `reading` event arrives together at fan-out, so unfinished
- * papers are only a count ("กำลังอ่านหรือรอคิว"), never refs presented as being read now. ok excludes uncertain, which
- * shows as a flag.
+ * A hairline from a lifted bubble's tail down to its member's tiles; null when the bubble sits right over the tiles
+ * (nothing to bridge).
  */
-export function poolSummary(scene: Scene): PoolSummary {
-  const c = scene.counts;
-  return {
-    pending: Math.max(0, scene.slots.length - readDone(scene)), ok: Math.max(0, c.readOk - c.uncertain),
-    failed: c.readFailed, uncertain: c.uncertain, total: scene.slots.length,
-  };
+export function bubbleLeader(layout: TeamLayout3D, id: MemberId): [Vec3, Vec3] | null {
+  const m = layout.members[id];
+  const from = m.tilesTop + LEADER_GAP;
+  if (m.bubbleY - from < 0.2) return null;
+  return [[m.feet[0], from, m.feet[2]], [m.feet[0], m.bubbleY, m.feet[2]]];
 }
 
-/** Visible nodes in draw order (pipeline, then the external side node). */
-export function visibleAgents(layout: Layout3D, pipeline: readonly AgentId[]): AgentId[] {
-  const out = pipeline.filter((id) => layout.nodes[id]);
-  if (layout.nodes.external) out.push("external");
-  return out;
-}
-
-/**
- * Pool summary label anchor: the label's right edge, just left of the pool (the piles take the space to its right and
- * their labels the space below), at the pool's middle depth.
- */
-export function poolLabelAt(layout: Layout3D): Vec3 | null {
-  const s = layout.slots;
-  if (s.length === 0) return null;
-  let xMin = Infinity;
-  let zMin = Infinity;
-  let zMax = -Infinity;
-  for (const p of s) {
-    if (p[0] < xMin) xMin = p[0];
-    if (p[2] < zMin) zMin = p[2];
-    if (p[2] > zMax) zMax = p[2];
-  }
-  return [xMin - SLOT_HALF - POOL_LABEL_GAP, s[0][1], (zMin + zMax) / 2];
-}
-
-/** Anchor of one pile's count label: under its base (top-centre of the label). */
-export function pileLabelAt(layout: Layout3D, dir: Direction): Vec3 | null {
+/** Anchor of one pile's count label: in front of the table's edge, under its pile (top-centre of the label). */
+export function pileLabelAt(layout: Pick<TeamLayout3D, "piles">, dir: Direction): Vec3 | null {
   const b = layout.piles?.[dir];
   return b ? [b[0], b[1] - PILE_LABEL_DROP, b[2] + PILE_LABEL_FORWARD] : null;
 }
@@ -336,37 +321,10 @@ export function pileLabelAt(layout: Layout3D, dir: Direction): Vec3 | null {
  * Anchor of the piles' caption ("ทิศทางผลตามที่เอเจนต์อ่าน"): top-centre at the pile labels' row; the label pushes
  * itself down a fixed number of pixels (CSS) so it always clears the pile labels whatever the zoom.
  */
-export function pileCaptionAt(layout: Layout3D): Vec3 | null {
+export function pileCaptionAt(layout: Pick<TeamLayout3D, "piles">): Vec3 | null {
   const p = layout.piles;
   if (!p) return null;
   const first = p[DIRECTION_ORDER[0]];
   const last = p[DIRECTION_ORDER[DIRECTION_ORDER.length - 1]];
   return [(first[0] + last[0]) / 2, first[1] - PILE_LABEL_DROP, first[2] + PILE_LABEL_FORWARD];
-}
-
-// --- floating thought label --------------------------------------------------------------------------------------
-
-export const THOUGHT_LIFT = 0.85;
-const RING_TOP = 0.47; // node ring radius 0.42, x1.12 when active
-const LABEL_HALF = 0.3; // about half a one-line label's height (~11px) in world units at the fitted distance
-
-/**
- * Centre of the floating thought label: THOUGHT_LIFT above the agent's node; for `read` while the external node is
- * shown (it sits right above read), above the external node instead. Null when the agent is not drawn.
- */
-export function thoughtAnchor(layout: Layout3D, agent: AgentId | null): Vec3 | null {
-  if (!agent) return null;
-  const node = agent === "read" && layout.nodes.external ? layout.nodes.external : layout.nodes[agent];
-  return node ? [node[0], node[1] + THOUGHT_LIFT, node[2]] : null;
-}
-
-/**
- * Leader line from the label down to its own node's ring. None when the label sits over the external node for `read`
- * (a line through the external node would read as that node's thought).
- */
-export function thoughtLeader(layout: Layout3D, agent: AgentId | null): [Vec3, Vec3] | null {
-  if (!agent || (agent === "read" && layout.nodes.external)) return null;
-  const n = layout.nodes[agent];
-  if (!n) return null;
-  return [[n[0], n[1] + RING_TOP, n[2]], [n[0], n[1] + THOUGHT_LIFT - LABEL_HALF, n[2]]];
 }

@@ -12,12 +12,11 @@ import { numbersIn, withNumbers } from "../stage/count-up";
 import { StageMotion } from "../stage/motion";
 import { PacketDot, type DotHandle } from "../stage/packet-layer";
 import { ReaderPool } from "../stage/reader-pool";
-import { LegendGroup, LegendItem, PapersLegendGroup } from "../stage/stage-legend";
 import { useWide } from "../stage/use-wide";
 import { AgentAvatar, AVATAR_BOX } from "./agent-avatar";
 import { PhaseLabels, PhaseRing } from "./phase-ring";
 import { SpeechBubble, type BubbleTone } from "./speech-bubble";
-import { CHECK } from "../stage/icons";
+import { TeamLegend } from "./team-legend";
 
 const DOTS = 12;
 const LOOK_MS = 700; // a packet's flight
@@ -205,19 +204,6 @@ function TeamPackets({ scene, box, label, wide }: { scene: Scene; box: RefObject
         </g>
       )}
     </svg>
-  );
-}
-
-function TeamLegend() {
-  return (
-    <ul aria-label="สัญลักษณ์" className="flex flex-wrap gap-x-10 gap-y-2 text-xs text-muted">
-      <LegendGroup title="ขั้นคิด">
-        <LegendItem sample={<rect x={-4} y={-4} width={8} height={8} rx={1} className="fill-primary" />}>ขั้นที่กำลังทำ</LegendItem>
-        <LegendItem sample={<path d={CHECK} fill="none" className="stroke-ink" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />}>ผ่านแล้ว</LegendItem>
-        <LegendItem sample={<rect x={-3.5} y={-3.5} width={7} height={7} rx={1} fill="none" className="stroke-rule" strokeWidth={1} />}>ยังไม่ถึง</LegendItem>
-      </LegendGroup>
-      <PapersLegendGroup />
-    </ul>
   );
 }
 

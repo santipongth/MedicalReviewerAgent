@@ -7,8 +7,9 @@ import { hasWebGL } from "@/lib/webgl";
 import {
   DEFAULT_VIEW, LEGACY_3D_KEY, VIEW_KEY, effectiveView, parseStageView, type StageViewKind,
 } from "@/lib/stage-view-pref";
-import { StageLegend } from "./stage/stage-legend";
+import { PHASE_NOTE } from "@/lib/agent-team";
 import { StagePlaceholder } from "./stage/stage-placeholder";
+import { TeamLegend } from "./team/team-legend";
 import { useWide } from "./stage/use-wide";
 
 // Client-only chunk (motion lives here); the placeholder reserves the stage's aspect so nothing shifts on load.
@@ -169,16 +170,17 @@ export function StageView({ scene, connection, heading, lead, question, framewor
       {view === "team" && <TeamStage scene={scene} connection={connection} question={question} framework={framework} />}
       {view === "steps" && <AgentStage scene={scene} connection={connection} />}
       {view === "3d" && (
-        // Same captions as the 2D stage (shared helpers), under the canvas.
+        // The team in 3D: the team view's phase legend (tile variant) and honesty note, and the shared captions.
         <figure className="grid gap-2">
           <Boundary onError={onError}>
-            <Stage3D scene={scene} />
+            <Stage3D scene={scene} question={question} framework={framework} />
           </Boundary>
           {showSynthCaption(scene) && (
             <p className="font-display text-xs text-muted" data-caption="synth">{SYNTH_CAPTION.join(" ")}</p>
           )}
           <div className="grid gap-2 border-t border-rule pt-3">
-            <StageLegend />
+            <TeamLegend variant="3d" />
+            <p className="text-xs text-muted" data-phase-note>{PHASE_NOTE}</p>
             {caption && <figcaption className="text-xs text-muted">{caption}</figcaption>}
           </div>
         </figure>
