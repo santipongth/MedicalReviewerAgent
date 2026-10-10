@@ -10,6 +10,9 @@ export const PLACEHOLDER_SIZE = {
   narrowNoLocalize: { width: 360, height: 688 },
 } as const;
 
+/** Height (CSS px) of the narrow team list at 390px before the reader pool appears (pinned by the team e2e). */
+export const TEAM_NARROW_HEIGHT = 572;
+
 /** Whether the lane will show localize (scene.expectLocalize). Unknown -> Thai, the common case. */
 export const StageLocalize = createContext(true);
 
@@ -18,11 +21,20 @@ export const StageLocalize = createContext(true);
  * desktop. Wide spans the panel like the stage; narrow is capped at 480px wide, like the stage (a tablet would
  * otherwise scale the vertical lane ~2.5x). Both are centred.
  */
-export function StagePlaceholder() {
+export function StagePlaceholder({ view = "steps" }: { view?: "steps" | "team" }) {
   const localize = useContext(StageLocalize);
   const w = PLACEHOLDER_SIZE.wide;
   const n = localize ? PLACEHOLDER_SIZE.narrow : PLACEHOLDER_SIZE.narrowNoLocalize;
   const box = "mx-auto w-full rounded-sm border border-rule bg-surface";
+  if (view === "team") {
+    // the team view: the same constant wide box; narrow, the five-card list's height before any paper arrives
+    return (
+      <>
+        <div aria-hidden data-placeholder="team-narrow" className={`${box} max-w-[560px] lg:hidden`} style={{ height: TEAM_NARROW_HEIGHT }} />
+        <div aria-hidden data-placeholder="team-wide" className={`${box} hidden lg:block`} style={{ aspectRatio: `${w.width} / ${w.height}` }} />
+      </>
+    );
+  }
   return (
     <>
       <div aria-hidden data-placeholder="narrow" className={`${box} max-w-[480px] lg:hidden`} style={{ aspectRatio: `${n.width} / ${n.height}` }} />

@@ -286,6 +286,15 @@ describe("fix round 1", () => {
     expect(teamOf(s).members[0].line).toBe("แปลงคำถามให้ชัดแบบ PICO");
     expect(teamOf(s, { framework: "PCC" }).members[0].line).toBe("แปลงคำถามให้ชัดแบบ PCC");
   });
+  it("quotes the refined question (passed from outside the Scene) only between refine and planning", () => {
+    const q = { question: "  ในผู้ใหญ่ที่เป็นเบาหวาน เมตฟอร์มินลดมะเร็งลำไส้ใหญ่หรือไม่ " };
+    expect(teamOf(upTo(4), q).members[0].line).toBe("แปลงคำถามให้ชัดแบบ PICO"); // still refining
+    expect(teamOf(upTo(5), q).members[0].line).toBe("ตีความคำถามว่า: ในผู้ใหญ่ที่เป็นเบาหวาน เมตฟอร์มินลดมะเร็งลำไส้ใหญ่หรือไม่");
+    expect(teamOf(upTo(5)).members[0].line).not.toMatch(/ตีความคำถามว่า/); // unknown: no quote
+    expect(teamOf(upTo(5), { question: "  " }).members[0].line).not.toMatch(/ตีความคำถามว่า/);
+    expect(teamOf(upTo(6), q).members[0].line).toBe("วางคำค้น 3 คำ");
+    expect(teamSummary(upTo(5), q)).toContain("ผู้วางแผน: กำลังวางแผน");
+  });
   it("a failed external step fails the reader", () => {
     // `error` fails the current agent; with the external node as the only live one that is the external step
     const base = upTo(11);

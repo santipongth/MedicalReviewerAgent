@@ -61,7 +61,7 @@ function PoolSlot({ slot, r, x, y, rank }: { slot: ReaderSlot; r: number; x: num
 }
 
 /** One round slot per paper. A "reading" slot means reading or queued behind the LLM limit; it never claims to be in flight. */
-export function ReaderPool({ slots, layout }: { slots: ReaderSlot[]; layout: StageLayout }) {
+export function ReaderPool({ slots, layout }: { slots: ReaderSlot[]; layout: Pick<StageLayout, "slots" | "slotR"> }) {
   // the ripple is ranked within the burst, so a slot that starts reading alone pops at once
   const [seen, setSeen] = useState(slots);
   const [ranks, setRanks] = useState<Map<number, number>>(() => new Map());

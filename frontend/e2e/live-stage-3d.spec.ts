@@ -29,8 +29,16 @@ async function noSeriousA11y(page: Page) {
   expect(serious.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`)).toEqual([]);
 }
 
-const toggle = (page: Page) => page.getByRole("button", { name: /^มุมมอง [23]D$/ });
+const views = (page: Page) => page.getByRole("group", { name: "มุมมองเวที" });
+const toggle = (page: Page) => views(page).getByRole("button", { name: "3D", exact: true });
+const stepsButton = (page: Page) => views(page).getByRole("button", { name: "ขั้นตอน", exact: true });
 const stage3d = (page: Page) => page.locator("[data-stage3d]");
+
+// 3D parity is checked against the pipeline ("ขั้นตอน") view, which shares its scene summary label.
+test.beforeEach(async ({ page }) => {
+  // only when nothing is stored, so a choice made in the test survives a reload
+  await page.addInitScript(() => { try { if (!localStorage.getItem("mra.stageView")) localStorage.setItem("mra.stageView", "steps"); } catch { /* storage blocked */ } });
+});
 
 /** True when this browser can create a WebGL context (SwiftShader normally provides one in headless Chromium). */
 async function browserHasWebGL(page: Page) {
@@ -49,7 +57,7 @@ async function open(page: Page, frames: SseFrame[]) {
 
 /** Turn 3D on and wait until the canvas and the Thai labels are in the DOM. */
 async function enable3d(page: Page) {
-  await expect(toggle(page)).toHaveText("มุมมอง 3D");
+  await expect(toggle(page)).toHaveAttribute("aria-pressed", "false");
   await toggle(page).click();
   await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
   await expect(stage3d(page).locator("canvas")).toBeVisible({ timeout: 20_000 });
@@ -71,12 +79,12 @@ test.describe("3D stage view", () => {
     await expect(page.locator("svg[role=img]")).toBeVisible();
     const label2d = await page.locator("svg[role=img]").getAttribute("aria-label");
     const box2d = (await page.locator("svg[role=img]").boundingBox())!;
-    const toggle2d = (await toggle(page).boundingBox())!;
+    const toggle2d = (await views(page).boundingBox())!;
     await enable3d(page);
-    // parity: the 3D view takes the 2D stage's box and the toggle stays put in the shared header row
+    // parity: the 3D view takes the 2D stage's box and the view buttons stay put in the shared header row
     const box3d = (await stage3d(page).boundingBox())!;
     for (const k of ["x", "y", "width", "height"] as const) expect(Math.abs(box3d[k] - box2d[k]), `3D ${k}`).toBeLessThan(2);
-    const toggle3d = (await toggle(page).boundingBox())!;
+    const toggle3d = (await views(page).boundingBox())!;
     expect(Math.abs(toggle3d.x + toggle3d.width - toggle2d.x - toggle2d.width)).toBeLessThan(2);
     expect(Math.abs(toggle3d.y - toggle2d.y)).toBeLessThan(2);
     await expect(page.getByRole("list", { name: "ขั้นตอน" })).toBeVisible(); // the shared legend groups
@@ -93,9 +101,9 @@ test.describe("3D stage view", () => {
     await expect(stage3d(page).locator('[data-label3d="guard"]')).toContainText("ตรวจหัวข้อ");
     await expect(page.getByRole("region", { name: "บันทึกการทำงาน" })).toBeVisible(); // the text ledger is untouched
 
-    await toggle(page).click();
+    await stepsButton(page).click();
     await expect(toggle(page)).toHaveAttribute("aria-pressed", "false");
-    await expect(toggle(page)).toHaveText("มุมมอง 3D");
+    await expect(stepsButton(page)).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("svg[role=img]")).toBeVisible();
     await expect(stage3d(page)).toHaveCount(0);
   });
@@ -149,7 +157,7 @@ test.describe("3D stage view", () => {
   }
 });
 
-test("toggle is absent at 390px", async ({ page }) => {
+test("the 3D button is absent at 390px", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await open(page, allAtOnce());
@@ -158,7 +166,7 @@ test("toggle is absent at 390px", async ({ page }) => {
   await expect(stage3d(page)).toHaveCount(0);
 });
 
-test("toggle is absent under reduced motion even at 1440px", async ({ page }) => {
+test("the 3D button is absent under reduced motion even at 1440px", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await open(page, allAtOnce());
   await expect(page.getByTestId("reader-ok")).toHaveCount(5);
@@ -167,7 +175,7 @@ test("toggle is absent under reduced motion even at 1440px", async ({ page }) =>
 });
 
 test("a stored 3D preference is ignored where 3D is not allowed (reduced motion)", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("mra.stage3d", "1"));
+  await page.addInitScript(() => localStorage.setItem("mra.stageView", "3d")); // runs after the beforeEach "steps"
   await page.emulateMedia({ reducedMotion: "reduce" });
   await open(page, allAtOnce());
   await expect(toggle(page)).toHaveCount(0);

@@ -63,7 +63,8 @@ test("live run shows the refined question and the agent stage while reading", as
   await page.goto(`/r/${RID}`);
   await expect(page.getByText("เอเจนต์เข้าใจคำถามของคุณว่า")).toBeVisible();
   await expect(page.getByRole("img", { name: /เอเจนต์/ })).toBeVisible();
-  await expect(page.locator('[data-agent="read"][data-status="active"]')).toBeVisible();
+  // the default team view: the reader is at work
+  await expect(page.locator('[data-member="reader"][data-status="working"]')).toBeVisible();
   await expect(page.getByTestId("reader-ok")).toHaveCount(1);
   await expect(page.getByTestId("reader-waiting")).toHaveCount(29);
   await expect(page.getByRole("region", { name: "บันทึกการทำงาน" })).toContainText("ผ่านคัดกรอง 30 จาก 60 ฉบับ");

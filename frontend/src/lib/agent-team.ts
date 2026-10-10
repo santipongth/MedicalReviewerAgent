@@ -56,7 +56,9 @@ export function memberOf(id: AgentId): MemberId {
 
 const RUNNING = new Set<AgentStatus>(["active", "working"]);
 
-interface Ctx { s: Scene; steps: AgentId[]; framework?: "PICO" | "PCC" }
+interface Ctx { s: Scene; steps: AgentId[]; framework?: "PICO" | "PCC"; question?: string | null }
+/** Options from outside the Scene: the review framework, and the refined question (from `question_refined`). */
+export interface TeamOpts { framework?: "PICO" | "PCC"; question?: string | null }
 
 /** Steps the lane actually shows: localize only for Thai (or if it ran), external only when it was used. */
 function visibleSteps(s: Scene, steps: AgentId[]): AgentId[] {
@@ -175,6 +177,8 @@ function lineFor(id: MemberId, status: MemberStatus, c: Ctx): string {
       if (status === "done") return "ตรวจและตีความคำถามเสร็จ";
       if (at === "guard") return "ตรวจว่าเป็นคำถามทางการแพทย์ก่อนเริ่มค้น";
       if (at === "refine") return c.framework === "PCC" ? "แปลงคำถามให้ชัดแบบ PCC" : "แปลงคำถามให้ชัดแบบ PICO";
+      // after question_refined, before the queries arrive: the refined question itself (real event text), if known
+      if (c.question && c.question.trim()) return `ตีความคำถามว่า: ${c.question.trim()}`;
       return AGENT_LABEL.plan.role;
     case "researcher": {
       if (status === "idle") return member.role;
@@ -233,11 +237,11 @@ function tallyFor(id: MemberId, s: Scene): string | null {
 // --- public API --------------------------------------------------------------------------------------------------
 
 /** The team for a scene: one state per member plus who is speaking (only while the run is live). */
-export function teamOf(s: Scene, opts: { framework?: "PICO" | "PCC" } = {}): Team {
+export function teamOf(s: Scene, opts: TeamOpts = {}): Team {
   const members: MemberState[] = TEAM.map((m) => {
     const steps = visibleSteps(s, m.steps);
     const status = statusOf(s, steps);
-    const ctx: Ctx = { s, steps, framework: opts.framework };
+    const ctx: Ctx = { s, steps, framework: opts.framework, question: opts.question };
     let phase: Phase | null = null;
     let passed: Phase[] = [];
     if (status === "done") passed = [...PHASES];
@@ -286,7 +290,7 @@ export function memberLabel(m: MemberState): string {
 }
 
 /** One-sentence accessible description of the whole team. */
-export function teamSummary(s: Scene, opts: { framework?: "PICO" | "PCC" } = {}): string {
+export function teamSummary(s: Scene, opts: TeamOpts = {}): string {
   const t = teamOf(s, opts);
   switch (s.status) {
     case "waiting": return "ทีมเอเจนต์ 5 คนกำลังรอคิว";
