@@ -12,7 +12,7 @@ from app.graph.nodes.intake import harness_runner, harness_spec, review_question
 from app.graph.progress import progress_writer
 from app.graph.schemas import ScreenBatch
 from app.graph.state import ReviewState
-from app.schemas.review import ReviewOptions
+from app.schemas.review import SLR_LIKE, ReviewOptions
 from app.services.llm import LLMError
 
 
@@ -131,7 +131,7 @@ MIN_PRIMARY_FOR_NO_REVIEWS = 3
 def make_select_top(deps):
     async def select_top(state: ReviewState) -> dict:
         options = ReviewOptions.clamped(state.get("options"))
-        keep_narrative = options.review_type != "slr"  # narrative and scoping reviews welcome narrative reviews
+        keep_narrative = options.review_type not in SLR_LIKE  # narrative/scoping reviews welcome narrative reviews
         best: dict[str, dict[str, Any]] = {}
         for d in state.get("screened") or []:
             if d["key"] not in best or d["relevance"] > best[d["key"]]["relevance"]:

@@ -68,6 +68,40 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     return {"level": LEVELS[max(level, 0)], "factors": factors}
 
 
+HIGH_HETEROGENEITY_I2 = 50.0
+
+
+def apply_meta_grade(grade: dict[str, Any], pools: list[dict[str, Any]],
+                     outcome: str | None) -> tuple[dict[str, Any], list[str]]:
+    """Meta-analysis only: adjust the GRADE-lite baseline from the pools that report the primary outcome.
+    Inconsistency: any such pool with I2 >= 50%. Imprecision: any such pool whose 95% CI includes no effect (1 for
+    ratio measures, 0 for differences; i.e. 0 on the analysis scale). Each domain is downgraded at most once: when the
+    baseline already downgraded it (conflicting directions, small total n), the reason is recorded without another
+    level. Returns (grade, the reason strings added). The reasons carry no pooled numbers."""
+    if not pools:
+        return grade, []
+    level = LEVELS.index(grade.get("level", "very_low"))
+    factors = list(grade.get("factors") or [])
+    added: list[str] = []
+    checks = (
+        ("inconsistency", any(p["i2"] >= HIGH_HETEROGENEITY_I2 for p in pools),
+         f"substantial heterogeneity (I2 >= 50%) in the pooled analysis of {outcome}"),
+        ("imprecision", any(p["pooled"]["y_ci_lower"] <= 0.0 <= p["pooled"]["y_ci_upper"] for p in pools),
+         f"the pooled 95% CI for {outcome} includes no effect"),
+    )
+    for domain, hit, reason in checks:
+        if not hit:
+            continue
+        if any(f.startswith(f"{domain}:") for f in factors):
+            text = f"{domain} (pooled analysis, already downgraded): {reason}"
+        else:
+            level -= 1
+            text = f"{domain}: {reason}"
+        factors.append(text)
+        added.append(text)
+    return {**grade, "level": LEVELS[max(level, 0)], "factors": factors}, added
+
+
 def clamp_to_baseline(chosen: str, baseline: str) -> str:
     """Allow the narrative model to move at most one level away from the deterministic baseline."""
     b, c = LEVELS.index(baseline), LEVELS.index(chosen)

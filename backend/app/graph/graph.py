@@ -91,8 +91,8 @@ def build_stub_graph(checkpointer: BaseCheckpointSaver | None = None, delay_seco
 
 def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None):
     """topic_guard → refine_question → plan_queries → search → enrich → screen_batch* → select_top
-    → read_paper* → normalize_outcomes → explain_conflict* → write_synthesis → localize → finalize
-    (* = Send fan-out, run in parallel)."""
+    → read_paper* → normalize_outcomes → [pool_effects, meta_analysis only] → explain_conflict* → write_synthesis
+    → localize → finalize (* = Send fan-out, run in parallel)."""
     if deps.llms is None:
         return build_stub_graph(checkpointer, deps.settings.stub_delay_seconds, deps.settings)
     b = StateGraph(ReviewState)
@@ -107,6 +107,7 @@ def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None
     b.add_node("external_enrich", external.make_external_enrich(deps))
     b.add_node("fetch_citations", citations.make_fetch_citations(deps))
     b.add_node("normalize_outcomes", synthesis.make_normalize_outcomes(deps))
+    b.add_node("pool_effects", synthesis.make_pool_effects(deps))
     b.add_node("explain_conflict", synthesis.make_explain_conflict(deps))
     b.add_node("write_synthesis", synthesis.make_write_synthesis(deps))
     b.add_node("localize", synthesis.make_localize(deps))
@@ -131,7 +132,10 @@ def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None
     b.add_edge("read_paper", "normalize_outcomes")
     b.add_edge("external_enrich", "normalize_outcomes")
     b.add_edge("fetch_citations", "normalize_outcomes")
-    b.add_conditional_edges("normalize_outcomes", synthesis.route_conflicts, ["explain_conflict", "write_synthesis"])
+    # meta_analysis: normalize_outcomes → pool_effects → conflicts; every other type skips pool_effects
+    b.add_conditional_edges("normalize_outcomes", synthesis.route_after_normalize,
+                            ["pool_effects", "explain_conflict", "write_synthesis"])
+    b.add_conditional_edges("pool_effects", synthesis.route_conflicts, ["explain_conflict", "write_synthesis"])
     b.add_edge("explain_conflict", "write_synthesis")
     b.add_edge("write_synthesis", "localize")
     b.add_edge("localize", "finalize")

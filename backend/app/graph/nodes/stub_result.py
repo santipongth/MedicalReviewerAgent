@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.harness.design import POOLED_CATEGORIES
+from app.harness.meta import pool_outcomes, primary_outcome
+from app.schemas.review import SLR_LIKE
+
 # (design_category, study_design, year, direction, risk_of_bias, sample_size, effect_value, ci)
 _PAPERS = (
     ("rct", "Randomized controlled trial", 2021, "positive", "low", 412, 0.78, (0.63, 0.96)),
@@ -13,10 +17,12 @@ _PAPERS = (
     ("sr_ma_rct", "Systematic review and meta-analysis of RCTs", 2022, "mixed", "low", None, None, None),
     ("narrative_review", "Narrative review", 2017, "unclear", "unclear", None, None, None),
 )
+# meta_analysis only: a third cohort with a verified HR, so the observational pool reaches k = 3 (P3, P4, P7).
+_META_EXTRA = ("cohort", "Population-based cohort study", 2016, "positive", "moderate", 3410, 0.88, (0.79, 0.99))
 
 
-def _card(i: int, topic: str) -> dict[str, Any]:
-    design, study_design, _year, direction, rob, n, effect, ci = _PAPERS[i]
+def _card(i: int, topic: str, specs: tuple = _PAPERS) -> dict[str, Any]:
+    design, study_design, _year, direction, rob, n, effect, ci = specs[i]
     has_effect = effect is not None
     quote = f"HR {effect} (95% CI {ci[0]}-{ci[1]})" if has_effect and ci else None
     outcomes = [{
@@ -63,9 +69,11 @@ def _citations(n: int) -> dict[str, Any]:
 
 
 def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str, Any]:
+    meta = review_type == "meta_analysis"
+    specs = (*_PAPERS, _META_EXTRA) if meta else _PAPERS
     papers = []
-    for i, (_d, _s, year, *_rest) in enumerate(_PAPERS):
-        card = _card(i, topic)
+    for i, (_d, _s, year, *_rest) in enumerate(specs):
+        card = _card(i, topic, specs)
         papers.append({
             "ref": f"P{i + 1}", "title": f"Simulated study {i + 1}: {topic}", "authors": ["Stub A", "Stub B"],
             "year": year, "journal": "Journal of Simulated Evidence", "doi": None, "pmid": None, "pmcid": None,
@@ -78,16 +86,20 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
     def cells(outcome: str, refs: tuple[int, ...]) -> dict[str, Any]:
         out = []
         for i in refs:
-            _d, _s, _y, direction, _r, _n, effect, ci = _PAPERS[i]
-            out.append({"ref": f"P{i + 1}", "finding": f"{outcome}: {direction} in simulated study {i + 1}.",
-                        "direction": direction, "effect_measure": "HR" if effect is not None else None,
-                        "effect_value": effect, "ci_lower": ci[0] if ci else None,
-                        "ci_upper": ci[1] if ci else None})
+            design, _s, _y, direction, _r, _n, effect, ci = specs[i]
+            cell = {"ref": f"P{i + 1}", "finding": f"{outcome}: {direction} in simulated study {i + 1}.",
+                    "direction": direction, "effect_measure": "HR" if effect is not None else None,
+                    "effect_value": effect, "ci_lower": ci[0] if ci else None,
+                    "ci_upper": ci[1] if ci else None}
+            if meta:  # the real matrix carries these; other types keep their pre-14b stub shape
+                cell |= {"design_category": design, "pooled": design in POOLED_CATEGORIES}
+            out.append(cell)
         return {"outcome": outcome, "cells": out}
 
-    comparison = [cells("Primary outcome", (0, 1, 2, 3)), cells("Safety outcome", (0, 2, 4))]
+    comparison = [cells("Primary outcome", (0, 1, 2, 3, 6) if meta else (0, 1, 2, 3)),
+                  cells("Safety outcome", (0, 2, 4))]
     summary = f"Stub review for: {topic}"
-    graded = review_type == "slr"  # narrative and scoping reviews are not graded (same rule as write_synthesis)
+    graded = review_type in SLR_LIKE  # narrative and scoping reviews are not graded (same rule as write_synthesis)
     scoping = review_type == "scoping"  # a scoping review makes no claims: no consensus, no conflicts
     synthesis = {
         "executive_summary": summary, "comparison": comparison,
@@ -125,4 +137,16 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
         "quality": {}, "errors": [], "prompt_version": "stub", "llm_preset": "stub", "models": {},
         "external_context": [],
         "citations": _citations(len(papers)),
+        "meta_analysis": _stub_meta(comparison, papers) if meta else None,
     }
+
+
+def _stub_meta(comparison: list[dict[str, Any]], papers: list[dict[str, Any]]) -> dict[str, Any]:
+    """Pooled by meta.py from the stub matrix (never hand-written numbers), in the same shape as the real result."""
+    out = pool_outcomes({"rows": comparison}, papers)
+    outcome = primary_outcome(out, ["Primary outcome"])
+    out["grade"] = {"primary_outcome": outcome, "reasons": []}
+    for kind in ("pools", "excluded", "reference"):
+        for item in out[kind]:
+            item["outcome_display"] = item["outcome"]
+    return out

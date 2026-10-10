@@ -25,6 +25,7 @@ REAL_KEYS = {
     "reading": {"ref", "title"},
     "extracted": {"ref", "ok", "verified", "uncertain", "direction", "design"},
     "synthesizing": {"papers"},
+    "pooled": {"pools", "k_total"},
     "localizing": set(),
     "finalizing": set(),
 }

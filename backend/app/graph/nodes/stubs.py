@@ -184,6 +184,11 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
             progress_writer()({"type": "citations_fetched", "edges": len(c["edges"]),
                                "covered": sum(1 for v in c["coverage"].values() if v), "total": len(c["coverage"])})
         progress_writer()({"type": "synthesizing", "papers": ok_count})
+        review_type = ReviewOptions.clamped(state.get("options")).review_type
+        if review_type == "meta_analysis" and ok_count:  # same event as the real pool_effects node
+            meta = stub_result(state["topic"], state["language"], review_type)["meta_analysis"]
+            progress_writer()({"type": "pooled", "pools": len(meta["pools"]),
+                               "k_total": sum(p["k"] for p in meta["pools"])})
         await asyncio.sleep(timeline.seconds("normalize", _rng(state, "normalize")))
         return {}
 

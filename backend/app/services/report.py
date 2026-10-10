@@ -13,7 +13,42 @@ def _cell(text: Any) -> str:
     return " ".join(str(text if text is not None else "").split()).replace("|", "\\|")
 
 
-TYPE_LABEL = {"narrative": "Narrative review", "slr": "Systematic review", "scoping": "Scoping review"}
+TYPE_LABEL = {"narrative": "Narrative review", "slr": "Systematic review", "scoping": "Scoping review",
+              "meta_analysis": "Meta-analysis"}
+POOLED_HEADING = ("## Pooled analysis (computed by the system from abstract-verified numbers — "
+                  "not a result of any single study)")
+DESIGN_GROUP = {"rct": "RCTs", "observational": "observational studies"}
+
+
+def _num(value: float, decimals: int = 2) -> str:
+    return f"{value:.{decimals}f}"
+
+
+def _pooled_section(meta: dict[str, Any] | None) -> list[str]:
+    """Markdown lines for result.meta_analysis (empty when there is nothing to show)."""
+    if not meta:
+        return []
+    out = [POOLED_HEADING, ""]
+    pools = meta.get("pools") or []
+    if not pools:
+        out += [("No outcome had at least 3 comparable primary studies with verified effect estimates, "
+                 "so nothing was pooled."), ""]
+    for p in pools:
+        est = p["pooled"]
+        refs = ", ".join(f"{s['ref']} {_num(s['effect'])} [{_num(s['ci_lower'])}, {_num(s['ci_upper'])}]"
+                         f" w {s['weight']:.1f}%" for s in p["studies"])
+        out.append(f"- **{_cell(p.get('outcome_display') or p['outcome'])}** — {p['measure']}, "
+                   f"{DESIGN_GROUP.get(p['design_group'], p['design_group'])}, k={p['k']}: "
+                   f"{_num(est['est'])} (95% CI {_num(est['ci_lower'])} to {_num(est['ci_upper'])}) "
+                   f"_(computed)_; I² {p['i2']:.0f}%, τ² {p['tau2']:.3f}. Inputs: {refs}.")
+    if pools:
+        out += ["", (f"_Method: {pools[0]['method']} ({meta.get('version')}); 95% CIs; ratio measures pooled on the "
+                     "log scale. Inputs are abstracts only; adjusted and unadjusted estimates cannot be told apart._")]
+    reference = [r for r in meta.get("reference") or [] if r.get("effect") is not None]
+    if reference:
+        out += ["", "Systematic reviews / meta-analyses (reference only, not pooled): "
+                + "; ".join(f"{r['ref']} {r.get('measure') or ''} {_num(r['effect'])}" for r in reference) + "."]
+    return [*out, ""]
 
 
 def _comparison(rows: list[dict[str, Any]], directions: bool = True) -> list[str]:
@@ -51,6 +86,8 @@ def render_markdown(review) -> str:
     table = _comparison(s.get("comparison") or [], directions=review_type != "scoping")
     if table:
         out += ["## Comparison", "", *table, ""]
+    if review_type == "meta_analysis":
+        out += _pooled_section(result.get("meta_analysis"))
     for title, key in (("Consensus", "consensus"), ("Conflicts", "conflicts")):
         items = [] if review_type == "scoping" else s.get(key) or []  # a scoping review makes no claims
         if items:

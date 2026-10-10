@@ -16,10 +16,14 @@ would lose usable data, so it joins the observational group.
 from __future__ import annotations
 
 import math
+import re
 import unicodedata
 from typing import Any
 
+from rapidfuzz import fuzz
+
 from app.harness.design import POOLED_CATEGORIES
+from app.services.text import normalize_title
 
 Z95 = 1.959964
 METHOD = "DerSimonian-Laird random effects"
@@ -319,3 +323,66 @@ def pool_outcomes(matrix: dict[str, Any], papers: list[dict[str, Any]]) -> dict[
                 "method": METHOD, "version": VERSION, "warnings": warnings,
             })
     return {"version": VERSION, "pools": pools, "excluded": excluded, "reference": reference}
+
+
+# ---- helpers for the graph (Task 4): prompt data, the no-pooled-numbers post-check, the primary outcome ----------
+DISPLAY_DECIMALS = 2  # pooled estimates and CI bounds as the UI shows them; I2 as a whole percent, tau2 at 3 decimals
+
+
+def pools_for_prompt(meta: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Compact pooled results for the synthesis prompt, rounded the way the UI shows them."""
+    out = []
+    for p in (meta or {}).get("pools") or []:
+        est = p["pooled"]
+        out.append({"outcome": p["outcome"], "measure": p["measure"], "design_group": p["design_group"], "k": p["k"],
+                    "refs": [s["ref"] for s in p["studies"]],
+                    "estimate": round(est["est"], DISPLAY_DECIMALS),
+                    "ci_lower": round(est["ci_lower"], DISPLAY_DECIMALS),
+                    "ci_upper": round(est["ci_upper"], DISPLAY_DECIMALS),
+                    "i2_percent": round(p["i2"]), "tau2": round(p["tau2"], 3)})
+    return out
+
+
+def pooled_number_strings(meta: dict[str, Any] | None) -> set[str]:
+    """Every pooled estimate and CI bound (display scale, sign dropped) formatted at 2 and 3 decimals."""
+    strings: set[str] = set()
+    for p in (meta or {}).get("pools") or []:
+        for key in ("est", "ci_lower", "ci_upper"):
+            value = abs(p["pooled"][key])
+            strings |= {f"{value:.2f}", f"{value:.3f}"}
+    return strings
+
+
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+
+def strip_pooled_numbers(text: str, strings: set[str]) -> tuple[str, int]:
+    """Remove every sentence that contains one of `strings` as a whole number (not inside a longer one).
+    Returns (text, sentences removed)."""
+    if not text or not strings:
+        return text, 0
+    pattern = re.compile("|".join(rf"(?<![\d.]){re.escape(s)}(?!\d)" for s in sorted(strings, key=len, reverse=True)))
+    kept, removed = [], 0
+    for sentence in _SENTENCE.split(text.strip()):
+        if pattern.search(sentence):
+            removed += 1
+        else:
+            kept.append(sentence)
+    return " ".join(kept), removed
+
+
+def primary_outcome(meta: dict[str, Any] | None, question_outcomes: list[str] | None) -> str | None:
+    """The pooled outcome that answers the question's first outcome (fuzzy name match, >= 80), else the pooled
+    outcome with the most studies (ties: matrix order)."""
+    pools = (meta or {}).get("pools") or []
+    if not pools:
+        return None
+    names = list(dict.fromkeys(p["outcome"] for p in pools))
+    for wanted in (question_outcomes or [])[:1]:
+        key = normalize_title(wanted) or wanted.lower()
+        scored = [(fuzz.token_set_ratio(key, normalize_title(n) or n.lower()), -i, n) for i, n in enumerate(names)]
+        best = max(scored)
+        if best[0] >= 80:
+            return best[2]
+    totals = {n: sum(p["k"] for p in pools if p["outcome"] == n) for n in names}
+    return max(names, key=lambda n: (totals[n], -names.index(n)))
