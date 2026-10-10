@@ -79,11 +79,18 @@ describe("LitMatrixSection", () => {
     render(<LitMatrixSection papers={papers} lang="th" type="slr" reviewId="r1" onSelect={() => {}} citations={citationsFixture} />);
     const h = headers();
     expect(h.indexOf("ถูกอ้างอิง")).toBe(h.indexOf("n") + 1);
-    const p2 = within(screen.getByRole("row", { name: /P2/ })).getByText("1,187");
+    const p2row = screen.getByRole("row", { name: /P2/ });
+    const p2 = within(p2row).getByText("1,187");
     expect(p2).toHaveClass("font-display", "tabular-nums");
     expect(p2).not.toHaveClass("num-verified");
-    expect(p2).toHaveAttribute("title", expect.stringContaining("OpenAlex"));
-    expect(within(screen.getByRole("row", { name: /P3/ })).getByText("46")).toHaveAttribute("title", expect.stringContaining("Europe PMC"));
+    expect(p2.parentElement).toHaveAttribute("title", expect.stringContaining("OpenAlex"));
+    // the source is visible ("OA") and named in full for screen readers
+    expect(p2.parentElement).toHaveTextContent("1,187OA (OpenAlex)");
+    expect(within(p2row).getByText("OA")).toHaveAttribute("aria-hidden", "true");
+    const p3 = within(screen.getByRole("row", { name: /P3/ })).getByText("46").parentElement!;
+    expect(p3).toHaveTextContent("EPMC");
+    expect(p3).toHaveTextContent("(Europe PMC)");
+    expect(screen.getByText(/OA = OpenAlex · EPMC = Europe PMC/)).toBeInTheDocument();
     // P5 failed extraction: the spanning cell stops before the cited-by cell, which says "no data"
     const p5 = screen.getByRole("row", { name: /P5/ });
     const cells = within(p5).getAllByRole("cell");

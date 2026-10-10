@@ -35,6 +35,16 @@ for (const width of [1440, 390]) {
   }
 }
 
+test("clicking a node of the graph opens the paper in the rail", async ({ page }) => {
+  await mockApi(page, { [`GET /api/v1/reviews/${SID}`]: (route) => json(route, 200, slr) });
+  await page.goto(`/r/${SID}`);
+  const chart = page.locator("section:has(#h-citations)").getByRole("img", { name: /^เครือข่ายการอ้างอิง/ });
+  await expect(chart.locator("svg")).toBeVisible();
+  // Each node is labelled with its ref, and a click on the label is a click on the node (the label is part of it).
+  await chart.locator("svg text", { hasText: /^P4$/ }).click();
+  await expect(page.getByRole("complementary", { name: "ต้นฉบับ" })).toContainText("Short-term metformin initiation");
+});
+
 test("the citation table twin opens a paper in the rail; the lit matrix shows cited-by counts", async ({ page }) => {
   await mockApi(page, { [`GET /api/v1/reviews/${SID}`]: (route) => json(route, 200, slr) });
   await page.goto(`/r/${SID}`);

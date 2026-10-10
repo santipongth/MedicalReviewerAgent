@@ -170,6 +170,50 @@ export function citationNetwork(papers: Paper[], citations: Citations, lang: Lan
   };
 }
 
+export interface EdgeCurve {
+  from: string;
+  to: string;
+  /** ECharts lineStyle.curveness (control point offset = curveness × chord length). */
+  curveness: number;
+  /** Bulge of the arc from its chord, in px. */
+  peak: number;
+  /** Which side the arc bulges to: right-to-left edges bend below, left-to-right above (ECharts' convention). */
+  side: "below" | "above" | "side";
+}
+
+const BASE_CURVE = 0.12;
+const MAX_CURVE = 0.6;
+/** Clearance from a marker's centre that an arc keeps when it passes one (largest radius + room for its label). */
+export const ARC_CLEARANCE = 26;
+
+/**
+ * Curveness per edge so a long arc clears the markers it passes: for every other marker near the straight chord, the
+ * quadratic arc's offset at that point (2·c·L·t(1−t)) must reach ARC_CLEARANCE. `pxPerYear` and `lanePx` estimate the
+ * drawing scale. Short edges with nothing in between keep a slight bend.
+ */
+export function edgeCurves(net: CitationNetwork, pxPerYear: number, lanePx: number): EdgeCurve[] {
+  const at = new Map(net.nodes.map((n) => [n.ref, n]));
+  return net.edges.map(({ from, to }) => {
+    const a = at.get(from)!;
+    const b = at.get(to)!;
+    const ax = a.x * pxPerYear, ay = a.lane * lanePx, bx = b.x * pxPerYear, by = b.lane * lanePx;
+    const dx = bx - ax, dy = by - ay;
+    const len = Math.hypot(dx, dy) || 1;
+    let curveness = BASE_CURVE;
+    for (const n of net.nodes) {
+      if (n === a || n === b) continue;
+      const nx = n.x * pxPerYear - ax, ny = n.lane * lanePx - ay;
+      const t = (nx * dx + ny * dy) / (len * len);
+      if (t <= 0 || t >= 1) continue;
+      const dist = Math.abs(nx * dy - ny * dx) / len;
+      if (dist >= ARC_CLEARANCE) continue;
+      curveness = Math.max(curveness, ARC_CLEARANCE / (2 * len * t * (1 - t)));
+    }
+    curveness = Math.min(MAX_CURVE, curveness);
+    return { from, to, curveness, peak: (curveness * len) / 2, side: dx < 0 ? "below" : dx > 0 ? "above" : "side" };
+  });
+}
+
 export interface CitedByCell {
   count: number | null;
   source: CitationSource | null;
@@ -184,3 +228,5 @@ export function citedByCell(citations: Citations, ref: string): CitedByCell {
 }
 
 export const SOURCE_LABEL: Record<CitationSource, string> = { openalex: "OpenAlex", europepmc: "Europe PMC" };
+/** Short visible tags for tight cells (the full name goes to screen readers and the title). */
+export const SOURCE_ABBR: Record<CitationSource, string> = { openalex: "OA", europepmc: "EPMC" };

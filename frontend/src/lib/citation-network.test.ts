@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { citationsFixture, metaReviewFixture, resultFixture } from "@/test/fixtures";
-import { CITED_BY_CAP, citationNetwork, citedByCell, designGroup, isPartial, markerSize } from "./citation-network";
+import { ARC_CLEARANCE, CITED_BY_CAP, citationNetwork, citedByCell, designGroup, edgeCurves, isPartial, markerSize } from "./citation-network";
 import type { Citations, Paper } from "./types";
 
 const papers = resultFixture.papers!;
@@ -82,6 +82,40 @@ describe("citationNetwork", () => {
     expect(net.ticks[0]).toBe(1998);
     expect(net.ticks.at(-1)).toBe(2024);
     expect(net.ticks.length).toBeLessThanOrEqual(7);
+  });
+});
+
+describe("edgeCurves", () => {
+  // Five papers in one row, one year apart: P3 (2021) -> P2 (2017) passes P5, P1 and P4.
+  const net = citationNetwork(papers, citationsFixture, "th");
+  const curves = edgeCurves(net, 64, 46);
+  const of = (from: string, to: string) => curves.find((c) => c.from === from && c.to === to)!;
+
+  it("bends a long arc enough to clear every marker it passes", () => {
+    for (const c of curves) {
+      const a = net.nodes.find((n) => n.ref === c.from)!;
+      const b = net.nodes.find((n) => n.ref === c.to)!;
+      const len = Math.abs(b.x - a.x) * 64;
+      for (const n of net.nodes) {
+        if (n === a || n === b || n.lane !== a.lane) continue;
+        const t = (n.x - a.x) / (b.x - a.x);
+        if (t <= 0 || t >= 1) continue;
+        expect(2 * c.curveness * len * t * (1 - t), `${c.from}->${c.to} at ${n.ref}`).toBeGreaterThanOrEqual(ARC_CLEARANCE - 1e-9);
+      }
+    }
+  });
+
+  it("keeps a slight bend where nothing is in the way, and longer spans bend relatively less", () => {
+    expect(of("P1", "P2").curveness).toBeGreaterThan(of("P3", "P2").curveness); // 2 columns vs 4
+    expect(of("P3", "P2").peak).toBeGreaterThan(of("P1", "P2").peak);
+    const lone = edgeCurves(citationNetwork(papers.slice(0, 2), citationsFixture, "th"), 64, 46);
+    expect(lone).toEqual([{ from: "P1", to: "P2", curveness: 0.12, peak: (0.12 * 128) / 2, side: "below" }]);
+  });
+
+  it("names the side an arc bulges to (right-to-left below, left-to-right above)", () => {
+    expect(of("P3", "P1").side).toBe("below");
+    const back = edgeCurves({ ...net, edges: [{ from: "P2", to: "P3" }] }, 64, 46);
+    expect(back[0].side).toBe("above");
   });
 });
 

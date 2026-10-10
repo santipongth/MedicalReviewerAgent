@@ -60,6 +60,11 @@ describe("litColumns", () => {
     const cols = litColumns("slr", litRows(papers, "th", citationsFixture));
     expect(cols.indexOf("citedBy")).toBe(cols.indexOf("n") + 1);
   });
+  it("drops the cited-by column when no paper has a count (a column of dashes says nothing)", () => {
+    const none = Object.fromEntries(papers.map((p) => [p.ref, null]));
+    const empty = { ...citationsFixture, cited_by: none, cited_by_source: none };
+    expect(litColumns("slr", litRows(papers, "th", empty))).not.toContain("citedBy");
+  });
   it("cited-by values are counts with their source; null stays null (no data), also for a failed row", () => {
     const rows = litRows(papers, "th", citationsFixture);
     expect(rows.find((r) => r.ref === "P2")!.citedBy).toEqual({ count: 1187, source: "openalex" });

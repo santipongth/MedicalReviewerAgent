@@ -80,7 +80,7 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
   });
 }
 
-/** Columns for this review type; the comparator column goes when no row has one, "cited by" needs citation data. */
+/** Columns for this review type; the comparator column goes when no row has one, "cited by" needs a count. */
 export function litColumns(type: ReviewTypeOrLegacy, rows: LitRow[]): LitColumn[] {
   const cols: LitColumn[] = ["ref", "design", "population", "exposure"];
   if (rows.some((r) => r.comparator)) cols.push("comparator");
@@ -88,7 +88,8 @@ export function litColumns(type: ReviewTypeOrLegacy, rows: LitRow[]): LitColumn[
   if (showsDirection(type)) cols.push("direction");
   if (showsRiskOfBias(type)) cols.push("risk");
   cols.push("n");
-  if (rows.some((r) => r.citedBy)) cols.push("citedBy");
+  // A column of dashes says nothing: it needs at least one count.
+  if (rows.some((r) => r.citedBy?.count != null)) cols.push("citedBy");
   cols.push("limitations");
   return cols;
 }

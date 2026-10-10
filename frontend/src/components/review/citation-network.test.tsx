@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { citationsFixture, resultFixture } from "@/test/fixtures";
+import { citationsFixture, metaReviewFixture, resultFixture } from "@/test/fixtures";
 import type { Citations } from "@/lib/types";
 
 type Opt = { series: { type: string; data: { ref?: string; itemStyle?: Record<string, unknown>; symbol?: string; symbolSize?: number }[]; links?: unknown[]; edgeSymbol?: string[]; lineStyle?: { color: string } }[];
@@ -38,7 +38,7 @@ describe("CitationNetworkSection", () => {
     expect(graph.coordinateSystem).toBe("cartesian2d");
     expect(graph.edgeSymbol).toEqual(["none", "arrow"]);
     expect(graph.lineStyle.color).toBe("#4a5e57"); // muted fallback token
-    expect(graph.links).toContainEqual({ source: "P3", target: "P1" });
+    expect(graph.links).toContainEqual(expect.objectContaining({ source: "P3", target: "P1" }));
     const p5 = graph.data.find((d) => d.ref === "P5")!;
     expect(p5.itemStyle.borderType).toBe("dashed");
     expect(graph.data.find((d) => d.ref === "P1")!.itemStyle.borderType).toBeUndefined();
@@ -72,6 +72,40 @@ describe("CitationNetworkSection", () => {
     show({ edges: [], cited_by: none, cited_by_source: none, coverage: none, source_note: "Citation data was unavailable for this review" });
     expect(screen.getByText("ไม่มีข้อมูลการอ้างอิงสำหรับงานในรีวิวนี้")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /เครือข่ายการอ้างอิง/ })).toBeNull();
+  });
+
+  it("with counts but no reference lists, still draws every paper hollow and keeps the table twin", async () => {
+    const none = Object.fromEntries(papers.map((p) => [p.ref, null]));
+    show({ ...citationsFixture, edges: [], coverage: none }, "th");
+    expect(screen.getByText(/ไม่มีข้อมูลรายการอ้างอิงของงานใดในรีวิวนี้/)).toBeInTheDocument();
+    expect(screen.queryByText("ไม่พบการอ้างอิงกันระหว่างงานในรีวิวนี้")).toBeNull();
+    const graph = options.at(-1)!.series.find((s) => s.type === "graph")!;
+    expect(graph.data.every((d) => d.itemStyle!.borderType === "dashed")).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "ดูเป็นตาราง" }));
+    expect(within(screen.getByRole("table", { name: "ตารางการอ้างอิง" })).getByText("1,187")).toBeInTheDocument();
+  });
+
+  it("gives each design group its own shape, none of them a direction shape", () => {
+    const meta = metaReviewFixture.result!;
+    render(<CitationNetworkSection citations={meta.citations!} papers={meta.papers!} lang="th" onSelect={() => {}} />);
+    const graph = options.at(-1)!.series.find((s) => s.type === "graph")!;
+    const shape = (ref: string) => graph.data.find((d) => d.ref === ref)!.symbol;
+    expect(shape("P1")).toBe("circle"); // RCT
+    expect(shape("P3")).toMatch(/^path:\/\//); // cohort: hexagon
+    expect(shape("P5")).toBe("roundRect"); // SR/MA
+    for (const d of graph.data) expect(["diamond", "triangle", "rect", "emptyCircle"]).not.toContain(d.symbol);
+    const legend = screen.getByRole("list", { name: "คำอธิบายสัญลักษณ์" });
+    expect([...legend.querySelectorAll("svg[data-shape]")].map((s) => s.getAttribute("data-shape")))
+      .toEqual(["trial", "observational", "review", "trial"]);
+    expect(legend.querySelector("svg[data-shape=observational] polygon")).not.toBeNull();
+  });
+
+  it("bends each link by its own curveness, more where it passes markers", () => {
+    show(citationsFixture);
+    const graph = options.at(-1)!.series.find((s) => s.type === "graph")! as unknown as { links: { source: string; target: string; lineStyle: { curveness: number } }[] };
+    const c = (s: string, t: string) => graph.links.find((l) => l.source === s && l.target === t)!.lineStyle.curveness;
+    expect(c("P4", "P1")).toBeCloseTo(0.12); // adjacent years: nothing in between
+    expect(c("P1", "P2")).toBeGreaterThan(0.12); // passes P5 (2018)
   });
 
   it("the table twin lists cites, cited-by inside the review, total count with source, and coverage", async () => {

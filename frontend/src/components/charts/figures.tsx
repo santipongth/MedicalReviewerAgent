@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { SOURCE_LABEL, type CitationNetwork, type DesignGroup, type NetNode } from "@/lib/citation-network";
+import { edgeCurves, SOURCE_LABEL, type CitationNetwork, type DesignGroup, type EdgeCurve, type NetNode } from "@/lib/citation-network";
 import type { ConceptTree, MapNode } from "@/lib/concept-map";
 import { forestAxis, type exclusionRows, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
@@ -555,18 +555,47 @@ export const DESIGN_GROUP_LABEL: Record<DesignGroup, [string, string]> = {
   review: ["การทบทวน (SR/MA, บทความทบทวน)", "Reviews (SR/MA, narrative)"],
 };
 
-/** Neutral fills per design group (direction colours mean a direction and stay out of this view); reviews are also square. */
-function groupStyle(g: DesignGroup, t: ChartTokens): { fill: string; stroke: string; symbol: string } {
+/** A pointy-top hexagon: no direction marker uses it (the chart triangle means mixed, the diamond harm, the square none). */
+export const HEXAGON_PATH = "path://M50 0L93.3 25L93.3 75L50 100L6.7 75L6.7 25Z";
+
+/**
+ * Neutral fills per design group (direction colours mean a direction and stay out of this view), each with its own
+ * shape so tone is never the only cue: trials a circle, observational and other a hexagon, reviews a rounded square.
+ */
+export function groupStyle(g: DesignGroup, t: ChartTokens): { fill: string; stroke: string; symbol: string } {
   if (g === "trial") return { fill: t.ink, stroke: t.ink, symbol: "circle" };
   if (g === "review") return { fill: t.hatch, stroke: t.ink, symbol: "roundRect" };
-  return { fill: t.muted, stroke: t.muted, symbol: "circle" };
+  return { fill: t.muted, stroke: t.muted, symbol: HEXAGON_PATH };
 }
 
 /** Pixels per year column, so neighbouring years never overlap (the region scrolls when the column is narrower). */
-const PX_PER_STEP = 52;
+const PX_PER_COLUMN = 64;
 const LANE_PX = 46;
+const GRID = { left: 20, right: 44, top: 22, bottom: 30 };
+/** The reading column is about this wide on a desktop; narrower screens draw at minWidth and scroll. */
+const TYPICAL_WIDTH = 600;
 
-function citationOption(net: CitationNetwork, t: ChartTokens, lang: Lang): EChartsOption {
+interface CitationLayout { minWidth: number; height: number; grid: typeof GRID; curves: EdgeCurve[] }
+
+/** Drawing size and arc bends: every column gets PX_PER_COLUMN, and the grid grows to hold the arcs that bulge out. */
+function citationLayout(net: CitationNetwork): CitationLayout {
+  const range = net.xMax - net.xMin || 1;
+  const xs = [...new Set(net.nodes.map((n) => n.x))].sort((a, b) => a - b);
+  const minGap = xs.slice(1).reduce((m, x, i) => Math.min(m, x - xs[i]), Infinity);
+  // On the linear year axis the closest pair of columns sets the scale; never fewer px than one per column.
+  const steps = Math.max(net.columns, Number.isFinite(minGap) ? range / minGap : 1);
+  const minWidth = Math.min(2600, Math.ceil(steps * PX_PER_COLUMN)) + 80;
+  const pxPerYear = (Math.max(minWidth, TYPICAL_WIDTH) - GRID.left - GRID.right) / range;
+  const curves = edgeCurves(net, pxPerYear, LANE_PX);
+  // Arcs start at a marker's centre: what bulges past the outer lanes' half-lane of room needs extra margin.
+  const room = LANE_PX * 0.6;
+  const below = Math.max(0, ...curves.filter((c) => c.side === "below").map((c) => c.peak - room));
+  const above = Math.max(0, ...curves.filter((c) => c.side === "above").map((c) => c.peak - room));
+  const grid = { ...GRID, top: GRID.top + Math.ceil(above), bottom: GRID.bottom + Math.ceil(below) };
+  return { minWidth, height: Math.max(150, net.lanes * LANE_PX + grid.top + grid.bottom), grid, curves };
+}
+
+function citationOption(net: CitationNetwork, layout: CitationLayout, t: ChartTokens, lang: Lang): EChartsOption {
   const unknownLabel = L(lang, "ไม่ทราบปี", "Year unknown");
   const byRef = new Map(net.nodes.map((n) => [n.ref, n]));
   const countText = (n: NetNode) => n.citedBy == null ? L(lang, "ไม่มีข้อมูล", "no data")
@@ -575,7 +604,7 @@ function citationOption(net: CitationNetwork, t: ChartTokens, lang: Lang): EChar
     animation: !t.reducedMotion,
     animationDuration: 400,
     aria: { enabled: false },
-    grid: { left: 20, right: 44, top: 22, bottom: 30 },
+    grid: layout.grid,
     tooltip: {
       trigger: "item", backgroundColor: t.surface, borderColor: t.rule, textStyle: { color: t.ink, fontFamily: t.fontDisplay },
       formatter: (p: { dataType?: string; data: { ref?: string; source?: string; target?: string } }) => {
@@ -611,21 +640,22 @@ function citationOption(net: CitationNetwork, t: ChartTokens, lang: Lang): EChar
       {
         type: "graph", coordinateSystem: "cartesian2d", layout: "none", roam: false, cursor: "pointer",
         edgeSymbol: ["none", "arrow"], edgeSymbolSize: [0, 7],
-        lineStyle: { color: t.muted, width: 1.2, opacity: 0.85, curveness: 0.18 },
+        lineStyle: { color: t.muted, width: 1.2, opacity: 0.85 },
         label: { show: true, position: "right", distance: 4, color: t.ink, fontFamily: t.fontDisplay, fontSize: 11, formatter: "{b}",
           backgroundColor: t.surface, padding: [1, 2] },
         emphasis: { focus: "adjacency", lineStyle: { width: 2 } },
         data: net.nodes.map((n) => {
           const s = groupStyle(n.group, t);
           return {
-            name: n.ref, ref: n.ref, value: [n.x, n.lane], symbol: s.symbol, symbolSize: n.size,
+            name: n.ref, ref: n.ref, value: [n.x, n.lane], symbol: s.symbol, symbolSize: n.size, symbolKeepAspect: true,
             // No reference data: hollow with a dashed outline ("no data", not "cites nothing").
             itemStyle: n.coverage
               ? { color: s.fill, borderColor: n.group === "review" ? s.stroke : t.surface, borderWidth: n.group === "review" ? 1.5 : 1 }
               : { color: t.surface, borderColor: s.stroke, borderWidth: 1.5, borderType: "dashed" },
           };
         }),
-        links: net.edges.map((e) => ({ source: e.from, target: e.to })),
+        // Each arc bends just enough to clear the markers it passes (edgeCurves).
+        links: layout.curves.map((c) => ({ source: c.from, target: c.to, lineStyle: { curveness: Number(c.curveness.toFixed(3)) } })),
       },
     ],
   };
@@ -634,11 +664,14 @@ function citationOption(net: CitationNetwork, t: ChartTokens, lang: Lang): EChar
 function Swatch({ group, hollow = false }: { group: DesignGroup; hollow?: boolean }) {
   const fill = hollow ? "var(--surface)" : group === "trial" ? "var(--ink)" : group === "review" ? "var(--hatch)" : "var(--muted)";
   const stroke = group === "observational" ? "var(--muted)" : "var(--ink)";
+  const dash = hollow ? "2.5 2" : undefined;
   return (
-    <svg aria-hidden width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
+    <svg aria-hidden width="14" height="14" viewBox="0 0 14 14" className="shrink-0" data-shape={group}>
       {group === "review"
-        ? <rect x="1.75" y="1.75" width="10.5" height="10.5" rx="2" fill={fill} stroke={stroke} strokeWidth="1.5" strokeDasharray={hollow ? "2.5 2" : undefined} />
-        : <circle cx="7" cy="7" r="5.5" fill={fill} stroke={hollow ? stroke : "none"} strokeWidth="1.5" strokeDasharray={hollow ? "2.5 2" : undefined} />}
+        ? <rect x="1.75" y="1.75" width="10.5" height="10.5" rx="2" fill={fill} stroke={stroke} strokeWidth="1.5" strokeDasharray={dash} />
+        : group === "observational"
+          ? <polygon points="7,1 12.2,4 12.2,10 7,13 1.8,10 1.8,4" fill={fill} stroke={hollow ? stroke : "none"} strokeWidth="1.5" strokeDasharray={dash} />
+          : <circle cx="7" cy="7" r="5.5" fill={fill} stroke={hollow ? stroke : "none"} strokeWidth="1.5" strokeDasharray={dash} />}
     </svg>
   );
 }
@@ -649,14 +682,11 @@ const refsText = (refs: string[]) => (refs.length ? refs.join(", ") : "–");
 export function CitationNetworkFigure({ net, tokens, lang, onSelect }: {
   net: CitationNetwork; tokens: ChartTokens; lang: Lang; onSelect: Select;
 }) {
-  const option = useMemo(() => citationOption(net, tokens, lang), [net, tokens, lang]);
+  const layout = useMemo(() => citationLayout(net), [net]);
+  const option = useMemo(() => citationOption(net, layout, tokens, lang), [net, layout, tokens, lang]);
   const groups = (["trial", "observational", "review"] as const).filter((g) => net.nodes.some((n) => n.group === g));
   const hasHollow = net.nodes.some((n) => !n.coverage);
-  const range = net.xMax - net.xMin;
-  const xs = [...new Set(net.nodes.map((n) => n.x))].sort((a, b) => a - b);
-  const minGap = xs.slice(1).reduce((m, x, i) => Math.min(m, x - xs[i]), Infinity);
-  const minWidth = Math.min(1800, Math.ceil((range / (Number.isFinite(minGap) ? Math.max(minGap, 1) : range || 1)) * PX_PER_STEP) + 80);
-  const height = Math.max(150, net.lanes * LANE_PX + 52);
+  const { minWidth, height } = layout;
   const label = L(lang, `เครือข่ายการอ้างอิง ${net.total} งานวิจัย ${net.edges.length} เส้นเชื่อม`,
     `Citation network of ${net.total} studies with ${net.edges.length} links`);
   return (
@@ -678,7 +708,10 @@ export function CitationNetworkFigure({ net, tokens, lang, onSelect }: {
       }
       chart={
         <div className="grid gap-2">
-          {net.edges.length === 0 && (
+          {net.covered === 0 ? (
+            <p className="text-[0.9rem]">{L(lang, "ไม่มีข้อมูลรายการอ้างอิงของงานใดในรีวิวนี้ จึงไม่มีเส้นเชื่อม แสดงเฉพาะจำนวนครั้งที่ถูกอ้างอิง",
+              "No study in this review has reference-list data, so no links are drawn; only cited-by counts are shown")}</p>
+          ) : net.edges.length === 0 && (
             <p className="text-[0.9rem]">{L(lang, "ไม่พบการอ้างอิงกันระหว่างงานในรีวิวนี้", "No citations were found between the studies in this review")}</p>
           )}
           <div className="overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region"

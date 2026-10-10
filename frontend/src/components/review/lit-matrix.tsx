@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { exportUrl } from "@/lib/api";
 import { DIRECTION_LABEL, LIT_COLUMN_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
-import { SOURCE_LABEL } from "@/lib/citation-network";
+import { SOURCE_ABBR, SOURCE_LABEL } from "@/lib/citation-network";
 import { litColumns, litRows, type LitColumn, type LitRow } from "@/lib/lit-matrix";
 import type { ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { Citations, Paper } from "@/lib/types";
@@ -21,15 +21,35 @@ function NCell({ cell, lang }: { cell: LitRow["n"]; lang: Lang }) {
   return <span className="text-muted">–</span>;
 }
 
-/** A count from OpenAlex / Europe PMC (display face, never the verified-number face); the source is in the title. */
+/**
+ * A count from OpenAlex / Europe PMC (display face, never the verified-number face) with a visible source tag
+ * ("OA" / "EPMC"; the full name for screen readers), since the two sources count differently.
+ */
 function CitedBy({ row, lang }: { row: LitRow; lang: Lang }) {
   const c = row.citedBy;
-  if (!c || c.count == null) return <span className="text-muted" title={L(lang, "ไม่มีข้อมูล", "No data")}>–</span>;
+  if (!c || c.count == null) {
+    // relative: keeps the absolutely positioned sr-only text inside the matrix's scroll container (no page overflow)
+    return <span className="relative text-muted" title={L(lang, "ไม่มีข้อมูล", "No data")}>–<span className="sr-only">{L(lang, "ไม่มีข้อมูล", "No data")}</span></span>;
+  }
   const source = c.source ? SOURCE_LABEL[c.source] : L(lang, "ไม่ทราบแหล่ง", "source unknown");
   return (
-    <span className="font-display tabular-nums" title={L(lang, `จำนวนครั้งที่ถูกอ้างอิงทั้งหมด จาก ${source}`, `Total cited-by count, from ${source}`)}>
-      {c.count.toLocaleString("en-US")}
+    <span className="relative inline-flex items-baseline gap-1 whitespace-nowrap" title={L(lang, `จำนวนครั้งที่ถูกอ้างอิงทั้งหมด จาก ${source}`, `Total cited-by count, from ${source}`)}>
+      <span className="font-display tabular-nums">{c.count.toLocaleString("en-US")}</span>
+      <span className="font-display text-[0.7rem] text-muted">
+        <span aria-hidden="true">{c.source ? SOURCE_ABBR[c.source] : "?"}</span>
+        <span className="sr-only">{` (${source})`}</span>
+      </span>
     </span>
+  );
+}
+
+/** Says what the column counts and what the source tags mean, once under the matrix. */
+function CitedByNote({ lang }: { lang: Lang }) {
+  return (
+    <p className="text-[0.82rem] text-muted">
+      {L(lang, "ถูกอ้างอิง: จำนวนครั้งที่ถูกอ้างอิงในวรรณกรรมทั้งหมด · OA = OpenAlex · EPMC = Europe PMC (สองแหล่งนับต่างกัน) · – = ไม่มีข้อมูล",
+        "Cited by: total cited-by count in all literature · OA = OpenAlex · EPMC = Europe PMC (the two count differently) · – = no data")}
+    </p>
   );
 }
 
@@ -117,7 +137,7 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
             <thead>
               <tr className="bg-ground">
                 {cols.map((c) => (
-                  <th key={c} scope="col" className={`label px-2.5 py-2 text-left ${c === "ref" ? "sticky left-0 z-10 min-w-[9rem] bg-ground" : ""}`}>
+                  <th key={c} scope="col" className={`label px-2.5 py-2 text-left ${c === "ref" ? "sticky left-0 z-10 min-w-[9rem] bg-ground" : c === "citedBy" ? "whitespace-nowrap" : ""}`}>
                     {LIT_COLUMN_LABEL[lang][c]}
                   </th>
                 ))}
@@ -145,6 +165,7 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
           </table>
         </div>
       )}
+      {rows.length > 0 && cols.includes("citedBy") && <CitedByNote lang={lang} />}
     </section>
   );
 }

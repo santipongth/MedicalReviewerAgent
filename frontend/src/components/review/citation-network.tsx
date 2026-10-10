@@ -13,7 +13,8 @@ import { L } from "./text";
 
 /**
  * Citation network section: which (filtered) papers of this review cite each other, from OpenAlex / Europe PMC
- * metadata. With no reference data for any paper, it says so instead of drawing an empty network. Offline-safe.
+ * metadata. With no reference data and no counts at all, it says so instead of drawing an empty network; with counts
+ * but no reference lists, it still draws every paper (all hollow) and the table twin. Offline-safe.
  */
 export function CitationNetworkSection({ citations, papers, lang, onSelect }: {
   citations: Citations; papers: Paper[]; lang: Lang; onSelect: (ref: string) => void;
@@ -31,7 +32,7 @@ export function CitationNetworkSection({ citations, papers, lang, onSelect }: {
       </p>
       {net.total === 0 ? (
         <p className="text-[0.9rem] text-muted">{L(lang, "ไม่มีงานวิจัยที่ตรงกับตัวกรอง", "No studies match the filters")}</p>
-      ) : net.covered === 0 ? (
+      ) : net.covered === 0 && net.nodes.every((n) => n.citedBy == null) ? (
         <p className="rounded-sm bg-info-bg p-3 text-[0.9rem]">
           <b className="font-display font-semibold">{L(lang, "ไม่มีข้อมูลการอ้างอิงสำหรับงานในรีวิวนี้", "No citation data for the studies in this review")}</b>
           {" · "}{L(lang, "ไม่มีข้อมูล ≠ ไม่อ้างอิง", "No data ≠ cites nothing")}
