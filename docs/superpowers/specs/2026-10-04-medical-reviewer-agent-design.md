@@ -295,3 +295,10 @@ D:\MedicalReviewerAgent\
   - ข้อความที่บอกผู้ใช้ (footer, timeline, เวทีเอเจนต์) ไม่ระบุจำนวนแหล่งตายตัวนอกจากรายการบนเวที ซึ่งตรงกับ `SATELLITES` ใน `frontend/src/lib/agent-layout.ts`
   - กล่องเวทีเอเจนต์แบบกว้างสูงขึ้นจาก 254 เป็น 288 (รายการแหล่ง 8 แถว) ค่าคงที่ตลอดการรัน
 - **การสำรวจ:** [open scholarly sources survey](../notes/2026-10-10-open-scholarly-sources-survey.md)
+
+## Revision 2026-10-10: citation network and meta-analysis (Plan 14b)
+
+- **แหล่ง metadata การอ้างอิง:** OpenAlex เป็นแหล่งหลัก (`referenced_works`, `cited_by_count`; key เป็นตัวเลือก `OPENALEX_API_KEY`, `OPENALEX_MAILTO`) สำรองด้วย Europe PMC references; ใช้เฉพาะ metadata ไม่ดึงข้อความฉบับเต็ม และเก็บเส้นอ้างอิงเฉพาะระหว่างงานวิจัยในรีวิวเดียวกัน
+  - node `fetch_citations` ทำงานขนานกับการอ่าน มี timeout และ soft-fail: ล้มเหลวแล้วได้ coverage เป็น null และไม่ทำให้รีวิวล้ม; "ไม่มีข้อมูล" ไม่เท่ากับ "ไม่อ้างอิง"
+- **ข้อยกเว้นที่ผู้ใช้อนุมัติ:** ชนิด `meta_analysis` คำนวณค่ารวม (pooled estimate) เอง ซึ่งผิดจากหลัก "ไม่คำนวณตัวเลขที่แสดงเสมือนมาจากงานวิจัย" โดยแสดงผ่าน `ComputedNumber` เท่านั้น (ไม่มี tape ตรวจ, ป้าย "คำนวณ", แบนเนอร์คงที่, ค่ารวมเป็นสี่เหลี่ยมขนมเปียกปูนแบบเส้นขอบ) และเปิดเผยอินพุตทุกตัวใน "วิธีคำนวณ"
+- **กติกาการรวมผล (สรุป):** DerSimonian–Laird random effects; รวมเฉพาะงานปฐมภูมิ (SR/MA เป็นแถวอ้างอิง); measure เดียวกันและกลุ่มการออกแบบเดียวกัน (RCT แยกจาก observational); k ≥ 3; ใช้เฉพาะผลและ CI ที่ผ่านการตรวจกับบทคัดย่อ; HR/OR/RR รวมบนสเกล log, MD/RD บนสเกลดิบ, SMD เมื่อเป็น SMD ทั้งหมด; ไม่รวม r/other/none; ข้ามงานที่ซ้ำ cohort; เตือนเมื่อ k < 5, I² ≥ 50% และปรับ/ไม่ปรับไม่ทราบจากบทคัดย่อ; เนื้อสรุปไม่ทวนตัวเลขค่ารวม
