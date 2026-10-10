@@ -192,3 +192,36 @@ async def test_untimed_stub_graph_result_has_null_citations():
 
     out = await build_stub_graph().ainvoke(initial_state("r", "t", "en", {}))
     assert out["result"]["citations"] is None
+
+
+async def test_slow_openalex_is_bounded_so_europepmc_still_provides_coverage():
+    class HangingOA(FakeOA):
+        async def works_by_ids(self, dois, pmids):
+            await asyncio.sleep(30)
+
+    epmc = FakeEpmcRefs({"1": [EpmcReference("MED", "2", pmid="2")], "2": [], "3": [EpmcReference("MED", "1", pmid="1")]})
+    out = (await make_fetch_citations(_deps(HangingOA(), epmc, timeout=0.4))(PAYLOAD))["citations"]
+    assert out["coverage"] == {"P1": "europepmc", "P2": None, "P3": "europepmc"}
+    assert {(e["from"], e["to"]) for e in out["edges"]} == {("P1", "P2"), ("P3", "P1")}
+    assert out["partial"] is False  # the step itself did not time out
+
+
+async def test_partial_flag_is_set_on_timeout_even_with_no_coverage_and_cleared_otherwise():
+    class Slow(FakeOA):
+        async def works_by_ids(self, dois, pmids):
+            await asyncio.sleep(5)
+
+    class SlowEpmc(FakeEpmcRefs):
+        async def references(self, source, id, **kw):
+            await asyncio.sleep(5)
+
+    out = (await make_fetch_citations(_deps(Slow(), SlowEpmc(), timeout=0.1))(PAYLOAD))["citations"]
+    assert out["partial"] is True and set(out["coverage"].values()) == {None} and "unavailable" in out["source_note"]
+    ok = (await make_fetch_citations(_deps(FakeOA({"doi:10.1/a": W(1, [], 1)}), FakeEpmcRefs()))(PAYLOAD))["citations"]
+    assert ok["partial"] is False
+
+
+def test_stub_citations_carry_cited_by_source_and_partial():
+    c = stub_result("t", "en", "slr")["citations"]
+    assert set(c["cited_by_source"]) == set(c["cited_by"]) and c["partial"] is False
+    assert c["cited_by_source"]["P6"] is None and set(c["cited_by_source"].values()) == {"openalex", "europepmc", None}

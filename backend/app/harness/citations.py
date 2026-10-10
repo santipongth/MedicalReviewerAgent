@@ -29,7 +29,7 @@ def paper_idents(papers: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
 def empty_citations(refs: list[str], note: str = NOTE_UNAVAILABLE) -> dict[str, Any]:
     return {"edges": [], "cited_by": {r: None for r in refs}, "cited_by_source": {r: None for r in refs},
-            "coverage": {r: None for r in refs}, "source_note": note}
+            "coverage": {r: None for r in refs}, "source_note": note, "partial": False}
 
 
 def build_citations(
@@ -77,4 +77,4 @@ def build_citations(
     note = (NOTE_OPENALEX if used == {"openalex"} else NOTE_EPMC if used == {"europepmc"} else
             f"{NOTE_OPENALEX}; Europe PMC reference lists for papers OpenAlex lacked" if used else NOTE_NONE)
     return {"edges": edges, "cited_by": cited_by, "cited_by_source": cited_by_source, "coverage": coverage,
-            "source_note": note}
+            "source_note": note, "partial": False}

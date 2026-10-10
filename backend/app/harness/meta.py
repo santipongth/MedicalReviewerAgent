@@ -15,6 +15,7 @@ would lose usable data, so it joins the observational group.
 """
 from __future__ import annotations
 
+import copy
 import math
 import re
 import unicodedata
@@ -39,6 +40,7 @@ DESIGN_GROUPS: dict[str, frozenset[str]] = {
     "rct": frozenset({"rct"}),
     "observational": frozenset({"cohort", "case_control", "cross_sectional", "non_randomized_trial"}),
 }
+DESIGN_GROUP_LABEL = {"rct": "RCTs", "observational": "observational studies"}  # the one label map (grade, report)
 GROUP_OF = {cat: group for group, cats in DESIGN_GROUPS.items() for cat in cats}
 
 
@@ -360,6 +362,43 @@ def pooled_number_strings(meta: dict[str, Any] | None) -> set[str]:
     return strings
 
 
+def _num_forms(value: float, decimals: tuple[int, ...]) -> set[str]:
+    """`value` formatted at each decimals count, plus trimmed (0.80 -> 0.8) and leading-dot (.80) forms."""
+    forms: set[str] = set()
+    for d in decimals:
+        s = f"{abs(value):.{d}f}"
+        cand = {s}
+        trimmed = s.rstrip("0").rstrip(".") if "." in s else s
+        cand.add(trimmed)
+        forms |= cand | {f[1:] for f in cand if f.startswith("0.")}
+    return forms
+
+
+_I2_LABEL = r"(?<![A-Za-z])I\s?(?:²|2|\^2)(?![A-Za-z0-9])|heterogeneity|inconsistency"
+_TAU2_LABEL = r"τ\s?(?:²|2|\^2)?|(?<![A-Za-z])tau\s?(?:²|2|\^2|-squared| squared)?"
+
+
+def pooled_extra_patterns(meta: dict[str, Any] | None) -> tuple[list[str], list[str]]:
+    """Regex sources for restatements `pooled_number_strings` cannot see, -> (always, numeric).
+    `always`: I2 / tau2 values, matched only right after an I2, tau or heterogeneity label (so a bare 84 or 0.12
+    elsewhere is never hit); a sentence matching one is removed. `numeric`: a pooled RD (and its CI bounds) written
+    as a percent (0.05 -> 5%); these follow the same single-study rule as the plain numbers."""
+    always: list[str] = []
+    numeric: list[str] = []
+    for p in (meta or {}).get("pools") or []:
+        i2 = _num_forms(round(p["i2"]), (0,)) | _num_forms(p["i2"], (1,))
+        i2s = "|".join(re.escape(f) for f in sorted(i2, key=len, reverse=True))
+        always.append(rf"(?:{_I2_LABEL})[^\d.]{{0,40}}(?<![\d.])(?:{i2s})(?!\d)")
+        taus = "|".join(re.escape(f) for f in sorted(_num_forms(p["tau2"], (2, 3)), key=len, reverse=True))
+        always.append(rf"(?:{_TAU2_LABEL})[^\d.]{{0,25}}(?<![\d.])(?:{taus})(?!\d)")
+        if p.get("measure") == "RD":
+            for key in ("est", "ci_lower", "ci_upper"):
+                pct = _num_forms(p["pooled"][key] * 100, (0, 1))
+                alt = "|".join(re.escape(f) for f in sorted(pct, key=len, reverse=True))
+                numeric.append(rf"(?<![\d.])(?:{alt})\s?%")
+    return list(dict.fromkeys(always)), list(dict.fromkeys(numeric))
+
+
 # A sentence ends at . ! or ? followed by space and an uppercase letter or "[" (so "et al. reported" and
 # "vs. placebo" stay inside their sentence).
 _SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[])")
@@ -372,17 +411,24 @@ def _cited_refs(sentence: str) -> set[str]:
     return {r for group in _BRACKETS.findall(sentence) for r in _REF.findall(group)}
 
 
-def strip_pooled_numbers(text: str, strings: set[str]) -> tuple[str, int, int]:
+def strip_pooled_numbers(text: str, strings: set[str], always: list[str] | tuple[str, ...] = (),
+                         numeric: list[str] | tuple[str, ...] = ()) -> tuple[str, int, int]:
     """Remove the sentences that restate a pooled number. A sentence containing one of `strings` as a whole number
     is removed when it cites no paper, cites two or more papers, or uses pooled wording (pooled, overall, combined,
     meta-analysis, aggregate). A sentence that cites exactly one paper and has no pooled wording is a single-study
-    quote and is kept. Returns (text, sentences removed, single-study sentences kept despite a matching number)."""
-    if not text or not strings:
+    quote and is kept. `numeric` adds regexes treated like `strings`; a sentence matching an `always` regex (an I2 or
+    tau2 restatement, see `pooled_extra_patterns`) is removed whatever it cites.
+    Returns (text, sentences removed, single-study sentences kept despite a matching number)."""
+    if not text or not (strings or always or numeric):
         return text, 0, 0
-    pattern = re.compile("|".join(rf"(?<![\d.]){re.escape(s)}(?!\d)" for s in sorted(strings, key=len, reverse=True)))
+    parts = [rf"(?<![\d.]){re.escape(s)}(?!\d)" for s in sorted(strings, key=len, reverse=True)] + list(numeric)
+    pattern = re.compile("|".join(parts)) if parts else None
+    labelled = re.compile("|".join(f"(?:{a})" for a in always), re.IGNORECASE) if always else None
     kept, removed, single = [], 0, 0
     for sentence in _SENTENCE.split(text.strip()):
-        if not pattern.search(sentence):
+        if labelled and labelled.search(sentence):
+            removed += 1
+        elif not (pattern and pattern.search(sentence)):
             kept.append(sentence)
         elif len(_cited_refs(sentence)) == 1 and not _POOLED_WORDING.search(sentence):
             kept.append(sentence)
@@ -390,6 +436,16 @@ def strip_pooled_numbers(text: str, strings: set[str]) -> tuple[str, int, int]:
         else:
             removed += 1
     return " ".join(kept), removed, single
+
+
+def with_display(meta: dict[str, Any], names: dict[str, str] | None = None) -> dict[str, Any]:
+    """A copy of the pooled result where every pool, exclusion and reference row carries `outcome_display`: the
+    outcome name in the user's language from `names` (English name -> display name), else the English name."""
+    out = copy.deepcopy(meta)
+    for kind in ("pools", "excluded", "reference"):
+        for item in out.get(kind) or []:
+            item["outcome_display"] = (names or {}).get(item["outcome"], item["outcome"])
+    return out
 
 
 def primary_outcome(meta: dict[str, Any] | None, question_outcomes: list[str] | None) -> str | None:

@@ -145,12 +145,12 @@ async def test_slr_run_has_no_meta_and_an_unchanged_path():
 
 
 async def test_pooling_failure_never_fails_the_review(monkeypatch):
-    from app.graph.nodes import synthesis
+    from app.harness import grade
 
     def boom(matrix, papers):
         raise ValueError("bad")
 
-    monkeypatch.setattr(synthesis, "pool_outcomes", boom)
+    monkeypatch.setattr(grade, "pool_outcomes", boom)
     values, _, _ = await run_graph(make_deps(), META, thread="m3")
     r = values["result"]
     assert r["meta_analysis"] is None and "pooling failed: ValueError" in r["errors"]
@@ -159,12 +159,12 @@ async def test_pooling_failure_never_fails_the_review(monkeypatch):
 
 @pytest.mark.parametrize("target", ["primary_outcome", "grading_pools", "apply_meta_grade"])
 async def test_a_failure_after_pooling_is_also_soft(monkeypatch, target):
-    from app.graph.nodes import synthesis
+    from app.harness import grade
 
     def boom(*args, **kwargs):
         raise KeyError("i2")
 
-    monkeypatch.setattr(synthesis, target, boom)
+    monkeypatch.setattr(grade, target, boom)
     values, events, _ = await run_graph(make_deps(), META, thread=f"m4-{target}")
     r = values["result"]
     assert r["meta_analysis"] is None and "pooling failed: KeyError" in r["errors"]
@@ -422,3 +422,74 @@ def test_csv_is_per_paper_only():
     csv_text = render_csv(r)
     assert "pooled" not in csv_text.lower() and "DerSimonian" not in csv_text
     assert csv_text.count("\n") == 1 + len(r["papers"])  # header + one outcome per stub paper
+
+
+# ---- review fixes: I2 / tau2 / RD-percent restatements, verification gate, as-reported export ----------------
+from app.harness.meta import pooled_extra_patterns
+
+HET = {"pools": [{"measure": "HR", "i2": 84.3, "tau2": 0.1234,
+                  "pooled": {"est": 0.8, "ci_lower": 0.71, "ci_upper": 0.9}}]}
+RD = {"pools": [{"measure": "RD", "i2": 0.0, "tau2": 0.0,
+                 "pooled": {"est": 0.05, "ci_lower": 0.01, "ci_upper": 0.093}}]}
+
+
+def _strip(text, meta):
+    always, numeric = pooled_extra_patterns(meta)
+    return strip_pooled_numbers(text, pooled_number_strings(meta), always, numeric)
+
+
+@pytest.mark.parametrize("sentence", [
+    "Heterogeneity was substantial (I² 84%) [P1, P2].",
+    "I2 = 84% across cohorts [P1].",
+    "Heterogeneity was high (84%) [P1].",
+    "Between-study variance was low (τ² 0.12) [P1].",
+    "Tau2 was 0.123 [P1, P2].",
+    "Inconsistency I^2 of 84.3 percent [P1].",
+])
+def test_post_check_strips_i2_and_tau2_restatements_even_with_one_citation(sentence):
+    out, removed, _ = _strip(f"Lower risk [P1]. {sentence} More trials [P2].", HET)
+    assert out == "Lower risk [P1]. More trials [P2]." and removed == 1
+
+
+@pytest.mark.parametrize("sentence", [
+    "A trial enrolled 84 patients [P1].",              # a bare 84 is not an I2 restatement
+    "The cohort had I2 values reported by authors [P1].",
+    "Mean age 0.12 years [P1].",
+    "Heterogeneity of populations was noted [P1].",
+])
+def test_post_check_i2_tau2_patterns_only_match_next_to_their_label(sentence):
+    assert _strip(sentence, HET) == (sentence, 0, 0)
+
+
+def test_post_check_strips_rd_restated_as_a_percent():
+    out, removed, _ = _strip("The pooled risk difference was 5% [P1, P2]. Risk fell by 9.3% overall. "
+                             "One trial found a 5% reduction [P3]. Rates were 15% vs 20% [P1, P2].", RD)
+    assert out == "One trial found a 5% reduction [P3]. Rates were 15% vs 20% [P1, P2]."
+    assert removed == 2
+    # a ratio measure never produces percent patterns
+    assert pooled_extra_patterns(HET)[1] == []
+
+
+async def test_pooling_is_skipped_when_quotes_were_not_verified():
+    from app.services.llm_config import HarnessSpec
+
+    deps = make_deps()
+    deps.llms.harness = HarnessSpec(verify_quotes=False)
+    values, events, _ = await run_graph(deps, META, thread="m-noverify")
+    r = values["result"]
+    assert r["meta_analysis"] is None
+    assert "pooling skipped: study numbers were not verified" in r["errors"]
+    assert "pooled" not in [e["type"] for e in events]
+    assert any(q.get("stage") == "pool" and q.get("skipped") for q in values["quality"])
+    assert r["synthesis"]["executive_summary"]
+
+
+def test_markdown_prints_verified_inputs_as_reported_and_computed_values_at_two_decimals():
+    r = stub_result("t", "en", "meta_analysis")
+    for s in r["meta_analysis"]["pools"][0]["studies"]:
+        if s["ref"] == "P3":
+            s["effect"], s["ci_lower"], s["ci_upper"] = 0.785, 0.612, 1.004
+    md = render_markdown(md_review(r))
+    assert "P3 0.785 [0.612, 1.004]" in md
+    est = r["meta_analysis"]["pools"][0]["pooled"]
+    assert f"{est['est']:.2f} (95% CI" in md

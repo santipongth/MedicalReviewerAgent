@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from app.harness.design import POOLED_CATEGORIES
+from app.harness.meta import DESIGN_GROUP_LABEL, HIGH_I2, pool_outcomes, primary_outcome
 
 LEVELS = ("very_low", "low", "moderate", "high")
 RANDOMIZED = ("randomi", "rct", "controlled trial", "meta-analysis of randomized")
@@ -68,12 +69,6 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     return {"level": LEVELS[max(level, 0)], "factors": factors}
 
 
-HIGH_HETEROGENEITY_I2 = 50.0
-
-
-GROUP_LABEL = {"rct": "RCTs", "observational": "observational studies"}
-
-
 def grading_pools(pools: list[dict[str, Any]], outcome: str | None) -> tuple[str | None, list[dict[str, Any]]]:
     """The pools GRADE-lite judges: those of the primary outcome from the best design group. GRADE starts from the
     best available design, so the RCT pools are used when at least one exists, else the observational ones; a
@@ -98,12 +93,12 @@ def apply_meta_grade(grade: dict[str, Any], pools: list[dict[str, Any]], outcome
     Returns (grade, the reason strings added). The reasons carry no pooled numbers."""
     if not pools:
         return grade, []
-    what = f"{outcome} ({GROUP_LABEL.get(group, group)})" if group else f"{outcome}"
+    what = f"{outcome} ({DESIGN_GROUP_LABEL.get(group, group)})" if group else f"{outcome}"
     level = LEVELS.index(grade.get("level", "very_low"))
     factors = list(grade.get("factors") or [])
     added: list[str] = []
     checks = (
-        ("inconsistency", any(p["i2"] >= HIGH_HETEROGENEITY_I2 for p in pools),
+        ("inconsistency", any(p["i2"] >= HIGH_I2 for p in pools),
          f"substantial heterogeneity (I2 >= 50%) in the pooled analysis of {what}"),
         ("imprecision", any(p["pooled"]["y_ci_lower"] <= 0.0 <= p["pooled"]["y_ci_upper"] for p in pools),
          f"the pooled 95% CI for {what} includes no effect"),
@@ -119,6 +114,18 @@ def apply_meta_grade(grade: dict[str, Any], pools: list[dict[str, Any]], outcome
         factors.append(text)
         added.append(text)
     return {**grade, "level": LEVELS[max(level, 0)], "factors": factors}, added
+
+
+def analyse_meta(matrix: dict[str, Any], papers: list[dict[str, Any]], question_outcomes: list[str] | None,
+                 baseline: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The one pool -> primary outcome -> GRADE-lite sequence, used by the pool_effects node and the timed stub.
+    Returns (meta_analysis with `grade`, the adjusted grade). Raises on an unexpected shape; callers decide."""
+    meta = pool_outcomes(matrix, papers)
+    outcome = primary_outcome(meta, question_outcomes)
+    group, pools = grading_pools(meta["pools"], outcome)
+    grade, reasons = apply_meta_grade(baseline, pools, outcome, group)
+    meta["grade"] = {"primary_outcome": outcome, "design_group": group, "reasons": reasons}
+    return meta, grade
 
 
 def clamp_to_baseline(chosen: str, baseline: str) -> str:

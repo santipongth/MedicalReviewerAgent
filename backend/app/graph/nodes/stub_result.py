@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.harness.design import POOLED_CATEGORIES
-from app.harness.grade import apply_meta_grade, grading_pools
-from app.harness.meta import pool_outcomes, primary_outcome
+from app.harness.grade import analyse_meta
+from app.harness.meta import with_display
 from app.schemas.review import SLR_LIKE
 
 # (design_category, study_design, year, direction, risk_of_bias, sample_size, effect_value, ci)
@@ -64,9 +64,12 @@ def _citations(n: int) -> dict[str, Any]:
     return {
         "edges": [{"from": a, "to": b} for a, b in _STUB_EDGES if a in refs and b in refs],
         "cited_by": {r: (None if r == "P6" else 40 - 5 * i) for i, r in enumerate(refs)},
+        "cited_by_source": {r: (None if r == "P6" else "openalex" if i % 2 == 0 else "europepmc")
+                            for i, r in enumerate(refs)},
         "coverage": {r: (None if r == "P6" else "openalex" if i % 2 == 0 else "europepmc")
                      for i, r in enumerate(refs)},
         "source_note": "Illustrative stub data",
+        "partial": False,
     }
 
 
@@ -149,12 +152,5 @@ def _stub_meta(comparison: list[dict[str, Any]],
                papers: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Pooled by meta.py from the stub matrix (never hand-written numbers), in the same shape as the real result,
     with the stub baseline adjusted by the real apply_meta_grade. Returns (meta_analysis, adjusted grade)."""
-    out = pool_outcomes({"rows": comparison}, papers)
-    outcome = primary_outcome(out, ["Primary outcome"])
-    group, pools = grading_pools(out["pools"], outcome)
-    grade, reasons = apply_meta_grade(STUB_BASELINE, pools, outcome, group)  # the real GRADE-lite adjustment
-    out["grade"] = {"primary_outcome": outcome, "design_group": group, "reasons": reasons}
-    for kind in ("pools", "excluded", "reference"):
-        for item in out[kind]:
-            item["outcome_display"] = item["outcome"]
-    return out, grade
+    out, grade = analyse_meta({"rows": comparison}, papers, ["Primary outcome"], STUB_BASELINE)
+    return with_display(out), grade

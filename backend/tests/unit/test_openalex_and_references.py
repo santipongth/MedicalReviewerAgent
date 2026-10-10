@@ -138,3 +138,21 @@ async def test_works_by_ids_keeps_answered_batches_when_one_fails_and_raises_if_
         pass
     finally:
         await http.aclose()
+
+
+@respx.mock
+async def test_openalex_request_url_with_api_key_is_not_logged_at_info(caplog):
+    import logging
+
+    from app.logging import configure_logging
+
+    configure_logging("INFO")  # sets the httpx/httpcore loggers to WARNING
+    route = respx.get(f"{OA}/works").mock(return_value=httpx.Response(200, json={"results": []}))
+    http = HttpClient(sleep=_nosleep)
+    with caplog.at_level(logging.INFO):
+        await _oa(http, api_key="k-secret-123", mailto="me@example.org").works_by_ids(["10.1/a"], [])
+    await http.aclose()
+    assert route.call_count == 1
+    assert "k-secret-123" not in caplog.text and "me%40example.org" not in caplog.text
+    assert logging.getLogger("httpx").level == logging.WARNING
+    assert logging.getLogger("httpcore").level == logging.WARNING

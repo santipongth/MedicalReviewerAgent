@@ -11,16 +11,19 @@ from app.harness.citations import NOTE_UNAVAILABLE, build_citations, empty_citat
 
 log = logging.getLogger(__name__)
 CONCURRENCY = 3
+OPENALEX_SHARE = 0.5  # fraction of the citation budget OpenAlex may use
 
 
 async def _gather(deps, idents: dict[str, dict[str, Any]], oa: dict[str, Any], epmc: dict[str, Any],
                   flags: dict[str, bool]) -> None:
     """Fills `oa`, `epmc` and `flags["errored"]` in place, so a timeout still leaves the partial data behind."""
     try:
-        # PMIDs only for papers without a DOI: one lookup per paper.
-        found = await deps.openalex.works_by_ids(
+        # PMIDs only for papers without a DOI: one lookup per paper. OpenAlex gets at most half the step's budget,
+        # so a slow or hanging OpenAlex can never starve the Europe PMC fallback.
+        found = await asyncio.wait_for(deps.openalex.works_by_ids(
             [i["doi"] for i in idents.values() if i["doi"]],
-            [i["pmid"] for i in idents.values() if i["pmid"] and not i["doi"]])
+            [i["pmid"] for i in idents.values() if i["pmid"] and not i["doi"]]),
+            deps.settings.citations_timeout_seconds * OPENALEX_SHARE)
         for ref, i in idents.items():
             oa[ref] = (found.get(f"doi:{i['doi']}") if i["doi"] else None) or \
                       (found.get(f"pmid:{i['pmid']}") if i["pmid"] else None)
@@ -64,6 +67,7 @@ def make_fetch_citations(deps):
         except Exception as exc:  # noqa: BLE001
             log.warning("citations: build failed: %s", type(exc).__name__)
             result = empty_citations(list(idents))
+        result["partial"] = timed_out
         if (flags["errored"] or timed_out) and not any(result["coverage"].values()):
             result["source_note"] = NOTE_UNAVAILABLE
         elif timed_out:

@@ -5,6 +5,8 @@ import csv
 import io
 from typing import Any
 
+from app.harness.meta import DESIGN_GROUP_LABEL
+
 DIRECTION = {"positive": "supports", "negative": "opposite/harm", "null": "no association",
              "mixed": "mixed", "unclear": "unclear"}
 
@@ -17,7 +19,6 @@ TYPE_LABEL = {"narrative": "Narrative review", "slr": "Systematic review", "scop
               "meta_analysis": "Meta-analysis"}
 POOLED_HEADING = ("## Pooled analysis (computed by the system from abstract-verified numbers — "
                   "not a result of any single study)")
-DESIGN_GROUP = {"rct": "RCTs", "observational": "observational studies"}
 # Per-pool warnings shown on the pool line; abstract_only, ci_assumed_95 and adjustment_unknown are on every pool
 # and go into the method note instead.
 WARNING_LABEL = {
@@ -31,6 +32,11 @@ WARNING_LABEL = {
 
 def _num(value: float, decimals: int = 2) -> str:
     return f"{value:.{decimals}f}"
+
+
+def _reported(value: float) -> str:
+    """A verified paper number as the paper printed it: no rounding to a fixed number of decimals."""
+    return f"{value:g}"
 
 
 def _warnings(codes: list[str]) -> str:
@@ -49,10 +55,10 @@ def _pooled_section(meta: dict[str, Any] | None) -> list[str]:
                  "so nothing was pooled."), ""]
     for p in pools:
         est = p["pooled"]
-        refs = ", ".join(f"{s['ref']} {_num(s['effect'])} [{_num(s['ci_lower'])}, {_num(s['ci_upper'])}]"
+        refs = ", ".join(f"{s['ref']} {_reported(s['effect'])} [{_reported(s['ci_lower'])}, {_reported(s['ci_upper'])}]"
                          f" w {s['weight']:.1f}%" for s in p["studies"])
         out.append(f"- **{_cell(p.get('outcome_display') or p['outcome'])}** — {p['measure']}, "
-                   f"{DESIGN_GROUP.get(p['design_group'], p['design_group'])}, k={p['k']}: "
+                   f"{DESIGN_GROUP_LABEL.get(p['design_group'], p['design_group'])}, k={p['k']}: "
                    f"{_num(est['est'])} (95% CI {_num(est['ci_lower'])} to {_num(est['ci_upper'])}) "
                    f"_(computed)_; I² {p['i2']:.0f}%, τ² {p['tau2']:.3f}. Inputs: {refs}."
                    + _warnings(p.get("warnings") or []))
@@ -62,7 +68,7 @@ def _pooled_section(meta: dict[str, Any] | None) -> list[str]:
     reference = [r for r in meta.get("reference") or [] if r.get("effect") is not None]
     if reference:
         out += ["", "Systematic reviews / meta-analyses (reference only, not pooled): "
-                + "; ".join(f"{r['ref']} {r.get('measure') or ''} {_num(r['effect'])}" for r in reference) + "."]
+                + "; ".join(f"{r['ref']} {r.get('measure') or ''} {_reported(r['effect'])}" for r in reference) + "."]
     return [*out, ""]
 
 

@@ -46,13 +46,14 @@ class OpenAlexClient:
 
     def __init__(
         self, http: HttpClient, base_url: str = "https://api.openalex.org", *,
-        api_key: str = "", mailto: str = "", timeout: float = 15.0,
+        api_key: str = "", mailto: str = "", timeout: float = 6.0, retries: int = 0,
     ) -> None:
         self.http = http
         self.base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._mailto = mailto
         self.timeout = timeout
+        self.retries = retries
 
     async def _batch(self, field_name: str, values: list[str], gate: asyncio.Semaphore) -> list[dict[str, Any]]:
         params: dict[str, Any] = {
@@ -63,7 +64,7 @@ class OpenAlexClient:
         if self._mailto:
             params["mailto"] = self._mailto
         async with gate:
-            resp = await self.http.get(f"{self.base_url}/works", params=params, timeout=self.timeout, retries=1)
+            resp = await self.http.get(f"{self.base_url}/works", params=params, timeout=self.timeout, retries=self.retries)
         resp.raise_for_status()
         return resp.json().get("results") or []
 

@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     openalex_url: str = "https://api.openalex.org"
     openalex_api_key: str = ""  # optional; never logged
     openalex_mailto: str = ""  # optional; never logged
-    openalex_timeout_seconds: float = 15.0
+    openalex_timeout_seconds: float = 6.0  # per request, no retries: the citation step has a small budget
     citations_timeout_seconds: float = 20.0  # whole citation step; a failure never fails the review
     http_timeout_seconds: float = 30.0
     screen_batch_size: int = 10
