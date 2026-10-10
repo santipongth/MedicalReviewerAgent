@@ -13,6 +13,7 @@ from app.graph.state import ReviewState
 from app.harness.localize import localize_strings
 from app.harness.question import question_problems
 from app.harness.runner import HarnessRunner
+from app.harness.study_types import missing_study_types
 from app.schemas.review import ReviewOptions
 from app.services.llm import LLMError, LLMOutputError, LLMRefusal
 from app.services.llm_config import HarnessSpec
@@ -102,7 +103,7 @@ def make_refine_question(deps):
                 refiner, prompts.refine_system(review_type),
                 prompts.refine_user(topic=state["topic"], english_topic=english_topic, options=options,
                                     review_type=review_type),
-                schema=ReviewQuestion, validate=lambda q: question_problems(q, options, review_type),
+                schema=ReviewQuestion, validate=lambda q: question_problems(q, options, review_type, enforce_study_types=False),
             )
         except LLMError as exc:  # provider error or refusal: review the English topic as-is
             errors.append(f"question refinement failed: {type(exc).__name__}")
@@ -122,7 +123,7 @@ def make_refine_question(deps):
                     prompts.critique_user(topic=state["topic"], question=_draft_dump(question, review_type),
                                           options=options, review_type=review_type),
                     schema=QuestionCritique,
-                    validate=lambda c: question_problems(c.revised, options, review_type),
+                    validate=lambda c: question_problems(c.revised, options, review_type, enforce_study_types=False),
                     trigger="critique",
                 )
             except LLMError as exc:  # keep the validated draft
@@ -134,8 +135,15 @@ def make_refine_question(deps):
                     entry["critique_applied"] = True
                     entry["critique_issues"] = crit.value.issues
         if question is None:
+            errors.append("question refinement fell back to the English topic (no PICO): "
+                          + ("; ".join(res.problems) or "no valid draft"))
             entry["seconds"] = round(time.perf_counter() - started, 3)
             return {"question": None, "cost_usd": cost, "errors": errors, "quality": [entry]}
+        missing = missing_study_types(options, question.study_designs)
+        if missing:  # never reject a good PICO over a study type: add the requested names in code and say so
+            question = question.model_copy(update={"study_designs": [*question.study_designs, *missing]})
+            entry["study_designs_added"] = missing
+            errors.append("refined study_designs lacked the requested " + ", ".join(missing) + "; added in code")
         if review_type != "scoping" and (question.concept or question.context):  # PCC fields are scoping-only
             question = question.model_copy(update={"concept": None, "context": None})
         display, localize_cost = await _localized_display(deps, runner, question, state.get("language", "th"))

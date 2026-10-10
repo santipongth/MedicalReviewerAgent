@@ -95,6 +95,7 @@ Field rules:
   - Case, spacing, hyphens and common aliases are accepted, so `case control` and `quasi-experimental` both work.
   - Any other value becomes a single `"Other: <text>"` entry; several unknown values are joined into that one text. The text is capped at 60 characters and passed to the prompts only as data (a soft constraint: the refined question is never forced to repeat it). A bare `"Other"` is dropped, and `"Other: <canonical name>"` becomes that name.
   - An empty list means no restriction.
+  - Canonical names are enforced: the screener is told which designs are eligible, and a selected paper whose design matches none of them is excluded with PRISMA reason `study_design` (a systematic review or meta-analysis is admitted only when `Systematic review` or `Meta-analysis` is ticked; an unknown design stays). If fewer than 3 papers match, the mismatches are kept after the matches and flagged `uncertain` (`selection_stats.study_design_relaxed`). Refinement matches synonyms (`randomised controlled trials` satisfies `RCT`), adds any missing requested name in code, and reports it in `errors`.
   - `Qualitative` and `Mixed methods` have limited support. Such studies are screened in and summarised as themes from the abstract. They never get effect numbers, directions, forest-plot rows, pools or grade.
 - `callback_url`: needs an API key, and must use https on a public host. Otherwise the request gets 403 (no key) or 422 (bad URL).
 
