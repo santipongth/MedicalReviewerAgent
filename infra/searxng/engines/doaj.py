@@ -25,6 +25,7 @@ Configuration::
 from __future__ import annotations
 
 import html
+import logging
 import re
 import threading
 import time
@@ -50,6 +51,9 @@ search_url = "https://doaj.org/api/v4/search/articles/"
 article_url = "https://doaj.org/article/"
 page_size = 10
 min_interval = 0.5  # DOAJ: <= 2 requests per second
+max_wait = 5.0  # seconds; the engine timeout is 8 s
+
+logger = logging.getLogger(__name__)  # replaced by SearXNG with the engine logger
 
 _TAG = re.compile(r"<[^>]+>")
 # Elasticsearch query-string syntax characters that would turn a plain topic into a parse error.
@@ -58,14 +62,18 @@ _lock = threading.Lock()
 _next_slot = 0.0
 
 
-def _throttle() -> None:
+def _throttle() -> bool:
+    """Space calls by ``min_interval``; False (nothing reserved) if the wait would exceed ``max_wait``."""
     global _next_slot  # pylint: disable=global-statement
     with _lock:
         now = time.monotonic()
         wait = max(0.0, _next_slot - now)
+        if wait > max_wait:
+            return False
         _next_slot = max(now, _next_slot) + min_interval
     if wait:
         time.sleep(wait)
+    return True
 
 
 def _clean(value: t.Any) -> str:
@@ -80,7 +88,10 @@ def build_url(query: str, pageno: int) -> str:
 
 
 def request(query: str, params: dict[str, t.Any]) -> None:
-    _throttle()
+    if not _throttle():
+        logger.warning("DOAJ request queue longer than %.0f s; skipping this call", max_wait)
+        params["url"] = None
+        return
     params["url"] = build_url(query, params["pageno"])
 
 

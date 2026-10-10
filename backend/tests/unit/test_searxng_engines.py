@@ -273,3 +273,24 @@ def test_semantic_scholar_key_switches_to_graph_api(searx_stub, monkeypatch):
     assert res[0]["publishedDate"].date() == date(2020, 6, 26)
     assert res[0]["journal"] == "International Journal of Colorectal Disease"
     assert res[1]["publishedDate"].date() == date(2019, 1, 1) and res[1]["doi"] == ""
+
+
+# --- throttle cap ---------------------------------------------------------------------------
+
+def test_throttle_skips_instead_of_queueing_past_the_timeout(searx_stub, monkeypatch):
+    pubmed = load("mra_pubmed")
+    monkeypatch.setattr(pubmed.time, "sleep", lambda _s: None)
+    pubmed._next_slot = pubmed.time.monotonic() + pubmed.max_wait + 5  # queue already too long
+    p = params()
+    pubmed.request("metformin", p)
+    assert p["url"] is None and searx_stub.calls == []  # no request sent, nothing queued
+    assert pubmed._next_slot > pubmed.time.monotonic() + pubmed.max_wait  # slot not reserved
+
+    doaj = load("doaj")
+    doaj._next_slot = doaj.time.monotonic() + doaj.max_wait + 5
+    p = params()
+    doaj.request("metformin", p)
+    assert p["url"] is None
+    doaj._next_slot = 0.0
+    doaj.request("metformin", p)
+    assert p["url"].startswith(doaj.search_url)
