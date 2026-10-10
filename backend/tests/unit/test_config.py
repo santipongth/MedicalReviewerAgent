@@ -6,7 +6,6 @@ def test_defaults_are_local_dev():
     assert s.database_url.startswith("postgresql+psycopg://")
     assert s.redis_url == "redis://localhost:6379/0"
     assert s.review_rate_limit == "5/hour"
-    assert s.max_topic_length == 600
 
 
 def test_checkpoint_conninfo_strips_sqlalchemy_driver():

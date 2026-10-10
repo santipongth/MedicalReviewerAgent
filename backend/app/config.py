@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     webhook_allow_http: bool = False  # local testing only; production webhooks must be https
     webhook_timeout_seconds: float = 10.0
     webhook_max_tries: int = 3
-    max_topic_length: int = 600
     result_cache_ttl_seconds: int = 86400
     event_stream_ttl_seconds: int = 86400
     sse_ping_seconds: int = 15
@@ -51,7 +50,7 @@ class Settings(BaseSettings):
 
     graph_mode: str = "real"  # "stub" = Plan 1 placeholder graph (plumbing tests without Claude)
     stub_delay_seconds: float = 0.0  # stub graph only: simulated review duration for load tests
-    prompt_version: str = "2026-10-10.1"
+    prompt_version: str = "2026-10-10.2"
 
     searxng_engines: str = "pubmed,europe pmc,openalex,semantic scholar,crossref,arxiv,doaj,openaire"
     searxng_pages: int = 1
