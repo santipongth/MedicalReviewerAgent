@@ -5,8 +5,9 @@ import type { ConceptTree, MapNode } from "@/lib/concept-map";
 import { forestAxis, type exclusionRows, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
+import type { MetaPoolView } from "@/lib/meta-view";
 import { L } from "../review/text";
-import { Glyph, VerifiedNumber } from "../ui/evidence";
+import { ComputedNumber, Glyph, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { EChart, encodeHTML, type EChartsOption } from "./echart";
 import { SYMBOL, type ChartTokens } from "./tokens";
@@ -173,6 +174,155 @@ export function ForestFigure({ data, tokens, lang, onSelect }: { data: ForestDat
         />
       ))}
     </div>
+  );
+}
+
+/**
+ * Forest plot of one pooled analysis: the studies (direction glyphs, size by weight, verified intervals) and the pooled
+ * estimate as an outlined lozenge (stroke only, never filled: the solid ◆ means harm). Null line at 1 (log axis) for
+ * ratios, 0 otherwise. Every value comes from lib/meta-view.ts.
+ */
+function metaForestOption(pool: MetaPoolView, t: ChartTokens, lang: Lang): EChartsOption {
+  const [min, max] = pool.axis;
+  const n = pool.studies.length;
+  const maxW = Math.max(...pool.studies.map((s) => s.weight), 1);
+  const pooledLabel = L(lang, "ค่ารวม (คำนวณ)", "Pooled (computed)");
+  return {
+    animation: !t.reducedMotion,
+    animationDuration: 500,
+    aria: { enabled: false },
+    grid: { left: 8, right: 24, top: 12, bottom: 32, containLabel: true },
+    tooltip: {
+      trigger: "item",
+      backgroundColor: t.surface,
+      borderColor: t.rule,
+      textStyle: { color: t.ink, fontFamily: t.fontDisplay },
+      formatter: (p: { seriesName?: string; dataIndex: number }) => {
+        if (p.seriesName === "pooled") {
+          return `<b>${encodeHTML(`${pool.measure} ${pool.estText}`)}</b> <span style="color:${t.muted}">95% CI</span> ${encodeHTML(pool.ciText)}<br/><span style="color:${t.muted}">${encodeHTML(L(lang, "ค่ารวมที่ระบบคำนวณ ไม่ใช่ผลจากงานวิจัยฉบับใด", "Computed by the system, not a result of any single study"))}</span>`;
+        }
+        const s = pool.studies[p.dataIndex];
+        if (!s) return "";
+        return `<b style="font-family:${t.fontNum}">${encodeHTML(`${pool.measure} ${s.effectText}`)}</b> <span style="color:${t.muted}">95% CI</span> ${encodeHTML(s.ciText)}<br/><span style="color:${t.muted}">${encodeHTML(s.label)} · ${encodeHTML(L(lang, "น้ำหนัก", "weight"))} ${encodeHTML(s.weightText)} · ${encodeHTML(DIRECTION_LABEL[lang][s.direction])}</span>`;
+      },
+    },
+    xAxis: {
+      type: pool.ratio ? "log" : "value", min, max, logBase: 10,
+      axisLine: { lineStyle: { color: t.rule } }, splitLine: { lineStyle: { color: t.rule, type: "solid", opacity: 0.6 } },
+      axisLabel: { color: t.muted, fontFamily: t.fontNum, fontSize: 11, formatter: (v: number) => String(Number(v.toPrecision(2))) },
+    },
+    yAxis: {
+      type: "category", inverse: true, data: [...pool.studies.map((s) => s.label), pooledLabel],
+      axisLine: { show: false }, axisTick: { show: false },
+      axisLabel: {
+        fontSize: 12, width: 220, overflow: "truncate",
+        // The pooled row reads as a result line, not another study.
+        color: t.ink, fontFamily: t.fontDisplay,
+        formatter: (v: string) => (v === pooledLabel ? `{b|${v}}` : v),
+        rich: { b: { color: t.ink, fontFamily: t.fontDisplay, fontWeight: 600, fontSize: 12 } },
+      },
+    },
+    series: [
+      {
+        type: "custom",
+        data: pool.studies.map((s, i) => [s.lo, s.hi, i]),
+        encode: { x: [0, 1], y: 2 },
+        silent: true,
+        z: 1,
+        renderItem: (params: { dataIndex: number }, api: { value: (i: number) => number; coord: (v: [number, number]) => number[] }) => {
+          const a = api.coord([api.value(0), api.value(2)]);
+          const b = api.coord([api.value(1), api.value(2)]);
+          return { type: "line", shape: { x1: a[0], y1: a[1], x2: b[0], y2: b[1] },
+            style: { stroke: t.direction[pool.studies[params.dataIndex].direction], lineWidth: 2, lineCap: "round" } };
+        },
+      },
+      {
+        type: "scatter",
+        z: 2,
+        cursor: "pointer",
+        data: pool.studies.map((s, i) => ({
+          value: [s.effect, i], ref: s.ref, outcome: s.outcomeKey ?? undefined, symbol: SYMBOL[s.direction],
+          symbolSize: Math.round(8 + 8 * Math.sqrt(s.weight / maxW)),
+          itemStyle: { color: t.direction[s.direction], borderColor: t.surface, borderWidth: 2 },
+        })),
+        emphasis: { scale: 1.2 },
+        markLine: {
+          silent: true, symbol: "none", label: { show: false },
+          lineStyle: { color: t.ink, width: 1, type: "solid" }, data: [{ xAxis: pool.nullValue }],
+        },
+      },
+      {
+        // The pooled estimate: an outlined lozenge from the lower to the upper limit, centred on the estimate.
+        name: "pooled",
+        type: "custom",
+        data: [[pool.lo, pool.est, pool.hi, n]],
+        encode: { x: [0, 1, 2], y: 3 },
+        z: 3,
+        renderItem: (_params: unknown, api: { value: (i: number) => number; coord: (v: [number, number]) => number[]; size: (v: [number, number]) => number[] }) => {
+          const row = api.value(3);
+          const lo = api.coord([api.value(0), row]);
+          const mid = api.coord([api.value(1), row]);
+          const hi = api.coord([api.value(2), row]);
+          const h = Math.min(9, (api.size([0, 1])[1] || 24) * 0.3);
+          return {
+            type: "polygon",
+            shape: { points: [[lo[0], mid[1]], [mid[0], mid[1] - h], [hi[0], mid[1]], [mid[0], mid[1] + h]] },
+            style: { fill: "none", stroke: t.ink, lineWidth: 2, lineJoin: "miter" },
+          };
+        },
+      },
+    ],
+  };
+}
+
+/** One pooled analysis as a figure with its table twin (studies, then the pooled row). */
+export function MetaForestFigure({ pool, tokens, lang, onSelect }: { pool: MetaPoolView; tokens: ChartTokens; lang: Lang; onSelect: Select }) {
+  const option = useMemo(() => metaForestOption(pool, tokens, lang), [pool, tokens, lang]);
+  const family = pool.ratio ? "ratio" : "difference";
+  return (
+    <Figure lang={lang}
+      title={`${L(lang, "แผนภาพค่ารวม", "Pooled forest plot")} · ${pool.measure}`}
+      caption={<>
+        {MEASURE_NOTE[family][lang === "th" ? 0 : 1]}
+        {pool.ratio && <> (<Term k="logScale" lang={lang}>{L(lang, "สเกล log คืออะไร", "what is a log scale")}</Term>)</>}
+        {" · "}{L(lang, "ขนาดสัญลักษณ์ตามน้ำหนัก · รูปข้าวหลามตัดแบบเส้นขอบ = ค่ารวมที่ระบบคำนวณ", "Marker size follows weight · outlined lozenge = the computed pooled estimate")}
+        <MeasureGlossary measures={[pool.measure]} lang={lang} />
+      </>}
+      chart={
+        <EChart option={option} height={Math.max(160, (pool.studies.length + 1) * 34 + 56)}
+          label={L(lang, `Forest plot ค่ารวมของ ${pool.k} งานวิจัย (${pool.outcome})`, `Pooled forest plot of ${pool.k} studies (${pool.outcome})`)}
+          onItemClick={(d) => { const x = d as { ref?: string; outcome?: string }; if (x?.ref) onSelect(x.ref, x.outcome); }} />
+      }
+      table={
+        <table className="w-full min-w-[480px] border-collapse text-[0.88rem]">
+          <thead><tr className="border-b border-rule text-left">
+            <th scope="col" className="py-1.5 label">{L(lang, "งานวิจัย", "Study")}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, "ขนาดผล", "Effect")}</th>
+            <th scope="col" className="py-1.5 label">95% CI</th>
+            <th scope="col" className="py-1.5 label">{L(lang, "น้ำหนัก (คำนวณ)", "Weight (computed)")}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, "ทิศทาง", "Direction")}</th>
+          </tr></thead>
+          <tbody>
+            {pool.studies.map((s) => (
+              <tr key={s.ref} className="border-b border-rule">
+                <th scope="row" className="py-1.5 pr-3 text-left font-normal break-words">{s.label}</th>
+                <td className="py-1.5 pr-3"><VerifiedNumber value={s.effectText} onSelect={() => onSelect(s.ref, s.outcomeKey ?? undefined)} /></td>
+                <td className="py-1.5 pr-3"><VerifiedNumber value={s.ciText} /></td>
+                <td className="py-1.5 pr-3"><ComputedNumber value={s.weightText} lang={lang} tag={false} /></td>
+                <td className="py-1.5"><span className="inline-flex items-center gap-1.5"><Glyph direction={s.direction} lang={lang} />{DIRECTION_LABEL[lang][s.direction]}</span></td>
+              </tr>
+            ))}
+            <tr className="border-b border-rule">
+              <th scope="row" className="py-1.5 pr-3 text-left font-display font-semibold">{L(lang, "ค่ารวม", "Pooled")}</th>
+              <td className="py-1.5 pr-3"><ComputedNumber value={pool.estText} lang={lang} /></td>
+              <td className="py-1.5 pr-3"><ComputedNumber value={pool.ciText} lang={lang} tag={false} /></td>
+              <td className="py-1.5 pr-3 text-muted">–</td>
+              <td className="py-1.5 text-muted">–</td>
+            </tr>
+          </tbody>
+        </table>
+      }
+    />
   );
 }
 

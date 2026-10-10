@@ -8,7 +8,8 @@
 //   searching -> search ends, enrich starts   enriching -> enrich ends, screen starts (silent until `screening`)
 //   screening -> a screening batch began      screened -> screen ends, read starts (slots created)
 //   reading -> a paper entered the read pool  extracted -> a paper finished; the last one ends read, starts synth
-//   synthesizing -> synth runs                localizing -> synth ends, localize runs
+//   synthesizing -> synth runs                pooled -> (meta_analysis) pooled estimates computed, synth still runs
+//   localizing -> synth ends, localize runs
 //   finalizing -> localize ends (or is skipped), finish runs        done -> everything ends
 //
 // Step spans (`spans`, for durations in the grouped log) come only from received `elapsed_s` values, never a client
@@ -68,6 +69,7 @@ export interface Scene {
     batchesExpected: number; kept: number; screenedTotal: number;
     readOk: number; // finished reads that succeeded (includes `uncertain`)
     readFailed: number; uncertain: number; synthPapers: number | null;
+    pools: number | null; // meta_analysis: `pooled.pools` (pooled analyses computed); null until the event arrives
   };
   queries: string[];
   slots: ReaderSlot[]; // <= MAX_SLOTS (30)
@@ -95,7 +97,7 @@ export function initialScene(opts?: { language?: string }): Scene {
     lastSeq: 0, status: "waiting", agents, edges: {},
     counts: {
       queries: 0, found: 0, searchFailed: 0, candidates: 0, batches: 0, batchesExpected: 0, kept: 0, screenedTotal: 0,
-      readOk: 0, readFailed: 0, uncertain: 0, synthPapers: null,
+      readOk: 0, readFailed: 0, uncertain: 0, synthPapers: null, pools: null,
     },
     queries: [], slots: [], pulses: [], trace: [], external: false, expectLocalize: opts?.language === "th", elapsed: 0,
     spans: {},
@@ -151,7 +153,7 @@ function refreshEdges(s: Scene): void {
 const TERMINAL_STATUS = new Set<Scene["status"]>(["done", "error", "rejected", "cancelled"]);
 const KNOWN = new Set([
   "queued", "started", "checking_topic", "refining", "question_refined", "planning", "searching", "enriching", "screening",
-  "screened", "external_lookup", "reading", "extracted", "synthesizing", "localizing", "finalizing", "interrupted", "done",
+  "screened", "external_lookup", "reading", "extracted", "synthesizing", "pooled", "localizing", "finalizing", "interrupted", "done",
   "error", "rejected", "cancelled",
 ]);
 
@@ -273,6 +275,7 @@ function traceText(type: string, p: Record<string, unknown>, s: Scene): string {
       return p.uncertain === true ? `อ่าน ${ref} เสร็จ · สองโมเดลอ่านต่างกัน` : `อ่าน ${ref} เสร็จ`;
     }
     case "synthesizing": return `เริ่มสังเคราะห์จาก ${num(p.papers)} ฉบับ`;
+    case "pooled": return `คำนวณค่ารวม ${num(p.pools)} ชุด จากผลของงานวิจัย ${num(p.k_total)} รายการ`;
     case "localizing": return "แปลรายงานเป็นภาษาไทย";
     case "finalizing": return "เรียบเรียงรายงาน";
     case "interrupted": return "เซิร์ฟเวอร์หยุดชั่วคราว จะทำงานต่อเอง";
@@ -289,7 +292,7 @@ const MERGE = new Set(["screening", "reading"]);
 const TRACE_AGENT: Record<string, AgentId> = {
   checking_topic: "guard", refining: "refine", question_refined: "refine", planning: "plan", searching: "search",
   enriching: "enrich", screening: "screen", screened: "screen", external_lookup: "external", reading: "read",
-  extracted: "read", synthesizing: "synth", localizing: "localize", finalizing: "finish",
+  extracted: "read", synthesizing: "synth", pooled: "synth", localizing: "localize", finalizing: "finish",
 };
 
 /** The agent a trace row belongs to (status rows such as queued/started/done -> null). */
@@ -472,6 +475,10 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
       pushPulse(s, ev.seq, "read>synth", "signal", 1);
       break;
     }
+    case "pooled":
+      // meta_analysis only, inside the synth step (no new node, the stage geometry is unchanged).
+      s.counts.pools = toNum(p.pools);
+      break;
     case "localizing":
       advanceTo(s, "localize", "working");
       pushPulse(s, ev.seq, "synth>localize", "signal", 1);

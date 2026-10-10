@@ -118,7 +118,7 @@ export interface QuestionText {
   assumptions?: string[];
 }
 
-export type ReviewType = "narrative" | "slr" | "scoping";
+export type ReviewType = "narrative" | "slr" | "scoping" | "meta_analysis";
 
 export interface KeyTerm {
   term: string;
@@ -160,7 +160,87 @@ export interface Quality {
   fulltext_timeouts?: number; // legacy
   screen_disagreements?: number;
   citation_fixes?: number;
+  /** meta_analysis: sentences the post-check removed for restating a pooled number (when the backend reports it). */
+  pooled_numbers?: { removed: number; kept_single_study: number };
   timings?: Record<string, number | null>;
+}
+
+// --- Plan 14b: pooled analysis (meta_analysis reviews) and the citation network --------------------------------------
+
+export type PoolMeasure = "HR" | "OR" | "RR" | "RD" | "MD" | "SMD";
+
+/** One study in a pool. effect/ci_* are as reported (natural scale); y/se/variance are on the analysis scale (ln for
+ * HR/OR/RR); weight is the random-effects weight in percent (the pool's weights sum to 100). */
+export interface PoolStudy {
+  ref: string;
+  effect: number;
+  ci_lower: number;
+  ci_upper: number;
+  y: number;
+  se: number;
+  variance: number;
+  weight: number;
+}
+
+export interface Pool {
+  outcome: string; // English matrix row
+  outcome_display?: string | null; // the row name in the review language
+  measure: PoolMeasure;
+  scale: "log" | "raw";
+  design_group: "rct" | "observational";
+  k: number;
+  studies: PoolStudy[];
+  /** est and ci bounds on the display scale (exp() applied for log); y, y_ci bounds and se on the analysis scale. */
+  pooled: { est: number; ci_lower: number; ci_upper: number; y: number; y_ci_lower: number; y_ci_upper: number; se: number };
+  tau2: number; // analysis scale
+  i2: number; // percent 0-100
+  q: number;
+  df: number;
+  p_het: number;
+  method: string;
+  version: string;
+  warnings: string[]; // codes, see META_CODE_LABEL
+}
+
+export interface PoolExcluded {
+  outcome: string;
+  outcome_display?: string | null;
+  ref: string;
+  measure: string | null;
+  design_category: string | null;
+  reason: string; // code, see META_CODE_LABEL
+  duplicate_of?: string;
+  k?: number;
+  design_group?: string;
+}
+
+export interface PoolReference {
+  outcome: string;
+  outcome_display?: string | null;
+  ref: string;
+  design_category: string | null;
+  measure: string | null;
+  effect: number | null;
+  ci_lower: number | null;
+  ci_upper: number | null;
+}
+
+/** result.meta_analysis: null for other types (and when pooling failed); absent in results stored before Plan 14b. */
+export interface MetaAnalysis {
+  version: string;
+  pools: Pool[];
+  excluded: PoolExcluded[];
+  reference: PoolReference[];
+  grade?: { primary_outcome: string | null; design_group?: string | null; reasons: string[] } | null;
+}
+
+/** result.citations: edges between papers of this review (citing -> cited) and per-paper coverage. */
+export interface Citations {
+  edges: { from: string; to: string }[];
+  cited_by: Record<string, number | null>;
+  cited_by_source?: Record<string, "openalex" | "europepmc" | null>;
+  coverage: Record<string, "openalex" | "europepmc" | null>;
+  source_note: string;
 }
 
 export interface Stats {
@@ -202,6 +282,8 @@ export interface ReviewResult {
   llm_preset?: string;
   models?: Record<string, string>;
   external_context?: ExternalNote[];
+  meta_analysis?: MetaAnalysis | null; // Plan 14b
+  citations?: Citations | null; // Plan 14b
 }
 
 export interface ServiceStatus {

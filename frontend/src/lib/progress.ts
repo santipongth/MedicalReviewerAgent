@@ -50,7 +50,7 @@ const STEP_OF: Record<string, StepKey> = {
   planning: "search", searching: "search", enriching: "search",
   screening: "screen", screened: "screen",
   reading: "read", extracted: "read", external_lookup: "read",
-  synthesizing: "synthesize", localizing: "synthesize", finalizing: "synthesize",
+  synthesizing: "synthesize", pooled: "synthesize", localizing: "synthesize", finalizing: "synthesize",
 };
 
 function num(v: unknown): number {

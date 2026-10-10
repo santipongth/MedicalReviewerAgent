@@ -4,18 +4,19 @@ import Link from "next/link";
 import { Fragment, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { exportUrl } from "@/lib/api";
 import { conceptTree } from "@/lib/concept-map";
-import { emptyFilters, filterPapers, isPooled, type Filters } from "@/lib/charts-data";
+import { emptyFilters, filterPapers, isFiltered, isPooled, type Filters } from "@/lib/charts-data";
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
 import type { TermKey } from "@/lib/glossary";
 import type { Lang } from "@/lib/i18n";
 import { REVIEW_TYPE_LABEL, SECTIONS_BY_TYPE, reviewTypeOf, showsRiskOfBias, showsSection } from "@/lib/review-type";
 import { Term } from "../ui/term";
-import type { ComparisonRow, Paper, Review } from "@/lib/types";
+import type { ComparisonRow, Paper, Review, ReviewType } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
 import { Charts } from "./charts";
 import { ConceptMapSection } from "./concept-map";
 import { EvidenceMapSection } from "./evidence-map";
 import { LitMatrixSection } from "./lit-matrix";
+import { MetaAnalysisSection } from "./meta-analysis";
 import { FilterBar, FilterStatus } from "./filter-bar";
 import { ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, QualityNote, QuestionDetails } from "./report-parts";
 import { ReportNav, SECTION_H2 as H2, type NavItem } from "./report-nav";
@@ -23,7 +24,9 @@ import { RailDrawer } from "./rail-drawer";
 import { SourceRail } from "./source-rail";
 import { L } from "./text";
 
-const TYPE_TERM: Record<"narrative" | "slr" | "scoping", TermKey> = { narrative: "narrativeReview", slr: "slr", scoping: "scopingReview" };
+const TYPE_TERM: Record<ReviewType, TermKey> = {
+  narrative: "narrativeReview", slr: "slr", scoping: "scopingReview", meta_analysis: "metaAnalysis",
+};
 
 const DL = "inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
 
@@ -101,7 +104,15 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const hasEvidenceMap = showsSection(type, "evidence_map") && (map.byConcept.rows.length > 0 || map.byYear.rows.length > 0);
   const filterStatus = <FilterStatus filters={filters} onChange={setFilters} shown={visible.length} total={papers.length} lang={lang} />;
   // Sections after the findings, in the order SECTIONS_BY_TYPE declares them (forest and prisma share Charts).
-  const tail: Record<"evidence_map" | "lit_matrix" | "concept_map" | "charts", { nav: NavItem; show: boolean; node: ReactNode }> = {
+  const hasMeta = showsSection(type, "meta") && hasPapers;
+  // The pool's outcome is an English matrix row: directions come from the English rows (the shown ones for an English review).
+  const metaRows = result.synthesis_en?.comparison?.length ? result.synthesis_en.comparison : result.synthesis?.comparison ?? [];
+  const tail: Record<"evidence_map" | "lit_matrix" | "concept_map" | "charts" | "meta", { nav: NavItem; show: boolean; node: ReactNode }> = {
+    meta: { nav: { id: "h-meta", label: L(lang, "ค่ารวม", "Pooled") }, show: hasMeta,
+      node: hasMeta && (
+        <MetaAnalysisSection meta={result.meta_analysis} papers={papers} rows={metaRows} lang={lang} english={lang === "en"}
+          filtered={isFiltered(filters)} quality={result.quality} onSelect={select} />
+      ) },
     evidence_map: { nav: { id: "h-evidence-map", label: L(lang, "แผนที่หลักฐาน", "Evidence map") }, show: hasEvidenceMap,
       node: hasEvidenceMap && <EvidenceMapSection map={map} lang={lang} /> },
     lit_matrix: { nav: { id: "h-litmatrix", label: L(lang, "ตารางงานวิจัย", "Literature matrix") }, show: hasLitMatrix, node: litMatrix },
@@ -116,7 +127,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   };
   const tailOrder = [...new Set(SECTIONS_BY_TYPE[type].flatMap((id) =>
     id === "forest" || id === "prisma" ? ["charts" as const]
-      : id === "evidence_map" || id === "lit_matrix" || id === "concept_map" ? [id] : []))];
+      : id === "evidence_map" || id === "lit_matrix" || id === "concept_map" || id === "meta" ? [id] : []))];
   const tailShown = tailOrder.filter((k) => tail[k].show);
   const navItems: NavItem[] = [
     { id: "h-summary", label: L(lang, "สรุป", "Summary") },

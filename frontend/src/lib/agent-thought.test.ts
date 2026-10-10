@@ -104,6 +104,11 @@ describe("thoughtFor", () => {
     const lines = paperLines(thoughtFor(s)?.detail as never);
     expect(lines.finding).toBe("ไม่มีข้อมูลทิศทาง · Cohort");
   });
+  it("synth mentions the pooled analyses once `pooled` arrives (meta_analysis)", () => {
+    const s = run([...WALK.filter((e) => e.seq <= 18), ev(30, "pooled", { pools: 2, k_total: 7, elapsed_s: 33 })]);
+    expect(thoughtFor(s)).toMatchObject({ key: "synth", body: "เทียบผลจาก 2 ฉบับและเขียนสรุป · คำนวณค่ารวมแล้ว 2 ชุด" });
+    expect(th(18).body).toBe("เทียบผลจาก 2 ฉบับและเขียนสรุป");
+  });
   it("synth is indeterminate; localize, finish; terminal -> null", () => {
     expect(th(18)).toMatchObject({ key: "synth", heading: "สังเคราะห์ผล", indeterminate: true,
       body: "เทียบผลจาก 2 ฉบับและเขียนสรุป" });

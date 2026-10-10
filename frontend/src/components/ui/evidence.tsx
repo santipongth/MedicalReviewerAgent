@@ -30,6 +30,24 @@ export function VerifiedNumber({
   return <span {...props}>{value}</span>;
 }
 
+/**
+ * A number the system computed (Plan 14b pooled analysis: pooled estimate, its CI, I², τ², SE, weights), never one
+ * read from a paper. Bai Jamjuree tabular figures with no verified tape, plus a small "คำนวณ" tag. Its accessible
+ * name always says it is computed, also when the visible tag is left off (a table column already headed as computed).
+ */
+export function ComputedNumber({ value, lang = "th", tag = true, className = "" }: {
+  value: string; lang?: Lang; tag?: boolean; className?: string;
+}) {
+  const name = `${value} ${L(lang, "(คำนวณโดยระบบ ไม่ใช่ตัวเลขจากงานวิจัย)", "(computed by the system, not a number from a study)")}`;
+  return (
+    <span role="img" aria-label={name} title={L(lang, "คำนวณโดยระบบ", "Computed by the system")}
+      className={`num-computed ${className}`} data-computed="true">
+      <span>{value}</span>
+      {tag && <span className="computed-tag">{L(lang, "คำนวณ", "computed")}</span>}
+    </span>
+  );
+}
+
 /** A value the verifier blanked: shown as a visible gap, never hidden or estimated. */
 export function Hole({ lang, className = "", explain = false }: { lang: Lang; className?: string; explain?: boolean }) {
   const slot = <span className={`hole ${className}`}>{t(lang, "notVerified")}</span>;

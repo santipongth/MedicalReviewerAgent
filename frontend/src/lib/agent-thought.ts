@@ -129,7 +129,9 @@ export function thoughtFor(s: Scene, opts: { framework?: "PICO" | "PCC" } = {}):
     case "external": return t("ใช้เป็นข้อมูลประกอบเท่านั้น ไม่ใช่แหล่งอ้างอิง", null);
     case "synth": {
       const p = c.synthPapers;
-      const body = p !== null ? `เทียบผลจาก ${p} ฉบับและเขียนสรุป` : "เทียบผลและเขียนสรุป";
+      const base = p !== null ? `เทียบผลจาก ${p} ฉบับและเขียนสรุป` : "เทียบผลและเขียนสรุป";
+      // meta_analysis: after `pooled` the step also says the pooled estimates are computed (a count, never a number).
+      const body = c.pools !== null ? `${base} · คำนวณค่ารวมแล้ว ${c.pools} ชุด` : base;
       // The stage caption (2D and 3D) already says this step shows no progress; not repeated here.
       return t(body, p !== null ? `จาก ${p} ฉบับ` : null, { indeterminate: true });
     }

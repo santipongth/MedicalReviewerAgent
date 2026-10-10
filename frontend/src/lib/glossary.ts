@@ -1,7 +1,7 @@
 export type TermKey =
   | "pico" | "evidenceStrength" | "riskOfBias"
   | "rct" | "nonRandomized" | "cohort" | "caseControl" | "crossSectional" | "caseSeries"
-  | "mendelian" | "srma" | "narrativeReview"
+  | "mendelian" | "srma" | "narrativeReview" | "metaAnalysis" | "heterogeneity"
   | "hr" | "or" | "rr" | "md" | "smd" | "rd" | "ci95"
   | "pcc" | "slr" | "scopingReview"
   | "logScale" | "prisma" | "relevance" | "notVerified" | "uncertain" | "directionTally" | "studyDesign";
@@ -106,6 +106,20 @@ export const GLOSSARY: Record<TermKey, { label: Bi; body: Bi }> = {
     body: {
       th: "รวบรวมงานวิจัยหลายชิ้นตามขั้นตอนที่กำหนดไว้ และอาจรวมผลทางสถิติเข้าด้วยกัน",
       en: "Collects many studies by a fixed procedure and may pool their results statistically.",
+    },
+  },
+  metaAnalysis: {
+    label: { th: "การวิเคราะห์อภิมาน", en: "meta-analysis" },
+    body: {
+      th: "การทบทวนอย่างเป็นระบบที่รวมขนาดผลของงานวิจัยหลักซึ่งวัดผลแบบเดียวกันเป็นค่าเดียว ในรายงานนี้ระบบคำนวณค่ารวมเองจากตัวเลขที่ตรวจกับบทคัดย่อแล้ว ค่ารวมจึงไม่ใช่ตัวเลขจากงานวิจัยฉบับใด",
+      en: "A systematic review that combines the effect sizes of primary studies measuring the same thing into one estimate. Here the system computes it from numbers checked against the abstracts, so the pooled value is not a number from any single study.",
+    },
+  },
+  heterogeneity: {
+    label: { th: "ความแตกต่างระหว่างงานวิจัย (I², τ²)", en: "heterogeneity (I², τ²)" },
+    body: {
+      th: "I² คือสัดส่วนของความแปรปรวนที่มาจากความต่างจริงระหว่างงานวิจัย ไม่ใช่ความบังเอิญ ตั้งแต่ 50% ขึ้นไปถือว่าต่างกันมาก τ² คือความแปรปรวนระหว่างงานวิจัยบนสเกลที่ใช้คำนวณ Q คือค่าทดสอบความแตกต่าง",
+      en: "I² is the share of the variation that comes from real differences between studies rather than chance; 50% or more counts as substantial. τ² is the between-study variance on the analysis scale. Q is the heterogeneity test statistic.",
     },
   },
   narrativeReview: {

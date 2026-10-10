@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { emptyReviewFixture, legacyReviewFixture, narrativeReviewFixture, reviewFixture, scopingReviewFixture } from "@/test/fixtures";
+import { emptyReviewFixture, legacyReviewFixture, metaReviewFixture, narrativeReviewFixture, reviewFixture, scopingReviewFixture } from "@/test/fixtures";
 
 vi.mock("./charts", () => ({ Charts: () => <section aria-labelledby="h-charts"><h2 id="h-charts">แผนภาพหลักฐาน</h2><div data-testid="charts" /></section> }));
 
@@ -371,6 +371,90 @@ describe("Report per review type", () => {
     render(<Report review={slr} />);
     expect(screen.getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนวรรณกรรมอย่างเป็นระบบ\)/)).toBeInTheDocument();
     expect(screen.queryByText("ต่ำมาก")).toBeNull();
+  });
+
+  it("meta-analysis: SLR sections plus the pooled section right after the charts, graded, typed badge", () => {
+    const { container } = render(<Report review={metaReviewFixture} />);
+    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-meta", "h-litmatrix", "h-map", "h-gaps", "h-papers", "h-method"]);
+    expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การวิเคราะห์อภิมาน");
+    expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำมาก");
+    expect(screen.getByTestId("charts")).toBeInTheDocument();
+  });
+
+  it("meta-analysis: the banner, and every pooled value only as a computed number", () => {
+    render(<Report review={metaReviewFixture} />);
+    const section = screen.getByRole("heading", { name: /การวิเคราะห์อภิมาน: ค่ารวม/ }).closest("section")!;
+    expect(within(section).getByText("คำนวณโดยระบบจากตัวเลขที่ตรวจกับบทคัดย่อแล้ว — ไม่ใช่ผลจากงานวิจัยฉบับใด")).toBeInTheDocument();
+    const block = within(section).getByRole("article", { name: "ผลลัพธ์หลัก · งานเชิงสังเกต · HR" });
+    const est = within(block).getAllByRole("img", { name: /^0\.96 \(คำนวณโดยระบบ/ });
+    expect(est.length).toBeGreaterThan(0);
+    for (const el of est) {
+      expect(el).toHaveClass("num-computed");
+      expect(el.closest(".num-verified")).toBeNull();
+    }
+    expect(est[0]).toHaveTextContent("0.96คำนวณ");
+    expect(within(block).getAllByRole("img", { name: /^0\.78–1\.17 \(คำนวณ/ }).length).toBeGreaterThan(0);
+    // the heterogeneity line
+    for (const v of ["81%", "0.025", "10.61", "0.005"]) expect(within(block).getByRole("img", { name: new RegExp(`^${v.replace(".", "\\.")} \\(คำนวณ`) })).toBeInTheDocument();
+    expect(block).toHaveTextContent("k = 3");
+    // no pooled number is ever in the verified face
+    for (const el of section.querySelectorAll(".num-verified")) expect(el.textContent).not.toMatch(/0\.96|0\.78–1\.17/);
+    // pool-specific warnings in Thai; the method limits once in the banner
+    expect(within(block).getByText(/มีงานวิจัยน้อยกว่า 5 ฉบับ/)).toBeInTheDocument();
+    expect(within(block).getByText(/งานวิจัยให้ผลต่างกันมาก \(I² ตั้งแต่ 50%\)/)).toBeInTheDocument();
+    expect(within(section).getByRole("list", { name: "ข้อจำกัดของทุกค่ารวม" })).toHaveTextContent(/บทคัดย่อเท่านั้น.*95%.*ปรับปัจจัยกวน/);
+  });
+
+  it("meta-analysis: 'วิธีคำนวณ' lists every input with verified effect and CI, computed SE and weight, then method and version", async () => {
+    render(<Report review={metaReviewFixture} />);
+    const block = screen.getByRole("article", { name: /ผลลัพธ์หลัก/ });
+    await userEvent.click(within(block).getByText("วิธีคำนวณ"));
+    const table = within(block).getByRole("table", { name: /ตัวเลขที่ใช้คำนวณค่ารวม/ });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(3);
+    const p3 = within(rows[0]);
+    expect(p3.getByRole("button", { name: "P3" })).toBeInTheDocument();
+    expect(p3.getByRole("button", { name: "0.84" })).toHaveClass("num-verified");
+    expect(p3.getByText("0.72–0.98")).toHaveClass("num-verified");
+    expect(p3.getByRole("img", { name: /^0\.079 \(คำนวณ/ })).toBeInTheDocument();
+    expect(p3.getByRole("img", { name: /^33\.2% \(คำนวณ/ })).toBeInTheDocument();
+    expect(within(block).getByText(/DerSimonian-Laird random effects · รุ่น meta-1/)).toBeInTheDocument();
+    await userEvent.click(p3.getByRole("button", { name: "0.84" }));
+    expect(rail().getByText(/Simulated study 3/)).toBeInTheDocument();
+  });
+
+  it("meta-analysis: the pooled forest plot, SR/MA reference rows and exclusions summarised by reason", async () => {
+    render(<Report review={metaReviewFixture} />);
+    const section = screen.getByRole("heading", { name: /การวิเคราะห์อภิมาน: ค่ารวม/ }).closest("section")!;
+    expect(within(section).getByRole("img", { name: /Forest plot ค่ารวมของ 3 งานวิจัย/ })).toBeInTheDocument();
+    const ref = within(section).getByRole("heading", { name: /งานทบทวนอย่างเป็นระบบที่พบ/ }).parentElement!;
+    expect(within(ref).getByRole("button", { name: "0.81" })).toHaveClass("num-verified");
+    expect(within(ref).getByText("0.70–0.94")).toHaveClass("num-verified");
+    expect(ref).toHaveTextContent("SR/MA ของ RCT");
+    const ex = within(section).getByRole("heading", { name: "ผลที่ไม่ได้นำมารวม" }).parentElement!;
+    expect(within(ex).getAllByRole("listitem")).toHaveLength(1);
+    expect(ex).toHaveTextContent(/งานที่วัดผลแบบเดียวกันมีไม่ถึง 3 ฉบับ.*4 รายการ/);
+    expect(ex).toHaveTextContent("ผลลัพธ์หลัก: P1, P2 · ผลด้านความปลอดภัย: P1, P3");
+    expect(within(section).getByText(/ความไม่สอดคล้อง: งานวิจัยในค่ารวมของผลลัพธ์หลัก/)).toBeInTheDocument();
+    // English view: English outcome names and labels
+    await userEvent.click(screen.getByRole("button", { name: "English" }));
+    expect(screen.getByRole("article", { name: "Primary outcome · observational studies · HR" })).toBeInTheDocument();
+    expect(screen.getByText("Computed by the system from numbers checked against the abstracts — not a result of any single study")).toBeInTheDocument();
+  });
+
+  it("meta-analysis: a failed pooling says so; no pools says nothing was pooled; other types have no pooled section", () => {
+    const failed = { ...metaReviewFixture, result: { ...metaReviewFixture.result!, meta_analysis: null } };
+    const a = render(<Report review={failed} />);
+    expect(screen.getByText(/ขั้นตอนรวมผลทำไม่สำเร็จ/)).toBeInTheDocument();
+    expect(screen.queryByText(/ไม่ใช่ผลจากงานวิจัยฉบับใด/)).toBeNull();
+    a.unmount();
+    const none = { ...metaReviewFixture, result: { ...metaReviewFixture.result!, meta_analysis: { ...metaReviewFixture.result!.meta_analysis!, pools: [] } } };
+    const b = render(<Report review={none} />);
+    expect(screen.getByText(/จึงไม่ได้คำนวณค่ารวม/)).toBeInTheDocument();
+    expect(b.container.querySelector(".num-computed")).toBeNull();
+    b.unmount();
+    const slr = render(<Report review={{ ...metaReviewFixture, result: { ...metaReviewFixture.result!, review_type: "slr" as const } }} />);
+    expect(slr.container.querySelector("#h-meta")).toBeNull();
   });
 
   it("slr with a grade keeps the strength bar", () => {

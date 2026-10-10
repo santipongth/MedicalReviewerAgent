@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { Glyph, Hole, UncertainFlag, VerifiedNumber } from "./evidence";
+import { ComputedNumber, Glyph, Hole, UncertainFlag, VerifiedNumber } from "./evidence";
 
 describe("evidence primitives", () => {
   it("VerifiedNumber uses the verified style and is a button when clickable", () => {
@@ -9,6 +9,17 @@ describe("evidence primitives", () => {
     const el = screen.getByRole("button", { name: /HR 0.80/ });
     expect(el).toHaveClass("num-verified");
     expect(el).not.toHaveAttribute("data-pending");
+  });
+
+  it("ComputedNumber has no verified tape, a small คำนวณ tag and a name that says it is computed", () => {
+    const { rerender } = render(<ComputedNumber value="0.96" />);
+    const el = screen.getByRole("img", { name: "0.96 (คำนวณโดยระบบ ไม่ใช่ตัวเลขจากงานวิจัย)" });
+    expect(el).toHaveClass("num-computed");
+    expect(el).not.toHaveClass("num-verified");
+    expect(el).toHaveTextContent("0.96คำนวณ");
+    expect(el.querySelector(".computed-tag")).toHaveTextContent("คำนวณ");
+    rerender(<ComputedNumber value="81%" lang="en" tag={false} />);
+    expect(screen.getByRole("img", { name: "81% (computed by the system, not a number from a study)" })).toHaveTextContent(/^81%$/);
   });
 
   it("a pending VerifiedNumber has no tape yet", () => {
