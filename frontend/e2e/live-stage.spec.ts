@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 const ref = (i: number) => `P${i}`;
-const running =(route: Route) => json(route, 200, { ...reviewFixture, status: "running", result: null });
+const running = (route: Route) => json(route, 200, { ...reviewFixture, status: "running", result: null });
 const REFINED: Ev = ["question_refined", { refined_question: "คำถามที่ปรับแล้ว", interpretation: "ตีความ", sub_questions: [], assumptions: [], elapsed_s: 4 }];
 
 const PRE_READ: { ev: Ev; agent: string; status: string }[] = [

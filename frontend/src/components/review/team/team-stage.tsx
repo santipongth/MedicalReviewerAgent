@@ -2,7 +2,7 @@
 import { animate, useReducedMotion } from "motion/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { stageCaption, type ReaderSlot, type Scene } from "@/lib/agent-scene";
-import { arc, SLOT_R, type Pt } from "@/lib/agent-layout";
+import { arc, REF_FONT, SLOT_R, type Pt } from "@/lib/agent-layout";
 import {
   PHASE_NOTE, TEAM, handoffs, memberLabel, teamOf, teamSummary, type MemberState, type TeamOpts,
 } from "@/lib/agent-team";
@@ -71,10 +71,24 @@ function Avatar({ m, wide }: { m: MemberState; wide: boolean }) {
 function Pool({ slots, fixedRows }: { slots: ReaderSlot[]; fixedRows: boolean }) {
   const rows = fixedRows ? 3 : Math.max(1, Math.ceil(slots.length / POOL_COLS));
   const layout = useMemo(() => ({ slots: poolSlots(slots.length), slotR: SLOT_R }), [slots.length]);
-  if (!fixedRows && slots.length === 0) return null;
+  // The pool scales with its card (about 0.8 at 1024px), so refs get a larger font in user units to stay >= 11px on
+  // screen. At 13.75 units a three-character ref still fits inside the 24-unit slot circle.
+  const svg = useRef<SVGSVGElement>(null);
+  const [scale, setScale] = useState(1);
+  const present = fixedRows || slots.length > 0;
+  useLayoutEffect(() => {
+    const el = svg.current;
+    if (!present || !el || typeof ResizeObserver === "undefined") return;
+    const fit = () => { const w = el.getBoundingClientRect().width; if (w > 0) setScale(Math.min(1, w / (POOL_COLS * PITCH))); };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [present]);
+  if (!present) return null;
   return (
-    <svg aria-hidden="true" viewBox={`0 0 ${POOL_COLS * PITCH} ${rows * PITCH}`} className="block h-auto w-full max-w-[280px]" data-pool>
-      <ReaderPool slots={slots} layout={layout} />
+    <svg ref={svg} aria-hidden="true" viewBox={`0 0 ${POOL_COLS * PITCH} ${rows * PITCH}`} className="block h-auto w-full max-w-[280px]" data-pool>
+      <ReaderPool slots={slots} layout={layout} refFont={REF_FONT / scale} />
     </svg>
   );
 }
@@ -212,6 +226,10 @@ function TeamLegend() {
  * as text, and a speech bubble built only from received events (agent-team.ts). Wide: five cards in a row inside the
  * steps view's constant 960/288 box (the reader's card is wider and holds the reader pool). Narrow: a vertical list.
  */
+// Known and accepted: the view preference is read after hydration (useSyncExternalStore, server snapshot "team"), so a
+// user whose stored view is "steps" or "3d" sees the team placeholder first and then a swap. The wide box is the same
+// size either way; only the narrow list differs in height, which is a one-time jump we accept over a flash of the
+// wrong view or blocking render on storage.
 export function TeamStage({ scene, connection, ...opts }: { scene: Scene; connection?: Connection } & TeamOpts) {
   const wide = useWide();
   const box = useRef<HTMLDivElement>(null);

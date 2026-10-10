@@ -1,6 +1,6 @@
 "use client";
 import { animate, useReducedMotion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useChangedSinceMount } from "../stage/use-changed";
 
 export type BubbleTone = "speaking" | "working" | "quiet" | "alert";
@@ -78,13 +78,44 @@ export function SpeechBubble({ text, tone, tail, tailAt, lines = 4 }: {
     return () => { ctl.stop(); finish(); };
   }, [text, live]);
   const t = TONE[tone];
+  // A clamped line gets a small "อ่านต่อ" toggle (only when it is really cut off; the full text is always in the DOM).
+  // Narrow: the text grows in place. Wide: the box and cards are fixed, so the full text opens as a panel over the
+  // cards below instead of pushing the layout.
+  const [open, setOpen] = useState(false);
+  const [cut, setCut] = useState(false);
+  const para = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const el = para.current;
+    if (!el || open) return;
+    const measure = () => setCut(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, open]);
+  const inline = tail === "left";
+  const clamp = lines === 3 ? "line-clamp-3" : "line-clamp-4";
+  const showToggle = cut || open;
   return (
     <div ref={root} data-bubble={tone} className={`group/bubble relative min-w-0 rounded-sm border px-2.5 py-1.5 ${t.box}`}>
       <Tail side={tail} tone={tone} at={tailAt} />
-      <p className={`relative text-xs leading-[1.45] break-words ${lines === 3 ? "line-clamp-3" : "line-clamp-4"} ${t.text}`}>
+      <p ref={para} className={`relative text-xs leading-[1.45] break-words ${open && inline ? "" : clamp} ${t.text}`}>
         <span data-line className="group-data-[typing]/bubble:text-transparent">{text}</span>
         <span ref={typed} aria-hidden="true" data-typed className="absolute inset-0" />
       </p>
+      {open && !inline && (
+        <div data-bubble-full aria-hidden="true" className={`absolute inset-x-0 top-0 z-20 rounded-sm border px-2.5 py-1.5 text-xs leading-[1.45] break-words bg-surface ${t.box.replace("bg-transparent", "")} ${t.text}`}>
+          {text}
+          <span className="block h-6 pointer-coarse:h-11" />
+        </div>
+      )}
+      {showToggle && (
+        <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-bubble-toggle
+          className={`z-30 flex min-h-6 items-center font-display text-xs text-primary underline underline-offset-2 pointer-coarse:min-h-11 ${open && !inline ? "absolute inset-x-2.5 bottom-0" : "relative"}`}>
+          {open ? "ย่อ" : "อ่านต่อ"}
+        </button>
+      )}
     </div>
   );
 }

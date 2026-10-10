@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { graphemes, SpeechBubble, typeDuration } from "./speech-bubble";
 
@@ -78,5 +78,23 @@ describe("SpeechBubble", () => {
     const { container } = render(<SpeechBubble text="x" tone="working" tail="up" tailAt="38px" />);
     const tail = bubble(container).querySelector("svg") as SVGSVGElement;
     expect(tail.style.left).toMatch(/^calc\((38px - 7px|31px)\)$/); // the tip, not the tail's left edge, sits at 38px
+  });
+
+  it("offers a read-more toggle only when the text is cut off, and it expands and collapses", () => {
+    const sh = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(100);
+    const ch = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(50);
+    const { container, getByRole } = render(<SpeechBubble text={"ยาว ".repeat(40)} tone="working" tail="left" />);
+    const btn = getByRole("button", { name: "อ่านต่อ" });
+    expect(btn).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelector("p")).toHaveClass("line-clamp-4");
+    fireEvent.click(btn);
+    expect(getByRole("button", { name: "ย่อ" })).toHaveAttribute("aria-expanded", "true");
+    expect(container.querySelector("p")).not.toHaveClass("line-clamp-4");
+    sh.mockRestore(); ch.mockRestore();
+  });
+
+  it("no toggle for text that fits", () => {
+    const { queryByRole } = render(<SpeechBubble text="สั้น" tone="working" tail="up" />);
+    expect(queryByRole("button")).toBeNull();
   });
 });

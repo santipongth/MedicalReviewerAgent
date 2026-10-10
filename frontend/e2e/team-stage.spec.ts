@@ -142,7 +142,9 @@ test("switching team / steps / 3D keeps the stage box and the header row, and th
   await expect(page.locator("[data-team-stage]")).toBeVisible();
   await page.reload();
   await expect(page.locator("[data-team-stage]")).toBeVisible();
-  for (const name of ["ทีมเอเจนต์", "ขั้นตอน"]) {
+  const names = ["ทีมเอเจนต์", "ขั้นตอน"];
+  if (await viewButton(page, "3D").count()) names.push("3D");
+  for (const name of names) {
     const b = (await viewButton(page, name).boundingBox())!;
     expect(b.height).toBeGreaterThanOrEqual(44);
     expect(b.width).toBeGreaterThanOrEqual(44);
@@ -177,11 +179,14 @@ for (const width of [1024, 1440]) {
         });
         const sizes = [...boxEl.querySelectorAll("li span, li p, li li")].filter((e) => (e.textContent ?? "").trim() && !e.closest("svg"))
           .map((e) => parseFloat(getComputedStyle(e).fontSize));
-        return { b: { top: b.top, bottom: b.bottom, left: b.left, right: b.right }, cards, minFont: Math.min(...sizes),
+        // svg text (reader refs) scales with its viewBox: effective size = font-size x the CTM's scale
+        const svgSizes = [...boxEl.querySelectorAll("li svg text")].map((t) => parseFloat(getComputedStyle(t).fontSize) * (t as SVGTextElement).getScreenCTM()!.a);
+        return { b: { top: b.top, bottom: b.bottom, left: b.left, right: b.right }, cards, minFont: Math.min(...sizes), minSvgFont: Math.min(...svgSizes),
           scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth };
       });
       expect(geo.scrollW).toBeLessThanOrEqual(geo.innerW);
       expect(geo.minFont).toBeGreaterThanOrEqual(12);
+      if (name === "reading") expect(geo.minSvgFont, "reader refs effective px").toBeGreaterThanOrEqual(10.95);
       for (const c of geo.cards) {
         expect(c.bottom, `${c.id} card in box`).toBeLessThanOrEqual(geo.b.bottom + 0.5);
         expect(c.maxBottom, `${c.id} content in card`).toBeLessThanOrEqual(c.bottom + 0.5);
@@ -227,8 +232,8 @@ test("390px before any paper: the list is as tall as its loading placeholder (no
   expect(Math.abs(h - TEAM_NARROW_HEIGHT)).toBeLessThan(24);
 });
 
-for (const width of [1440, 390]) {
-  for (const scheme of ["light", "dark"] as const) {
+for (const width of [1440, 1024, 390]) {
+  for (const scheme of (width === 1024 ? ["light"] : ["light", "dark"]) as ("light" | "dark")[]) {
     test(`axe: team view at ${width}px, ${scheme}`, async ({ page }) => {
       await page.setViewportSize({ width, height: width > 500 ? 1000 : 844 });
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });

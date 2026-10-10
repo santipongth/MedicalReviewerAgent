@@ -66,7 +66,7 @@ function Marker({ state }: { state: SegState }) {
 /** The four phase names as text, in order; the current one is marked with aria-current="step". */
 export function PhaseLabels({ name, phase, passed, cols }: { name: string; phase: Phase | null; passed: readonly Phase[]; cols: 2 | 4 }) {
   return (
-    <ol aria-label={`ขั้นของ${name}`}className={`grid font-display text-xs leading-4 ${cols === 2 ? "grid-cols-2 gap-x-2 gap-y-0.5" : "grid-flow-col justify-start gap-x-3"}`}>
+    <ol aria-label={`ขั้นของ${name}`} className={`grid font-display text-xs leading-4 ${cols === 2 ? "grid-cols-2 gap-x-2 gap-y-0.5" : "grid-flow-col justify-start gap-x-3"}`}>
       {PHASES.map((p) => {
         const st = segState(p, phase, passed);
         return (
