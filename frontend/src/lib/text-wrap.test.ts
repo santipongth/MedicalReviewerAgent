@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clampLabel, hasThai, softBreaks, thaiChunks, wordSegments, wrapLabel, ZWSP } from "./text-wrap";
+import { clampLabel, hasThai, thaiChunks, wordSegments, wrapLabel } from "./text-wrap";
 
 const len = (s: string) => [...s].length;
 
@@ -23,10 +23,13 @@ describe("Thai segmentation helpers (Plan 20 Task 7)", () => {
     expect(hasThai("")).toBe(false);
   });
 
-  it("segments with the Thai word dictionary (Intl.Segmenter('th', word))", () => {
+  it("segments with the Thai word dictionary (Intl.Segmenter('th', word)), built once and reused", () => {
+    const text = "ผู้ป่วยกลัวการฉีดยาและการตีตรา";
+    expect(wordSegments(text)).toEqual([...new Intl.Segmenter("th", { granularity: "word" }).segment(text)].map((s) => s.segment));
     const spy = vi.spyOn(Intl, "Segmenter");
-    wordSegments("ยาหลอก");
-    expect(spy).toHaveBeenCalledWith("th", { granularity: "word" });
+    wordSegments(text);
+    thaiChunks(text);
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it("thaiChunks: break opportunities only between two Thai words, the text unchanged when joined", () => {
@@ -65,19 +68,32 @@ describe("Thai segmentation helpers (Plan 20 Task 7)", () => {
     expect(mixed.some((c) => c.includes("HR 0.86"))).toBe(true);
   });
 
-  it("without Intl.Segmenter the text is unchanged (one chunk, no zero-width spaces)", () => {
+  it("without Intl.Segmenter the text is unchanged (one chunk)", () => {
     withoutSegmenter(() => {
       expect(thaiChunks("อุบัติการณ์มะเร็งลำไส้ใหญ่")).toEqual(["อุบัติการณ์มะเร็งลำไส้ใหญ่"]);
-      expect(softBreaks("อุบัติการณ์มะเร็งลำไส้ใหญ่")).toBe("อุบัติการณ์มะเร็งลำไส้ใหญ่");
     });
   });
 
-  it("softBreaks puts a zero-width space at each Thai word boundary (SVG and canvas text)", () => {
-    const text = "อุบัติการณ์มะเร็งลำไส้ใหญ่";
-    const out = softBreaks(text);
-    expect(out.replaceAll(ZWSP, "")).toBe(text);
-    expect(out.split(ZWSP)).toEqual(thaiChunks(text));
-    expect(softBreaks("Sensitivity")).toBe("Sensitivity");
+  // Task 7 review finding 1: punctuation between Thai words must stay a break opportunity
+  it("breaks after / – — - , ) and before ( next to Thai, keep-whole words still whole", () => {
+    const cases: [string, string[]][] = [
+      ["เมตฟอร์มิน/ซัลโฟนิลยูเรีย", ["เมตฟอร์มิน/", "ซัลโฟนิลยูเรีย"]],
+      ["กลุ่มควบคุม–กลุ่มทดลอง", ["กลุ่ม", "ควบคุม–", "กลุ่ม", "ทดลอง"]],
+      ["ยา—ยาหลอก", ["ยา—", "ยาหลอก"]],
+      ["ยา-ยาหลอก", ["ยา-", "ยาหลอก"]],
+      ["ยาหลอก,ยา", ["ยาหลอก,", "ยา"]],
+    ];
+    for (const [text, chunks] of cases) expect(thaiChunks(text), text).toEqual(chunks);
+    const slash = thaiChunks("ยาหลอก/การรักษามาตรฐาน");
+    expect(slash[0]).toBe("ยาหลอก/");
+    expect(slash.join("")).toBe("ยาหลอก/การรักษามาตรฐาน");
+    const parens = thaiChunks("เบาหวาน(ชนิดที่2)ที่");
+    expect(parens.join("")).toBe("เบาหวาน(ชนิดที่2)ที่");
+    expect(parens).toContain("เบาหวาน");
+    expect(parens.some((c) => c.startsWith("("))).toBe(true);
+    expect(parens.some((c) => c.endsWith(")"))).toBe(true);
+    // no break inside Latin or number runs: COVID-19, 0.77–0.96, HR/OR
+    expect(thaiChunks("ผู้ป่วย COVID-19 ค่า 0.77–0.96 แบบ HR/OR").every((c) => !/^(19|0\.96|OR)/.test(c))).toBe(true);
   });
 });
 

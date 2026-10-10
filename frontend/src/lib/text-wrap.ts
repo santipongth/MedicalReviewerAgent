@@ -9,15 +9,17 @@ const THAI = /[฀-๿]/;
 /** A Thai letter or mark: not ฯ, ๆ, ๏, the digits or the baht sign (nothing may break before ๆ or ฯ). */
 const THAI_LETTER = /[ก-ฮะ-ฺเ-ๅ็-๎]/;
 
-/** Zero-width space: a break opportunity in text that cannot hold a <wbr> (SVG, canvas, attributes). */
-export const ZWSP = "​";
-
 export function hasThai(text: string | null | undefined): boolean {
   return !!text && THAI.test(text);
 }
 
-const segmenter = () => (typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
-  ? new Intl.Segmenter("th", { granularity: "word" }) : null);
+let cached: Intl.Segmenter | null = null;
+/** One Thai word segmenter for the page (built on first use); null where the engine has no Intl.Segmenter. */
+function segmenter(): Intl.Segmenter | null {
+  if (typeof Intl === "undefined" || typeof Intl.Segmenter !== "function") return null;
+  cached ??= new Intl.Segmenter("th", { granularity: "word" });
+  return cached;
+}
 
 /** `text` cut at word boundaries: words and the spaces/punctuation between them, in order (joined, they are `text`). */
 export function wordSegments(text: string): string[] {
@@ -40,11 +42,15 @@ function isFragment(seg: string): boolean {
   return /^[ก-ฮ]$/.test(seg) || /^[ก-ฮ][ั-ฺ็-๋]?์$/.test(seg);
 }
 
+/** Punctuation a line may break after (a slash or dash joining two Thai words, a comma, a closing bracket). */
+const BREAK_AFTER = /[/–—,)-]/;
+
 /**
- * Thai text in pieces that may each start a new line (Plan 20 Task 7): a break opportunity only where two Thai words
- * meet (Thai has no spaces between words), never inside a THAI_KEEP_WHOLE word or before a dictionary fragment; spaces
- * already break, and Latin words, numbers and punctuation stay as they are. Without Intl.Segmenter, or for text with no
- * Thai, one piece (the text unchanged).
+ * Thai text in pieces that may each start a new line (Plan 20 Task 7): a break opportunity where two Thai words meet
+ * (Thai has no spaces between words), and after / – — - , ) or before ( when a Thai letter is next to it (fix round 1:
+ * "ยา/ยาหลอก" must not become one unbreakable run); never inside a THAI_KEEP_WHOLE word or before a dictionary fragment.
+ * Spaces already break, and Latin words and numbers stay whole ("COVID-19", "0.77–0.96"). Without Intl.Segmenter, or
+ * for text with no Thai, one piece (the text unchanged).
  */
 export function thaiChunks(text: string): string[] {
   if (!hasThai(text) || !segmenter()) return [text];
@@ -52,12 +58,18 @@ export function thaiChunks(text: string): string[] {
   for (const w of THAI_KEEP_WHOLE) {
     for (let i = text.indexOf(w); i >= 0; i = text.indexOf(w, i + w.length)) kept.push([i, i + w.length]);
   }
+  const thai = (i: number) => i >= 0 && i < text.length && THAI_LETTER.test(text[i]);
   const chunks: string[] = [];
   let cur = "";
   let at = 0;
   for (const seg of wordSegments(text)) {
     const inside = kept.some(([a, b]) => at > a && at < b);
-    if (cur && !inside && !isFragment(seg) && THAI_LETTER.test(cur.slice(-1)) && THAI_LETTER.test(seg.charAt(0))) {
+    const a = text[at - 1] ?? "";
+    const b = text[at] ?? "";
+    const words = thai(at - 1) && thai(at) && !isFragment(seg);
+    const after = BREAK_AFTER.test(a) && !/\s/.test(b) && (thai(at - 2) || thai(at));
+    const before = b === "(" && !/\s/.test(a) && (thai(at - 1) || thai(at + 1));
+    if (cur && !inside && (words || after || before)) {
       chunks.push(cur);
       cur = seg;
     } else {
@@ -67,11 +79,6 @@ export function thaiChunks(text: string): string[] {
   }
   if (cur) chunks.push(cur);
   return chunks;
-}
-
-/** The text with a zero-width space at each Thai word boundary (thaiChunks), for SVG and canvas labels. */
-export function softBreaks(text: string): string {
-  return thaiChunks(text).join(ZWSP);
 }
 
 /**

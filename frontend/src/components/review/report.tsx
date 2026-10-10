@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { conceptTree } from "@/lib/concept-map";
 import { emptyFilters, filterPapers, isFiltered, isPooled, themePapers, type Filters } from "@/lib/charts-data";
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
@@ -67,10 +67,11 @@ const TOP: Record<Exclude<TopSectionId, "title">, { id: string; nav: Pair; h2?: 
 
 /**
  * The page speaks the report's language (Plan 20 Task 7): `<html lang>` follows the language shown (the site header and
- * footer read it), and goes back to what it was when the report closes.
+ * footer read it), and goes back to what it was when the report closes. A layout effect: set before the first paint, so
+ * an English report never shows a Thai header for a frame (fix round 1).
  */
 function useDocumentLang(lang: Lang) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     const before = root.lang;
     root.lang = lang;

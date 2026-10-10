@@ -57,7 +57,7 @@ export function Term({
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((v) => !v)}
-        className="cursor-pointer border-b border-dotted border-primary bg-transparent p-0 text-inherit"
+        className="cursor-pointer border-b border-dotted border-primary bg-transparent p-0 text-left text-inherit"
       >
         {children ?? L(lang, entry.label.th, entry.label.en)}
       </button>

@@ -738,6 +738,25 @@ export const P20_FIXTURES: Record<"slr" | "meta" | "metaNoPool" | "scoping" | "n
   narrative: narrativeP20ReviewFixture, legacy: legacyReviewFixture,
 };
 
+// --- Plan 20 Task 7 fix round 1: long Thai runs joined by slashes and dashes (no space anywhere) ---------------------
+
+const SLASHED = "การใช้ยาเมตฟอร์มินร่วมกับการปรับพฤติกรรม/ยาซัลโฟนิลยูเรีย/ยาหลอก–การรักษามาตรฐานในผู้ป่วยเบาหวานชนิดที่สอง";
+
+/** An SLR whose question, summary-of-findings outcome and literature-matrix cells are long slash/dash-joined Thai. */
+export const slashedThaiReviewFixture: Review = {
+  ...slrP20ReviewFixture,
+  id: "20200000-0000-4000-8000-000000000071",
+  result: {
+    ...slrP20ReviewFixture.result!,
+    question: { ...slrP20ReviewFixture.result!.question!, refined_question: `${SLASHED}ลดอุบัติการณ์มะเร็งลำไส้ใหญ่หรือไม่` },
+    synthesis: {
+      ...slrP20ReviewFixture.result!.synthesis!,
+      key_findings: slrP20ReviewFixture.result!.synthesis!.key_findings!.map((k, i) => (i === 0 ? { ...k, outcome: `อุบัติการณ์/${SLASHED}` } : k)),
+    },
+    papers: slrP20ReviewFixture.result!.papers!.map((p) => (p.card ? { ...p, card: { ...p.card, population: SLASHED, intervention_or_exposure: SLASHED } } : p)),
+  },
+};
+
 // --- Plan 20 Task 7: the same reviews written in English (result.language "en") ------------------------------------------
 
 const THAI = /[฀-๿]/;

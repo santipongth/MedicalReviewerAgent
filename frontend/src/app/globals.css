@@ -235,11 +235,17 @@ h4 {
   white-space: nowrap;
 }
 
-/* Plan 20 Task 7: Thai segmented by ThaiText (each word in .nw, a <wbr> between words). The strict rules help engines
-   that honour them for Thai; Chromium does not, which is why the words themselves are .nw. */
+/* Plan 20 Task 7: Thai segmented by ThaiText (each word a .th-w, a <wbr> between words). The strict rules help engines
+   that honour them for Thai; Chromium does not, which is why each word does not wrap. Words stay inline (an inline-block
+   word would add spaces to a heading's accessible name in Chromium); a run too long to be one word is left as plain text,
+   which `overflow-wrap: anywhere` may break as a last resort, so nothing overflows (fix round 1). */
 .th-seg {
   line-break: strict;
   word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.th-w {
+  white-space: nowrap;
 }
 
 /* Running prose in the report (answer, findings, claims, gaps, limitations, methods): the body size in English, the

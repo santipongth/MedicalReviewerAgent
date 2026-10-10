@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { THAI_KEEP_WHOLE } from "../src/lib/text-wrap";
-import { emptyReviewFixture, P20_FIXTURES, P20_FIXTURES_EN } from "../src/test/fixtures";
+import { emptyReviewFixture, P20_FIXTURES, P20_FIXTURES_EN, slashedThaiReviewFixture } from "../src/test/fixtures";
 import type { Review } from "../src/lib/types";
 import { json, mockApi } from "./mock-api";
 
@@ -125,6 +125,75 @@ test("Thai at 390: the H1 and the selection-flow boxes never break inside a word
   await page.locator("[data-prisma-flow]").scrollIntoViewIfNeeded();
   await page.screenshot({ path: shot("th-390-flow") });
 });
+
+test("Thai at 390: long slash/dash-joined Thai in the H1, a summary-of-findings cell and the matrix never overflows", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, slashedThaiReviewFixture, "th");
+  const overflow = await page.evaluate(() => {
+    const over = (el: Element | null) => (el ? el.scrollWidth - el.clientWidth : -1);
+    return {
+      page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      h1: over(document.querySelector("h1")),
+      sof: over(document.querySelector("[data-sof-row] th")),
+      lit: over(document.querySelector("[data-lit-card]")),
+      // no Thai word box sticks out past the viewport
+      words: [...document.querySelectorAll(".th-w")]
+        .filter((w) => w.getBoundingClientRect().right > document.documentElement.clientWidth + 1).map((w) => w.textContent),
+    };
+  });
+  expect(overflow).toEqual({ page: 0, h1: 0, sof: 0, lit: 0, words: [] });
+  // the slashes are where the H1 breaks
+  expect((await brokenWords(page, "h1")).lines).toBeGreaterThan(2);
+  await page.screenshot({ path: shot("th-390-slashed-top") });
+  await page.locator("#h-sof").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: shot("th-390-slashed-sof") });
+});
+
+test("an English report paints its first frame with the English header (no Thai flash)", async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __firstReportFrame?: string };
+    const tick = () => {
+      if (w.__firstReportFrame === undefined && document.querySelector("h1")) {
+        w.__firstReportFrame = document.querySelector("header nav")?.textContent ?? "";
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, P20_FIXTURES_EN.slr, "en");
+  const first = await page.evaluate(() => (window as unknown as { __firstReportFrame?: string }).__firstReportFrame);
+  expect(first).toContain("Literature review");
+  expect(first).not.toMatch(THAI);
+});
+
+/** English allowed in a Thai report's chrome: abbreviations and names that the report glosses or that have no Thai form. */
+// The design names "RCT", "Cohort", "Case-control" and "Mendelian randomization" are the Thai labels too (DESIGN_LABEL.th).
+const SHARED_EN = /^(k|n|SE( \(ln\))?|95% CI|AUC|HR|OR|RR|MD|SMD|RD|r|PICO|PCC|PICo|SR\/MA|GRADE-lite|HTML|Markdown|CSV|JSON|Medical Reviewer Agent|P\d+( .*)?|Forest plot.*|PubMed|Europe PMC|OpenAlex|RCT|Cohort|Case-control|Mendelian randomization)$/;
+
+for (const type of TYPES) {
+  test(`${type} in Thai: no English in the chrome beyond glossed abbreviations and names`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await open(page, P20_FIXTURES[type], "th");
+    const english = await page.evaluate(() => {
+      const els = document.querySelectorAll([
+        "main h2", "main summary", "main th[scope=col]", "main legend", "main label", "main figcaption", "main caption",
+        "main nav[aria-label]", "main [role=region][aria-label]", "main [role=group][aria-label]", "main ul[aria-label]",
+        "main ol[aria-label]", "main dl[aria-label]", "main dt", "header nav", "footer h2", "footer nav[aria-label]",
+      ].join(","));
+      const out: string[] = [];
+      for (const el of els) {
+        const label = el.getAttribute("aria-label");
+        if (label) out.push(label.trim());
+        else if (!el.matches("[aria-label]")) out.push((el.textContent ?? "").trim());
+      }
+      return out.filter(Boolean);
+    });
+    expect(english.length).toBeGreaterThan(20);
+    expect(english.filter((t) => !THAI.test(t) && !SHARED_EN.test(t))).toEqual([]);
+  });
+}
 
 test("reading size: Thai 17px / 1.75, English the body size (16px / 1.7)", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
