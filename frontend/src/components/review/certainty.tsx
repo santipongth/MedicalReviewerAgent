@@ -1,4 +1,5 @@
 import { STRENGTH_LABEL, type Lang } from "@/lib/i18n";
+import { RC } from "@/lib/i18n-report";
 import type { EvidenceStrength } from "@/lib/types";
 import { L } from "./text";
 
@@ -14,7 +15,7 @@ export function CertaintyMark({ level, lang, label = true, className = "" }: {
   level: EvidenceStrength; lang: Lang; label?: boolean | "silent"; className?: string;
 }) {
   const n = LEVELS.indexOf(level) + 1;
-  const name = L(lang, `ความแข็งแรงของหลักฐาน${STRENGTH_LABEL.th[level]}`, `${STRENGTH_LABEL.en[level]} certainty`);
+  const name = L(lang, RC.certainty.name(STRENGTH_LABEL.th[level], STRENGTH_LABEL.en[level]));
   return (
     <span className={`inline-flex items-center gap-1.5 whitespace-nowrap ${className}`} data-certainty={level}>
       <svg aria-hidden="true" width="58" height="13" viewBox="0 0 58 13" className="shrink-0">

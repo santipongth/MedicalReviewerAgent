@@ -5,15 +5,18 @@ import { exportUrl } from "@/lib/api";
 import { META_POOL_COPY } from "@/lib/copy";
 import type { TermKey } from "@/lib/glossary";
 import type { Lang } from "@/lib/i18n";
-import { plural } from "@/lib/plural";
+import { fieldLang, LANGUAGE_NAME, RC } from "@/lib/i18n-report";
 import { reportDate, sourceNames } from "@/lib/report-view";
 import { REVIEW_TYPE_LABEL, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import { includedCounts } from "@/lib/trial-reports";
 import type { Review, ReviewResult, ReviewType } from "@/lib/types";
 import { CopyLinkButton } from "../ui/copy-link";
 import { Term } from "../ui/term";
+import { ThaiText } from "../ui/thai-text";
 import { QuestionDetails } from "./report-parts";
 import { L } from "./text";
+
+const T = RC.title;
 
 const TYPE_TERM: Record<ReviewType, TermKey> = {
   narrative: "narrativeReview", slr: "slr", scoping: "scopingReview", meta_analysis: "metaAnalysis",
@@ -24,9 +27,7 @@ const BUTTON = "inline-flex min-h-11 cursor-pointer items-center rounded-sm bord
 
 /** The fixed status line under the title: what this report is and is not. */
 export function statusText(type: ReviewTypeOrLegacy, lang: Lang): string {
-  return type === "legacy"
-    ? L(lang, "อัตโนมัติ · ไม่ใช่คำแนะนำทางการแพทย์", "Automated · not medical advice")
-    : L(lang, "อัตโนมัติ · อ่านเฉพาะบทคัดย่อ · ไม่ใช่คำแนะนำทางการแพทย์", "Automated · abstracts only · not medical advice");
+  return L(lang, type === "legacy" ? T.statusLegacy : T.status);
 }
 
 function Meta({ label, children }: { label: string; children: ReactNode }) {
@@ -42,6 +43,7 @@ function Meta({ label, children }: { label: string; children: ReactNode }) {
  * Plan 20 title block: the refined question as the H1, the question as typed, a metadata row (type, search date,
  * studies included, sources, language, review id), the automated / abstract-only status block, the language switch,
  * the actions and how the agent read the question. Counts use the display face (never the verified-number face).
+ * The H1 and the typed question wrap only between Thai words (ThaiText, Plan 20 Task 7).
  */
 export function TitleBlock({ review, result, type, lang, original, onLang, poolGap = null, offline }: {
   review: Review; result: ReviewResult; type: ReviewTypeOrLegacy; lang: Lang; original: Lang; onLang: (l: Lang) => void;
@@ -60,67 +62,61 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
   const { studies: included, related, unread } = includedCounts(result.papers ?? []);
   return (
     <header aria-labelledby="h-title" className="grid gap-4">
-      <h1 id="h-title" className="max-w-[44ch] text-[clamp(1.4rem,2.4vw,1.9rem)] leading-snug font-semibold break-words">
-        {refined}
+      <h1 id="h-title" lang={fieldLang(refined, lang)} className="max-w-[44ch] text-[clamp(1.4rem,2.4vw,1.9rem)] leading-snug font-semibold break-words">
+        <ThaiText>{refined}</ThaiText>
       </h1>
       {refined.trim() !== typed.trim() && (
         <p className="max-w-[65ch] text-[0.95rem] text-muted break-words" data-typed-question>
-          {L(lang, "คำถามที่คุณพิมพ์", "The question you typed")}: <span className="text-ink">{typed}</span>
+          {L(lang, T.typed)}: <span className="text-ink" lang={fieldLang(typed, lang)}><ThaiText>{typed}</ThaiText></span>
         </p>
       )}
 
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-y border-rule py-3 sm:grid-cols-3 lg:flex lg:flex-wrap" aria-label={L(lang, "ข้อมูลรายงาน", "Report details")}>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-y border-rule py-3 sm:grid-cols-3 lg:flex lg:flex-wrap" aria-label={L(lang, T.details)}>
         {type !== "legacy" && (
-          <Meta label={L(lang, "ประเภท", "Review type")}>
+          <Meta label={L(lang, T.type)}>
             <Term k={TYPE_TERM[type]} lang={lang}>{REVIEW_TYPE_LABEL[type][lang]}</Term>
-            {poolGap && <span data-not-pooled={poolGap}>{" "}{META_POOL_COPY[poolGap].chip[lang]}</span>}
+            {poolGap && <span data-not-pooled={poolGap} className="nw">{" "}{META_POOL_COPY[poolGap].chip[lang]}</span>}
           </Meta>
         )}
-        {date && <Meta label={L(lang, "ค้นเมื่อ", "Searched")}>{date}</Meta>}
-        <Meta label={L(lang, "งานวิจัยที่รวม", "Studies included")}>
-          <span className="tabular-nums">{included}</span> {L(lang, "ฉบับ", plural(included, "study", "studies"))}
+        {date && <Meta label={L(lang, T.searched)}>{date}</Meta>}
+        <Meta label={L(lang, T.included)}>
+          <span className="tabular-nums">{included}</span> {L(lang, T.studies(included))}
           {unread > 0 && (
             <span className="text-[0.82rem] text-muted" data-unread>
-              {" "}{L(lang, `(อ่านไม่สำเร็จอีก ${unread})`, `(${unread} more could not be read)`)}
+              {" "}{L(lang, T.unread(unread))}
             </span>
           )}
           {related > 0 && (
             <span className="block text-[0.82rem] text-muted" data-related-count>
-              {L(lang, `รวมรายงานเพิ่มเติมของการทดลองเดียวกันอีก ${related} ฉบับ (ไม่นับซ้ำ)`,
-                `plus ${related} further ${plural(related, "report", "reports")} of the same trial (not counted again)`)}
+              {L(lang, T.related(related))}
             </span>
           )}
         </Meta>
         {(sources.length > 0 || queries > 0) && (
-          <Meta label={L(lang, "แหล่งข้อมูล", "Sources")}>
+          <Meta label={L(lang, T.sources)}>
             {sources.length ? sources.join(", ") : (
-              <><span className="tabular-nums">{queries}</span> {L(lang, "คำค้น (ไม่ได้บันทึกแหล่งข้อมูลแยก)", `${plural(queries, "search query", "search queries")} (sources not recorded)`)}</>
+              <><span className="tabular-nums">{queries}</span> {L(lang, T.queriesOnly(queries))}</>
             )}
           </Meta>
         )}
-        <Meta label={L(lang, "ภาษา", "Language")}>{original === "th" ? "ภาษาไทย" : "English"}</Meta>
-        <Meta label={L(lang, "รหัสรีวิว", "Review ID")}>
+        <Meta label={L(lang, T.language)}><span lang={original}>{LANGUAGE_NAME[original]}</span></Meta>
+        <Meta label={L(lang, T.reviewId)}>
           <span className="font-code text-[0.85rem]" title={review.id}>{review.id.slice(0, 8)}</span>
         </Meta>
       </dl>
 
       <p className="grid gap-0.5 rounded-sm bg-info-bg px-3 py-2.5 text-[0.9rem]" data-status>
         <b className="font-display font-semibold">{statusText(type, lang)}</b>
-        <span>
-          {type === "legacy"
-            ? L(lang, "รีวิวนี้สร้างโดยเอเจนต์ AI ยังไม่มีผู้เชี่ยวชาญตรวจทาน", "Written by an AI agent; not reviewed by an expert.")
-            : L(lang, "เอเจนต์ AI อ่านชื่อเรื่องและบทคัดย่อ ตรวจตัวเลขกับบทคัดย่อแล้ว แต่ยังไม่มีผู้เชี่ยวชาญตรวจทาน",
-              "An AI agent read the titles and abstracts and checked the numbers against them; no expert has reviewed it.")}
-        </span>
+        <span>{L(lang, type === "legacy" ? T.byAgentLegacy : T.byAgent)}</span>
       </p>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.9rem] print:hidden">
         {!offline && (
           <details>
-            <summary className={`${BUTTON} list-none`}>{L(lang, "ดาวน์โหลด", "Download")}</summary>
-            <nav aria-label={L(lang, "ดาวน์โหลดรีวิว", "Download this review")} className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+            <summary className={`${BUTTON} list-none`}>{L(lang, T.download)}</summary>
+            <nav aria-label={L(lang, T.downloadNav)} className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
               <a href={`/r/${encodeURIComponent(review.id)}/report.html`} download className={LINK}>
-                {L(lang, "HTML (เปิดได้ออฟไลน์)", "HTML (works offline)")}
+                {L(lang, T.html)}
               </a>
               {([["md", "Markdown"], ["csv", "CSV"], ["json", "JSON"]] as const).map(([fmt, name]) => (
                 <a key={fmt} href={exportUrl(review.id, fmt)} download className={LINK}>{name}</a>
@@ -128,14 +124,15 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
             </nav>
           </details>
         )}
-        {!offline && <CopyLinkButton />}
-        <button type="button" onClick={() => window.print()} className={BUTTON}>{L(lang, "พิมพ์", "Print")}</button>
+        {!offline && <CopyLinkButton lang={lang} />}
+        <button type="button" onClick={() => window.print()} className={BUTTON}>{L(lang, T.print)}</button>
         {original === "th" && result.synthesis_en && (
-          <div role="group" aria-label={L(lang, "ภาษาของรายงาน", "Report language")} className="ml-auto inline-flex shrink-0 rounded-sm border border-rule font-display text-sm">
+          <div role="group" aria-label={L(lang, T.reportLanguage)} className="ml-auto inline-flex shrink-0 rounded-sm border border-rule font-display text-sm">
             {(["th", "en"] as const).map((l) => (
-              <button key={l} type="button" aria-pressed={lang === l} onClick={() => onLang(l)}
+              // each language names itself in its own script (and is spoken in it)
+              <button key={l} type="button" lang={l} aria-pressed={lang === l} onClick={() => onLang(l)}
                 className={`min-h-11 px-3 md:min-h-9 ${lang === l ? "bg-ink text-ground" : "text-ink"}`}>
-                {l === "th" ? "ภาษาไทย" : "English"}
+                {LANGUAGE_NAME[l]}
               </button>
             ))}
           </div>

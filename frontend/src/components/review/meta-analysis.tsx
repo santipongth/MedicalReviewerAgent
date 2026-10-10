@@ -3,7 +3,7 @@
 import { useId, useMemo, type HTMLAttributes } from "react";
 import { META_POOL_COPY } from "@/lib/copy";
 import type { Lang } from "@/lib/i18n";
-import { plural } from "@/lib/plural";
+import { fieldLang, RC } from "@/lib/i18n-report";
 import { metaView, type MetaPoolView, type MetaView } from "@/lib/meta-view";
 import type { ComparisonRow, MetaAnalysis, Paper, Quality } from "@/lib/types";
 import { MetaForestFigure } from "../charts/figures";
@@ -14,9 +14,10 @@ import { Term } from "../ui/term";
 import { SectionHeading, useNested } from "./report-nav";
 import { L } from "./text";
 
+const M = RC.meta;
+
 /** The exact banner over every pooled analysis (Plan 14b honest-display rule). */
-export const META_BANNER_TH = "คำนวณโดยระบบจากตัวเลขที่ตรวจกับบทคัดย่อแล้ว — ไม่ใช่ผลจากงานวิจัยฉบับใด";
-const META_BANNER_EN = "Computed by the system from numbers checked against the abstracts — not a result of any single study";
+export const META_BANNER_TH = M.banner[0];
 
 type Select = (ref: string, outcome?: string) => void;
 
@@ -44,8 +45,7 @@ export function MetaAnalysisSection({ meta, papers, rows, lang, english, filtere
   return (
     <section aria-labelledby="h-meta" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
       <SectionHeading id="h-meta">
-        {view?.pools.length ? L(lang, "การวิเคราะห์อภิมาน: ค่ารวม", "Meta-analysis: pooled estimates")
-          : META_POOL_COPY[view ? "none" : "failed"].heading[lang]}
+        {L(lang, view?.pools.length ? M.h : view ? M.headingNone : M.headingFailed)}
       </SectionHeading>
       {!view ? (
         <div role="note" className="grid gap-2 rounded-sm bg-warn-bg p-3 sm:p-4" data-pool-failed>
@@ -66,19 +66,18 @@ function MetaBody({ view, tokens, lang, filtered, quality, onSelect }: {
   return (
     <>
       <div role="note" className="grid gap-2 rounded-sm bg-info-bg p-3 sm:p-4">
-        <p className="font-display font-semibold text-balance">{L(lang, META_BANNER_TH, META_BANNER_EN)}</p>
+        <p className="font-display font-semibold text-balance">{L(lang, M.banner)}</p>
         <p className="text-[0.88rem]">
-          {L(lang, "รวมเฉพาะงานวิจัยหลักที่วัดผลด้วยตัววัดเดียวกัน ตั้งแต่ 3 ฉบับ แยก RCT กับงานเชิงสังเกต ไม่รวมงานทบทวนอย่างเป็นระบบ",
-            "Only primary studies with the same measure are pooled, at least 3 of them, RCTs apart from observational studies; systematic reviews are never pooled.")}
-          {" "}<Term k="metaAnalysis" lang={lang}>{L(lang, "การวิเคราะห์อภิมานคืออะไร", "what is a meta-analysis")}</Term>
+          {L(lang, M.rule)}
+          {" "}<Term k="metaAnalysis" lang={lang}>{L(lang, M.what)}</Term>
         </p>
         {view.general.length > 0 && (
-          <ul aria-label={L(lang, "ข้อจำกัดของทุกค่ารวม", "Limits of every pooled estimate")} className="grid list-disc gap-0.5 pl-5 text-[0.85rem]">
+          <ul aria-label={L(lang, M.limits)} className="grid list-disc gap-0.5 pl-5 text-[0.85rem]">
             {view.general.map((w) => <li key={w.code}>{w.label}</li>)}
           </ul>
         )}
         {filtered && (
-          <p className="text-[0.85rem]">{L(lang, "ค่ารวมคำนวณจากงานวิจัยทั้งหมดในรีวิว ไม่เปลี่ยนตามตัวกรอง", "Pooled from every study in the review; the filters do not change it.")}</p>
+          <p className="text-[0.85rem]">{L(lang, M.filtered)}</p>
         )}
       </div>
 
@@ -86,7 +85,7 @@ function MetaBody({ view, tokens, lang, filtered, quality, onSelect }: {
 
       {view.grade.length > 0 && (
         <div className="grid gap-1.5">
-          <Sub className={H3}>{L(lang, "ผลต่อระดับความแข็งแรงของหลักฐาน", "Effect on the evidence strength")}</Sub>
+          <Sub className={H3}>{L(lang, M.effectOnGrade)}</Sub>
           <ul className="grid list-disc gap-1 pl-5 text-[0.92rem]">{view.grade.map((g) => <li key={g}>{g}</li>)}</ul>
         </div>
       )}
@@ -104,9 +103,8 @@ function NoPools({ view, lang, onSelect }: { view: MetaView; lang: Lang; onSelec
       <div role="note" className="grid gap-2 rounded-sm bg-warn-bg p-3 sm:p-4" data-no-pools>
         <p className="font-display font-semibold text-balance">{META_POOL_COPY.none.reason[lang]}</p>
         <p className="text-[0.88rem]">
-          {L(lang, "การวิเคราะห์อภิมานต้องมีงานวิจัยหลักอย่างน้อย 3 ฉบับต่อผลลัพธ์ ที่ใช้ตัววัดเดียวกัน (เช่น HR) และแยก RCT กับงานเชิงสังเกต งานทบทวนอย่างเป็นระบบไม่นำมารวม จึงไม่มีค่ารวมในรีวิวนี้ ผลของแต่ละงานยังอยู่ในตารางผลแต่ละการศึกษาและแผนภาพ",
-            "A meta-analysis needs at least 3 primary studies per outcome using the same measure (e.g. HR), with RCTs kept apart from observational studies; systematic reviews are never pooled. So this review has no pooled estimate; each study's result is still in the findings table and charts.")}
-          {" "}<Term k="metaAnalysis" lang={lang}>{L(lang, "การวิเคราะห์อภิมานคืออะไร", "what is a meta-analysis")}</Term>
+          {L(lang, M.needs)}
+          {" "}<Term k="metaAnalysis" lang={lang}>{L(lang, M.what)}</Term>
         </p>
       </div>
       {view.excluded.length > 0 && <ExcludedList view={view} lang={lang} />}
@@ -122,11 +120,11 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
   return (
     <article aria-labelledby={id} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 border-t border-rule pt-4">
       <Sub id={id} className={`${H3} break-words`}>
-        {pool.outcome} · {pool.groupLabel} · {pool.measure}
+        <span lang={fieldLang(pool.outcome, lang)}>{pool.outcome}</span> · {pool.groupLabel} · {pool.measure}
       </Sub>
       <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[1.05rem]">
         <span className="inline-flex items-baseline gap-2">
-          <span className="font-display">{L(lang, "ค่ารวม", "Pooled")} {pool.measure}</span>
+          <span className="font-display">{L(lang, M.pooled)} {pool.measure}</span>
           <ComputedNumber value={pool.estText} lang={lang} className="text-[1.2rem]" />
         </span>
         <span className="inline-flex items-baseline gap-2">
@@ -139,11 +137,11 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
         <span>I² <ComputedNumber value={pool.i2Text} lang={lang} tag={false} /></span>
         <span>τ²{pool.ratio ? " (ln)" : ""} <ComputedNumber value={pool.tau2Text} lang={lang} tag={false} /></span>
         <span>Q <ComputedNumber value={pool.qText} lang={lang} tag={false} /> (df {pool.df}, p {pool.pText.startsWith("<") ? "" : "= "}<ComputedNumber value={pool.pText} lang={lang} tag={false} />)</span>
-        <Term k="heterogeneity" lang={lang}>{L(lang, "ค่าเหล่านี้คืออะไร", "what these mean")}</Term>
+        <Term k="heterogeneity" lang={lang}>{L(lang, M.whatTheseMean)}</Term>
       </p>
       {pool.warnings.length > 0 && (
         <div className="grid gap-1 rounded-sm bg-warn-bg p-3">
-          <p className="font-display font-semibold">{L(lang, "ข้อควรระวังของค่ารวมนี้", "Cautions for this estimate")}</p>
+          <p className="font-display font-semibold">{L(lang, M.cautions)}</p>
           <ul className="grid list-disc gap-0.5 pl-5 text-[0.88rem]">{pool.warnings.map((w) => <li key={w.code}>{w.label}</li>)}</ul>
         </div>
       )}
@@ -151,19 +149,19 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
       <details className="group">
         <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-sm border border-rule px-3 font-display hover:border-ink md:min-h-0 md:py-1.5">
           <span aria-hidden="true" className="inline-block text-[0.7rem] text-muted group-open:rotate-90">▶</span>
-          <span>{L(lang, "วิธีคำนวณ", "How it was computed")}</span>
+          <span>{L(lang, M.howComputed)}</span>
         </summary>
         <div className="grid gap-2 pt-2">
           <div className="overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region"
-            aria-label={L(lang, "ตัวเลขที่ใช้คำนวณ (เลื่อนดูได้)", "Inputs of the calculation (scrollable)")}>
+            aria-label={L(lang, M.inputs)}>
             <table className="w-full min-w-[520px] border-collapse text-[0.88rem]">
-              <caption className="sr-only">{L(lang, `ตัวเลขที่ใช้คำนวณค่ารวม ${pool.outcome}`, `Inputs of the pooled estimate for ${pool.outcome}`)}</caption>
+              <caption className="sr-only">{L(lang, M.inputsCaption(pool.outcome))}</caption>
               <thead><tr className="bg-ground text-left">
-                <th scope="col" className="px-2.5 py-2 label">{L(lang, "งานวิจัย", "Study")}</th>
-                <th scope="col" className="px-2.5 py-2 label">{pool.measure} {L(lang, "(จากบทคัดย่อ)", "(from the abstract)")}</th>
+                <th scope="col" className="px-2.5 py-2 label">{L(lang, M.study)}</th>
+                <th scope="col" className="px-2.5 py-2 label">{pool.measure} {L(lang, M.fromAbstract)}</th>
                 <th scope="col" className="px-2.5 py-2 label">95% CI</th>
-                <th scope="col" className="px-2.5 py-2 label">SE{pool.ratio ? " (ln)" : ""} {L(lang, "(คำนวณ)", "(computed)")}</th>
-                <th scope="col" className="px-2.5 py-2 label">{L(lang, "น้ำหนัก (คำนวณ)", "Weight (computed)")}</th>
+                <th scope="col" className="px-2.5 py-2 label">SE{pool.ratio ? " (ln)" : ""} {L(lang, M.computed)}</th>
+                <th scope="col" className="px-2.5 py-2 label">{L(lang, M.weight)}</th>
               </tr></thead>
               <tbody>
                 {pool.studies.map((s) => (
@@ -181,11 +179,9 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
             </table>
           </div>
           <p className="text-[0.85rem] text-muted">
-            {L(lang, "วิธี", "Method")}: {pool.method} · {L(lang, "รุ่น", "version")} {pool.version}
-            {" · "}{pool.ratio
-              ? L(lang, "SE คำนวณจากช่วงความเชื่อมั่น 95% บนสเกล log (ln) แล้วแปลงค่ารวมกลับ", "SE from the 95% CI on the log (ln) scale; the pooled value is transformed back")
-              : L(lang, "SE คำนวณจากช่วงความเชื่อมั่น 95%", "SE from the 95% CI")}
-            {removed > 0 && <> · {L(lang, `ตัดประโยคในบทสรุปที่ทวนตัวเลขรวม ${removed} ประโยค`, `${removed} summary sentence(s) restating a pooled number were removed`)}</>}
+            {L(lang, M.method)}: {pool.method} · {L(lang, M.version)} {pool.version}
+            {" · "}{L(lang, pool.ratio ? M.seLog : M.se)}
+            {removed > 0 && <> · {L(lang, M.removed(removed))}</>}
           </p>
         </div>
       </details>
@@ -196,14 +192,14 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
 function ReferenceRows({ view, lang, onSelect, pooled = true }: { view: MetaView; lang: Lang; onSelect: Select; pooled?: boolean }) {
   return (
     <div className="grid gap-1.5">
-      <Sub className={H3}>{L(lang, "งานทบทวนอย่างเป็นระบบที่พบ (แสดงเพื่ออ้างอิง ไม่นำมารวม)", "Systematic reviews found (shown for reference, never pooled)")}</Sub>
+      <Sub className={H3}>{L(lang, M.reviewsFound)}</Sub>
       {/* only when there are estimates above to overlap with */}
-      {pooled && <p className="text-[0.85rem] text-muted">{L(lang, "อาจรวมงานวิจัยหลักชุดเดียวกับค่ารวมข้างบน", "They may contain the same primary studies as the estimates above")}</p>}
+      {pooled && <p className="text-[0.85rem] text-muted">{L(lang, M.overlap)}</p>}
       <ul className="grid gap-0">
         {view.reference.map((r) => (
           <li key={`${r.ref}|${r.outcome}`} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-rule py-1.5 text-[0.92rem]">
             <button type="button" className={REF_BTN} onClick={() => onSelect(r.ref, r.outcomeKey ?? undefined)}>{r.ref}</button>
-            <span className="break-words">{r.outcome}</span>
+            <span className="break-words" lang={fieldLang(r.outcome, lang)}>{r.outcome}</span>
             {r.design && <span className="text-muted">{r.design}</span>}
             {r.effectText ? (
               <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
@@ -212,7 +208,7 @@ function ReferenceRows({ view, lang, onSelect, pooled = true }: { view: MetaView
                 {r.ciText && <><span className="font-display text-muted">95% CI</span><VerifiedNumber value={r.ciText} /></>}
               </span>
             ) : (
-              <span className="text-muted">{L(lang, "ไม่มีตัวเลขที่ตรวจผ่าน", "No verified number")}</span>
+              <span className="text-muted">{L(lang, M.noVerified)}</span>
             )}
           </li>
         ))}
@@ -224,13 +220,13 @@ function ReferenceRows({ view, lang, onSelect, pooled = true }: { view: MetaView
 function ExcludedList({ view, lang }: { view: MetaView; lang: Lang }) {
   return (
     <div className="grid gap-1.5">
-      <Sub className={H3}>{L(lang, "ผลที่ไม่ได้นำมารวม", "Results not pooled")}</Sub>
+      <Sub className={H3}>{L(lang, M.notPooled)}</Sub>
       <ul className="grid gap-0">
         {view.excluded.map((g) => (
           <li key={g.reason} className="grid gap-0.5 border-b border-rule py-2 text-[0.92rem]">
             <span>
               <span className="font-medium">{g.label}</span>{" "}
-              <span className="font-display text-muted tabular-nums">· {g.count} {L(lang, "รายการ", plural(g.count, "result", "results"))}</span>
+              <span className="font-display text-muted tabular-nums">· {g.count} {L(lang, M.results(g.count))}</span>
             </span>
             <span className="text-[0.88rem] text-muted break-words">
               {g.items.map((it, i) => (

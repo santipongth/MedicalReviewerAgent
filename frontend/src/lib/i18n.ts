@@ -36,6 +36,8 @@ export const ROB_LABEL: Record<Lang, Record<RiskOfBias, string>> = {
   en: { low: "Low", moderate: "Moderate", high: "High", unclear: "Unclear" },
 };
 
+// Shared labels and the site chrome (header, footer). The site header and footer follow `<html lang>` (lib/use-doc-lang),
+// which a report sets to its own language (Plan 20 Task 7); the report's own copy is in lib/i18n-report.ts.
 const STRINGS = {
   th: {
     notVerified: "ไม่ยืนยัน",
@@ -44,6 +46,18 @@ const STRINGS = {
     theme: "สลับธีม",
     sourceSentence: "ประโยคที่ใช้ยืนยัน",
     foundVerbatim: "พบในบทความตรงทุกตัวอักษร",
+    review: "ทบทวนงานวิจัย",
+    mainNav: "หลัก",
+    useLight: "ใช้ธีมสว่าง",
+    useDark: "ใช้ธีมมืด",
+    light: "ธีมสว่าง",
+    dark: "ธีมมืด",
+    notAdvice: "ไม่ใช่คำแนะนำทางการแพทย์",
+    footerNote: "ผลลัพธ์เป็นการทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติจากบทคัดย่อ ไม่ใช้แทนการวินิจฉัยหรือการรักษา ตรวจกับบทความต้นฉบับและผู้เชี่ยวชาญก่อนนำไปใช้",
+    dataSources: "แหล่งข้อมูล",
+    footerNav: "ท้ายหน้า",
+    site: "เว็บไซต์",
+    free: "ใช้ฟรี ไม่ต้องสมัคร",
   },
   en: {
     notVerified: "not verified",
@@ -52,6 +66,18 @@ const STRINGS = {
     theme: "Switch theme",
     sourceSentence: "Source sentence",
     foundVerbatim: "Found verbatim in the paper",
+    review: "Literature review",
+    mainNav: "Main",
+    useLight: "Use the light theme",
+    useDark: "Use the dark theme",
+    light: "Light theme",
+    dark: "Dark theme",
+    notAdvice: "Not medical advice",
+    footerNote: "Results are an automated rapid review of abstracts. They do not replace a diagnosis or treatment; check the original papers and an expert before using them.",
+    dataSources: "Data sources",
+    footerNav: "Footer",
+    site: "Site",
+    free: "free, no sign-up",
   },
 } as const;
 

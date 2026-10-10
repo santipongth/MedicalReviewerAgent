@@ -1,21 +1,23 @@
 "use client";
 
 import type { Lang } from "@/lib/i18n";
-import { plural } from "@/lib/plural";
+import { fieldLang, RC } from "@/lib/i18n-report";
 import type { EffectState, FindingView, PooledText } from "@/lib/report-view";
 import { ComputedNumber, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { CertaintyMark } from "./certainty";
 import { READING, RefButtons, themeFoundText, type Select } from "./report-parts";
 import { SECTION_H2 } from "./report-nav";
-import { L } from "./text";
+import { L, Lw } from "./text";
+
+const F = RC.findings;
 
 /** "k การศึกษา": a count of studies (display face, tabular figures), never a verified number. */
 export function StudyCount({ k, lang, themes = false }: { k: number; lang: Lang; themes?: boolean }) {
   if (themes) return <span className="font-display">{themeFoundText(k, lang)}</span>;
   return (
     <span className="font-display whitespace-nowrap">
-      <span className="tabular-nums">{k}</span> {L(lang, "การศึกษา", plural(k, "study", "studies"))}
+      <span className="tabular-nums">{k}</span> {L(lang, F.studies(k))}
     </span>
   );
 }
@@ -24,7 +26,7 @@ export function StudyCount({ k, lang, themes = false }: { k: number; lang: Lang;
 export function PooledValue({ pool, lang }: { pool: PooledText; lang: Lang }) {
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-1.5" data-pooled>
-      <span className="font-display">{L(lang, "ค่ารวม", "Pooled")} {pool.measure}</span>
+      <span className="font-display">{L(lang, F.pooled)} {pool.measure}</span>
       <ComputedNumber value={pool.est} lang={lang} />
       {/* the interval and its brackets never break apart */}
       <span className="whitespace-nowrap">
@@ -39,7 +41,7 @@ export function PooledValue({ pool, lang }: { pool: PooledText; lang: Lang }) {
 
 /** A one-study outcome with no effect size for it: plain text, never a gap (nothing failed verification). */
 export function NoEffectText({ lang }: { lang: Lang }) {
-  return <span className="text-[0.88rem] text-muted" data-no-effect>{L(lang, "ไม่ได้รายงานขนาดผล", "No effect size reported")}</span>;
+  return <span className="text-[0.88rem] text-muted" data-no-effect>{L(lang, F.noEffect)}</span>;
 }
 
 /** One study's number: verified (tape, opens its sentence in the rail) or a not-verified gap. */
@@ -65,19 +67,19 @@ export function KeyFindings({ findings, lang, onSelect }: { findings: FindingVie
   if (!findings.length) return null;
   return (
     <section aria-labelledby="h-key-findings" className="grid gap-3">
-      <h2 id="h-key-findings" className={SECTION_H2}>{L(lang, "ผลการศึกษาที่สำคัญ", "Key findings")}</h2>
+      <h2 id="h-key-findings" className={SECTION_H2}>{Lw(lang, F.h2)}</h2>
       <ol className="grid gap-0 border-t border-rule">
         {findings.map((f, i) => (
           <li key={`${f.outcome}-${i}`} className="grid gap-1.5 border-b border-rule py-3" data-key-finding>
-            <p className="font-display font-semibold break-words">{f.outcome}</p>
+            <p className="font-display font-semibold break-words" lang={fieldLang(f.outcome, lang)}>{f.outcome}</p>
             {/* Plain prose in the reading face, as written: a fixed lead clause ("Low-certainty evidence suggests: …") is
                 part of the statement, never styled as a quote */}
-            <p className={`max-w-[65ch] ${READING}`} data-prose>{f.statement}</p>
+            <p className={`max-w-[65ch] ${READING}`} data-prose lang={fieldLang(f.statement, lang)}>{f.statement}</p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[0.9rem]">
               {f.certainty && (
                 <span className="inline-flex flex-wrap items-center gap-x-1.5 font-display" data-finding-certainty>
                   {/* the review's single grade, copied onto each finding by the engine: never a per-outcome grade */}
-                  <Term k="evidenceStrength" lang={lang}><span className="text-muted">{L(lang, "ความแข็งแรงของหลักฐาน (ทั้งรีวิว)", "Certainty (whole review)")}</span></Term>
+                  <Term k="evidenceStrength" lang={lang}><span className="text-muted">{L(lang, F.reviewCertainty)}</span></Term>
                   <CertaintyMark level={f.certainty} lang={lang} />
                 </span>
               )}

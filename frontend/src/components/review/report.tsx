@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { conceptTree } from "@/lib/concept-map";
 import { emptyFilters, filterPapers, isFiltered, isPooled, themePapers, type Filters } from "@/lib/charts-data";
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
 import type { Lang } from "@/lib/i18n";
+import { fieldLang, RC, type Pair } from "@/lib/i18n-report";
 import { robSummary } from "@/lib/rob-summary";
 import { cellOutcome, keyFindingViews, sameModelReadings, sofRows, type OutcomeContext } from "@/lib/report-view";
 import {
@@ -35,7 +36,7 @@ import { RailDrawer } from "./rail-drawer";
 import { SofTable } from "./sof-table";
 import { SourceRail } from "./source-rail";
 import { TitleBlock } from "./title-block";
-import { L } from "./text";
+import { L, Lw } from "./text";
 
 type Selection = { ref: string; outcome?: string };
 
@@ -45,25 +46,37 @@ function outcomeFor(paper: Paper | undefined, row: ComparisonRow, ref: string): 
 }
 
 /** Top-level sections: anchor id, short table-of-contents label and the H2 of a group section. */
-const TOP: Record<Exclude<TopSectionId, "title">, { id: string; nav: [string, string]; h2?: [string, string] }> = {
-  bottom_line: { id: "h-answer", nav: ["คำตอบ", "Answer"] },
-  key_findings: { id: "h-key-findings", nav: ["ผลสำคัญ", "Key findings"] },
-  sof: { id: "h-sof", nav: ["ตารางสรุปผล", "Summary table"] },
-  selection: { id: "h-selection", nav: ["การคัดเลือก", "Selection"], h2: ["การคัดเลือกงานวิจัย", "Study selection"] },
-  characteristics: { id: "h-characteristics", nav: ["ลักษณะงานวิจัย", "Studies"], h2: ["ลักษณะของงานวิจัยที่รวบรวม", "Study characteristics"] },
-  results: { id: "h-results", nav: ["ผลลัพธ์", "Results"], h2: ["ผลลัพธ์ตามผลลัพธ์ที่ศึกษา", "Results by outcome"] },
-  rob: { id: "h-rob", nav: ["ความเสี่ยงอคติ", "Risk of bias"] },
-  consistency: { id: "h-claims", nav: ["ตรงกัน/ขัดกัน", "Agree/conflict"], h2: ["จุดที่ตรงกันและขัดกัน", "Where studies agree and conflict"] },
-  landscape: { id: "h-landscape", nav: ["ภาพรวมความรู้", "Landscape"], h2: ["ภาพรวมขององค์ความรู้", "Evidence landscape"] },
-  limitations: { id: "h-limitations", nav: ["ข้อจำกัด", "Limitations"] },
-  gaps: { id: "h-gaps", nav: ["สิ่งที่ยังไม่รู้", "Gaps"] },
-  discussion: { id: "h-discussion", nav: ["อภิปราย", "Discussion"] },
-  methods: { id: "h-method", nav: ["วิธีการ", "Methods"] },
-  references: { id: "h-papers", nav: ["อ้างอิง", "References"] },
-  downloads: { id: "h-downloads", nav: ["ดาวน์โหลด", "Downloads"] },
+const N = RC.nav;
+const TOP: Record<Exclude<TopSectionId, "title">, { id: string; nav: Pair; h2?: Pair }> = {
+  bottom_line: { id: "h-answer", nav: N.answer },
+  key_findings: { id: "h-key-findings", nav: N.keyFindings },
+  sof: { id: "h-sof", nav: N.sof },
+  selection: { id: "h-selection", nav: N.selection, h2: N.selectionH2 },
+  characteristics: { id: "h-characteristics", nav: N.characteristics, h2: N.characteristicsH2 },
+  results: { id: "h-results", nav: N.results, h2: N.resultsH2 },
+  rob: { id: "h-rob", nav: N.rob },
+  consistency: { id: "h-claims", nav: N.consistency, h2: N.consistencyH2 },
+  landscape: { id: "h-landscape", nav: N.landscape, h2: N.landscapeH2 },
+  limitations: { id: "h-limitations", nav: N.limitations },
+  gaps: { id: "h-gaps", nav: N.gaps },
+  discussion: { id: "h-discussion", nav: N.discussion },
+  methods: { id: "h-method", nav: N.methods },
+  references: { id: "h-papers", nav: N.references },
+  downloads: { id: "h-downloads", nav: N.downloads },
 };
-/** The offline file has no downloads: its last section is only how to cite the report. */
-const OFFLINE_DOWNLOADS_NAV: [string, string] = ["อ้างอิงรายงาน", "Cite"];
+
+/**
+ * The page speaks the report's language (Plan 20 Task 7): `<html lang>` follows the language shown (the site header and
+ * footer read it), and goes back to what it was when the report closes.
+ */
+function useDocumentLang(lang: Lang) {
+  useEffect(() => {
+    const root = document.documentElement;
+    const before = root.lang;
+    root.lang = lang;
+    return () => { root.lang = before; };
+  }, [lang]);
+}
 
 /**
  * The report bench (Plan 20 answer-first order, from SECTIONS_BY_TYPE): title block, bottom line, key findings, summary
@@ -75,6 +88,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const result = useMemo(() => review.result ?? {}, [review.result]);
   const original = (result.language ?? review.language ?? "th") as Lang;
   const [lang, setLang] = useState<Lang>(original);
+  useDocumentLang(lang);
   const showEn = lang === "en" && original === "th";
   const synthesis = (showEn ? result.synthesis_en : result.synthesis) ?? result.synthesis ?? { executive_summary: result.summary ?? "" };
   const papers = useMemo(() => result.papers ?? [], [result.papers]);
@@ -173,10 +187,10 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     ) },
     findings: { show: hasMatrix, node: (
       <section aria-labelledby="h-matrix" className="grid grid-cols-[minmax(0,1fr)] gap-3">
-        <SectionHeading id="h-matrix">{L(lang, "ผลแต่ละการศึกษา", "Findings by study")}</SectionHeading>
+        <SectionHeading id="h-matrix">{L(lang, RC.report.findingsByStudy)}</SectionHeading>
         {visibleRows.length ? <ComparisonMatrix rows={visibleRows} refs={matrixRefs} papers={papers} lang={lang} onSelect={select} selected={active ?? undefined}
           pooledRefs={pooledRefs}
-          outcomeOf={(row, ref) => outcomeFor(byRef.get(ref), row, ref)} /> : <p className="text-[0.9rem] text-muted">{L(lang, "ไม่มีงานวิจัยที่ตรงกับตัวกรอง", "No studies match the filters")}</p>}
+          outcomeOf={(row, ref) => outcomeFor(byRef.get(ref), row, ref)} /> : <p className="text-[0.9rem] text-muted">{L(lang, RC.report.noMatch)}</p>}
         <MatrixLegend lang={lang} themes={themePapers(papers).length > 0} />
       </section>
     ) },
@@ -210,7 +224,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
       const single = id === "consistency" || id === "selection"; // one block: its content sits right under the group heading
       sections.push({ id, node: (
         <section aria-labelledby={meta.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6">
-          <h2 id={meta.id} className={H2}>{L(lang, ...meta.h2)}</h2>
+          <h2 id={meta.id} className={H2}>{Lw(lang, meta.h2)}</h2>
           {id === filterHome && filterBar}
           {single ? shown.map((b) => <Fragment key={b}>{blocks[b].node}</Fragment>)
             : <Subsections>{shown.map((b) => <Fragment key={b}>{blocks[b].node}</Fragment>)}</Subsections>}
@@ -235,17 +249,19 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
       case "gaps":
         return synthesis.research_gaps?.length ? (
           <section aria-labelledby="h-gaps" className="grid gap-2">
-            <h2 id="h-gaps" className={H2}>{L(lang, "สิ่งที่ยังไม่รู้", "Research gaps")}</h2>
-            <ul className={`grid max-w-[70ch] list-disc gap-1 pl-5 ${READING}`}>{synthesis.research_gaps.map((g) => <li key={g}>{g}</li>)}</ul>
+            <h2 id="h-gaps" className={H2}>{Lw(lang, RC.report.gapsH2)}</h2>
+            <ul className={`grid max-w-[70ch] list-disc gap-1 pl-5 ${READING}`}>
+              {synthesis.research_gaps.map((g) => <li key={g} lang={fieldLang(g, lang)}>{g}</li>)}
+            </ul>
           </section>
         ) : null;
       case "discussion":
         // With a direct answer, the long model summary becomes the discussion; without one it already led the report.
         return hasPapers && answer && discussion && discussion.trim() !== answer ? (
           <section aria-labelledby="h-discussion" className="grid gap-2">
-            <h2 id="h-discussion" className={H2}>{L(lang, "อภิปราย", "Discussion")}</h2>
-            <p className={`max-w-[65ch] ${READING}`} data-prose><CitedText text={discussion} onSelect={select} refs={refs} /></p>
-            <p className="text-[0.8rem] text-muted">{L(lang, "เขียนโดยโมเดลจากงานวิจัยที่อ่าน ข้อความนี้ไม่ใช่ตัวเลขที่ตรวจแล้ว", "Written by the model from the studies read; this text is not a verified number.")}</p>
+            <h2 id="h-discussion" className={H2}>{Lw(lang, RC.report.discussionH2)}</h2>
+            <p className={`max-w-[65ch] ${READING}`} data-prose lang={fieldLang(discussion, lang)}><CitedText text={discussion} onSelect={select} refs={refs} /></p>
+            <p className="text-[0.8rem] text-muted">{L(lang, RC.report.discussionNote)}</p>
           </section>
         ) : null;
       case "rob":
@@ -264,37 +280,41 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     }
   }
 
+  // With no study included (Plan 20 Task 7), the selection flow explains the empty result: it comes right after the
+  // answer, before "Try this", and the short section list stays so the page still has a structure.
+  const lead = hasPapers ? 1 : Math.max(1, sections.findIndex((s) => s.id === "selection") + 1);
   const navItems: NavItem[] = sections.map(({ id }) => {
     const top = TOP[id as Exclude<TopSectionId, "title">];
-    return { id: top.id, label: L(lang, ...(offline && id === "downloads" ? OFFLINE_DOWNLOADS_NAV : top.nav)) };
+    return { id: top.id, label: L(lang, offline && id === "downloads" ? N.offlineDownloads : top.nav) };
   });
-  const showNav = hasPapers;
+  if (!hasPapers) navItems.splice(lead, 0, { id: "h-next", label: L(lang, N.tryThis) });
   return (
     <SameModelReadings.Provider value={sameModelReadings(result)}>
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 pt-8" onPointerDownCapture={notePress} onClickCapture={notePress}
-      style={offline ? ({ "--header-h": "0px" } as CSSProperties) : undefined}>
+      style={offline ? ({ "--header-h": "0px" } as CSSProperties) : undefined} data-report lang={lang}>
       <div className={`grid grid-cols-[minmax(0,1fr)] rounded-sm border border-rule bg-surface ${hasPapers ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:grid-cols-[10rem_minmax(0,1fr)_minmax(0,22rem)]" : ""}`}>
-        {showNav && <ReportToc items={navItems} label={L(lang, "สารบัญ", "Contents")} />}
+        {hasPapers && <ReportToc items={navItems} label={L(lang, N.contents)} />}
         <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-10 p-5 sm:p-8 ${hasPapers ? "lg:border-r lg:border-rule" : ""}`}>
-          {showNav && <ReportNav items={navItems} label={L(lang, "ในรายงานนี้", "In this report")} />}
+          {/* without studies there is no left table of contents: the short top list stays at every width */}
+          <ReportNav items={navItems} label={L(lang, N.inThisReport)} always={!hasPapers} />
           <TitleBlock review={review} result={result} type={type} lang={lang} original={original} onLang={setLang} poolGap={poolGap} offline={offline} />
 
-          {sections.slice(0, 1).map((s) => <Fragment key={s.id}>{s.node}</Fragment>)}
+          {sections.slice(0, lead).map((s) => <Fragment key={s.id}>{s.node}</Fragment>)}
 
           {!hasPapers && (
             <section aria-labelledby="h-next" className="grid gap-3">
-              <h2 id="h-next" className={H2}>{L(lang, "ลองแบบนี้", "Try this")}</h2>
-              <ul className="grid list-disc gap-1.5 pl-5 text-[0.95rem]">
-                <li>{L(lang, "ใช้ชื่อยาหรือโรคเป็นภาษาอังกฤษ เช่น metformin, colorectal cancer", "Use the English drug or disease name, e.g. metformin, colorectal cancer")}</li>
-                <li>{L(lang, "ถามให้กว้างขึ้น หรือเอาเงื่อนไขปีและชนิดงานวิจัยออก", "Ask a broader question, or remove the year and study-type filters")}</li>
+              <h2 id="h-next" className={H2}>{Lw(lang, RC.report.tryThisH2)}</h2>
+              <ul className={`grid list-disc gap-1.5 pl-5 ${READING}`}>
+                <li>{L(lang, RC.report.tryEnglish)}</li>
+                <li>{L(lang, RC.report.tryBroader)}</li>
               </ul>
               <Link href="/" className="w-fit rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary no-underline hover:brightness-110">
-                {L(lang, "ถามคำถามใหม่", "Ask a new question")}
+                {L(lang, RC.report.askNew)}
               </Link>
             </section>
           )}
 
-          {sections.slice(1).map((s) => <Fragment key={s.id}>{s.node}</Fragment>)}
+          {sections.slice(lead).map((s) => <Fragment key={s.id}>{s.node}</Fragment>)}
         </div>
 
         {hasPapers && (

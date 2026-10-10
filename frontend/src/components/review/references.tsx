@@ -4,12 +4,15 @@ import { Fragment } from "react";
 import { EXCLUSION_REASON_LABEL } from "@/lib/charts-data";
 import { citationParts, vancouver, type CitationId } from "@/lib/citation";
 import type { Lang } from "@/lib/i18n";
+import { fieldLang, RC } from "@/lib/i18n-report";
 import type { ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ExclusionReason, Paper, Stats } from "@/lib/types";
 import { CopyTextButton } from "../ui/copy-text";
 import { StudyButton, type Select } from "./report-parts";
 import { SECTION_H2 as H2 } from "./report-nav";
-import { L } from "./text";
+import { L, Lw } from "./text";
+
+const R = RC.refs;
 
 const ID_NAME: Record<CitationId["label"], string> = { doi: "DOI", PMID: "PubMed", PMCID: "PubMed Central" };
 
@@ -19,9 +22,10 @@ export const referenceId = (ref: string): string => `ref-${ref}`;
 /** The reference text with its identifiers as links (doi.org, PubMed, PubMed Central); the text is never translated. */
 function CitationText({ paper, lang }: { paper: Paper; lang: Lang }) {
   const { text, ids } = citationParts(paper);
-  const opens = L(lang, "(เปิดในแท็บใหม่)", "(opens in a new tab)");
+  const opens = L(lang, R.newTab);
   return (
-    <p data-citation className="max-w-[75ch] text-[0.95rem] leading-[1.7] break-words">
+    // the reference is written as published (Vancouver, the title in its own language)
+    <p data-citation className="max-w-[75ch] text-[0.95rem] leading-[1.7] break-words" lang={fieldLang(text.join(" "), lang)}>
       {text.join(" ")}
       {ids.map((id) => (
         <span key={id.label}>
@@ -51,28 +55,22 @@ function Reference({ paper, lang, onSelect, selectedRef, type, related = [], nes
       <span className="pt-0.5 font-display text-[0.85rem] font-semibold">{paper.ref}</span>
       <div className="grid min-w-0 gap-1.5">
         {nested && (
-          <span data-related-label className="label w-fit">{L(lang, "รายงานเพิ่มเติม", "Related report")}</span>
+          <span data-related-label className="label w-fit nw">{L(lang, R.related)}</span>
         )}
         <CitationText paper={paper} lang={lang} />
         {paper.design_excluded && (
-          <p data-reference-note="design_excluded" className="text-[0.88rem] text-muted">
-            {L(lang, "ไม่ใช้เป็นหลักฐาน: อ่านแล้วพบว่ารูปแบบการศึกษาไม่ตรงชนิดที่เลือก",
-              "Not used as evidence: read as a design outside the ticked study types")}
-          </p>
+          <p data-reference-note="design_excluded" className="text-[0.88rem] text-muted">{L(lang, R.designExcluded)}</p>
         )}
         {paper.verification?.design_mismatch && (
-          <p data-reference-note="design_mismatch" className="text-[0.88rem] text-muted">
-            {L(lang, "ใช้เป็นหลักฐานแม้รูปแบบไม่ตรงชนิดที่เลือก เพราะงานที่ตรงมีไม่ถึง 3 ฉบับ",
-              "Used as evidence although its design is outside the ticked study types, because fewer than 3 studies matched")}
-          </p>
+          <p data-reference-note="design_mismatch" className="text-[0.88rem] text-muted">{L(lang, R.designMismatch)}</p>
         )}
         <StudyButton p={paper} lang={lang} onSelect={onSelect} selected={selectedRef === paper.ref} type={type} />
-        <CopyTextButton text={vancouver(paper)} label={L(lang, "คัดลอกการอ้างอิง", "Copy citation")}
-          name={L(lang, `คัดลอกการอ้างอิง ${paper.ref}`, `Copy citation ${paper.ref}`)} copied={L(lang, "คัดลอกแล้ว", "Copied")}
-          failed={L(lang, "คัดลอกไม่ได้ เลือกข้อความไว้ให้แล้ว", "Couldn't copy; the text is selected below")}
-          boxLabel={L(lang, `การอ้างอิง ${paper.ref} (เลือกแล้ว กดคัดลอกเอง)`, `Citation ${paper.ref} (selected; copy it yourself)`)} />
+        <CopyTextButton text={vancouver(paper)} label={L(lang, R.copy)}
+          name={L(lang, R.copyRef(paper.ref))} copied={L(lang, R.copied)}
+          failed={L(lang, R.copyFailed)}
+          boxLabel={L(lang, R.copyBox(paper.ref))} />
         {related.length > 0 && (
-          <ul className="mt-1" aria-label={L(lang, `รายงานเพิ่มเติมของ ${paper.ref}`, `Related reports of ${paper.ref}`)}>
+          <ul className="mt-1" aria-label={L(lang, R.relatedOf(paper.ref))}>
             {related.map((r) => <Reference key={r.ref} paper={r} lang={lang} onSelect={onSelect} selectedRef={selectedRef} type={type} nested />)}
           </ul>
         )}
@@ -95,7 +93,7 @@ export function ReferenceList({ papers, lang, onSelect, selectedRef, type }: {
     if (p.related_to && refs.has(p.related_to)) under.set(p.related_to, [...(under.get(p.related_to) ?? []), p]);
   }
   return (
-    <ol className="border-t border-rule" aria-label={L(lang, "รายการเอกสารอ้างอิง", "Reference list")}>
+    <ol className="border-t border-rule" aria-label={L(lang, R.list)}>
       {papers.filter((p) => !(p.related_to && refs.has(p.related_to))).map((p) => (
         <Reference key={p.ref} paper={p} lang={lang} onSelect={onSelect} selectedRef={selectedRef} type={type} related={under.get(p.ref)} />
       ))}
@@ -114,11 +112,11 @@ export function ExcludedAtScreening({ stats, lang }: { stats?: Stats | null; lan
   if (!reasons) return null;
   const rows = REASONS.filter((k) => (reasons[k] ?? 0) > 0).map((k) => ({ k, n: reasons[k] as number }));
   const total = rows.reduce((s, r) => s + r.n, 0);
-  const caption = L(lang, "เหตุผลที่คัดออกในขั้นคัดกรอง", "Reasons for exclusion at screening");
+  const caption = L(lang, R.excludedCaption);
   return (
     <details data-excluded-screening className="text-[0.92rem]">
       <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold text-primary md:min-h-0">
-        {L(lang, `บทความที่คัดออกในขั้นคัดกรอง (${total})`, `Records excluded at screening (${total})`)}
+        {L(lang, R.excluded(total))}
       </summary>
       <div className="mt-2 grid gap-2">
         {rows.length ? (
@@ -126,8 +124,8 @@ export function ExcludedAtScreening({ stats, lang }: { stats?: Stats | null; lan
             <caption className="sr-only">{caption}</caption>
             <thead>
               <tr className="border-b border-rule">
-                <th scope="col" className="py-1.5 pr-3 text-left label">{L(lang, "เหตุผล", "Reason")}</th>
-                <th scope="col" className="py-1.5 text-right label">{L(lang, "จำนวน", "Records")}</th>
+                <th scope="col" className="py-1.5 pr-3 text-left label">{L(lang, R.reason)}</th>
+                <th scope="col" className="py-1.5 text-right label">{L(lang, R.records)}</th>
               </tr>
             </thead>
             <tbody>
@@ -139,12 +137,8 @@ export function ExcludedAtScreening({ stats, lang }: { stats?: Stats | null; lan
               ))}
             </tbody>
           </table>
-        ) : <p className="text-muted">{L(lang, "ไม่มีระเบียนที่บันทึกเหตุผลไว้", "No record has a recorded reason")}</p>}
-        <p className="max-w-[65ch] text-[0.85rem] text-muted">
-          {L(lang,
-            "ระบบไม่ได้เก็บรายการบทความที่คัดออกทีละฉบับ (ชื่อเรื่อง ผู้แต่ง) จึงแสดงเฉพาะจำนวนตามเหตุผล นับเฉพาะระเบียนที่บันทึกเหตุผลไว้ และ \"รูปแบบการศึกษาไม่ตรงเกณฑ์\" รวมระเบียนที่ตัดออกตอนคัดเลือกด้วย",
-            "Per-record details of the excluded records (titles, authors) are not stored, so only the counts by reason are shown. Only records with a recorded reason are counted, and \"study design does not match\" includes records dropped at selection.")}
-        </p>
+        ) : <p className="text-muted">{L(lang, R.noReason)}</p>}
+        <p className="max-w-[65ch] text-[0.85rem] text-muted">{L(lang, R.excludedNote)}</p>
       </div>
     </details>
   );
@@ -156,11 +150,8 @@ export function ReferencesSection({ papers, stats, lang, onSelect, selectedRef, 
 }) {
   return (
     <section aria-labelledby="h-papers" className="grid min-w-0 gap-3">
-      <h2 id="h-papers" className={H2}>{L(lang, "เอกสารอ้างอิง", "References")}</h2>
-      <p className="max-w-[65ch] text-[0.85rem] text-muted">
-        {L(lang, "รูปแบบแวนคูเวอร์ จากข้อมูลที่แหล่งค้นให้มา (ไม่มีเล่ม ฉบับ และหน้า) ชื่อเรื่องคงภาษาเดิม",
-          "Vancouver style, from the metadata the search sources give (no volume, issue or pages); titles as published.")}
-      </p>
+      <h2 id="h-papers" className={H2}>{Lw(lang, R.h2)}</h2>
+      <p className="max-w-[65ch] text-[0.85rem] text-muted">{L(lang, R.style)}</p>
       <ReferenceList papers={papers} lang={lang} onSelect={onSelect} selectedRef={selectedRef} type={type} />
       <ExcludedAtScreening stats={stats} lang={lang} />
     </section>

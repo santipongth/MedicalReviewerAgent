@@ -1,7 +1,85 @@
-import { describe, expect, it } from "vitest";
-import { clampLabel, wordSegments, wrapLabel } from "./text-wrap";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { clampLabel, hasThai, softBreaks, thaiChunks, wordSegments, wrapLabel, ZWSP } from "./text-wrap";
 
 const len = (s: string) => [...s].length;
+
+function withoutSegmenter(run: () => void) {
+  const intl = Intl as unknown as { Segmenter?: unknown };
+  const original = intl.Segmenter;
+  delete intl.Segmenter;
+  try {
+    run();
+  } finally {
+    intl.Segmenter = original;
+  }
+}
+
+describe("Thai segmentation helpers (Plan 20 Task 7)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("hasThai finds Thai script only", () => {
+    expect(hasThai("เมตฟอร์มิน")).toBe(true);
+    expect(hasThai("HR 0.86 (95% CI 0.77–0.96)")).toBe(false);
+    expect(hasThai("")).toBe(false);
+  });
+
+  it("segments with the Thai word dictionary (Intl.Segmenter('th', word))", () => {
+    const spy = vi.spyOn(Intl, "Segmenter");
+    wordSegments("ยาหลอก");
+    expect(spy).toHaveBeenCalledWith("th", { granularity: "word" });
+  });
+
+  it("thaiChunks: break opportunities only between two Thai words, the text unchanged when joined", () => {
+    const text = "ในผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2 เมตฟอร์มินลดอุบัติการณ์มะเร็งลำไส้ใหญ่หรือไม่";
+    const chunks = thaiChunks(text);
+    expect(chunks.join("")).toBe(text);
+    expect(chunks.length).toBeGreaterThan(5);
+    // every chunk boundary is a Segmenter word boundary
+    const bounds = new Set<number>();
+    let at = 0;
+    for (const s of wordSegments(text)) { at += s.length; bounds.add(at); }
+    let pos = 0;
+    for (const c of chunks.slice(0, -1)) { pos += c.length; expect(bounds.has(pos)).toBe(true); }
+    // "ยาหลอก" (placebo) is one word: never split
+    expect(thaiChunks("กลุ่มยาหลอก")).toEqual(["กลุ่ม", "ยาหลอก"]);
+  });
+
+  it("never breaks inside a report word the dictionary splits, nor before a dictionary fragment", () => {
+    // ICU splits these (อภิ|มาน, เมต|ฟอร์มิ|น, ออด|ส์): one piece each
+    for (const w of ["อภิมาน", "เมตฟอร์มิน", "อุบัติการณ์", "ออดส์", "ยาหลอก"]) expect(thaiChunks(w)).toEqual([w]);
+    expect(thaiChunks("การวิเคราะห์อภิมาน")).toEqual(["การ", "วิเคราะห์", "อภิมาน"]);
+    // a loanword outside the list: a lone final consonant or a silenced final stays with the word before it
+    expect(thaiChunks("ซิทากลิปติน").some((c) => /^[ก-ฮ]$/.test(c))).toBe(false);
+  });
+
+  it("thaiChunks leaves English and numbers whole (no break added inside or around Latin words)", () => {
+    expect(thaiChunks("Hazard ratio (HR)")).toEqual(["Hazard ratio (HR)"]);
+    const mixed = thaiChunks("ผลลัพธ์หลักของการศึกษา HR 0.86 ในผู้ใหญ่");
+    expect(mixed.join("")).toBe("ผลลัพธ์หลักของการศึกษา HR 0.86 ในผู้ใหญ่");
+    expect(mixed.length).toBeGreaterThan(2);
+    // a boundary always has a Thai letter on both sides (spaces already break; Latin and numbers stay as they are)
+    for (let i = 1; i < mixed.length; i++) {
+      expect(hasThai(mixed[i - 1].slice(-1))).toBe(true);
+      expect(hasThai(mixed[i].slice(0, 1))).toBe(true);
+    }
+    expect(mixed.some((c) => c.includes("HR 0.86"))).toBe(true);
+  });
+
+  it("without Intl.Segmenter the text is unchanged (one chunk, no zero-width spaces)", () => {
+    withoutSegmenter(() => {
+      expect(thaiChunks("อุบัติการณ์มะเร็งลำไส้ใหญ่")).toEqual(["อุบัติการณ์มะเร็งลำไส้ใหญ่"]);
+      expect(softBreaks("อุบัติการณ์มะเร็งลำไส้ใหญ่")).toBe("อุบัติการณ์มะเร็งลำไส้ใหญ่");
+    });
+  });
+
+  it("softBreaks puts a zero-width space at each Thai word boundary (SVG and canvas text)", () => {
+    const text = "อุบัติการณ์มะเร็งลำไส้ใหญ่";
+    const out = softBreaks(text);
+    expect(out.replaceAll(ZWSP, "")).toBe(text);
+    expect(out.split(ZWSP)).toEqual(thaiChunks(text));
+    expect(softBreaks("Sensitivity")).toBe("Sensitivity");
+  });
+});
 
 describe("wordSegments", () => {
   it("splits Latin text into words and the spaces between them, losing nothing", () => {
@@ -20,14 +98,9 @@ describe("wordSegments", () => {
   });
 
   it("without Intl.Segmenter: whitespace words only, a Thai run stays whole", () => {
-    const intl = Intl as unknown as { Segmenter?: unknown };
-    const original = intl.Segmenter;
-    delete intl.Segmenter;
-    try {
+    withoutSegmenter(() => {
       expect(wordSegments("ผลลัพธ์หลัก vs control").filter((s) => s.trim())).toEqual(["ผลลัพธ์หลัก", "vs", "control"]);
-    } finally {
-      intl.Segmenter = original;
-    }
+    });
   });
 });
 

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { ConceptTree } from "@/lib/concept-map";
 import type { Lang } from "@/lib/i18n";
+import { RC } from "@/lib/i18n-report";
 import { ConceptMapFigure } from "../charts/figures";
 import { readTokens } from "../charts/tokens";
 import { useTheme } from "../theme-toggle";
@@ -20,7 +21,7 @@ export function ConceptMapSection({ tree, lang, onSelect }: { tree: ConceptTree;
   const tokens = useMemo(() => (theme ? readTokens() : null), [theme]);
   return (
     <section aria-labelledby="h-map" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
-      <SectionHeading id="h-map">{L(lang, "แผนที่ความรู้", "Concept map")}</SectionHeading>
+      <SectionHeading id="h-map">{L(lang, RC.network.conceptMap)}</SectionHeading>
       {tokens && <ConceptMapFigure tree={tree} tokens={tokens} lang={lang} onSelect={onSelect} wide={wide} />}
     </section>
   );

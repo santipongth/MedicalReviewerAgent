@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Lang } from "@/lib/i18n";
+import { RC } from "@/lib/i18n-report";
 import { L } from "./text";
 
 /**
  * A table that may be wider than the reading column scrolls inside this region, never the page (Plan 20 Task 5). It is
  * a focusable, labelled region (arrow keys scroll it); while more content sits off to the right, that edge fades (a mask
- * on the content, like the section nav: no painted gradient or shadow) and a "เลื่อนดู →" hint shows above it. The
+ * on the content, like the section nav: no painted gradient or shadow) and a "scroll →" hint shows above it. The
  * left edge never fades: it holds the sticky first column.
  */
 export function ScrollRegion({ label, lang, children, className = "", bordered = true }: {
@@ -31,7 +32,7 @@ export function ScrollRegion({ label, lang, children, className = "", bordered =
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1" data-scroll-region={scrollable ? "scrollable" : "fits"}>
       {scrollable && (
         <p aria-hidden="true" className="justify-self-end font-display text-[0.78rem] text-muted" data-scroll-hint>
-          {edges.end ? L(lang, "เลื่อนดู →", "Scroll →") : L(lang, "← เลื่อนกลับ", "← Scroll back")}
+          {L(lang, edges.end ? RC.scroll.more : RC.scroll.back)}
         </p>
       )}
       <div ref={el} role="region" aria-label={label} tabIndex={0}

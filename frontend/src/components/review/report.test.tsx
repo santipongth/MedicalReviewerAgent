@@ -89,7 +89,8 @@ describe("Report", () => {
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
     expect(within(table).queryByRole("columnheader", { name: /^P1\b/ })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /^P2: / }));
-    expect(rail().getByText("Case-control · nested case-control")).toBeInTheDocument();
+    // the paper's own description is card text, marked with its language in a Thai report (Plan 20 Task 7)
+    expect(rail().getByText("nested case-control").closest("dd")).toHaveTextContent("Case-control · nested case-control");
   });
 
   it("the paper list names each study's design category", () => {
@@ -198,9 +199,10 @@ describe("Report", () => {
     expect(within(toc).getAllByRole("link").map((a) => a.textContent)).toContain("ดาวน์โหลด");
   });
 
-  it("a review with no papers has no section nav or table of contents", () => {
+  it("a review with no papers keeps a short section list, but no left table of contents (Plan 20 Task 7)", () => {
     render(<Report review={emptyReviewFixture} />);
-    expect(screen.queryByRole("navigation", { name: "ในรายงานนี้" })).toBeNull();
+    const nav = screen.getByRole("navigation", { name: "ในรายงานนี้" });
+    expect(nav).not.toHaveClass("xl:hidden");
     expect(screen.queryByRole("navigation", { name: "สารบัญ" })).toBeNull();
   });
 

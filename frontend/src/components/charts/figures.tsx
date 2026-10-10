@@ -7,7 +7,7 @@ import type { StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
 import { glyphSize, haloWidth } from "@/lib/glyphs";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
-import { plural } from "@/lib/plural";
+import { RC, type Pair } from "@/lib/i18n-report";
 import type { MetaPoolView } from "@/lib/meta-view";
 import { wrapLabel } from "@/lib/text-wrap";
 import { L } from "../review/text";
@@ -23,10 +23,9 @@ type Select = (ref: string, outcome?: string) => void;
  * tape) only; the verified value and its source are one click away in the table view and the rail. */
 const TIP_NUM = "font-variant-numeric:tabular-nums";
 
-const MEASURE_NOTE: Record<string, [string, string]> = {
-  ratio: ["อัตราส่วน (HR, OR, RR) บนสเกล log · เส้นตั้งที่ 1 = ไม่มีผล · ซ้ายของ 1 = ความเสี่ยงต่ำลง", "Ratios (HR, OR, RR) on a log scale · line at 1 = no effect · left of 1 = lower risk"],
-  difference: ["ผลต่าง (MD, SMD, RD) · เส้นตั้งที่ 0 = ไม่มีผล", "Differences (MD, SMD, RD) · line at 0 = no effect"],
-};
+const G = RC.figures;
+
+const MEASURE_NOTE: Record<string, Pair> = G.measureNote;
 
 const MEASURE_TERM: Record<string, TermKey> = { HR: "hr", OR: "or", RR: "rr", MD: "md", SMD: "smd", RD: "rd" };
 
@@ -35,7 +34,7 @@ function MeasureGlossary({ measures, lang }: { measures: string[]; lang: Lang })
   if (!known.length) return null;
   return (
     <dl className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-      <dt className="label">{L(lang, "คำย่อในแผนภาพ", "Abbreviations in the chart")}</dt>
+      <dt className="label">{L(lang, G.abbreviations)}</dt>
       {known.map((m) => <dd key={m}><Term k={MEASURE_TERM[m]} lang={lang}>{m}</Term></dd>)}
     </dl>
   );
@@ -50,7 +49,7 @@ function metaForestOption(pool: MetaPoolView, t: ChartTokens, lang: Lang): EChar
   const [min, max] = pool.axis;
   const n = pool.studies.length;
   const maxW = Math.max(...pool.studies.map((s) => s.weight), 1);
-  const pooledLabel = L(lang, "ค่ารวม (คำนวณ)", "Pooled (computed)");
+  const pooledLabel = L(lang, G.pooledComputed);
   return {
     animation: !t.reducedMotion,
     animationDuration: 500,
@@ -63,11 +62,11 @@ function metaForestOption(pool: MetaPoolView, t: ChartTokens, lang: Lang): EChar
       textStyle: { color: t.ink, fontFamily: t.fontDisplay },
       formatter: (p: { seriesName?: string; dataIndex: number }) => {
         if (p.seriesName === "pooled") {
-          return `<b>${encodeHTML(`${pool.measure} ${pool.estText}`)}</b> <span style="color:${t.muted}">95% CI</span> ${encodeHTML(pool.ciText)}<br/><span style="color:${t.muted}">${encodeHTML(L(lang, "ค่ารวมที่ระบบคำนวณ ไม่ใช่ผลจากงานวิจัยฉบับใด", "Computed by the system, not a result of any single study"))}</span>`;
+          return `<b>${encodeHTML(`${pool.measure} ${pool.estText}`)}</b> <span style="color:${t.muted}">95% CI</span> ${encodeHTML(pool.ciText)}<br/><span style="color:${t.muted}">${encodeHTML(L(lang, G.pooledTip))}</span>`;
         }
         const s = pool.studies[p.dataIndex];
         if (!s) return "";
-        return `<b style="${TIP_NUM}">${encodeHTML(`${pool.measure} ${s.effectText}`)}</b> <span style="color:${t.muted}">95% CI</span> ${encodeHTML(s.ciText)}<br/><span style="color:${t.muted}">${encodeHTML(s.label)} · ${encodeHTML(L(lang, "น้ำหนัก", "weight"))} ${encodeHTML(s.weightText)} · ${encodeHTML(DIRECTION_LABEL[lang][s.direction])}</span>`;
+        return `<b style="${TIP_NUM}">${encodeHTML(`${pool.measure} ${s.effectText}`)}</b> <span style="color:${t.muted}">95% CI</span> ${encodeHTML(s.ciText)}<br/><span style="color:${t.muted}">${encodeHTML(s.label)} · ${encodeHTML(L(lang, G.weight))} ${encodeHTML(s.weightText)} · ${encodeHTML(DIRECTION_LABEL[lang][s.direction])}</span>`;
       },
     },
     xAxis: {
@@ -146,26 +145,26 @@ export function MetaForestFigure({ pool, tokens, lang, onSelect }: { pool: MetaP
   const family = pool.ratio ? "ratio" : "difference";
   return (
     <Figure lang={lang}
-      title={`${L(lang, "แผนภาพค่ารวม", "Pooled forest plot")} · ${pool.measure}`}
+      title={`${L(lang, G.pooledForest)} · ${pool.measure}`}
       caption={<>
-        {MEASURE_NOTE[family][lang === "th" ? 0 : 1]}
-        {pool.ratio && <> (<Term k="logScale" lang={lang}>{L(lang, "สเกล log คืออะไร", "what is a log scale")}</Term>)</>}
-        {" · "}{L(lang, "ขนาดสัญลักษณ์ตามน้ำหนัก · รูปข้าวหลามตัดแบบเส้นขอบ = ค่ารวมที่ระบบคำนวณ", "Marker size follows weight · outlined lozenge = the computed pooled estimate")}
+        {L(lang, MEASURE_NOTE[family])}
+        {pool.ratio && <> (<Term k="logScale" lang={lang}>{L(lang, G.whatLog)}</Term>)</>}
+        {" · "}{L(lang, G.markerWeight)}
         <MeasureGlossary measures={[pool.measure]} lang={lang} />
       </>}
       chart={
         <EChart option={option} height={Math.max(160, (pool.studies.length + 1) * 34 + 56)}
-          label={L(lang, `Forest plot ค่ารวมของ ${pool.k} งานวิจัย (${pool.outcome})`, `Pooled forest plot of ${pool.k} ${plural(pool.k, "study", "studies")} (${pool.outcome})`)}
+          label={L(lang, G.pooledAria(pool.k, pool.outcome))}
           onItemClick={(d) => { const x = d as { ref?: string; outcome?: string }; if (x?.ref) onSelect(x.ref, x.outcome); }} />
       }
       table={
         <table className="w-full min-w-[480px] border-collapse text-[0.88rem]">
           <thead><tr className="border-b border-rule text-left">
-            <th scope="col" className="py-1.5 label">{L(lang, "งานวิจัย", "Study")}</th>
-            <th scope="col" className="py-1.5 label">{L(lang, "ขนาดผล", "Effect")}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, G.study)}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, G.effect)}</th>
             <th scope="col" className="py-1.5 label">95% CI</th>
-            <th scope="col" className="py-1.5 label">{L(lang, "น้ำหนัก (คำนวณ)", "Weight (computed)")}</th>
-            <th scope="col" className="py-1.5 label">{L(lang, "ทิศทาง", "Direction")}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, G.weightComputed)}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, G.direction)}</th>
           </tr></thead>
           <tbody>
             {pool.studies.map((s) => (
@@ -178,7 +177,7 @@ export function MetaForestFigure({ pool, tokens, lang, onSelect }: { pool: MetaP
               </tr>
             ))}
             <tr className="border-b border-rule">
-              <th scope="row" className="py-1.5 pr-3 text-left font-display font-semibold">{L(lang, "ค่ารวม", "Pooled")}</th>
+              <th scope="row" className="py-1.5 pr-3 text-left font-display font-semibold">{L(lang, G.pooled)}</th>
               <td className="py-1.5 pr-3"><ComputedNumber value={pool.estText} lang={lang} /></td>
               <td className="py-1.5 pr-3"><ComputedNumber value={pool.ciText} lang={lang} tag={false} /></td>
               <td className="py-1.5 pr-3 text-muted">–</td>
@@ -210,11 +209,11 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
         },
       },
       xAxis: { type: "value", min: Math.min(...years) - 1, max: Math.max(...years) + 1, minInterval: 1,
-        name: L(lang, "ปีที่ตีพิมพ์", "Publication year"), nameLocation: "middle", nameGap: 26, nameTextStyle: axisName,
+        name: L(lang, G.publicationYear), nameLocation: "middle", nameGap: 26, nameTextStyle: axisName,
         axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11, formatter: (v: number) => String(v) },
         axisLine: { lineStyle: { color: tokens.rule } }, splitLine: { show: false } },
       yAxis: { type: "log", logBase: 10,
-        name: L(lang, "ขนาดตัวอย่าง (n, สเกล log)", "Sample size (n, log scale)"), nameLocation: "middle", nameGap: 40, nameTextStyle: axisName,
+        name: L(lang, G.sampleSize), nameLocation: "middle", nameGap: 40, nameTextStyle: axisName,
         axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11 }, splitLine: { lineStyle: { color: tokens.rule, opacity: 0.6, type: "dashed" } } },
       series: [{
         type: "scatter", symbolSize: 14, symbolKeepAspect: true, cursor: "pointer",
@@ -227,21 +226,21 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
     };
   }, [points, tokens, lang]);
   if (!points.length) return null;
-  const title = L(lang, "แผนที่งานวิจัย: ปี × ขนาดตัวอย่าง × ทิศทางผล", "Study map: year × sample size × direction");
+  const title = L(lang, G.mapTitle);
   return (
     <Figure lang={lang} title={title}
-      caption={missing ? L(lang, `ไม่ได้แสดง ${missing} ฉบับที่ไม่มีปีหรือจำนวนผู้เข้าร่วมที่ตรวจผ่าน`, `${missing} ${plural(missing, "study without a year or a verified sample size is", "studies without a year or a verified sample size are")} not shown`) : undefined}
-      chart={<EChart option={option} height={300} label={L(lang, `แผนที่ ${points.length} งานวิจัย`, `Map of ${points.length} ${plural(points.length, "study", "studies")}`)}
+      caption={missing ? L(lang, G.mapMissing(missing)) : undefined}
+      chart={<EChart option={option} height={300} label={L(lang, G.mapAria(points.length))}
         onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />}
       table={
         <table className="w-full min-w-[420px] border-collapse text-[0.88rem]">
           <caption className="pb-1 text-left font-display text-[0.85rem] font-semibold">{title}</caption>
           <thead><tr className="border-b border-rule text-left">
-            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "งานวิจัย", "Study")}</th>
-            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "ปี", "Year")}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.study)}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.year)}</th>
             <th scope="col" className="py-1.5 pr-3 label">n</th>
-            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "รูปแบบ", "Design")}</th>
-            <th scope="col" className="py-1.5 label">{L(lang, "ทิศทาง", "Direction")}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.design)}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, G.direction)}</th>
           </tr></thead>
           <tbody>
             {points.map((p) => (
@@ -259,19 +258,16 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
   );
 }
 
-const CONCEPT_CAPTION = ["เส้นเชื่อมมาจากตารางผลแต่ละการศึกษาเท่านั้น ไม่ได้แสดงตัวแปรคั่นกลาง (mediator)",
-  "Links come only from the per-study results table; no mediating variables (mediators) are shown"];
-
 type TreeDatum = { name: string; ref?: string; value: string; tip?: string; symbol: string; symbolSize: number; symbolKeepAspect: boolean; itemStyle: Record<string, unknown>; label?: Record<string, unknown>; children?: TreeDatum[] };
 
 function treeData(n: MapNode, t: ChartTokens, lang: Lang): TreeDatum {
   const leaf = n.kind === "group";
   const colour = leaf && n.direction ? t.direction[n.direction] : t.muted;
-  const name = n.kind === "root" ? L(lang, "คำถาม", "Question") : n.label;
+  const name = n.kind === "root" ? L(lang, G.question) : n.label;
   return {
     // Full labels, wrapped on word boundaries (Thai included) instead of truncated mid-word.
     name: leaf ? name : wrapLabel(name, 22).join("\n"), value: n.text, ref: n.refs?.[0],
-    tip: leaf && n.refs?.length ? L(lang, `คลิกเพื่อเปิด ${n.refs[0]} · ดูทั้งหมดในโครงร่าง`, `Click to open ${n.refs[0]} · see all in the outline`) : undefined,
+    tip: leaf && n.refs?.length ? L(lang, G.clickOpen(n.refs[0])) : undefined,
     // Shapes no direction glyph uses (circle, diamond, flat bar, half circle, dashed ring): rounded square for structure,
     // pin for design groups and qualitative themes.
     symbol: leaf ? (n.direction ? SYMBOL[n.direction] : "pin") : "roundRect",
@@ -349,27 +345,24 @@ export function ConceptMapFigure({ tree, tokens, lang, onSelect, wide }: {
 }) {
   const top = useMemo(() => topOutcomes(tree, CONCEPT_TOP_OUTCOMES), [tree]);
   const option = useMemo(() => conceptOption(top.tree, tokens, lang), [top, tokens, lang]);
-  const note = tree.byDirection ? L(lang, "ทิศทางตามที่เอเจนต์อ่านจากบทคัดย่อ", "Directions as the agent read them in the abstracts") : null;
-  const cut = top.shown < top.total
-    ? L(lang, `แผนภาพแสดง ${top.shown} จาก ${top.total} ผลลัพธ์ที่มีงานวิจัยมากที่สุด ดูครบทุกผลลัพธ์ในโครงร่าง`,
-      `The chart shows the ${top.shown} of ${top.total} outcomes with the most studies; the outline lists every outcome`)
-    : null;
+  const note = tree.byDirection ? L(lang, G.asRead) : null;
+  const cut = top.shown < top.total ? L(lang, G.conceptCut(top.shown, top.total)) : null;
   return (
-    <Figure key={wide ? "wide" : "narrow"} lang={lang} defaultTable={!wide} label={L(lang, "แผนที่ความรู้", "Concept map")}
-      caption={<>{L(lang, CONCEPT_CAPTION[0], CONCEPT_CAPTION[1])}{note && <> · {note}</>}{cut && <> · <span data-concept-cut>{cut}</span></>}</>}
+    <Figure key={wide ? "wide" : "narrow"} lang={lang} defaultTable={!wide} label={L(lang, G.conceptMap)}
+      caption={<>{L(lang, G.conceptCaption)}{note && <> · {note}</>}{cut && <> · <span data-concept-cut>{cut}</span></>}</>}
       chart={
-        <div className="@container overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, "แผนที่ความรู้ (เลื่อนดูได้)", "Concept map (scrollable)")}>
+        <div className="@container overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region" aria-label={L(lang, G.conceptScroll)}>
           {/* Fills the column; only a container narrower than 600px keeps a 720px canvas and scrolls inside this region. */}
           <div className="@max-[600px]:min-w-[720px]">
             {/* 64px per drawn row: a label above its node may wrap to two lines without touching the row above */}
             <EChart option={option} height={Math.max(300, top.tree.drawnLeaves * 64)}
-              label={L(lang, `แผนที่ความรู้ ${top.tree.leaves} กลุ่มงานวิจัย`, `Concept map with ${top.tree.leaves} study groups`)}
+              label={L(lang, G.conceptAria(top.tree.leaves))}
               onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />
           </div>
         </div>
       }
       table={
-        <ul aria-label={L(lang, "โครงร่างแผนที่ความรู้", "Concept map outline")} className="grid list-none gap-1 text-[0.9rem]">
+        <ul aria-label={L(lang, G.conceptOutline)} className="grid list-none gap-1 text-[0.9rem]">
           <ConceptOutline node={tree.root} lang={lang} onSelect={onSelect} />
         </ul>
       }
@@ -379,11 +372,7 @@ export function ConceptMapFigure({ tree, tokens, lang, onSelect, wide }: {
 
 // --- Citation network (Plan 14b) -------------------------------------------------------------------------------------
 
-export const DESIGN_GROUP_LABEL: Record<DesignGroup, [string, string]> = {
-  trial: ["การทดลอง (RCT, ไม่สุ่ม)", "Trials (RCT, non-randomised)"],
-  observational: ["เชิงสังเกตและอื่น ๆ", "Observational and other"],
-  review: ["การทบทวน (SR/MA, บทความทบทวน)", "Reviews (SR/MA, narrative)"],
-};
+export const DESIGN_GROUP_LABEL = G.group as Record<DesignGroup, Pair>;
 
 /** A pointy-top hexagon: no direction marker uses it (lib/glyphs.ts: circle, diamond, flat bar, half circle, dashed ring). */
 export const HEXAGON_PATH = "path://M50 0L93.3 25L93.3 75L50 100L6.7 75L6.7 25Z";
@@ -426,10 +415,10 @@ function citationLayout(net: CitationNetwork): CitationLayout {
 }
 
 function citationOption(net: CitationNetwork, layout: CitationLayout, t: ChartTokens, lang: Lang): EChartsOption {
-  const unknownLabel = L(lang, "ไม่ทราบปี", "Year unknown");
+  const unknownLabel = L(lang, G.yearUnknown);
   const byRef = new Map(net.nodes.map((n) => [n.ref, n]));
-  const countText = (n: NetNode) => n.citedBy == null ? L(lang, "ไม่มีข้อมูล", "no data")
-    : `${n.citedBy.toLocaleString("en-US")} (${n.citedBySource ? SOURCE_LABEL[n.citedBySource] : L(lang, "ไม่ทราบแหล่ง", "source unknown")})`;
+  const countText = (n: NetNode) => n.citedBy == null ? L(lang, G.noData)
+    : `${n.citedBy.toLocaleString("en-US")} (${n.citedBySource ? SOURCE_LABEL[n.citedBySource] : L(lang, G.sourceUnknown)})`;
   return {
     animation: !t.reducedMotion,
     animationDuration: 400,
@@ -439,15 +428,15 @@ function citationOption(net: CitationNetwork, layout: CitationLayout, t: ChartTo
       trigger: "item", backgroundColor: t.surface, borderColor: t.rule, textStyle: { color: t.ink, fontFamily: t.fontDisplay },
       formatter: (p: { dataType?: string; data: { ref?: string; source?: string; target?: string } }) => {
         if (p.dataType === "edge") {
-          return encodeHTML(L(lang, `${p.data.source} อ้างอิง ${p.data.target}`, `${p.data.source} cites ${p.data.target}`));
+          return encodeHTML(L(lang, G.cites(String(p.data.source), String(p.data.target))));
         }
         const n = p.data.ref ? byRef.get(p.data.ref) : undefined;
         if (!n) return "";
-        const cov = n.coverage ? SOURCE_LABEL[n.coverage] : L(lang, "ไม่มีข้อมูล (ไม่ใช่ว่าไม่อ้างอิง)", "no data (not \"cites nothing\")");
+        const cov = n.coverage ? SOURCE_LABEL[n.coverage] : L(lang, G.noCoverage);
         return `<b>${encodeHTML(n.ref)}</b> · ${encodeHTML(n.year ?? unknownLabel)} · ${encodeHTML(n.designText)}`
           + `<br/><span style="color:${t.muted}">${encodeHTML(n.title)}</span>`
-          + `<br/>${encodeHTML(L(lang, "ถูกอ้างอิงทั้งหมด", "Cited by (all)"))}: ${encodeHTML(countText(n))}`
-          + `<br/>${encodeHTML(L(lang, "รายการอ้างอิง", "Reference list"))}: ${encodeHTML(cov)}`;
+          + `<br/>${encodeHTML(L(lang, G.citedByAll))}: ${encodeHTML(countText(n))}`
+          + `<br/>${encodeHTML(L(lang, G.referenceList))}: ${encodeHTML(cov)}`;
       },
     },
     xAxis: {
@@ -517,60 +506,52 @@ export function CitationNetworkFigure({ net, tokens, lang, onSelect }: {
   const groups = (["trial", "observational", "review"] as const).filter((g) => net.nodes.some((n) => n.group === g));
   const hasHollow = net.nodes.some((n) => !n.coverage);
   const { minWidth, height } = layout;
-  const label = L(lang, `เครือข่ายการอ้างอิง ${net.total} งานวิจัย ${net.edges.length} เส้นเชื่อม`,
-    `Citation network of ${net.total} ${plural(net.total, "study", "studies")} with ${net.edges.length} ${plural(net.edges.length, "link", "links")}`);
+  const label = L(lang, G.networkAria(net.total, net.edges.length));
   return (
     <Figure lang={lang}
-      title={L(lang, "การอ้างอิงกันระหว่างงานในรีวิวนี้ ตามปีที่ตีพิมพ์", "Citations between the studies in this review, by year")}
+      title={L(lang, G.networkTitle)}
       caption={
         <div className="grid gap-1">
-          <p>{L(lang, "เส้นเชื่อมแสดงการอ้างอิงระหว่างงานในรีวิวนี้เท่านั้น ข้อมูลจาก OpenAlex/Europe PMC",
-            "Links show citations between studies in this review only. Data from OpenAlex/Europe PMC")}
-          {" · "}{L(lang, "ลูกศรชี้จากงานที่อ้างไปยังงานที่ถูกอ้าง", "Arrows point from the citing study to the cited one")}</p>
-          <p><b className="font-display font-semibold text-ink">{L(lang, "ไม่มีข้อมูล ≠ ไม่อ้างอิง", "No data ≠ cites nothing")}</b>
-            {" · "}{L(lang, "งานที่ไม่มีข้อมูลรายการอ้างอิงอาจอ้างงานอื่นในรีวิวนี้โดยไม่มีเส้นแสดง",
-              "a study without reference data may cite others in this review without a link being drawn")}</p>
-          <p>{L(lang, "ขนาดจุดตามจำนวนครั้งที่ถูกอ้างอิงทั้งหมด (OpenAlex และ Europe PMC นับต่างกัน)",
-            "Marker size follows the total cited-by count (OpenAlex and Europe PMC count differently)")}</p>
-          {net.partial && <p>{L(lang, "ข้อมูลไม่ครบ: การดึงข้อมูลการอ้างอิงหมดเวลา จึงแสดงเท่าที่ได้รับ",
-            "Partial: the citation lookup timed out, so only the data received is shown")}</p>}
+          <p>{L(lang, G.networkLinks)}{" · "}{L(lang, G.arrows)}</p>
+          <p><b className="font-display font-semibold text-ink">{L(lang, G.noDataNotNone)}</b>{" · "}{L(lang, G.mayCite)}</p>
+          <p>{L(lang, G.markerCount)}</p>
+          {net.partial && <p>{L(lang, G.partial)}</p>}
         </div>
       }
       chart={
         <div className="grid gap-2">
           {net.covered === 0 ? (
-            <p className="text-[0.9rem]">{L(lang, "ไม่มีข้อมูลรายการอ้างอิงของงานใดในรีวิวนี้ จึงไม่มีเส้นเชื่อม แสดงเฉพาะจำนวนครั้งที่ถูกอ้างอิง",
-              "No study in this review has reference-list data, so no links are drawn; only cited-by counts are shown")}</p>
+            <p className="text-[0.9rem]">{L(lang, G.noLists)}</p>
           ) : net.edges.length === 0 && (
-            <p className="text-[0.9rem]">{L(lang, "ไม่พบการอ้างอิงกันระหว่างงานในรีวิวนี้", "No citations were found between the studies in this review")}</p>
+            <p className="text-[0.9rem]">{L(lang, G.noCitations)}</p>
           )}
           <div className="overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region"
-            aria-label={L(lang, "เครือข่ายการอ้างอิง (เลื่อนดูได้)", "Citation network (scrollable)")}>
+            aria-label={L(lang, G.networkScroll)}>
             <div style={{ minWidth }}>
               <EChart option={option} height={height} label={label}
                 onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />
             </div>
           </div>
-          <ul aria-label={L(lang, "คำอธิบายสัญลักษณ์", "Legend")} className="flex flex-wrap gap-x-4 gap-y-1 text-[0.82rem] text-muted">
+          <ul aria-label={L(lang, G.legend)} className="flex flex-wrap gap-x-4 gap-y-1 text-[0.82rem] text-muted">
             {groups.map((g) => (
-              <li key={g} className="inline-flex items-center gap-1.5"><Swatch group={g} />{L(lang, ...DESIGN_GROUP_LABEL[g])}</li>
+              <li key={g} className="inline-flex items-center gap-1.5"><Swatch group={g} />{L(lang, DESIGN_GROUP_LABEL[g])}</li>
             ))}
             {hasHollow && (
               <li className="inline-flex items-center gap-1.5"><Swatch group="trial" hollow />
-                {L(lang, "เส้นประ = ไม่มีข้อมูลการอ้างอิง", "Dashed = no citation data")}</li>
+                {L(lang, G.dashed)}</li>
             )}
           </ul>
         </div>
       }
       table={
-        <table aria-label={L(lang, "ตารางการอ้างอิง", "Citation table")} className="w-full min-w-[640px] border-collapse text-[0.88rem]">
+        <table aria-label={L(lang, G.citationTable)} className="w-full min-w-[640px] border-collapse text-[0.88rem]">
           <thead><tr className="border-b border-rule text-left">
-            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "งานวิจัย", "Study")}</th>
-            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "ปี", "Year")}</th>
-            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "อ้างอิงงานในรีวิว", "Cites (in review)")}</th>
-            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "ถูกอ้างโดยงานในรีวิว", "Cited by (in review)")}</th>
-            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "ถูกอ้างอิงทั้งหมด", "Cited by (all)")}</th>
-            <th scope="col" className="py-1.5 label">{L(lang, "ข้อมูลรายการอ้างอิง", "Reference data")}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.study)}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.year)}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.citesIn)}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.citedByIn)}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.citedByAll)}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, G.referenceData)}</th>
           </tr></thead>
           <tbody>
             {net.nodes.map((n) => (
@@ -582,18 +563,18 @@ export function CitationNetworkFigure({ net, tokens, lang, onSelect }: {
                     <span className="text-[0.75rem] text-muted">{n.designText}</span>
                   </button>
                 </th>
-                <td className="py-2 pr-3 font-display tabular-nums">{n.year ?? L(lang, "ไม่ทราบ", "unknown")}</td>
-                <td className="py-2 pr-3 font-display">{n.coverage ? refsText(n.cites) : <span className="text-muted">{L(lang, "ไม่มีข้อมูล", "no data")}</span>}</td>
+                <td className="py-2 pr-3 font-display tabular-nums">{n.year ?? L(lang, G.unknown)}</td>
+                <td className="py-2 pr-3 font-display">{n.coverage ? refsText(n.cites) : <span className="text-muted">{L(lang, G.noData)}</span>}</td>
                 <td className="py-2 pr-3 font-display">{refsText(n.citedByIn)}</td>
                 <td className="py-2 pr-3">
-                  {n.citedBy == null ? <span className="text-muted" title={L(lang, "ไม่มีข้อมูล", "No data")}>–</span> : (
+                  {n.citedBy == null ? <span className="text-muted" title={L(lang, G.noDataCap)}>–</span> : (
                     <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
                       <span className="font-display tabular-nums">{n.citedBy.toLocaleString("en-US")}</span>
                       {n.citedBySource && <span className="text-[0.75rem] text-muted">{SOURCE_LABEL[n.citedBySource]}</span>}
                     </span>
                   )}
                 </td>
-                <td className="py-2">{n.coverage ? SOURCE_LABEL[n.coverage] : <span className="text-muted">{L(lang, "ไม่มีข้อมูล", "No data")}</span>}</td>
+                <td className="py-2">{n.coverage ? SOURCE_LABEL[n.coverage] : <span className="text-muted">{L(lang, G.noDataCap)}</span>}</td>
               </tr>
             ))}
           </tbody>

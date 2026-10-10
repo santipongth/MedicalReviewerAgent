@@ -27,7 +27,8 @@ describe("Plan 20 answer-first report, per review type", () => {
     expect(tocIds()).toEqual(["h-answer", "h-key-findings", "h-sof", "h-selection", "h-characteristics", "h-results", "h-rob", "h-claims",
       "h-landscape", "h-limitations", "h-gaps", "h-discussion", "h-method", "h-papers", "h-downloads"]);
     const answer = answerSection();
-    expect(within(answer).getByText(/^เมตฟอร์มินอาจลดอุบัติการณ์/)).toHaveClass("text-[17px]", "leading-[1.75]");
+    // the reading size (globals.css `.reading`: 17px / 1.75 in a Thai report, Plan 20 Task 7)
+    expect(within(answer).getByText(/^เมตฟอร์มินอาจลดอุบัติการณ์/)).toHaveClass("reading");
     // the certainty badge, with the rationale behind a disclosure
     const mark = answer.querySelector("[data-certainty='low']")!;
     expect(mark).not.toBeNull();

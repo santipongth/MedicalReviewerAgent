@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { rampLevel, type EvidenceMap, type MapTable } from "@/lib/evidence-map";
 import type { Lang } from "@/lib/i18n";
-import { plural } from "@/lib/plural";
+import { fieldLang, RC } from "@/lib/i18n-report";
+import { ThaiText } from "../ui/thai-text";
 import { SectionHeading } from "./report-nav";
 import { ScrollRegion } from "./scroll-region";
 import { L } from "./text";
+
+const E = RC.emap;
 
 /** Concept rows shown before "show all" (Plan 20 Task 5). */
 export const EVIDENCE_MAP_TOP = 15;
@@ -33,20 +36,21 @@ function CountTable({ table, label, corner, lang, limit }: { table: MapTable; la
   const maxTotal = Math.max(0, ...table.rows.map((r) => r.total));
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-      <ScrollRegion lang={lang} label={L(lang, `${label} (เลื่อนดูได้)`, `${label} (scrollable)`)}>
+      <ScrollRegion lang={lang} label={L(lang, RC.parts.scrollable(label))}>
         <table className="w-full border-collapse text-[0.88rem]">
           <caption className="sr-only">{label}</caption>
           <thead>
             <tr className="bg-ground">
               <th scope="col" className="sticky left-0 z-10 min-w-[9rem] bg-ground px-2.5 py-2 text-left label sm:min-w-[190px]">{corner}</th>
-              <th scope="col" className="border-r border-rule px-2 py-2 text-center label">{L(lang, "รวม", "Total")}</th>
+              <th scope="col" className="border-r border-rule px-2 py-2 text-center label">{L(lang, E.total)}</th>
               {table.designs.map((d) => <th key={d.key} scope="col" className="px-2 py-2 text-center label whitespace-nowrap">{d.label}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.key} className="border-t border-rule">
-                <th scope="row" className="sticky left-0 z-10 bg-surface px-2.5 py-2 text-left font-body font-medium break-words">{row.label}</th>
+                <th scope="row" className="sticky left-0 z-10 bg-surface px-2.5 py-2 text-left font-body font-medium break-words"
+                  lang={fieldLang(row.label, lang)}><ThaiText>{row.label}</ThaiText></th>
                 <Count n={row.total} max={maxTotal} strong />
                 {table.designs.map((d) => <Count key={d.key} n={row.counts[d.key]} max={max} />)}
               </tr>
@@ -57,7 +61,7 @@ function CountTable({ table, label, corner, lang, limit }: { table: MapTable; la
       {limit != null && table.rows.length > limit && (
         <button type="button" onClick={() => setAll((a) => !a)} aria-pressed={all}
           className="inline-flex min-h-11 w-fit items-center font-display text-[0.9rem] font-semibold text-primary underline underline-offset-2 md:min-h-0">
-          {all ? L(lang, `แสดง ${limit} อันดับแรก`, `Show the top ${limit}`) : L(lang, `แสดงทั้งหมด (${table.rows.length})`, `Show all (${table.rows.length})`)}
+          {L(lang, all ? E.top(limit) : RC.parts.showAll(table.rows.length))}
         </button>
       )}
     </div>
@@ -69,32 +73,22 @@ export function EvidenceMapSection({ map, lang }: { map: EvidenceMap; lang: Lang
   if (!map.byConcept.rows.length && !map.byYear.rows.length) return null;
   return (
     <section aria-labelledby="h-evidence-map" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
-      <SectionHeading id="h-evidence-map">{L(lang, "แผนที่หลักฐาน", "Evidence map")}</SectionHeading>
-      <p className="text-[0.85rem] text-muted">
-        {L(lang, "จำนวนงานที่พบ ไม่ใช่การประเมินว่าได้ผล · สีเข้มขึ้นตามจำนวน (ตัวเลขอยู่ในทุกช่อง)",
-          "Number of studies found, not an assessment of whether something works · darker cells hold more studies (every cell shows its number)")}
-      </p>
+      <SectionHeading id="h-evidence-map">{L(lang, E.h)}</SectionHeading>
+      <p className="text-[0.85rem] text-muted">{L(lang, E.note)}</p>
       {map.byConcept.rows.length > 0 && (
-        <CountTable table={map.byConcept} lang={lang} limit={EVIDENCE_MAP_TOP}
-          label={L(lang, "จำนวนงานวิจัยตามประเด็นและชนิดงานวิจัย", "Studies by concept and design")}
-          corner={L(lang, "ประเด็น", "Concept")} />
+        <CountTable table={map.byConcept} lang={lang} limit={EVIDENCE_MAP_TOP} label={L(lang, E.byConcept)} corner={L(lang, E.concept)} />
       )}
       {map.byConcept.rows.length > 0 && (
         <p className="text-[0.82rem] text-muted">
-          {L(lang, "ตารางแรกนับงานวิจัยตามแนวคิดหรือประเด็นในตารางเปรียบเทียบ เรียงจากประเด็นที่มีงานมากที่สุด งานเดียวอาจอยู่หลายแถว",
-            "The first table counts papers per concept (comparison row), most studies first; one paper can appear in several rows")}
-          {map.outsideConcepts > 0 && ` · ${L(lang, `ไม่ได้จัดเข้าแนวคิดใด ${map.outsideConcepts} งาน`, `${map.outsideConcepts} not placed under any concept`)}`}
+          {L(lang, E.conceptNote)}
+          {map.outsideConcepts > 0 && ` · ${L(lang, E.outside(map.outsideConcepts))}`}
         </p>
       )}
       {map.byYear.rows.length > 0 && (
-        <CountTable table={map.byYear} lang={lang}
-          label={L(lang, "จำนวนงานวิจัยตามช่วงปีและชนิดงานวิจัย", "Studies by period and design")}
-          corner={L(lang, "ช่วงปี (5 ปี)", "Period (5 years)")} />
+        <CountTable table={map.byYear} lang={lang} label={L(lang, E.byYear)} corner={L(lang, E.period)} />
       )}
       {map.unplaced > 0 && (
-        <p className="text-[0.82rem] text-muted">
-          {L(lang, `ตารางช่วงปีไม่รวม ${map.unplaced} ฉบับที่ไม่มีปีหรืออ่านไม่สำเร็จ`, `The period table leaves out ${map.unplaced} ${plural(map.unplaced, "study", "studies")} without a year or that could not be read`)}
-        </p>
+        <p className="text-[0.82rem] text-muted">{L(lang, E.unplaced(map.unplaced))}</p>
       )}
     </section>
   );

@@ -26,12 +26,18 @@ function scriptCode(code: string): string {
   return code.replace(/<\/script/gi, "<\\/script");
 }
 
+/** The offline header line, in the report's language (Plan 20 Task 7). */
+const OFFLINE_LINE = {
+  th: (when: string) => `รายงานแบบออฟไลน์ · ดาวน์โหลดเมื่อ ${when} UTC · การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์`,
+  en: (when: string) => `Offline report · downloaded ${when} UTC · automated rapid literature review, not medical advice`,
+};
+
 export function buildStandaloneHtml(review: Review, assets: StandaloneAssets, downloadedAt = new Date()): string {
   const title = `${escapeHtml(review.topic)} · Medical Reviewer Agent`;
-  const lang = review.result?.language ?? review.language ?? "th";
+  const lang = (review.result?.language ?? review.language ?? "th") === "en" ? "en" : "th";
   const when = downloadedAt.toISOString().slice(0, 16).replace("T", " ");
   return `<!doctype html>
-<html lang="${lang === "en" ? "en" : "th"}">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -45,7 +51,7 @@ export function buildStandaloneHtml(review: Review, assets: StandaloneAssets, do
 <header class="border-b border-rule">
 <div class="mx-auto flex w-full max-w-[1240px] flex-wrap items-baseline justify-between gap-2 px-4 py-3 text-[0.85rem] text-muted">
 <span class="font-display font-bold text-ink">Medical Reviewer Agent</span>
-<span>รายงานแบบออฟไลน์ · ดาวน์โหลดเมื่อ ${when} UTC · การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์</span>
+<span>${OFFLINE_LINE[lang](when)}</span>
 </div>
 </header>
 <main class="mx-auto w-full max-w-[1240px] px-4 pb-16"><div id="root"></div></main>

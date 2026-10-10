@@ -1,9 +1,9 @@
 "use client";
 
 import { directionTally, hasPooledPapers, themePapers } from "@/lib/charts-data";
-import { META_POOL_COPY, POOLED_OVERLAP_TH } from "@/lib/copy";
+import { META_POOL_COPY } from "@/lib/copy";
 import { DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "@/lib/i18n";
-import { plural } from "@/lib/plural";
+import { fieldLang, RC } from "@/lib/i18n-report";
 import { DESIGN_GROUP_LABEL, fixed } from "@/lib/meta-view";
 import { metaPoolGap, reviewTypeOf, showsDirection } from "@/lib/review-type";
 import type { Paper, Pool, ReviewResult, Synthesis } from "@/lib/types";
@@ -11,7 +11,9 @@ import { ComputedNumber, Glyph } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { CitedText, READING, StrengthLine, type Select } from "./report-parts";
 import { SECTION_H2 } from "./report-nav";
-import { L } from "./text";
+import { L, Lw } from "./text";
+
+const B = RC.bottom;
 
 /** The pools in reading order: the graded (primary) outcome first, as the backend computed them. */
 function orderedPools(result: ReviewResult): Pool[] {
@@ -26,7 +28,7 @@ export function PooledLine({ pool, lang, english }: { pool: Pool; lang: Lang; en
   const group = DESIGN_GROUP_LABEL[pool.design_group]?.[lang] ?? pool.design_group;
   return (
     <li className="flex flex-wrap items-baseline gap-x-2 gap-y-1" data-pooled-line>
-      <span className="font-display font-semibold break-words">{outcome}</span>
+      <span className="font-display font-semibold break-words" lang={fieldLang(outcome, lang)}>{outcome}</span>
       <span className="text-[0.88rem] text-muted">{group} · k = <span className="tabular-nums">{pool.k}</span></span>
       <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
         <span className="font-display">{pool.measure}</span>
@@ -63,10 +65,11 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
   const lead = synthesis.answer?.trim() || synthesis.executive_summary || result.summary || "";
   return (
     <section aria-labelledby="h-answer" className="grid gap-4">
-      <h2 id="h-answer" className={SECTION_H2}>{L(lang, "คำตอบโดยสรุป", "Bottom line")}</h2>
+      <h2 id="h-answer" className={SECTION_H2}>{Lw(lang, B.h2)}</h2>
       {poolGap && (
         <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 text-[0.92rem]" data-not-pooled={poolGap}>
-          <span className="label rounded-sm bg-warn-bg px-2 py-1">{META_POOL_COPY[poolGap].label[lang]}</span>
+          {/* a short chip: never wraps (Plan 20 Task 7) */}
+          <span className="label nw rounded-sm bg-warn-bg px-2 py-1">{META_POOL_COPY[poolGap].label[lang]}</span>
           <span className="text-muted">{META_POOL_COPY[poolGap].reason[lang]}</span>
         </p>
       )}
@@ -74,35 +77,31 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
           engine can leave the answer "" (docs/api.md): the summary then leads, and with no text at all the certainty
           line and the key findings carry the bottom line (never an empty paragraph). */}
       {lead.trim() ? (
-        <p className={`max-w-[65ch] ${READING}`} data-prose data-answer={synthesis.answer?.trim() ? "" : undefined}>
+        <p className={`max-w-[65ch] ${READING}`} data-prose data-answer={synthesis.answer?.trim() ? "" : undefined} lang={fieldLang(lead, lang)}>
           <CitedText text={lead} onSelect={onSelect} refs={refs} />
         </p>
       ) : hasPapers && (
         <p className="max-w-[65ch] text-[0.92rem] text-muted" data-no-answer>
           {/* "" also when the model wrote none or the narrative step failed (api.md): never blamed on the checks */}
-          {L(lang, "ไม่มีคำตอบสั้นสำหรับรีวิวนี้ ดูผลการศึกษาที่สำคัญด้านล่าง", "No short answer for this review; see the key findings below.")}
+          {L(lang, B.noAnswer)}
         </p>
       )}
       {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} bar={!poolGap} />}
       {pools.length > 0 && (
         <div className="grid gap-1.5" data-bottom-pools>
-          <p className="label">{L(lang, "ค่ารวม (คำนวณโดยระบบ ไม่ใช่ตัวเลขจากงานวิจัยฉบับใด)", "Pooled estimate (computed by the system, not from any single study)")}</p>
+          <p className="label">{L(lang, B.pooledLabel)}</p>
           <ul className="grid gap-1.5">
             {pools.map((p, i) => <PooledLine key={`${p.outcome}|${p.design_group}|${p.measure}|${i}`} pool={p} lang={lang} english={english} />)}
           </ul>
         </div>
       )}
       {hasPapers && <p className="text-[0.8rem] text-muted">
-        {type === "scoping"
-          ? L(lang, "สรุปเขียนโดยโมเดล ข้อความสรุปไม่ใช่ตัวเลขที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะรหัสงานวิจัยในรายการ)",
-            "The summary is written by a model and is not itself a verified number. Numbers checked against the papers carry a striped underline; see them in the source rail (select a paper in the list).")
-          : L(lang, "สรุปเขียนโดยโมเดล ข้อความสรุปไม่ใช่ตัวเลขที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะช่องในตารางผลแต่ละการศึกษา) และในมุมมองตารางของแผนภาพ",
-            "The summary is written by a model and is not itself a verified number. Numbers checked against the papers carry a striped underline; see them in the source rail (select a cell in the findings table) and in the table view of the charts.")}
+        {L(lang, type === "scoping" ? B.modelNoteScoping : B.modelNote)}
       </p>}
       {shown.length > 0 && (
         <div className="grid gap-1.5 text-[0.92rem]">
           <p className="text-muted">
-            <Term k="directionTally" lang={lang}>{L(lang, "จำนวนงานวิจัยตามทิศทางผลที่เอเจนต์อ่าน", "Papers by the direction of result the agent read")}</Term>
+            <Term k="directionTally" lang={lang}>{L(lang, B.tally)}</Term>
           </p>
           <ul className="flex flex-wrap gap-x-5 gap-y-1.5">
             {shown.map((d) => (
@@ -114,15 +113,14 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
           </ul>
           {hasPooledPapers(papers) && (
             <p className="text-[0.82rem] text-muted">
-              {L(lang, POOLED_OVERLAP_TH, "Reviews and meta-analyses may overlap with the primary studies counted here")}
+              {L(lang, B.overlap)}
             </p>
           )}
         </div>
       )}
       {themes > 0 && (
         <p className="text-[0.92rem] text-muted" data-theme-count>
-          {L(lang, `งานเชิงคุณภาพหรือแบบผสมผสาน ${themes} ฉบับ สรุปเป็นประเด็นที่พบ ไม่นับตามทิศทางผล`,
-            `${themes} qualitative or mixed-methods ${plural(themes, "study is", "studies are")} summarised as the themes found, not counted by direction`)}
+          {L(lang, B.themes(themes))}
         </p>
       )}
     </section>

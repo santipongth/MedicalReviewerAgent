@@ -8,29 +8,24 @@ import { Fragment, type ReactNode } from "react";
 import { armLabels, axisFraction, niceAxis, tickText, type Axis, type DtaData, type DtaMetric, type DtaValue } from "@/lib/charts-data";
 import { GLYPH_PATH, glyphSize, haloWidth } from "@/lib/glyphs";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
-import { plural } from "@/lib/plural";
+import { fieldLang, RC, type Pair } from "@/lib/i18n-report";
 import type { ForestPanelView, ForestRowView } from "@/lib/report-view";
 import type { Direction } from "@/lib/types";
 import { ScrollRegion } from "../review/scroll-region";
-import { L } from "../review/text";
+import { L, Lw } from "../review/text";
 import { ComputedNumber, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
+import { ThaiText } from "../ui/thai-text";
 import { Figure } from "./figure";
 
 type Select = (ref: string, outcome?: string) => void;
 
+const F = RC.forest;
+
 const COLOR: Record<Direction, string> = { positive: "var(--sup)", negative: "var(--harm)", null: "var(--none)", mixed: "var(--mixed)", unclear: "var(--unclear)" };
 
 /** Axis titles per measure (the panel's measure name, never a number). */
-export const MEASURE_NAME: Record<string, [string, string]> = {
-  HR: ["อัตราส่วนอันตราย (HR)", "Hazard ratio (HR)"],
-  OR: ["อัตราส่วนออดส์ (OR)", "Odds ratio (OR)"],
-  RR: ["อัตราส่วนความเสี่ยง (RR)", "Risk ratio (RR)"],
-  MD: ["ผลต่างค่าเฉลี่ย (MD)", "Mean difference (MD)"],
-  SMD: ["ผลต่างค่าเฉลี่ยมาตรฐาน (SMD)", "Standardised mean difference (SMD)"],
-  RD: ["ผลต่างความเสี่ยง (RD)", "Risk difference (RD)"],
-  r: ["สหสัมพันธ์ (r)", "Correlation (r)"],
-};
+export const MEASURE_NAME: Record<string, Pair> = F.measure;
 
 const pct = (f: number) => `${(f * 100).toFixed(3)}%`;
 
@@ -94,11 +89,13 @@ const LABEL_CELL = "min-w-0 py-1.5 pr-2";
 const NUM_CELL = "forest-num py-1.5 pl-2 text-[0.85rem]";
 
 /** The label of a study row: a button that opens the paper in the rail (its full title in the title attribute). */
-function StudyButton({ row, onSelect, extra }: { row: { ref: string; label: string; title: string; outcomeKey: string }; onSelect: Select; extra?: string }) {
+function StudyButton({ row, onSelect, extra, lang }: {
+  row: { ref: string; label: string; title: string; outcomeKey: string }; onSelect: Select; extra?: string; lang: Lang;
+}) {
   return (
     <button type="button" onClick={() => onSelect(row.ref, row.outcomeKey)} title={row.title}
       className="inline-flex min-h-8 max-w-full items-center text-left text-[0.88rem] text-ink underline decoration-rule underline-offset-2 hover:decoration-ink">
-      <span className="line-clamp-2 break-words">{row.label}{extra ? <span className="text-muted"> · {extra}</span> : null}</span>
+      <span className="line-clamp-2 break-words">{row.label}{extra ? <span className="text-muted" lang={fieldLang(extra, lang)}> · {extra}</span> : null}</span>
     </button>
   );
 }
@@ -125,12 +122,12 @@ function AxisRows({ axis, title, arms }: { axis: Axis; title: string; arms: [str
       </div>
       <div className="forest-row">
         <div style={{ gridArea: "plot" }} className="grid gap-0.5 pt-1 text-center">
-          <span className="font-display text-[0.8rem] font-semibold text-ink" data-axis-title>{title}</span>
+          <span className="font-display text-[0.8rem] font-semibold text-ink" data-axis-title><ThaiText>{title}</ThaiText></span>
           {arms && nullAt != null && (
             // the sides in measure terms only (lower / higher with the intervention), never which is better
             <span className="forest-favours flex font-display text-[0.75rem] text-muted" data-arms>
-              <span className="pr-1.5 text-right" style={{ width: pct(nullAt) }}>← {arms[0]}</span>
-              <span className="pl-1.5 text-left" style={{ width: pct(1 - nullAt) }}>{arms[1]} →</span>
+              <span className="pr-1.5 text-right" style={{ width: pct(nullAt) }}>← <ThaiText>{arms[0]}</ThaiText></span>
+              <span className="pl-1.5 text-left" style={{ width: pct(1 - nullAt) }}><ThaiText>{arms[1]}</ThaiText> →</span>
             </span>
           )}
         </div>
@@ -155,7 +152,7 @@ export interface Arms { intervention: string | null }
 function GroupHead({ axis, text, ...data }: { axis: Axis; text: string } & Record<`data-${string}`, string | boolean>) {
   return (
     <div className={ROW} {...data}>
-      <span className={`${LABEL_CELL} self-center font-display text-[0.8rem] font-semibold text-muted`} style={{ gridArea: "label" }}>{text}</span>
+      <span className={`${LABEL_CELL} self-center font-display text-[0.8rem] font-semibold text-muted`} style={{ gridArea: "label" }}><ThaiText>{text}</ThaiText></span>
       <Frame axis={axis} />
     </div>
   );
@@ -165,7 +162,7 @@ function PooledRow({ pool, axis, lang }: { pool: ForestPanelView["pools"][number
   return (
     <div className={`${ROW} border-t-ink`} data-pooled-row>
       <span className={`${LABEL_CELL} self-center font-display text-[0.88rem] font-semibold`} style={{ gridArea: "label" }}>
-        {L(lang, "ค่ารวม (คำนวณ)", "Pooled (computed)")}<span className="block text-[0.75rem] font-normal text-muted">{pool.group} · k = {pool.k}</span>
+        {Lw(lang, F.pooledComputed)}<span className="block text-[0.75rem] font-normal text-muted">{pool.group} · k = {pool.k}</span>
       </span>
       <Frame axis={axis}><Lozenge axis={axis} est={pool.est} lo={pool.lo} hi={pool.hi} /></Frame>
       <div className={NUM_CELL} style={{ gridArea: "num" }}>
@@ -178,15 +175,14 @@ function PooledRow({ pool, axis, lang }: { pool: ForestPanelView["pools"][number
   );
 }
 
-const poolHeading = (pool: ForestPanelView["pools"][number], lang: Lang) =>
-  L(lang, `ค่ารวม: ${pool.group} · ${pool.refs.join(", ")}`, `Pooled: ${pool.group} · ${pool.refs.join(", ")}`);
+const poolHeading = (pool: ForestPanelView["pools"][number], lang: Lang) => L(lang, F.poolHeading(pool.group, pool.refs.join(", ")));
 
 const MEASURE_TERM: Record<string, "hr" | "or" | "rr" | "md" | "smd" | "rd"> = { HR: "hr", OR: "or", RR: "rr", MD: "md", SMD: "smd", RD: "rd" };
 
 function StudyRows({ rows, axis, lang, onSelect }: { rows: ForestRowView[]; axis: Axis; lang: Lang; onSelect: Select }) {
   return rows.map((r) => (
     <div key={r.ref + r.outcomeKey} className={ROW} data-forest-row={r.ref}>
-      <div className={LABEL_CELL} style={{ gridArea: "label" }}><StudyButton row={r} onSelect={onSelect} /></div>
+      <div className={LABEL_CELL} style={{ gridArea: "label" }}><StudyButton row={r} onSelect={onSelect} lang={lang} /></div>
       <Frame axis={axis}>
         <Estimate axis={axis} lo={r.lo} hi={r.hi} color={COLOR[r.direction]}
           marker={<Marker direction={r.direction} at={axisFraction(r.value, axis)} />} />
@@ -207,12 +203,12 @@ export function ForestPanel({ panel, arms, lang, onSelect }: { panel: ForestPane
   const kind = panel.family === "ratio" ? "ratio" : "difference";
   const axis = niceAxis([...all.flatMap((r) => [r.value, r.lo ?? r.value, r.hi ?? r.value]),
     ...panel.pools.flatMap((p) => [p.est, p.lo, p.hi])], kind);
-  const name = MEASURE_NAME[panel.measure] ?? [panel.measure, panel.measure];
-  const title = `${L(lang, ...name)}${panel.family === "ratio" ? L(lang, " · สเกล log", " · log scale") : ""}`;
+  const name: Pair = MEASURE_NAME[panel.measure] ?? [panel.measure, panel.measure];
+  const title = `${L(lang, name)}${panel.family === "ratio" ? L(lang, F.logScale) : ""}`;
   const sides = armLabels(panel.family, arms.intervention, lang);
   const numHead = `${panel.measure} (95% CI)`;
-  const reviewsLabel = L(lang, "การทบทวนอย่างเป็นระบบ", "Systematic reviews");
-  const notPooled = L(lang, "ไม่ได้รวมผล", "Not pooled");
+  const reviewsLabel = L(lang, F.reviews);
+  const notPooled = L(lang, F.notPooled);
   const pooled = panel.pools.length > 0;
   const k = all.length;
   const colgroup = (text: string) => (
@@ -221,13 +217,13 @@ export function ForestPanel({ panel, arms, lang, onSelect }: { panel: ForestPane
   const table = (
     <table className="w-full min-w-[420px] border-collapse text-[0.88rem]">
       <caption className="pb-1 text-left font-display text-[0.85rem] font-semibold">
-        {panel.outcome} · {numHead}
+        <span lang={fieldLang(panel.outcome, lang)}>{panel.outcome}</span> · {numHead}
       </caption>
       <thead><tr className="border-b border-rule text-left">
-        <th scope="col" className="py-1.5 pr-3 label">{L(lang, "งานวิจัย", "Study")}</th>
+        <th scope="col" className="py-1.5 pr-3 label">{L(lang, F.study)}</th>
         <th scope="col" className="py-1.5 pr-3 label">{panel.measure}</th>
         <th scope="col" className="py-1.5 pr-3 label">95% CI</th>
-        <th scope="col" className="py-1.5 label">{L(lang, "ทิศทาง", "Direction")}</th>
+        <th scope="col" className="py-1.5 label">{L(lang, F.direction)}</th>
       </tr></thead>
       <tbody>
         {panel.groups.map((g) => (
@@ -236,7 +232,7 @@ export function ForestPanel({ panel, arms, lang, onSelect }: { panel: ForestPane
             {g.rows.map((r) => <TwinRow key={r.ref} r={r} lang={lang} onSelect={onSelect} />)}
             {g.pool && (
               <tr className="border-b border-rule">
-                <th scope="row" className="py-1.5 pr-3 text-left font-display font-semibold">{L(lang, `ค่ารวม ${g.pool.group} (คำนวณ)`, `Pooled, ${g.pool.group} (computed)`)}</th>
+                <th scope="row" className="py-1.5 pr-3 text-left font-display font-semibold">{L(lang, F.pooledRow(g.pool.group))}</th>
                 <td className="py-1.5 pr-3"><ComputedNumber value={g.pool.estText} lang={lang} /></td>
                 <td className="py-1.5 pr-3"><ComputedNumber value={g.pool.ciText} lang={lang} tag={false} /></td>
                 <td className="py-1.5 text-muted">–</td>
@@ -253,8 +249,8 @@ export function ForestPanel({ panel, arms, lang, onSelect }: { panel: ForestPane
   );
   const chart = (
     <div className="forest grid grid-cols-[minmax(0,1fr)]" role="group" data-forest-panel={panel.measure}
-      aria-label={L(lang, `Forest plot: ${panel.outcome}, ${panel.measure}, ${k} ผลการศึกษา`, `Forest plot: ${panel.outcome}, ${panel.measure}, ${k} ${plural(k, "effect", "effects")}`)}>
-      <HeadRow label={L(lang, "งานวิจัย", "Study")} num={numHead} />
+      aria-label={L(lang, F.aria(panel.outcome, panel.measure, k))}>
+      <HeadRow label={L(lang, F.study)} num={numHead} />
       {panel.groups.map((g) => g.pool ? (
         // a pool is its own block: exactly the studies it combined, its lozenge directly under them
         <div key={g.pool.key} className="grid grid-cols-[minmax(0,1fr)]" data-pool-block>
@@ -276,19 +272,16 @@ export function ForestPanel({ panel, arms, lang, onSelect }: { panel: ForestPane
     </div>
   );
   return (
-    <Figure lang={lang} title={<>{panel.outcome} <span className="font-normal text-muted">· {panel.measure}</span></>}
+    <Figure lang={lang} title={<><span lang={fieldLang(panel.outcome, lang)}><ThaiText>{panel.outcome}</ThaiText></span> <span className="font-normal text-muted">· {panel.measure}</span></>}
       chart={chart} table={table}
       caption={<div className="grid gap-1">
         {panel.pools.map((p) => <PoolLine key={p.key} pool={p} lang={lang} />)}
         <p>
-          {panel.family === "ratio" ? L(lang, "เส้นตั้งที่ 1 = ไม่มีผล", "Line at 1 = no effect")
-            : panel.family === "correlation" ? L(lang, "เส้นตั้งที่ 0 = ไม่มีความสัมพันธ์", "Line at 0 = no association")
-              : L(lang, "เส้นตั้งที่ 0 = ไม่มีผล", "Line at 0 = no effect")}
-          {sides && <>{" · "}{L(lang, "สองด้านของแกนบอกเพียงว่าค่าต่ำหรือสูงกว่าในกลุ่มที่ได้รับการรักษา/สัมผัส ไม่ได้บอกว่าด้านใดดีกว่า",
-            "The two sides say only whether the value is lower or higher with the intervention, not which is better")}</>}
-          {pooled && <>{" · "}{L(lang, "ค่ารวมแต่ละค่ารวมเฉพาะงานที่อยู่ในกรอบของมัน", "Each pooled estimate combines only the studies in its own block")}</>}
-          {panel.reviews.length > 0 && <>{" · "}{L(lang, "งานทบทวนอย่างเป็นระบบแสดงแยกและไม่นำมารวมกับงานวิจัยหลัก", "Systematic reviews are shown apart and never combined with the primary studies")}</>}
-          {panel.family === "ratio" && <> (<Term k="logScale" lang={lang}>{L(lang, "สเกล log คืออะไร", "what is a log scale")}</Term>)</>}
+          {L(lang, panel.family === "ratio" ? F.nullRatio : panel.family === "correlation" ? F.nullCorrelation : F.nullDifference)}
+          {sides && <>{" · "}{L(lang, F.sides)}</>}
+          {pooled && <>{" · "}{L(lang, F.ownBlock)}</>}
+          {panel.reviews.length > 0 && <>{" · "}{L(lang, F.reviewsApart)}</>}
+          {panel.family === "ratio" && <> (<Term k="logScale" lang={lang}>{L(lang, F.whatLog)}</Term>)</>}
           {MEASURE_TERM[panel.measure] && <> · <Term k={MEASURE_TERM[panel.measure]} lang={lang}>{panel.measure}</Term></>}
         </p>
       </div>} />
@@ -318,7 +311,7 @@ function BlankTwin({ label, lang }: { label: string; lang: Lang }) {
 function BlankRow({ b, axis, lang, onSelect }: { b: ForestPanelView["blanked"][number]; axis: Axis; lang: Lang; onSelect: Select }) {
   return (
     <div className={ROW} data-forest-row={b.ref} data-blanked>
-      <div className={LABEL_CELL} style={{ gridArea: "label" }}><StudyButton row={b} onSelect={onSelect} /></div>
+      <div className={LABEL_CELL} style={{ gridArea: "label" }}><StudyButton row={b} onSelect={onSelect} lang={lang} /></div>
       <Frame axis={axis} />
       <div className={NUM_CELL} style={{ gridArea: "num" }}><Hole lang={lang} /></div>
     </div>
@@ -329,21 +322,19 @@ function BlankRow({ b, axis, lang, onSelect }: { b: ForestPanelView["blanked"][n
 function PoolLine({ pool, lang }: { pool: ForestPanelView["pools"][number]; lang: Lang }) {
   return (
     <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-display tabular-nums text-ink" data-pool-stats>
-      <span className="font-semibold">{L(lang, `ค่ารวม ${pool.group}`, `Pooled, ${pool.group}`)}</span>
+      <span className="font-semibold">{L(lang, F.poolStats(pool.group))}</span>
       <span>k = {pool.k}</span>
       <span>I² <ComputedNumber value={pool.i2Text} lang={lang} tag={false} /></span>
       <span>τ² <ComputedNumber value={pool.tau2Text} lang={lang} tag={false} /></span>
       <span>Q <ComputedNumber value={pool.qText} lang={lang} tag={false} /> (df {pool.df}, p {pool.pText.startsWith("<") ? "" : "= "}<ComputedNumber value={pool.pText} lang={lang} tag={false} />)</span>
-      <a href="#h-meta" className="font-normal text-primary underline underline-offset-2">{L(lang, "วิธีคำนวณ", "How it was computed")}</a>
+      <a href="#h-meta" className="font-normal text-primary underline underline-offset-2">{L(lang, F.howComputed)}</a>
     </p>
   );
 }
 
 // --- Diagnostic accuracy ------------------------------------------------------------------------------------------------
 
-const DTA_NAME: Record<DtaMetric, [string, string]> = {
-  sens: ["ความไว (sensitivity)", "Sensitivity"], spec: ["ความจำเพาะ (specificity)", "Specificity"], auc: ["AUC", "AUC"],
-};
+const DTA_NAME = F.dta as Record<DtaMetric, Pair>;
 
 function DtaNumber({ v, lang, onSelect, ref_ }: { v: DtaValue; lang: Lang; onSelect: Select; ref_: string }) {
   if (v.kind === "blanked") return <Hole lang={lang} />;
@@ -362,17 +353,17 @@ function DtaMarker({ at }: { at: number }) {
 
 function DtaPanel({ data, metric, lang, onSelect }: { data: DtaData; metric: "sens" | "spec"; lang: Lang; onSelect: Select }) {
   const axis = niceAxis([], "proportion");
-  const name = L(lang, ...DTA_NAME[metric]);
+  const name = L(lang, DTA_NAME[metric]);
   const rows = data.studies.flatMap((s) => s[metric].map((v, i) => ({ s, v, i, many: s[metric].length > 1 })));
   return (
     <div className="forest grid min-w-0 grid-cols-[minmax(0,1fr)]" role="group" data-dta-panel={metric}
-      aria-label={L(lang, `${name}: ${rows.length} ค่า`, `${name}: ${rows.length} values`)}>
+      aria-label={L(lang, F.dtaValues(name, rows.length))}>
       <p className="pb-1 font-display text-[0.9rem] font-semibold">{name}</p>
-      <HeadRow label={L(lang, "งานวิจัย", "Study")} num={L(lang, "ค่า (95% CI)", "Value (95% CI)")} />
+      <HeadRow label={L(lang, F.study)} num={L(lang, F.value)} />
       {rows.map(({ s, v, i, many }) => (
         <div key={`${s.ref}${i}`} className={ROW} data-forest-row={s.ref}>
           <div className={LABEL_CELL} style={{ gridArea: "label" }}>
-            <StudyButton row={{ ref: s.ref, label: s.label, title: s.title, outcomeKey: v.outcomeKey }} onSelect={onSelect} extra={many ? v.outcome : undefined} />
+            <StudyButton row={{ ref: s.ref, label: s.label, title: s.title, outcomeKey: v.outcomeKey }} onSelect={onSelect} extra={many ? v.outcome : undefined} lang={lang} />
           </div>
           <Frame axis={axis}>
             {v.kind === "verified" && (
@@ -397,12 +388,12 @@ export function DtaFigure({ data, lang, onSelect }: { data: DtaData; lang: Lang;
   const table = (
     <table className="w-full min-w-[520px] border-collapse text-[0.88rem]">
       <caption className="pb-1 text-left font-display text-[0.85rem] font-semibold">
-        {L(lang, "ความแม่นยำในการวินิจฉัยตามที่แต่ละงานรายงาน", "Diagnostic accuracy as each study reported it")}
+        {L(lang, F.dtaCaption)}
       </caption>
       <thead><tr className="border-b border-rule text-left">
-        <th scope="col" className="py-1.5 pr-3 label">{L(lang, "งานวิจัย", "Study")}</th>
-        <th scope="col" className="py-1.5 pr-3 label">{L(lang, ...DTA_NAME.sens)}</th>
-        <th scope="col" className="py-1.5 pr-3 label">{L(lang, ...DTA_NAME.spec)}</th>
+        <th scope="col" className="py-1.5 pr-3 label">{L(lang, F.study)}</th>
+        <th scope="col" className="py-1.5 pr-3 label">{L(lang, DTA_NAME.sens)}</th>
+        <th scope="col" className="py-1.5 pr-3 label">{L(lang, DTA_NAME.spec)}</th>
         <th scope="col" className="py-1.5 pr-3 label">AUC</th>
         <th scope="col" className="py-1.5 label">n</th>
       </tr></thead>
@@ -426,18 +417,15 @@ export function DtaFigure({ data, lang, onSelect }: { data: DtaData; lang: Lang;
   // The DTA table is always shown: it is the panels' table twin and the only place AUC and n appear.
   return (
     <figure className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4" data-dta>
-      <figcaption className="font-display text-base font-semibold">{L(lang, "ความแม่นยำในการวินิจฉัย", "Diagnostic accuracy")}</figcaption>
+      <figcaption className="font-display text-base font-semibold">{Lw(lang, F.dtaTitle)}</figcaption>
       {panels.length > 0 && (
         <div className="grid gap-6 @[44rem]:grid-cols-2">{panels.map((m) => <DtaPanel key={m} data={data} metric={m} lang={lang} onSelect={onSelect} />)}</div>
       )}
       {/* AUC and n are only in this table: on a phone it scrolls inside its region, with the edge cue */}
-      <ScrollRegion lang={lang} bordered={false} label={L(lang, "ตารางความแม่นยำในการวินิจฉัย (เลื่อนดูได้)", "Diagnostic accuracy table (scrollable)")}>
+      <ScrollRegion lang={lang} bordered={false} label={L(lang, F.dtaTable)}>
         {table}
       </ScrollRegion>
-      <p className="text-[0.82rem] text-muted">
-        {L(lang, "ค่าที่แต่ละงานรายงาน (ตรวจกับบทคัดย่อแล้ว) ไม่ได้รวมผลหรือคำนวณค่าอื่นเพิ่ม เช่น PPV หรือความไวรวม · ■ = ค่าที่รายงาน · เส้น = ช่วงความเชื่อมั่น 95%",
-          "Values as each study reported them (checked against the abstract); nothing is pooled or derived, such as PPV or a pooled sensitivity · ■ = reported value · line = 95% CI")}
-      </p>
+      <p className="text-[0.82rem] text-muted">{L(lang, F.dtaNote)}</p>
     </figure>
   );
 }

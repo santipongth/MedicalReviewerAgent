@@ -5,8 +5,12 @@ import type { Lang } from "@/lib/i18n";
 import { flowRows, prismaFlow, UNKNOWN_COUNT, type FlowBox, type FlowCount } from "@/lib/prisma-flow";
 import type { ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ReviewMethods, Stats } from "@/lib/types";
+import { RC } from "@/lib/i18n-report";
 import { Term } from "../ui/term";
+import { ThaiText } from "../ui/thai-text";
 import { L } from "./text";
+
+const F = RC.prisma;
 
 const COUNT = new Intl.NumberFormat("en-US");
 // From a 34rem container (the @[34rem] variants, written out so Tailwind sees them) the flow is the PRISMA 2020 layout:
@@ -22,7 +26,7 @@ function Box({ box, lang, side }: { box: FlowBox; lang: Lang; side: boolean }) {
   return (
     <div data-flow-box={box.key}
       className={`grid min-w-0 content-start gap-1.5 rounded-sm border px-3 py-2.5 ${side ? "border-rule bg-ground" : "border-muted bg-surface"}`}>
-      <p className="font-display text-[0.88rem] leading-snug font-semibold break-words">{box.title}</p>
+      <p className="font-display text-[0.88rem] leading-snug font-semibold break-words"><ThaiText>{box.title}</ThaiText></p>
       {box.value !== undefined && <p className="text-[1.15rem] leading-tight font-semibold"><Count value={box.value} lang={lang} n /></p>}
       {box.lines.length > 0 && (
         <ul className="grid">
@@ -30,15 +34,15 @@ function Box({ box, lang, side }: { box: FlowBox; lang: Lang; side: boolean }) {
             <li key={l.key} data-flow-line={l.key}
               className="flex items-baseline justify-between gap-3 border-t border-rule py-1 text-[0.86rem] first:border-t-0">
               <span className="min-w-0 break-words">
-                {l.label}
-                {l.note && <span className="block text-[0.76rem] text-muted">{l.note}</span>}
+                <ThaiText>{l.label}</ThaiText>
+                {l.note && <span className="block text-[0.76rem] text-muted"><ThaiText>{l.note}</ThaiText></span>}
               </span>
               <Count value={l.value} lang={lang} />
             </li>
           ))}
         </ul>
       )}
-      {box.notes.map((n) => <p key={n} className="text-[0.76rem] leading-snug text-muted">{n}</p>)}
+      {box.notes.map((n) => <p key={n} className="text-[0.76rem] leading-snug text-muted"><ThaiText>{n}</ThaiText></p>)}
     </div>
   );
 }
@@ -81,20 +85,20 @@ export function PrismaFlow({ stats, methods, options, type, lang }: {
 }) {
   const view = useMemo(() => prismaFlow({ stats, methods, options, type, lang }), [stats, methods, options, type, lang]);
   if (!view) return null;
-  const title = L(lang, "แผนภาพการคัดเลือกงานวิจัย", "Study selection flow");
+  const title = L(lang, F.title);
   const rows = flowRows(view);
   const last = view.stages.length - 1;
   return (
     <figure className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3" data-prisma-flow={view.framework}>
       <figcaption className="font-display text-base font-semibold">
-        {title} <span className="whitespace-nowrap">(<Term k="prisma" lang={lang}>{view.framework}</Term>)</span>
+        <ThaiText>{title}</ThaiText> <span className="whitespace-nowrap">(<Term k="prisma" lang={lang}>{view.framework}</Term>)</span>
       </figcaption>
       <ol className="grid min-w-0 grid-cols-[minmax(0,1fr)]" aria-label={`${title} ${view.framework}`}>
         {view.stages.map((st, i) => (
           <li key={st.key} data-flow-stage={st.key}
             className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 @[34rem]:grid-cols-[6.5rem_minmax(0,1fr)_2.25rem_minmax(0,1fr)] @[34rem]:gap-x-0 @[34rem]:gap-y-0">
             <p className={`label @[34rem]:row-span-2 @[34rem]:mr-3 @[34rem]:border-r @[34rem]:border-rule @[34rem]:pt-2.5 @[34rem]:pr-3 ${i === last ? "" : "@[34rem]:pb-7"}`}>
-              {st.label}
+              <ThaiText>{st.label}</ThaiText>
             </p>
             {/* a short box keeps its own height beside a taller exclusion box; the connector line fills the rest */}
             <div className="flex min-w-0 flex-col">
@@ -116,16 +120,16 @@ export function PrismaFlow({ stats, methods, options, type, lang }: {
       </ol>
       <details className="text-[0.88rem]">
         <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold md:min-h-0">
-          {L(lang, "ดูแผนภาพนี้เป็นตาราง", "Show the flow as a table")}
+          {L(lang, F.asTable)}
         </summary>
         <div className="mt-2 overflow-x-auto">
           <table className="w-full border-collapse" data-prisma-table>
             <caption className="pb-1 text-left label">{`${title} (${view.framework})`}</caption>
             <thead>
               <tr className="border-b border-rule">
-                <th scope="col" className="py-1.5 pr-3 text-left label">{L(lang, "ขั้น", "Stage")}</th>
-                <th scope="col" className="py-1.5 pr-3 text-left label">{L(lang, "รายการ", "Item")}</th>
-                <th scope="col" className="py-1.5 text-right label">{L(lang, "จำนวน", "Count")}</th>
+                <th scope="col" className="py-1.5 pr-3 text-left label">{L(lang, F.stage)}</th>
+                <th scope="col" className="py-1.5 pr-3 text-left label">{L(lang, F.item)}</th>
+                <th scope="col" className="py-1.5 text-right label">{L(lang, F.count)}</th>
               </tr>
             </thead>
             <tbody>
@@ -138,7 +142,7 @@ export function PrismaFlow({ stats, methods, options, type, lang }: {
                   </th>
                   <td className="py-1.5 text-right">
                     {r.value !== undefined ? <Count value={r.value} lang={lang} />
-                      : <span className="sr-only">{r.note ? L(lang, "หมายเหตุ ไม่มีจำนวน", "note, no count") : L(lang, "ไม่มีจำนวนรวม", "no total")}</span>}
+                      : <span className="sr-only">{L(lang, r.note ? F.noteNoCount : F.noTotal)}</span>}
                   </td>
                 </tr>
               ))}

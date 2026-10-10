@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useSyncExternalStore } from "react";
+import { t, type Lang } from "@/lib/i18n";
 
 type Theme = "light" | "dark";
 
@@ -26,7 +27,7 @@ export function useTheme(): Theme | null {
 }
 
 /** Switches between Day theatre (light) and Night shift (dark); the choice persists per browser. */
-export function ThemeToggle() {
+export function ThemeToggle({ lang = "th" }: { lang?: Lang }) {
   const theme = useTheme();
 
   useLayoutEffect(() => {
@@ -51,9 +52,9 @@ export function ThemeToggle() {
       type="button"
       onClick={toggle}
       className="min-h-11 rounded-sm border border-rule px-3 py-1 font-display md:min-h-0 text-sm font-semibold text-ink hover:border-ink"
-      aria-label={theme === "dark" ? "ใช้ธีมสว่าง" : "ใช้ธีมมืด"}
+      aria-label={t(lang, theme === "dark" ? "useLight" : "useDark")}
     >
-      {theme === "dark" ? "ธีมสว่าง" : "ธีมมืด"}
+      {t(lang, theme === "dark" ? "light" : "dark")}
     </button>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { Lang } from "@/lib/i18n";
+import { RC } from "@/lib/i18n-report";
 import { L } from "../review/text";
 
 /**
@@ -18,7 +19,7 @@ export function Figure({ title, caption, lang, chart, table, defaultTable = fals
         {title && <figcaption className="min-w-0 font-display text-base font-semibold break-words">{title}</figcaption>}
         <button type="button" onClick={() => setAsTable((t) => !t)} aria-pressed={asTable}
           className="inline-flex min-h-11 items-center rounded-sm border border-rule px-2.5 py-0.5 font-display text-[0.8rem] hover:border-ink md:min-h-0">
-          {asTable ? L(lang, "ดูเป็นแผนภาพ", "Show chart") : L(lang, "ดูเป็นตาราง", "Show table")}
+          {L(lang, asTable ? RC.charts.showChart : RC.charts.showTable)}
         </button>
       </div>
       {asTable ? <div className="overflow-x-auto">{table}</div> : chart}

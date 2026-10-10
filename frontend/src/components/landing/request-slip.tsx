@@ -8,6 +8,7 @@ import { GLOSS } from "@/lib/glossary";
 import type { ReviewType, ServiceStatus } from "@/lib/types";
 import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { Gloss } from "../ui/gloss";
+import { ThaiText } from "../ui/thai-text";
 import { ReviewTypePicker } from "./review-type-picker";
 
 type Turnstile = { render: (el: HTMLElement, opts: Record<string, unknown>) => string; reset: (id?: string) => void };
@@ -78,6 +79,8 @@ const STEP_HEADING = "flex items-center font-display text-[1.05rem] font-semibol
 const TILE =
   "flex h-full min-h-11 cursor-pointer items-start gap-2.5 rounded-sm border border-rule bg-ground px-3 py-2.5 hover:border-ink lg:py-2 has-[:checked]:border-primary has-[:checked]:bg-rail";
 
+const segmented = (n: ReactNode) => (typeof n === "string" ? <ThaiText>{n}</ThaiText> : n);
+
 /** One study-design checkbox tile: the Thai name first, then the English term and its plain words, smaller. The
  * checkbox's name is the Thai name + term; the plain words are its description, so tabbing through stays quick. */
 function Tile({ id, checked, onChange, name, term, plain }: {
@@ -87,10 +90,11 @@ function Tile({ id, checked, onChange, name, term, plain }: {
     <label className={TILE}>
       <input type="checkbox" checked={checked} onChange={onChange} className="mt-1 size-4 flex-none accent-primary"
         aria-labelledby={term ? `${id}-n ${id}-t` : `${id}-n`} aria-describedby={`${id}-p`} />
+      {/* Thai wraps only between words (ThaiText, Plan 20 Task 7): "ยาหลอก" never splits in a narrow tile */}
       <span className="grid min-w-0 gap-0.5">
-        <span id={`${id}-n`} className="font-display font-medium leading-snug">{name}</span>{" "}
+        <span id={`${id}-n`} className="font-display font-medium leading-snug">{segmented(name)}</span>{" "}
         <span className="text-[0.85rem] leading-snug text-muted">
-          {term && <><span id={`${id}-t`}>{term}</span> · </>}<span id={`${id}-p`}>{plain}</span>
+          {term && <><span id={`${id}-t`}>{term}</span> · </>}<span id={`${id}-p`}>{segmented(plain)}</span>
         </span>
       </span>
     </label>

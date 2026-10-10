@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { ThaiText } from "../ui/thai-text";
 
 export interface NavItem { id: string; label: string }
 
@@ -21,11 +22,12 @@ export function useNested(): boolean {
   return useContext(Nested);
 }
 
-/** A block's heading: H2 on its own, H3 inside a group section. */
+/** A block's heading: H2 on its own, H3 inside a group section. Thai text wraps only between words (ThaiText). */
 export function SectionHeading({ id, children, className = "" }: { id: string; children: ReactNode; className?: string }) {
+  const text = typeof children === "string" ? <ThaiText>{children}</ThaiText> : children;
   return useContext(Nested)
-    ? <h3 id={id} className={`${SECTION_H3} ${className}`}>{children}</h3>
-    : <h2 id={id} className={`${SECTION_H2} ${className}`}>{children}</h2>;
+    ? <h3 id={id} className={`${SECTION_H3} ${className}`}>{text}</h3>
+    : <h2 id={id} className={`${SECTION_H2} ${className}`}>{text}</h2>;
 }
 
 /** The section in view (aria-current), skipped where IntersectionObserver is missing (jsdom, old browsers). */
@@ -54,10 +56,11 @@ function useCurrentSection(items: NavItem[], offsetOf: () => number): string | n
 
 /**
  * In-page section links, sticky inside the reading column just under the site header (`--header-h`; 0 offline).
- * Below 1280px only (the left table of contents takes over from `xl`). It scrolls sideways on a phone, with an edge
- * fade on the side that has more links. No next/* imports: this is also rendered in the offline report build.
+ * Below 1280px only (the left table of contents takes over from `xl`), or at every width when `always` (a report with
+ * no study has no left table of contents). It scrolls sideways on a phone, with an edge fade on the side that has more
+ * links. No next/* imports: this is also rendered in the offline report build.
  */
-export function ReportNav({ items, label = "ในรายงานนี้" }: { items: NavItem[]; label?: string }) {
+export function ReportNav({ items, label, always = false }: { items: NavItem[]; label: string; always?: boolean }) {
   const nav = useRef<HTMLElement>(null);
   const scroller = useRef<HTMLUListElement>(null);
   const [edges, setEdges] = useState({ start: false, end: false });
@@ -80,7 +83,7 @@ export function ReportNav({ items, label = "ในรายงานนี้" }
   if (!items.length) return null;
   return (
     <nav ref={nav} aria-label={label}
-      className="sticky top-[calc(var(--header-h)+env(safe-area-inset-top,0px))] z-10 -mx-5 border-b border-rule bg-surface sm:-mx-8 xl:hidden print:hidden">
+      className={`sticky top-[calc(var(--header-h)+env(safe-area-inset-top,0px))] z-10 -mx-5 border-b border-rule bg-surface sm:-mx-8 print:hidden ${always ? "" : "xl:hidden"}`}>
       <ul ref={scroller} data-fade-start={edges.start || undefined} data-fade-end={edges.end || undefined}
         className="nav-fade flex gap-x-5 overflow-x-auto px-5 sm:px-8">
         {items.map((i) => (
@@ -100,7 +103,7 @@ export function ReportNav({ items, label = "ในรายงานนี้" }
  * The left table of contents from 1280px (`xl`): sticky under the site header, short labels, one link per section,
  * the section in view marked with aria-current. Hidden below `xl`, where ReportNav runs along the top instead.
  */
-export function ReportToc({ items, label = "สารบัญ" }: { items: NavItem[]; label?: string }) {
+export function ReportToc({ items, label }: { items: NavItem[]; label: string }) {
   const sticky = useRef<HTMLDivElement>(null);
   // Ignore what sits under the site header (the sticky list's own top offset).
   const current = useCurrentSection(items, () => {

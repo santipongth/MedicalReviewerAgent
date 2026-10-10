@@ -235,6 +235,25 @@ h4 {
   white-space: nowrap;
 }
 
+/* Plan 20 Task 7: Thai segmented by ThaiText (each word in .nw, a <wbr> between words). The strict rules help engines
+   that honour them for Thai; Chromium does not, which is why the words themselves are .nw. */
+.th-seg {
+  line-break: strict;
+  word-break: keep-all;
+}
+
+/* Running prose in the report (answer, findings, claims, gaps, limitations, methods): the body size in English, the
+   Thai reading size (DESIGN.md body-thai-reading: 17px / 1.75) in a Thai report, untranslated English lines included. */
+.reading {
+  font-size: 1rem;
+  line-height: 1.7;
+}
+[lang="th"] .reading,
+.reading[lang="th"] {
+  font-size: 17px;
+  line-height: 1.75;
+}
+
 /* Report section nav (Plan 20): fade the edge that has more links, so a cut-off row reads as scrollable. */
 .nav-fade {
   scrollbar-width: thin;

@@ -4,7 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { exportUrl } from "@/lib/api";
 import { isNonQuantitative } from "@/lib/charts-data";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
-import { plural } from "@/lib/plural";
+import { fieldLang, RC } from "@/lib/i18n-report";
 import { SOURCE_ABBR, SOURCE_LABEL } from "@/lib/citation-network";
 import {
   litColumnLabel, litColumns, litFramework, litRows, outcomesClamped, paginate, showsCitedBy, type LitColumn, type LitFramework, type LitRow,
@@ -14,11 +14,14 @@ import { relatedLabel } from "@/lib/trial-reports";
 import type { Citations, Paper, QuestionBlock } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
+import { ThaiText } from "../ui/thai-text";
 import { SectionHeading } from "./report-nav";
 import { ReadingFlag } from "./report-parts";
 import { ScrollRegion } from "./scroll-region";
 import { useMinWidth } from "./use-min-width";
 import { L } from "./text";
+
+const T = RC.lit;
 
 /** Rows per page (Plan 20 Task 5): a long matrix is paged, never a 10,000px wall. */
 export const LIT_PAGE_SIZE = 15;
@@ -31,7 +34,7 @@ const TD = "px-2.5 py-2 align-top";
 function NCell({ cell, lang }: { cell: LitRow["n"]; lang: Lang }) {
   if (cell.kind === "value") return <VerifiedNumber value={cell.text} />;
   if (cell.kind === "blanked") return <Hole lang={lang} />;
-  return <span className="text-muted">{L(lang, "ไม่ได้รายงาน", "not reported")}</span>;
+  return <span className="text-muted">{L(lang, T.notReported)}</span>;
 }
 
 /**
@@ -42,11 +45,11 @@ function CitedBy({ row, lang }: { row: LitRow; lang: Lang }) {
   const c = row.citedBy;
   if (!c || c.count == null) {
     // relative: keeps the absolutely positioned sr-only text inside the matrix's scroll container (no page overflow)
-    return <span className="relative text-muted" title={L(lang, "ไม่มีข้อมูล", "No data")}>–<span className="sr-only">{L(lang, "ไม่มีข้อมูล", "No data")}</span></span>;
+    return <span className="relative text-muted" title={L(lang, T.noData)}>–<span className="sr-only">{L(lang, T.noData)}</span></span>;
   }
-  const source = c.source ? SOURCE_LABEL[c.source] : L(lang, "ไม่ทราบแหล่ง", "source unknown");
+  const source = c.source ? SOURCE_LABEL[c.source] : L(lang, T.sourceUnknown);
   return (
-    <span className="relative inline-flex items-baseline gap-1 whitespace-nowrap" title={L(lang, `จำนวนครั้งที่ถูกอ้างอิงทั้งหมด จาก ${source}`, `Total cited-by count, from ${source}`)}>
+    <span className="relative inline-flex items-baseline gap-1 whitespace-nowrap" title={L(lang, T.citedByFrom(source))}>
       <span className="font-display tabular-nums">{c.count.toLocaleString("en-US")}</span>
       <span className="font-display text-[0.7rem] text-muted">
         <span aria-hidden="true">{c.source ? SOURCE_ABBR[c.source] : "?"}</span>
@@ -59,10 +62,7 @@ function CitedBy({ row, lang }: { row: LitRow; lang: Lang }) {
 /** Says what the column counts and what the source tags mean, once under the matrix. */
 function CitedByNote({ lang }: { lang: Lang }) {
   return (
-    <p className="text-[0.82rem] text-muted">
-      {L(lang, "ถูกอ้างอิง: จำนวนครั้งที่ถูกอ้างอิงในวรรณกรรมทั้งหมด · OA = OpenAlex · EPMC = Europe PMC (สองแหล่งนับต่างกัน) · – = ไม่มีข้อมูล",
-        "Cited by: total cited-by count in all literature · OA = OpenAlex · EPMC = Europe PMC (the two count differently) · – = no data")}
-    </p>
+    <p className="text-[0.82rem] text-muted">{L(lang, T.citedByNote)}</p>
   );
 }
 
@@ -70,15 +70,15 @@ function CitedByNote({ lang }: { lang: Lang }) {
 function OutcomeItem({ o, row, lang }: { o: LitRow["outcomes"][number]; row: LitRow; lang: Lang }) {
   return (
     <span className="break-words">
-      <span>{o.name}</span>{" "}
+      <span lang={fieldLang(o.name, lang)}>{o.name}</span>{" "}
       {o.effect && "blanked" in o.effect ? <Hole lang={lang} />
         : o.effect ? <><VerifiedNumber value={o.effect.label} />{o.effect.ci && <> (95% CI <VerifiedNumber value={o.effect.ci} />)</>}</>
-        : row.theme ? <span className="text-muted">{L(lang, "(ประเด็น)", "(theme)")}</span>
-        : o.reportsNone ? <span className="text-muted">{L(lang, "ไม่รายงานตัวเลข", "no numbers reported")}</span>
-        : <span className="text-muted">{L(lang, "ไม่ได้สกัดตัวเลข", "number not extracted")}</span>}
+        : row.theme ? <span className="text-muted">{L(lang, T.theme)}</span>
+        : o.reportsNone ? <span className="text-muted">{L(lang, T.noNumbers)}</span>
+        : <span className="text-muted">{L(lang, T.notExtracted)}</span>}
       {o.otherComparison && (
         <span className="text-sm text-muted" data-other-comparison>
-          {" "}({L(lang, "การเปรียบเทียบอื่น ไม่นำไปสรุป", "other comparison, not used in the synthesis")}{o.comparison ? `: ${o.comparison}` : ""})
+          {" "}({L(lang, T.otherComparison)}{o.comparison ? `: ${o.comparison}` : ""})
         </span>
       )}
     </span>
@@ -87,7 +87,7 @@ function OutcomeItem({ o, row, lang }: { o: LitRow["outcomes"][number]; row: Lit
 
 /** The outcomes cell: clamped to two lines when long, with "show all" opening the paper (every outcome) in the rail. */
 function Outcomes({ row, lang, onSelect }: { row: LitRow; lang: Lang; onSelect: (ref: string) => void }) {
-  if (!row.outcomes.length) return <span className="text-muted">{row.theme ? "–" : L(lang, "ไม่ได้สกัดผลลัพธ์", "No outcomes extracted")}</span>;
+  if (!row.outcomes.length) return <span className="text-muted">{row.theme ? "–" : L(lang, T.noOutcomes)}</span>;
   const clamped = outcomesClamped(row);
   const items = row.outcomes.map((o, i) => <span key={i}>{i > 0 && <span className="text-muted"> · </span>}<OutcomeItem o={o} row={row} lang={lang} /></span>);
   if (!clamped) return <p className="break-words">{items}</p>;
@@ -95,9 +95,9 @@ function Outcomes({ row, lang, onSelect }: { row: LitRow; lang: Lang; onSelect: 
     <span className="grid justify-items-start gap-0.5">
       <p className="line-clamp-2 break-words" data-clamped>{items}</p>
       <button type="button" onClick={() => onSelect(row.ref)}
-        aria-label={L(lang, `แสดงผลลัพธ์ทั้งหมดของ ${row.ref} (${row.outcomes.length})`, `Show all outcomes of ${row.ref} (${row.outcomes.length})`)}
+        aria-label={L(lang, T.showAllOf(row.ref, row.outcomes.length))}
         className="inline-flex min-h-11 items-center font-display text-[0.8rem] font-semibold text-primary underline underline-offset-2 md:min-h-0">
-        {L(lang, `แสดงทั้งหมด (${row.outcomes.length})`, `Show all (${row.outcomes.length})`)}
+        {L(lang, T.showAll(row.outcomes.length))}
       </button>
     </span>
   );
@@ -115,15 +115,16 @@ function Cell({ col, row, lang, onSelect, risk }: { col: LitColumn; row: LitRow;
     case "population":
       return (
         <span className="grid gap-0.5">
-          <span className={CLAMP} title={row.population}>{row.population || "–"}</span>
+          <span className={CLAMP} title={row.population} lang={fieldLang(row.population, lang)}>{row.population || "–"}</span>
           <span className="text-[0.8rem]"><span className="text-muted">n = </span><NCell cell={row.n} lang={lang} /></span>
         </span>
       );
     case "exposure":
       return (
         <span className="grid gap-0.5">
-          <span className={CLAMP} title={row.exposure}>{row.exposure || "–"}</span>
-          {row.comparator && <span className="line-clamp-2 text-[0.8rem] break-words" title={row.comparator}><span className="text-muted">{L(lang, "เทียบกับ ", "vs ")}</span>{row.comparator}</span>}
+          <span className={CLAMP} title={row.exposure} lang={fieldLang(row.exposure, lang)}>{row.exposure || "–"}</span>
+          {row.comparator && <span className="line-clamp-2 text-[0.8rem] break-words" title={row.comparator}>
+            <span className="text-muted">{L(lang, T.vs)}</span><span lang={fieldLang(row.comparator, lang)}>{row.comparator}</span></span>}
         </span>
       );
     case "outcomes": return <Outcomes row={row} lang={lang} onSelect={onSelect} />;
@@ -131,11 +132,12 @@ function Cell({ col, row, lang, onSelect, risk }: { col: LitColumn; row: LitRow;
       return (
         <span className="grid gap-1">
           {row.direction ? (
-            <span className="inline-flex items-center gap-1.5"><Glyph direction={row.direction} lang={lang} />{DIRECTION_LABEL[lang][row.direction]}</span>
-          ) : row.theme ? <span className="text-muted" data-theme-paper>{L(lang, "ประเด็น ไม่มีทิศทางผล", "Themes, no direction")}</span> : null}
+            // a narrow column: the direction word wraps only between Thai words (Plan 20 Task 7)
+            <span className="inline-flex items-center gap-1.5"><Glyph direction={row.direction} lang={lang} /><ThaiText>{DIRECTION_LABEL[lang][row.direction]}</ThaiText></span>
+          ) : row.theme ? <span className="text-muted" data-theme-paper><ThaiText>{L(lang, T.themesNoDirection)}</ThaiText></span> : null}
           {row.uncertain && <ReadingFlag lang={lang} />}
           {/* risk of bias sits under the direction (fix round 1: six columns fit the reading column) */}
-          {risk && <span className="text-[0.8rem] text-muted" data-risk>{L(lang, "ความเสี่ยงอคติ: ", "Risk of bias: ")}{row.risk ? ROB_LABEL[lang][row.risk] : "–"}</span>}
+          {risk && <span className="text-[0.8rem] text-muted" data-risk><ThaiText>{L(lang, T.rob)}</ThaiText>{row.risk ? ROB_LABEL[lang][row.risk] : "–"}</span>}
         </span>
       );
     case "risk": return <>{row.risk ? ROB_LABEL[lang][row.risk] : "–"}</>;
@@ -153,7 +155,7 @@ function StudyCell({ row, onSelect, lang, citedBy, flag }: { row: LitRow; onSele
         {row.byline && <span className="text-[0.75rem] font-normal text-muted no-underline">{row.byline}</span>}
       </button>
       {citedBy && (
-        <span className="text-[0.75rem] text-muted" data-cited-by>{L(lang, "ถูกอ้างอิง ", "Cited by ")}<CitedBy row={row} lang={lang} /></span>
+        <span className="text-[0.75rem] text-muted" data-cited-by>{L(lang, T.citedBy)}<CitedBy row={row} lang={lang} /></span>
       )}
       {row.relatedTo && <span className="text-[0.75rem] text-muted" data-related-to={row.relatedTo}>{relatedLabel(row.relatedTo, lang)}</span>}
       {/* without a direction column (scoping, themes), the uncertain flag lives next to the ref */}
@@ -172,7 +174,7 @@ function MatrixTable({ rows, cols, framework, lang, onSelect, caption, citedBy, 
 }) {
   const others = cols.slice(1);
   return (
-    <ScrollRegion lang={lang} label={L(lang, `${caption} (เลื่อนดูได้)`, `${caption} (scrollable)`)}>
+    <ScrollRegion lang={lang} label={L(lang, RC.parts.scrollable(caption))}>
       <table aria-label={caption} className="w-full table-fixed border-collapse text-[0.82rem]">
         <caption className="sr-only">{caption}</caption>
         <colgroup>{cols.map((c) => <col key={c} style={{ width: COL_WIDTH[c] }} />)}</colgroup>
@@ -192,7 +194,7 @@ function MatrixTable({ rows, cols, framework, lang, onSelect, caption, citedBy, 
                 <StudyCell row={row} onSelect={onSelect} lang={lang} citedBy={citedBy} flag={!cols.includes("direction")} />
               </th>
               {row.failed ? (
-                <td colSpan={others.length} className={`${TD} text-err`}>{L(lang, "สกัดข้อมูลไม่สำเร็จ", "Extraction failed")}</td>
+                <td colSpan={others.length} className={`${TD} text-err`}>{L(lang, T.failed)}</td>
               ) : others.map((c) => <td key={c} className={TD}><Cell col={c} row={row} lang={lang} onSelect={onSelect} risk={risk} /></td>)}
             </tr>
           ))}
@@ -219,7 +221,7 @@ function MatrixCards({ rows, cols, framework, lang, onSelect, caption, citedBy, 
         <li key={row.ref} className="grid gap-2 border-b border-rule py-3" data-lit-card={row.ref}>
           <StudyCell row={row} onSelect={onSelect} lang={lang} citedBy={citedBy} flag={!cols.includes("direction")} />
           {row.failed ? (
-            <p className="text-err">{L(lang, "สกัดข้อมูลไม่สำเร็จ", "Extraction failed")}</p>
+            <p className="text-err">{L(lang, T.failed)}</p>
           ) : (
             <dl className="grid grid-cols-[minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[0.88rem] sm:grid-cols-[9rem_minmax(0,1fr)]">
               {fields.map((c) => (
@@ -248,13 +250,13 @@ function Pager({ page, pages, start, end, total, lang, onPage }: {
   if (pages <= 1) return null;
   const btn = "inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm border border-rule px-3 font-display text-[0.85rem] hover:border-ink disabled:opacity-45 disabled:hover:border-rule";
   return (
-    <nav aria-label={L(lang, "หน้าของตารางงานวิจัย", "Literature matrix pages")} className="flex flex-wrap items-center gap-x-3 gap-y-1" data-lit-pager>
-      <button type="button" className={btn} disabled={page === 0} onClick={() => onPage(page - 1)}>{L(lang, "← ก่อนหน้า", "← Previous")}</button>
+    <nav aria-label={L(lang, T.pages)} className="flex flex-wrap items-center gap-x-3 gap-y-1" data-lit-pager>
+      <button type="button" className={btn} disabled={page === 0} onClick={() => onPage(page - 1)}>{L(lang, T.previous)}</button>
       <span className="font-display text-[0.85rem] tabular-nums text-muted" aria-live="polite">
         {/* rows are records: a further report of a trial is a row too, so the pager never calls them studies */}
-        {L(lang, `${start + 1}–${end} จาก ${total} รายการ · หน้า ${page + 1}/${pages}`, `${start + 1}–${end} of ${total} ${plural(total, "record", "records")} · page ${page + 1}/${pages}`)}
+        {L(lang, T.pager(start + 1, end, total, page + 1, pages))}
       </span>
-      <button type="button" className={btn} disabled={page >= pages - 1} onClick={() => onPage(page + 1)}>{L(lang, "ถัดไป →", "Next →")}</button>
+      <button type="button" className={btn} disabled={page >= pages - 1} onClick={() => onPage(page + 1)}>{L(lang, T.next)}</button>
     </nav>
   );
 }
@@ -281,29 +283,27 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
   const riskUnder = showsRiskOfBias(type) && cols.includes("direction");
   const [page, setPage] = useState(0);
   const pg = paginate(rows, page, LIT_PAGE_SIZE);
-  const caption = L(lang, "ตารางสรุปงานวิจัย", "Study summary table");
+  const caption = L(lang, T.caption);
   const context = question?.context?.trim();
   return (
     <section aria-labelledby="h-litmatrix" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3" data-lit-framework={framework}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <SectionHeading id="h-litmatrix">{L(lang, "ตารางงานวิจัย", "Literature review matrix")}</SectionHeading>
+        <SectionHeading id="h-litmatrix">{L(lang, T.h)}</SectionHeading>
         {!offline && (
           <a href={exportUrl(reviewId, "csv")} download
             className="inline-flex min-h-11 items-center font-display text-[0.9rem] font-semibold text-primary underline underline-offset-2 md:min-h-0">
-            {L(lang, "ดาวน์โหลด CSV", "Download CSV")}
+            {L(lang, T.csv)}
           </a>
         )}
       </div>
       <p className="text-[0.82rem] text-muted">
-        {framework === "pico_qual" ? L(lang, "กรอบ PICo: ประชากร ปรากฏการณ์ที่สนใจ และบริบท", "PICo framework: population, phenomenon of interest and context")
-          : framework === "spider" ? L(lang, "กรอบแบบ SPIDER: กลุ่มตัวอย่าง ปรากฏการณ์ที่สนใจ รูปแบบ การประเมิน และชนิดงานวิจัย", "SPIDER-like framework: sample, phenomenon of interest, design, evaluation and research type")
-            : L(lang, "ข้อค้นพบหลักและข้อจำกัดของแต่ละงานอยู่ในแถบต้นฉบับ (แตะชื่องาน) และไฟล์ CSV", "Each study's key findings and limitations are in the source rail (tap the study) and the CSV")}
+        {L(lang, framework === "pico_qual" ? T.pico : framework === "spider" ? T.spider : T.inRail)}
         {(framework === "pico_qual" || framework === "spider" || framework === "pcc") && context && (
-          <> · <span data-lit-context>{L(lang, `บริบท (Co): ${context}`, `Context (Co): ${context}`)}</span></>
+          <> · <span data-lit-context>{L(lang, T.context)}{context}</span></>
         )}
       </p>
       {rows.length === 0 ? (
-        <p className="text-[0.9rem] text-muted">{L(lang, "ไม่มีงานวิจัยที่ตรงกับตัวกรอง", "No studies match the filters")}</p>
+        <p className="text-[0.9rem] text-muted">{L(lang, T.noMatch)}</p>
       ) : wide ? (
         <MatrixTable rows={pg.items} cols={cols} framework={framework} lang={lang} onSelect={onSelect} caption={caption} citedBy={citedBy} risk={riskUnder} />
       ) : (
@@ -313,8 +313,7 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
       {rows.length > 0 && citedBy && <CitedByNote lang={lang} />}
       {allPapers.some((p) => isNonQuantitative(p.card_en ?? p.card)) && (
         <p className="text-[0.82rem] text-muted" data-note="qualitative">
-          {L(lang, "งานเชิงคุณภาพและแบบผสมผสานสรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข และไม่นับในทิศทางผล แผนภาพ หรือค่ารวม",
-            "Qualitative and mixed-methods studies are summarised as themes from the abstract: no effect numbers, and not counted in directions, plots or pooled estimates")}
+          {L(lang, T.qualitative)}
         </p>
       )}
     </section>

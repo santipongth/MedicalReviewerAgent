@@ -737,3 +737,44 @@ export const P20_FIXTURES: Record<"slr" | "meta" | "metaNoPool" | "scoping" | "n
   slr: slrP20ReviewFixture, meta: metaP20ReviewFixture, metaNoPool: metaNoPoolP20ReviewFixture, scoping: scopingP20ReviewFixture,
   narrative: narrativeP20ReviewFixture, legacy: legacyReviewFixture,
 };
+
+// --- Plan 20 Task 7: the same reviews written in English (result.language "en") ------------------------------------------
+
+const THAI = /[฀-๿]/;
+
+/**
+ * The review as an English report: the English synthesis, cards and question (as the engine writes an English review),
+ * and every Thai data string that remains swapped for an English stand-in, the same Thai text always for the same
+ * stand-in (outcome names keep matching across the matrix, key findings and pools). The chrome must then be all English.
+ */
+export function englishReview(review: Review): Review {
+  const names = new Map<string, string>();
+  const swap = (s: string) => {
+    if (!THAI.test(s)) return s;
+    if (!names.has(s)) names.set(s, `Outcome text ${names.size + 1}`);
+    return names.get(s)!;
+  };
+  const deep = <T,>(v: T): T => (typeof v === "string" ? swap(v) : Array.isArray(v) ? v.map(deep)
+    : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x)])) : v) as T;
+  const r = review.result!;
+  const en = r.synthesis_en;
+  const synthesis = en ? { ...r.synthesis!, ...en, comparison: en.comparison?.length ? en.comparison : r.synthesis?.comparison ?? [] } : r.synthesis;
+  const q = r.question;
+  return deep({
+    ...review,
+    id: `e${review.id.slice(1)}`,
+    topic: r.english_topic ?? "metformin and colorectal cancer",
+    language: "en",
+    result: {
+      ...r, language: "en", topic: r.english_topic ?? r.topic, synthesis, synthesis_en: undefined,
+      summary: en?.executive_summary ?? r.summary,
+      question: q && { ...q, ...(q.english ?? {}), original_topic: q.english_topic ?? q.original_topic, english: undefined },
+      papers: r.papers?.map((p) => ({ ...p, card: p.card_en ?? p.card })),
+    },
+  });
+}
+
+/** The P20 fixtures as English reports (Task 7: chrome language, `lang` attributes). */
+export const P20_FIXTURES_EN = Object.fromEntries(
+  Object.entries(P20_FIXTURES).map(([k, v]) => [k, englishReview(v)]),
+) as Record<keyof typeof P20_FIXTURES, Review>;

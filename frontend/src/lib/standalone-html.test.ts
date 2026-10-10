@@ -15,6 +15,18 @@ describe("buildStandaloneHtml", () => {
     expect(html).toContain("ไม่ใช่คำแนะนำทางการแพทย์"); // the disclaimer travels with the file
   });
 
+  it("the offline header follows the report language (Plan 20 Task 7)", () => {
+    const en = { ...reviewFixture, language: "en" as const, result: { ...reviewFixture.result!, language: "en" as const } };
+    const html = buildStandaloneHtml(en, ASSETS, new Date("2026-10-05T10:00:00Z"));
+    expect(html).toContain('<html lang="en">');
+    const header = html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+    expect(header).toContain("Offline report · downloaded 2026-10-05 10:00 UTC");
+    expect(header).toContain("not medical advice");
+    expect(header).not.toMatch(/[฀-๿]/);
+    const th = buildStandaloneHtml(reviewFixture, ASSETS, new Date("2026-10-05T10:00:00Z")).match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+    expect(th).toContain("รายงานแบบออฟไลน์ · ดาวน์โหลดเมื่อ 2026-10-05 10:00 UTC");
+  });
+
   it("never waits for web fonts before showing the report (offline or on a flaky network)", () => {
     const html = buildStandaloneHtml(reviewFixture, ASSETS);
     const link = html.match(/<link[^>]*fonts\.googleapis\.com\/css2[^>]*>/)?.[0] ?? "";

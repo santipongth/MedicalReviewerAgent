@@ -74,6 +74,7 @@ describe("concept map", () => {
     render(<ConceptMapSection tree={tree} lang="th" onSelect={() => {}} />);
     expect(screen.getByRole("img", { name: /แผนที่ความรู้ \d+ กลุ่มงานวิจัย/ })).toBeInTheDocument();
     expect(document.querySelector("figcaption")).toBeNull();
-    expect(screen.getAllByText(/^แผนที่ความรู้/).filter((e) => e.tagName.startsWith("H"))).toHaveLength(1);
+    // the one heading (its Thai words are kept whole by ThaiText, Plan 20 Task 7)
+    expect(screen.getAllByRole("heading", { name: /^แผนที่ความรู้/ })).toHaveLength(1);
   });
 });

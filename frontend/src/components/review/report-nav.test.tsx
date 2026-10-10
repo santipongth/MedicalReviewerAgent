@@ -21,8 +21,19 @@ describe("report navigation", () => {
   });
 
   it("no items: no nav at all", () => {
-    const { container } = render(<><ReportToc items={[]} /><ReportNav items={[]} /></>);
+    const { container } = render(<><ReportToc items={[]} label="Contents" /><ReportNav items={[]} label="In this report" /></>);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("always: the top nav stays at every width (a report with no study has no left table of contents)", () => {
+    render(<ReportNav items={ITEMS} label="ในรายงานนี้" always />);
+    expect(screen.getByRole("navigation", { name: "ในรายงานนี้" })).not.toHaveClass("xl:hidden");
+  });
+
+  it("a Thai heading wraps only between words", () => {
+    render(<SectionHeading id="h-c">ลักษณะของงานวิจัยที่รวบรวม</SectionHeading>);
+    const h = screen.getByRole("heading", { level: 2, name: "ลักษณะของงานวิจัยที่รวบรวม" });
+    expect(h.querySelector(".th-seg wbr")).not.toBeNull();
   });
 
   it("a block heading is an H2 on its own and an H3 inside a group section", () => {
