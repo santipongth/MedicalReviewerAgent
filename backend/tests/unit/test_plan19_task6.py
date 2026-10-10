@@ -191,6 +191,20 @@ async def test_search_trials_query_and_engine_name():
     assert hits[0].engines == ["europe pmc"] and hits[0].abstract_source == "europepmc"
 
 
+async def test_search_trials_short_timeout_one_retry():
+    """Final review finding 7: a stalled Europe PMC must not hold the search node for ~2 minutes."""
+    seen: dict = {}
+
+    class Http:
+        async def get(self, url, *, params=None, timeout=None, retries=None):
+            seen.update(timeout=timeout, retries=retries)
+            return httpx.Response(200, json={"resultList": {"result": []}}, request=httpx.Request("GET", url))
+
+    assert await EuropePmcClient(Http(), "https://epmc.test").search_trials("SGLT2 heart failure") == []
+    assert seen == {"timeout": EuropePmcClient.TRIAL_TIMEOUT, "retries": 1}
+    assert EuropePmcClient.TRIAL_TIMEOUT <= 10
+
+
 async def test_meta_planner_may_use_five_queries():
     plan = QueryPlan(queries=[f"query {i}" for i in range(7)], population="p", intervention_or_exposure="i",
                      comparator="c", outcomes=["o"], inclusion_criteria=["x"], exclusion_criteria=["y"])

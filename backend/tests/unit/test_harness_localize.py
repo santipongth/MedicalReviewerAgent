@@ -123,6 +123,39 @@ async def test_a_failed_chunk_that_fails_again_keeps_only_its_items_english():
     assert res.strings["s20"] == "Item 20 text." and res.strings["s15"].startswith("แปล: ")
 
 
+async def test_outage_is_not_retried_item_by_item():
+    """Final review finding 8: when most first-pass chunks raise, their items are not re-sent in 5-item chunks."""
+    from app.services.llm import LLMOutputError
+
+    llm = FakeStructuredLLM("gem", lambda s, u: LLMOutputError("timeout"))
+    strings = {f"s{i}": f"Item {i} text." for i in range(40)}
+    res = await localize_strings(llm, HarnessRunner(max_repairs=0), strings, "th")
+    assert len(llm.calls) == 3 and res.retried == 0  # the three first-pass chunks only
+    assert res.kept_english == 40 and res.strings == strings
+
+
+async def test_retry_pass_is_capped():
+    llm = FakeStructuredLLM("gem", lambda s, u: thai(u, echo=[i for i, _ in items_in(u)]) if "left in English" not in u
+                            else thai(u))
+    strings = {f"s{i}": f"Item {i} text here." for i in range(40)}
+    res = await localize_strings(llm, HarnessRunner(max_repairs=0), strings, "th", retry_max_items=10)
+    assert res.retried == 10 and res.untranslated == 30
+    assert len(llm.calls) == 3 + 2  # 10 items in two 5-item chunks
+
+
+async def test_retry_pass_fails_soft():
+    def respond(system, user):
+        if "left in English" in user:
+            raise RuntimeError("unexpected")
+        return thai(user, echo=["a"])
+
+    llm = FakeStructuredLLM("gem", respond)
+    source = "the plain english text here."
+    res = await localize_strings(llm, HarnessRunner(max_repairs=0), {"a": source, "b": "More text."}, "th")
+    assert res.strings["b"].startswith("แปล: ") and res.strings["a"] == source
+    assert res.retried == 1 and res.untranslated == 1
+
+
 # ---- completeness check and retry (I-4) ---------------------------------------------------------
 async def test_echoed_english_is_detected_and_retried_in_one_bounded_pass():
     retry_users = []

@@ -39,6 +39,7 @@ GLOSSARY = {"th": (
 RETRY_NOTE = ("\nThese items were left in English by an earlier attempt. Translate each one completely; keep in "
               "English only names and abbreviations.")
 RETRY_CHUNK = 5
+RETRY_MAX_ITEMS = 60  # 12 chunks of 5: one wave through the shared LLM semaphore
 
 
 def localize_system(language: str) -> str:
@@ -164,10 +165,13 @@ class Localized:
 
 
 async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], language: str, *,
-                           chunk_size: int = 15, retry_chunk_size: int = RETRY_CHUNK) -> Localized:
+                           chunk_size: int = 15, retry_chunk_size: int = RETRY_CHUNK,
+                           retry_max_items: int = RETRY_MAX_ITEMS) -> Localized:
     """Small chunks (Thai output needs several times the tokens of its English source; 60-item batches overflowed
     max_tokens and silently stayed English) translated concurrently. A chunk that still fails keeps only its
-    own items in English. Then one bounded retry pass, in smaller chunks, for items still not translated."""
+    own items in English. Then one bounded retry pass, in smaller chunks, for at most `retry_max_items` items still
+    not translated; when more than half of the first-pass chunks raised (an outage), their items are not re-sent.
+    The retry pass never raises."""
     out = Localized(dict(strings))
     if language == "en" or not strings or llm is None:
         return out
@@ -193,6 +197,8 @@ async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], 
 
         return await runner.call(llm, system, user, schema=TranslationBatch, validate=validate, trigger="localize")
 
+    failed_keys: set[str] = set()  # items of first-pass chunks that raised or returned nothing
+
     async def run(chunks: list[dict[str, str]], *, retry: bool) -> dict[str, tuple[str, bool]]:
         """key → (accepted text, citations restored) for the items each chunk translated acceptably."""
         results = await asyncio.gather(*(translate(c, retry=retry) for c in chunks), return_exceptions=True)
@@ -202,8 +208,12 @@ async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], 
                 raise res
             if isinstance(res, BaseException):
                 log.warning("localize chunk failed (%s items): %s", len(chunk), type(res).__name__)
+                if not retry:
+                    failed_keys.update(chunk)
                 continue
             out.cost += res.cost
+            if res.value is None and not retry:  # nothing came back (invalid output or timeout): a failed chunk
+                failed_keys.update(chunk)
             got = {i.id: i.text for i in res.value.items} if res.value is not None else {}
             for key, source in chunk.items():
                 text, restored = accept(source, got.get(key))
@@ -214,14 +224,24 @@ async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], 
         return accepted
 
     items = [(k, v) for k, v in strings.items() if v and v.strip()]
-    first = await run([dict(items[s : s + chunk_size]) for s in range(0, len(items), chunk_size)], retry=False)
+    chunks = [dict(items[s : s + chunk_size]) for s in range(0, len(items), chunk_size)]
+    first = await run(chunks, retry=False)
 
     pending = [(k, v) for k, v in items if untranslated(v, first.get(k, (None,))[0], language)]
+    raised = sum(1 for c in chunks if c.keys() <= failed_keys)
+    if raised * 2 > len(chunks):
+        # most chunks raised: the localizer is down or timing out; re-sending their items would only multiply the
+        # wait before the English fallback. Items that came back (echoed, partial, rejected) are still retried.
+        pending = [(k, v) for k, v in pending if k not in failed_keys]
+    pending = pending[:retry_max_items]  # a bounded retry pass, whatever the first pass left
     second: dict[str, tuple[str, bool]] = {}
     if pending:
         out.retried = len(pending)
-        second = await run([dict(pending[s : s + retry_chunk_size])
-                            for s in range(0, len(pending), retry_chunk_size)], retry=True)
+        try:  # the retry is an extra: whatever goes wrong, the first-pass results stand
+            second = await run([dict(pending[s : s + retry_chunk_size])
+                                for s in range(0, len(pending), retry_chunk_size)], retry=True)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("localize retry pass failed: %s", type(exc).__name__)
 
     for key, source in items:
         candidates = [c for c in (second.get(key), first.get(key)) if c is not None]

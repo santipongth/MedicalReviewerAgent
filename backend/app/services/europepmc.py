@@ -83,6 +83,7 @@ def trial_names(words: str) -> list[str]:
 class EuropePmcClient:
     BATCH = 40
     CONCURRENCY = 3  # batches in flight; HttpClient's per-host spacing still applies
+    TRIAL_TIMEOUT = 8.0  # seconds per trial-search attempt (one retry): worst case ~17 s, not ~2 min
 
     def __init__(self, http: HttpClient, base_url: str) -> None:
         self.http = http
@@ -123,6 +124,8 @@ class EuropePmcClient:
             f"{self.base_url}/search",
             params={"query": f'({words}) AND PUB_TYPE:"Randomized Controlled Trial" AND HAS_ABSTRACT:y',
                     "format": "json", "resultType": "core", "pageSize": page_size, "sort": "CITED desc"},
+            # a recall extra: a slow Europe PMC must not hold the search node for minutes (3 searches run in parallel)
+            timeout=self.TRIAL_TIMEOUT, retries=1,
         )
         resp.raise_for_status()
         out = []
