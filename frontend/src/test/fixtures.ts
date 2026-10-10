@@ -190,10 +190,22 @@ export const narrativeReviewFixture: Review = {
   },
 };
 
+/**
+ * result.citations as build_citations (backend app/harness/citations.py) shapes it: later papers cite earlier ones, P3
+ * has only a Europe PMC reference list, and P5 has no data at all (null coverage: not "cites nothing").
+ */
+export const citationsFixture: NonNullable<ReviewResult["citations"]> = {
+  edges: [{ from: "P1", to: "P2" }, { from: "P3", to: "P1" }, { from: "P3", to: "P2" }, { from: "P4", to: "P1" }],
+  cited_by: { P1: 312, P2: 1187, P3: 46, P4: 89, P5: null },
+  cited_by_source: { P1: "openalex", P2: "openalex", P3: "europepmc", P4: "openalex", P5: null },
+  coverage: { P1: "openalex", P2: "openalex", P3: "europepmc", P4: "openalex", P5: null },
+  source_note: "Reference lists and citation counts from OpenAlex; Europe PMC reference lists for papers OpenAlex lacked",
+};
+
 /** An explicit Plan 14a systematic review (the plain reviewFixture has no review_type, so it renders as legacy). */
 export const slrReviewFixture: Review = {
   ...reviewFixture,
-  result: { ...resultFixture, review_type: "slr" },
+  result: { ...resultFixture, review_type: "slr", citations: citationsFixture },
 };
 
 // --- Plan 14b meta-analysis -----------------------------------------------------------------------------------------
@@ -318,5 +330,16 @@ export const metaReviewFixture: Review = {
     quality: { ...resultFixture.quality, pooled_numbers: { removed: 1, kept_single_study: 0 } },
     errors: [],
     meta_analysis: metaAnalysisFixture,
+    // The SR/MA (P5) and the narrative review (P6) cite the primary studies; P6 has no reference data.
+    citations: {
+      edges: [
+        { from: "P5", to: "P1" }, { from: "P5", to: "P2" }, { from: "P1", to: "P7" }, { from: "P3", to: "P4" },
+        { from: "P3", to: "P7" },
+      ],
+      cited_by: { P1: 140, P2: 64, P3: 221, P4: 97, P5: 38, P6: null, P7: 410 },
+      cited_by_source: { P1: "openalex", P2: "openalex", P3: "openalex", P4: "europepmc", P5: "openalex", P6: null, P7: "openalex" },
+      coverage: { P1: "openalex", P2: "openalex", P3: "openalex", P4: "europepmc", P5: "openalex", P6: null, P7: "openalex" },
+      source_note: "Reference lists and citation counts from OpenAlex; Europe PMC reference lists for papers OpenAlex lacked",
+    },
   },
 };

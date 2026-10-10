@@ -51,11 +51,12 @@ export type SectionId =
 /** Report sections per type, in display order; report.tsx renders and numbers its nav from this list (forest and
  * prisma are drawn together by Charts, at the position of whichever comes first). Legacy = today's report exactly. */
 export const SECTIONS_BY_TYPE: Record<ReviewTypeOrLegacy, SectionId[]> = {
-  narrative: ["summary", "claims", "findings", "lit_matrix", "concept_map", "forest"],
-  slr: ["summary", "claims", "findings", "forest", "prisma", "lit_matrix", "concept_map"],
-  scoping: ["summary", "evidence_map", "lit_matrix", "concept_map", "prisma"],
+  // "citations" (Plan 14b) is the citation network; it shows only when result.citations is present.
+  narrative: ["summary", "claims", "findings", "lit_matrix", "concept_map", "citations", "forest"],
+  slr: ["summary", "claims", "findings", "forest", "prisma", "lit_matrix", "concept_map", "citations"],
+  scoping: ["summary", "evidence_map", "lit_matrix", "concept_map", "citations", "prisma"],
   // An SLR plus the pooled analysis, right after the per-study findings and forest plot (Charts holds forest + prisma,
-  // so the pooled section follows that block). "citations" is drawn by the citation network section (Plan 14b Task 7).
+  // so the pooled section follows that block).
   meta_analysis: ["summary", "claims", "findings", "forest", "meta", "prisma", "lit_matrix", "concept_map", "citations"],
   // The study map renders with forest/prisma exactly as it does today (charts.tsx).
   legacy: ["summary", "claims", "findings", "forest", "prisma"],

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { narrativeReviewFixture, resultFixture, scopingReviewFixture } from "@/test/fixtures";
+import { citationsFixture, narrativeReviewFixture, resultFixture, scopingReviewFixture } from "@/test/fixtures";
 import type { Paper } from "@/lib/types";
 import { LitMatrixSection } from "./lit-matrix";
 
@@ -68,6 +68,30 @@ describe("LitMatrixSection", () => {
     const some = [{ ...none[0], card: { ...none[0].card!, comparator: "placebo" }, card_en: { ...none[0].card_en!, comparator: "placebo" } }, ...none.slice(1)];
     render(<LitMatrixSection papers={[some[1]]} allPapers={some} lang="th" type="slr" reviewId="r1" onSelect={() => {}} />);
     expect(headers()).toContain("ตัวเปรียบเทียบ");
+  });
+
+  it("without citation data there is no cited-by column", () => {
+    show(papers);
+    expect(headers()).not.toContain("ถูกอ้างอิง");
+  });
+
+  it("the cited-by column shows counts in the display face with the source; null is a dash titled no data", () => {
+    render(<LitMatrixSection papers={papers} lang="th" type="slr" reviewId="r1" onSelect={() => {}} citations={citationsFixture} />);
+    const h = headers();
+    expect(h.indexOf("ถูกอ้างอิง")).toBe(h.indexOf("n") + 1);
+    const p2 = within(screen.getByRole("row", { name: /P2/ })).getByText("1,187");
+    expect(p2).toHaveClass("font-display", "tabular-nums");
+    expect(p2).not.toHaveClass("num-verified");
+    expect(p2).toHaveAttribute("title", expect.stringContaining("OpenAlex"));
+    expect(within(screen.getByRole("row", { name: /P3/ })).getByText("46")).toHaveAttribute("title", expect.stringContaining("Europe PMC"));
+    // P5 failed extraction: the spanning cell stops before the cited-by cell, which says "no data"
+    const p5 = screen.getByRole("row", { name: /P5/ });
+    const cells = within(p5).getAllByRole("cell");
+    expect(cells[0]).toHaveTextContent("สกัดข้อมูลไม่สำเร็จ");
+    expect(cells[1]).toHaveTextContent("–");
+    expect(within(cells[1]).getByTitle("ไม่มีข้อมูล")).toBeInTheDocument();
+    const width = (r: HTMLElement) => within(r).getAllByRole("cell").reduce((s, c) => s + Number(c.getAttribute("colspan") ?? 1), 0);
+    expect(width(p5)).toBe(width(screen.getByRole("row", { name: /P1/ })));
   });
 
   it("clicking a ref opens it in the rail", () => {

@@ -8,6 +8,8 @@ export interface ChartTokens {
   muted: string;
   rule: string;
   surface: string;
+  /** The "not verified" hatch tone; used as a neutral fill (never for a direction). */
+  hatch: string;
   direction: Record<Direction, string>;
   fontDisplay: string;
   fontNum: string;
@@ -22,6 +24,7 @@ export function readTokens(): ChartTokens {
     muted: v("--muted", "#4a5e57"),
     rule: v("--rule", "#bccac1"),
     surface: v("--surface", "#f8faf9"),
+    hatch: v("--hatch", "#9aa8a0"),
     direction: {
       positive: v("--sup", "#0072b2"),
       negative: v("--harm", "#d55e00"),

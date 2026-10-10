@@ -3,9 +3,10 @@
 import { useMemo } from "react";
 import { exportUrl } from "@/lib/api";
 import { DIRECTION_LABEL, LIT_COLUMN_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
+import { SOURCE_LABEL } from "@/lib/citation-network";
 import { litColumns, litRows, type LitColumn, type LitRow } from "@/lib/lit-matrix";
 import type { ReviewTypeOrLegacy } from "@/lib/review-type";
-import type { Paper } from "@/lib/types";
+import type { Citations, Paper } from "@/lib/types";
 import { Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { SECTION_H2 } from "./report-nav";
@@ -18,6 +19,18 @@ function NCell({ cell, lang }: { cell: LitRow["n"]; lang: Lang }) {
   if (cell.kind === "value") return <VerifiedNumber value={cell.text} />;
   if (cell.kind === "blanked") return <Hole lang={lang} />;
   return <span className="text-muted">–</span>;
+}
+
+/** A count from OpenAlex / Europe PMC (display face, never the verified-number face); the source is in the title. */
+function CitedBy({ row, lang }: { row: LitRow; lang: Lang }) {
+  const c = row.citedBy;
+  if (!c || c.count == null) return <span className="text-muted" title={L(lang, "ไม่มีข้อมูล", "No data")}>–</span>;
+  const source = c.source ? SOURCE_LABEL[c.source] : L(lang, "ไม่ทราบแหล่ง", "source unknown");
+  return (
+    <span className="font-display tabular-nums" title={L(lang, `จำนวนครั้งที่ถูกอ้างอิงทั้งหมด จาก ${source}`, `Total cited-by count, from ${source}`)}>
+      {c.count.toLocaleString("en-US")}
+    </span>
+  );
 }
 
 function Outcomes({ row, lang }: { row: LitRow; lang: Lang }) {
@@ -54,17 +67,34 @@ function Cell({ col, row, lang }: { col: LitColumn; row: LitRow; lang: Lang }) {
       ) : null;
     case "risk": return <>{row.risk ? ROB_LABEL[lang][row.risk] : "–"}</>;
     case "n": return <NCell cell={row.n} lang={lang} />;
+    case "citedBy": return <CitedBy row={row} lang={lang} />;
     case "limitations": return <p className={CLAMP}>{row.limitations || "–"}</p>;
     default: return null;
   }
 }
 
+/** A failed extraction spans the card columns; the cited-by count does not depend on the card, so it keeps its cell. */
+function FailedCells({ others, row, lang }: { others: LitColumn[]; row: LitRow; lang: Lang }) {
+  const at = others.indexOf("citedBy");
+  const failed = (span: number) => <td colSpan={span} className={`${TD} text-err`}>{L(lang, "สกัดข้อมูลไม่สำเร็จ", "Extraction failed")}</td>;
+  if (at < 0) return failed(others.length);
+  const after = others.length - at - 1;
+  return (
+    <>
+      {at > 0 && failed(at)}
+      <td className={TD}><CitedBy row={row} lang={lang} /></td>
+      {after > 0 && <td colSpan={after} className={TD} />}
+    </>
+  );
+}
+
 /** Literature review matrix: one row per paper, scrolling inside its own container with a sticky first column. */
-export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSelect, reviewId, offline = false }: {
+export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSelect, reviewId, offline = false, citations = null }: {
   papers: Paper[]; allPapers?: Paper[]; lang: Lang; type: ReviewTypeOrLegacy; onSelect: (ref: string) => void; reviewId: string; offline?: boolean;
+  citations?: Citations | null;
 }) {
-  const rows = useMemo(() => litRows(papers, lang), [papers, lang]);
-  const allRows = useMemo(() => (allPapers === papers ? rows : litRows(allPapers, lang)), [allPapers, papers, rows, lang]);
+  const rows = useMemo(() => litRows(papers, lang, citations), [papers, lang, citations]);
+  const allRows = useMemo(() => (allPapers === papers ? rows : litRows(allPapers, lang, citations)), [allPapers, papers, rows, lang, citations]);
   // The column set follows the whole review, so it does not change while the reader filters.
   const cols = litColumns(type, allRows);
   const others = cols.slice(1);
@@ -107,7 +137,7 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
                     {!cols.includes("direction") && row.uncertain && <UncertainFlag lang={lang} />}
                   </th>
                   {row.failed ? (
-                    <td colSpan={others.length} className={`${TD} text-err`}>{L(lang, "สกัดข้อมูลไม่สำเร็จ", "Extraction failed")}</td>
+                    <FailedCells others={others} row={row} lang={lang} />
                   ) : others.map((c) => <td key={c} className={TD}><Cell col={c} row={row} lang={lang} /></td>)}
                 </tr>
               ))}

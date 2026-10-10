@@ -13,6 +13,7 @@ import { Term } from "../ui/term";
 import type { ComparisonRow, Paper, Review, ReviewType } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
 import { Charts } from "./charts";
+import { CitationNetworkSection } from "./citation-network";
 import { ConceptMapSection } from "./concept-map";
 import { EvidenceMapSection } from "./evidence-map";
 import { LitMatrixSection } from "./lit-matrix";
@@ -97,8 +98,12 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const hasCharts = hasPapers && (showsSection(type, "forest") || showsSection(type, "prisma"));
   const hasLitMatrix = showsSection(type, "lit_matrix") && papers.length > 0;
   const litMatrix = hasLitMatrix && (
-    <LitMatrixSection papers={visible} allPapers={papers} lang={lang} type={type} onSelect={select} reviewId={review.id} offline={offline} />
+    <LitMatrixSection papers={visible} allPapers={papers} lang={lang} type={type} onSelect={select} reviewId={review.id} offline={offline}
+      citations={result.citations ?? null} />
   );
+  // Plan 14b: drawn only when the citation step ran (result.citations is null for legacy results and skipped steps).
+  const citations = result.citations ?? null;
+  const hasCitations = showsSection(type, "citations") && !!citations && hasPapers;
   const hasConceptMapSection = !!tree && tree.leaves > 0;
   const conceptMap = tree && hasConceptMapSection && <ConceptMapSection tree={tree} lang={lang} onSelect={select} />;
   const hasEvidenceMap = showsSection(type, "evidence_map") && (map.byConcept.rows.length > 0 || map.byYear.rows.length > 0);
@@ -109,7 +114,9 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const hasMeta = showsSection(type, "meta") && hasPapers;
   // The pool's outcome is an English matrix row: directions come from the English rows (the shown ones for an English review).
   const metaRows = result.synthesis_en?.comparison?.length ? result.synthesis_en.comparison : result.synthesis?.comparison ?? [];
-  const tail: Record<"evidence_map" | "lit_matrix" | "concept_map" | "charts" | "meta", { nav: NavItem; show: boolean; node: ReactNode }> = {
+  const tail: Record<"evidence_map" | "lit_matrix" | "concept_map" | "citations" | "charts" | "meta", { nav: NavItem; show: boolean; node: ReactNode }> = {
+    citations: { nav: { id: "h-citations", label: L(lang, "เครือข่ายการอ้างอิง", "Citation network") }, show: hasCitations,
+      node: hasCitations && citations && <CitationNetworkSection citations={citations} papers={visible} lang={lang} onSelect={select} /> },
     meta: { nav: { id: "h-meta", label: L(lang, "ค่ารวม", "Pooled") }, show: hasMeta,
       node: hasMeta && (
         <MetaAnalysisSection meta={result.meta_analysis} papers={papers} rows={metaRows} lang={lang} english={lang === "en"}
@@ -129,7 +136,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   };
   const tailOrder = [...new Set(SECTIONS_BY_TYPE[type].flatMap((id) =>
     id === "forest" || id === "prisma" ? ["charts" as const]
-      : id === "evidence_map" || id === "lit_matrix" || id === "concept_map" || id === "meta" ? [id] : []))];
+      : id === "evidence_map" || id === "lit_matrix" || id === "concept_map" || id === "meta" || id === "citations" ? [id] : []))];
   const tailShown = tailOrder.filter((k) => tail[k].show);
   const navItems: NavItem[] = [
     { id: "h-summary", label: L(lang, "สรุป", "Summary") },

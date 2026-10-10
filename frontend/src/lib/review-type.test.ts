@@ -21,13 +21,20 @@ describe("review-type", () => {
     expect(isGraded("scoping")).toBe(false);
   });
   it("encodes the report sections per type", () => {
-    expect(SECTIONS_BY_TYPE.scoping).toEqual(["summary", "evidence_map", "lit_matrix", "concept_map", "prisma"]);
+    expect(SECTIONS_BY_TYPE.scoping).toEqual(["summary", "evidence_map", "lit_matrix", "concept_map", "citations", "prisma"]);
     expect(SECTIONS_BY_TYPE.scoping).not.toContain("claims");
     expect(SECTIONS_BY_TYPE.scoping).not.toContain("forest");
     expect(SECTIONS_BY_TYPE.narrative).not.toContain("prisma");
     expect(SECTIONS_BY_TYPE.narrative).toContain("claims");
-    expect(SECTIONS_BY_TYPE.slr).toEqual(["summary", "claims", "findings", "forest", "prisma", "lit_matrix", "concept_map"]);
+    expect(SECTIONS_BY_TYPE.slr).toEqual(["summary", "claims", "findings", "forest", "prisma", "lit_matrix", "concept_map", "citations"]);
     expect(SECTIONS_BY_TYPE.legacy).toEqual(["summary", "claims", "findings", "forest", "prisma"]);
+  });
+  it("shows the citation network after the concept map for every type except legacy", () => {
+    for (const t of ["narrative", "slr", "scoping", "meta_analysis"] as const) {
+      const s = SECTIONS_BY_TYPE[t];
+      expect(s.indexOf("citations"), t).toBe(s.indexOf("concept_map") + 1);
+    }
+    expect(SECTIONS_BY_TYPE.legacy).not.toContain("citations");
   });
   it("adds the meta-analysis: SLR sections plus the pooled section right after the forest plot, graded", () => {
     expect(REVIEW_TYPES).toEqual(["narrative", "slr", "scoping", "meta_analysis"]);

@@ -4,7 +4,8 @@ export type TermKey =
   | "mendelian" | "srma" | "narrativeReview" | "metaAnalysis" | "heterogeneity"
   | "hr" | "or" | "rr" | "md" | "smd" | "rd" | "ci95"
   | "pcc" | "slr" | "scopingReview"
-  | "logScale" | "prisma" | "relevance" | "notVerified" | "uncertain" | "directionTally" | "studyDesign";
+  | "logScale" | "prisma" | "relevance" | "notVerified" | "uncertain" | "directionTally" | "studyDesign"
+  | "citationNetwork";
 
 type Bi = { th: string; en: string };
 
@@ -225,6 +226,13 @@ export const GLOSSARY: Record<TermKey, { label: Bi; body: Bi }> = {
     body: {
       th: "วิธีที่งานวิจัยเก็บข้อมูล เช่น ทดลองแบบสุ่ม ติดตามกลุ่ม หรือรวบรวมงานวิจัยอื่น รูปแบบต่างกันน่าเชื่อถือไม่เท่ากัน",
       en: "How a study gathered its data, for example a randomised trial, a cohort follow-up or a review of other studies. Designs differ in how much weight they can bear.",
+    },
+  },
+  citationNetwork: {
+    label: { th: "เครือข่ายการอ้างอิง", en: "citation network" },
+    body: {
+      th: "ภาพว่างานใดในรีวิวนี้อ้างอิงงานใด จากรายการอ้างอิงใน OpenAlex หรือ Europe PMC ถ้างานใดไม่มีข้อมูล ไม่ได้แปลว่างานนั้นไม่อ้างอิงงานอื่น การถูกอ้างอิงมากไม่ได้แปลว่างานนั้นถูกต้อง",
+      en: "Which studies in this review cite which, from the reference lists in OpenAlex or Europe PMC. A study with no data may still cite others, and being cited often does not make a study right.",
     },
   },
 };

@@ -61,15 +61,15 @@ export function t(lang: Lang, key: StringKey): string {
 }
 
 /** Column headings of the literature review matrix. */
-export const LIT_COLUMN_LABEL: Record<Lang, Record<"ref" | "design" | "population" | "exposure" | "comparator" | "outcomes" | "findings" | "direction" | "risk" | "n" | "limitations", string>> = {
+export const LIT_COLUMN_LABEL: Record<Lang, Record<"ref" | "design" | "population" | "exposure" | "comparator" | "outcomes" | "findings" | "direction" | "risk" | "n" | "citedBy" | "limitations", string>> = {
   th: {
     ref: "ผู้แต่ง/ปี", design: "รูปแบบการศึกษา", population: "ประชากร", exposure: "สิ่งที่ศึกษา/สิ่งสัมผัส",
     comparator: "ตัวเปรียบเทียบ", outcomes: "ผลลัพธ์", findings: "ข้อค้นพบหลัก", direction: "ทิศทาง",
-    risk: "ความเสี่ยงอคติ", n: "n", limitations: "ข้อจำกัด",
+    risk: "ความเสี่ยงอคติ", n: "n", citedBy: "ถูกอ้างอิง", limitations: "ข้อจำกัด",
   },
   en: {
     ref: "Author/year", design: "Study design", population: "Population", exposure: "Intervention/exposure",
     comparator: "Comparator", outcomes: "Outcomes", findings: "Key findings", direction: "Direction",
-    risk: "Risk of bias", n: "n", limitations: "Limitations",
+    risk: "Risk of bias", n: "n", citedBy: "Cited by", limitations: "Limitations",
   },
 };

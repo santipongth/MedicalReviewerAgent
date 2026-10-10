@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { emptyReviewFixture, legacyReviewFixture, metaReviewFixture, narrativeReviewFixture, reviewFixture, scopingReviewFixture } from "@/test/fixtures";
+import { emptyReviewFixture, legacyReviewFixture, metaReviewFixture, narrativeReviewFixture, reviewFixture, scopingReviewFixture, slrReviewFixture } from "@/test/fixtures";
 
 vi.mock("./charts", () => ({ Charts: () => <section aria-labelledby="h-charts"><h2 id="h-charts">แผนภาพหลักฐาน</h2><div data-testid="charts" /></section> }));
 
@@ -375,7 +375,7 @@ describe("Report per review type", () => {
 
   it("meta-analysis: SLR sections plus the pooled section right after the charts, graded, typed badge", () => {
     const { container } = render(<Report review={metaReviewFixture} />);
-    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-meta", "h-litmatrix", "h-map", "h-gaps", "h-papers", "h-method"]);
+    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-meta", "h-litmatrix", "h-map", "h-citations", "h-gaps", "h-papers", "h-method"]);
     expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การวิเคราะห์อภิมาน");
     expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำมาก");
     expect(screen.getByTestId("charts")).toBeInTheDocument();
@@ -590,6 +590,27 @@ describe("mobile source drawer", () => {
     a.unmount();
     const legacy = render(<Report review={legacyReviewFixture} />);
     expect(legacy.container.querySelector("#h-map")).toBeNull();
+  });
+
+  it("citation network: after the concept map when result.citations exists; never for legacy or without data", async () => {
+    const a = render(<Report review={slrReviewFixture} />);
+    expect(navIds(a.container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-litmatrix", "h-map", "h-citations", "h-gaps", "h-papers", "h-method"]);
+    expect(screen.getByRole("link", { name: "เครือข่ายการอ้างอิง" })).toHaveAttribute("href", "#h-citations");
+    const section = screen.getByRole("heading", { level: 2, name: "เครือข่ายการอ้างอิง" }).closest("section")!;
+    expect(within(section).getByRole("img", { name: "เครือข่ายการอ้างอิง 5 งานวิจัย 4 เส้นเชื่อม" })).toBeInTheDocument();
+    // the twin's ref opens the rail
+    await userEvent.click(within(section).getByRole("button", { name: "ดูเป็นตาราง" }));
+    await userEvent.click(within(section).getByRole("button", { name: /^P4 / }));
+    expect(rail().getByText(/Short-term metformin initiation/)).toBeInTheDocument();
+    // the lit matrix gains the cited-by column
+    expect(within(screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).getByRole("columnheader", { name: "ถูกอ้างอิง" })).toBeInTheDocument();
+    a.unmount();
+    const none = render(<Report review={{ ...slrReviewFixture, result: { ...slrReviewFixture.result!, citations: null } }} />);
+    expect(none.container.querySelector("#h-citations")).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "ถูกอ้างอิง" })).toBeNull();
+    none.unmount();
+    const legacy = render(<Report review={{ ...legacyReviewFixture, result: { ...legacyReviewFixture.result!, citations: slrReviewFixture.result!.citations } }} />);
+    expect(legacy.container.querySelector("#h-citations")).toBeNull();
   });
 
   it("concept map: scoping groups by design and shows no direction", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { litColumns, litRows } from "./lit-matrix";
-import { narrativeReviewFixture, resultFixture, scopingReviewFixture } from "@/test/fixtures";
+import { citationsFixture, narrativeReviewFixture, resultFixture, scopingReviewFixture } from "@/test/fixtures";
 import type { Paper } from "./types";
 
 const papers = resultFixture.papers!;
@@ -54,5 +54,18 @@ describe("litColumns", () => {
     const none = rows.map((r) => ({ ...r, comparator: "" }));
     expect(litColumns("slr", none)).not.toContain("comparator");
     expect(litColumns("slr", rows)).toContain("comparator");
+  });
+  it("adds the cited-by column after n only when the review has citation data", () => {
+    expect(litColumns("slr", rows)).not.toContain("citedBy");
+    const cols = litColumns("slr", litRows(papers, "th", citationsFixture));
+    expect(cols.indexOf("citedBy")).toBe(cols.indexOf("n") + 1);
+  });
+  it("cited-by values are counts with their source; null stays null (no data), also for a failed row", () => {
+    const rows = litRows(papers, "th", citationsFixture);
+    expect(rows.find((r) => r.ref === "P2")!.citedBy).toEqual({ count: 1187, source: "openalex" });
+    const p5 = rows.find((r) => r.ref === "P5")!;
+    expect(p5.failed).toBe(true);
+    expect(p5.citedBy).toEqual({ count: null, source: null });
+    expect(litRows(papers, "th")[0].citedBy).toBeUndefined();
   });
 });

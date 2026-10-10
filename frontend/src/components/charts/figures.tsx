@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import { SOURCE_LABEL, type CitationNetwork, type DesignGroup, type NetNode } from "@/lib/citation-network";
 import type { ConceptTree, MapNode } from "@/lib/concept-map";
 import { forestAxis, type exclusionRows, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
@@ -541,6 +542,199 @@ export function ConceptMapFigure({ tree, tokens, lang, onSelect }: { tree: Conce
         <ul aria-label={L(lang, "โครงร่างแผนที่ความรู้", "Concept map outline")} className="grid list-none gap-1 text-[0.9rem]">
           <ConceptOutline node={tree.root} lang={lang} onSelect={onSelect} />
         </ul>
+      }
+    />
+  );
+}
+
+// --- Citation network (Plan 14b) -------------------------------------------------------------------------------------
+
+export const DESIGN_GROUP_LABEL: Record<DesignGroup, [string, string]> = {
+  trial: ["การทดลอง (RCT, ไม่สุ่ม)", "Trials (RCT, non-randomised)"],
+  observational: ["เชิงสังเกตและอื่น ๆ", "Observational and other"],
+  review: ["การทบทวน (SR/MA, บทความทบทวน)", "Reviews (SR/MA, narrative)"],
+};
+
+/** Neutral fills per design group (direction colours mean a direction and stay out of this view); reviews are also square. */
+function groupStyle(g: DesignGroup, t: ChartTokens): { fill: string; stroke: string; symbol: string } {
+  if (g === "trial") return { fill: t.ink, stroke: t.ink, symbol: "circle" };
+  if (g === "review") return { fill: t.hatch, stroke: t.ink, symbol: "roundRect" };
+  return { fill: t.muted, stroke: t.muted, symbol: "circle" };
+}
+
+/** Pixels per year column, so neighbouring years never overlap (the region scrolls when the column is narrower). */
+const PX_PER_STEP = 52;
+const LANE_PX = 46;
+
+function citationOption(net: CitationNetwork, t: ChartTokens, lang: Lang): EChartsOption {
+  const unknownLabel = L(lang, "ไม่ทราบปี", "Year unknown");
+  const byRef = new Map(net.nodes.map((n) => [n.ref, n]));
+  const countText = (n: NetNode) => n.citedBy == null ? L(lang, "ไม่มีข้อมูล", "no data")
+    : `${n.citedBy.toLocaleString("en-US")} (${n.citedBySource ? SOURCE_LABEL[n.citedBySource] : L(lang, "ไม่ทราบแหล่ง", "source unknown")})`;
+  return {
+    animation: !t.reducedMotion,
+    animationDuration: 400,
+    aria: { enabled: false },
+    grid: { left: 20, right: 44, top: 22, bottom: 30 },
+    tooltip: {
+      trigger: "item", backgroundColor: t.surface, borderColor: t.rule, textStyle: { color: t.ink, fontFamily: t.fontDisplay },
+      formatter: (p: { dataType?: string; data: { ref?: string; source?: string; target?: string } }) => {
+        if (p.dataType === "edge") {
+          return encodeHTML(L(lang, `${p.data.source} อ้างอิง ${p.data.target}`, `${p.data.source} cites ${p.data.target}`));
+        }
+        const n = p.data.ref ? byRef.get(p.data.ref) : undefined;
+        if (!n) return "";
+        const cov = n.coverage ? SOURCE_LABEL[n.coverage] : L(lang, "ไม่มีข้อมูล (ไม่ใช่ว่าไม่อ้างอิง)", "no data (not \"cites nothing\")");
+        return `<b>${encodeHTML(n.ref)}</b> · ${encodeHTML(n.year ?? unknownLabel)} · ${encodeHTML(n.designText)}`
+          + `<br/><span style="color:${t.muted}">${encodeHTML(n.title)}</span>`
+          + `<br/>${encodeHTML(L(lang, "ถูกอ้างอิงทั้งหมด", "Cited by (all)"))}: ${encodeHTML(countText(n))}`
+          + `<br/>${encodeHTML(L(lang, "รายการอ้างอิง", "Reference list"))}: ${encodeHTML(cov)}`;
+      },
+    },
+    xAxis: {
+      type: "value", min: net.xMin, max: net.xMax,
+      axisLine: { onZero: false, lineStyle: { color: t.rule } }, splitLine: { show: false },
+      axisTick: { customValues: net.ticks, lineStyle: { color: t.rule } },
+      axisLabel: {
+        customValues: net.ticks, color: t.muted, fontFamily: t.fontDisplay, fontSize: 11,
+        formatter: (v: number) => (v === net.unknownX ? unknownLabel : String(v)),
+      },
+    },
+    yAxis: { type: "value", inverse: true, show: false, min: -0.6, max: net.lanes - 0.4 },
+    series: [
+      ...(net.unknownX != null && net.minYear != null ? [{
+        // A dashed rule between the unknown-year column and the years: that column is not on the year scale.
+        type: "scatter", data: [], silent: true,
+        markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: t.rule, width: 1, type: "dashed" },
+          data: [{ xAxis: (net.unknownX + net.minYear) / 2 }] },
+      }] : []),
+      {
+        type: "graph", coordinateSystem: "cartesian2d", layout: "none", roam: false, cursor: "pointer",
+        edgeSymbol: ["none", "arrow"], edgeSymbolSize: [0, 7],
+        lineStyle: { color: t.muted, width: 1.2, opacity: 0.85, curveness: 0.18 },
+        label: { show: true, position: "right", distance: 4, color: t.ink, fontFamily: t.fontDisplay, fontSize: 11, formatter: "{b}",
+          backgroundColor: t.surface, padding: [1, 2] },
+        emphasis: { focus: "adjacency", lineStyle: { width: 2 } },
+        data: net.nodes.map((n) => {
+          const s = groupStyle(n.group, t);
+          return {
+            name: n.ref, ref: n.ref, value: [n.x, n.lane], symbol: s.symbol, symbolSize: n.size,
+            // No reference data: hollow with a dashed outline ("no data", not "cites nothing").
+            itemStyle: n.coverage
+              ? { color: s.fill, borderColor: n.group === "review" ? s.stroke : t.surface, borderWidth: n.group === "review" ? 1.5 : 1 }
+              : { color: t.surface, borderColor: s.stroke, borderWidth: 1.5, borderType: "dashed" },
+          };
+        }),
+        links: net.edges.map((e) => ({ source: e.from, target: e.to })),
+      },
+    ],
+  };
+}
+
+function Swatch({ group, hollow = false }: { group: DesignGroup; hollow?: boolean }) {
+  const fill = hollow ? "var(--surface)" : group === "trial" ? "var(--ink)" : group === "review" ? "var(--hatch)" : "var(--muted)";
+  const stroke = group === "observational" ? "var(--muted)" : "var(--ink)";
+  return (
+    <svg aria-hidden width="14" height="14" viewBox="0 0 14 14" className="shrink-0">
+      {group === "review"
+        ? <rect x="1.75" y="1.75" width="10.5" height="10.5" rx="2" fill={fill} stroke={stroke} strokeWidth="1.5" strokeDasharray={hollow ? "2.5 2" : undefined} />
+        : <circle cx="7" cy="7" r="5.5" fill={fill} stroke={hollow ? stroke : "none"} strokeWidth="1.5" strokeDasharray={hollow ? "2.5 2" : undefined} />}
+    </svg>
+  );
+}
+
+const refsText = (refs: string[]) => (refs.length ? refs.join(", ") : "–");
+
+/** The citation network: papers by year (lanes by design), arrows citing -> cited, with a table twin. */
+export function CitationNetworkFigure({ net, tokens, lang, onSelect }: {
+  net: CitationNetwork; tokens: ChartTokens; lang: Lang; onSelect: Select;
+}) {
+  const option = useMemo(() => citationOption(net, tokens, lang), [net, tokens, lang]);
+  const groups = (["trial", "observational", "review"] as const).filter((g) => net.nodes.some((n) => n.group === g));
+  const hasHollow = net.nodes.some((n) => !n.coverage);
+  const range = net.xMax - net.xMin;
+  const xs = [...new Set(net.nodes.map((n) => n.x))].sort((a, b) => a - b);
+  const minGap = xs.slice(1).reduce((m, x, i) => Math.min(m, x - xs[i]), Infinity);
+  const minWidth = Math.min(1800, Math.ceil((range / (Number.isFinite(minGap) ? Math.max(minGap, 1) : range || 1)) * PX_PER_STEP) + 80);
+  const height = Math.max(150, net.lanes * LANE_PX + 52);
+  const label = L(lang, `เครือข่ายการอ้างอิง ${net.total} งานวิจัย ${net.edges.length} เส้นเชื่อม`,
+    `Citation network of ${net.total} studies with ${net.edges.length} links`);
+  return (
+    <Figure lang={lang}
+      title={L(lang, "การอ้างอิงกันระหว่างงานในรีวิวนี้ ตามปีที่ตีพิมพ์", "Citations between the studies in this review, by year")}
+      caption={
+        <div className="grid gap-1">
+          <p>{L(lang, "เส้นเชื่อมแสดงการอ้างอิงระหว่างงานในรีวิวนี้เท่านั้น ข้อมูลจาก OpenAlex/Europe PMC",
+            "Links show citations between studies in this review only. Data from OpenAlex/Europe PMC")}
+          {" · "}{L(lang, "ลูกศรชี้จากงานที่อ้างไปยังงานที่ถูกอ้าง", "Arrows point from the citing study to the cited one")}</p>
+          <p><b className="font-display font-semibold text-ink">{L(lang, "ไม่มีข้อมูล ≠ ไม่อ้างอิง", "No data ≠ cites nothing")}</b>
+            {" · "}{L(lang, "งานที่ไม่มีข้อมูลรายการอ้างอิงอาจอ้างงานอื่นในรีวิวนี้โดยไม่มีเส้นแสดง",
+              "a study without reference data may cite others in this review without a link being drawn")}</p>
+          <p>{L(lang, "ขนาดจุดตามจำนวนครั้งที่ถูกอ้างอิงทั้งหมด (OpenAlex และ Europe PMC นับต่างกัน)",
+            "Marker size follows the total cited-by count (OpenAlex and Europe PMC count differently)")}</p>
+          {net.partial && <p>{L(lang, "ข้อมูลไม่ครบ: การดึงข้อมูลการอ้างอิงหมดเวลา จึงแสดงเท่าที่ได้รับ",
+            "Partial: the citation lookup timed out, so only the data received is shown")}</p>}
+        </div>
+      }
+      chart={
+        <div className="grid gap-2">
+          {net.edges.length === 0 && (
+            <p className="text-[0.9rem]">{L(lang, "ไม่พบการอ้างอิงกันระหว่างงานในรีวิวนี้", "No citations were found between the studies in this review")}</p>
+          )}
+          <div className="overflow-x-auto rounded-sm border border-rule" tabIndex={0} role="region"
+            aria-label={L(lang, "เครือข่ายการอ้างอิง (เลื่อนดูได้)", "Citation network (scrollable)")}>
+            <div style={{ minWidth }}>
+              <EChart option={option} height={height} label={label}
+                onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />
+            </div>
+          </div>
+          <ul aria-label={L(lang, "คำอธิบายสัญลักษณ์", "Legend")} className="flex flex-wrap gap-x-4 gap-y-1 text-[0.82rem] text-muted">
+            {groups.map((g) => (
+              <li key={g} className="inline-flex items-center gap-1.5"><Swatch group={g} />{L(lang, ...DESIGN_GROUP_LABEL[g])}</li>
+            ))}
+            {hasHollow && (
+              <li className="inline-flex items-center gap-1.5"><Swatch group="trial" hollow />
+                {L(lang, "เส้นประ = ไม่มีข้อมูลการอ้างอิง", "Dashed = no citation data")}</li>
+            )}
+          </ul>
+        </div>
+      }
+      table={
+        <table aria-label={L(lang, "ตารางการอ้างอิง", "Citation table")} className="w-full min-w-[640px] border-collapse text-[0.88rem]">
+          <thead><tr className="border-b border-rule text-left">
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "งานวิจัย", "Study")}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "ปี", "Year")}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "อ้างอิงงานในรีวิว", "Cites (in review)")}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "ถูกอ้างโดยงานในรีวิว", "Cited by (in review)")}</th>
+            <th scope="col" className="py-1.5 pr-3 label">{L(lang, "ถูกอ้างอิงทั้งหมด", "Cited by (all)")}</th>
+            <th scope="col" className="py-1.5 label">{L(lang, "ข้อมูลรายการอ้างอิง", "Reference data")}</th>
+          </tr></thead>
+          <tbody>
+            {net.nodes.map((n) => (
+              <tr key={n.ref} className="border-b border-rule align-top">
+                <th scope="row" className="py-1 pr-3 text-left font-normal">
+                  <button type="button" onClick={() => onSelect(n.ref)} title={n.title} aria-label={`${n.ref} ${n.title}`}
+                    className="inline-flex min-h-11 min-w-11 flex-col items-start justify-center text-left">
+                    <span className="font-display font-semibold text-primary underline underline-offset-2">{n.ref}</span>
+                    <span className="text-[0.75rem] text-muted">{n.designText}</span>
+                  </button>
+                </th>
+                <td className="py-2 pr-3 font-display tabular-nums">{n.year ?? L(lang, "ไม่ทราบ", "unknown")}</td>
+                <td className="py-2 pr-3 font-display">{n.coverage ? refsText(n.cites) : <span className="text-muted">{L(lang, "ไม่มีข้อมูล", "no data")}</span>}</td>
+                <td className="py-2 pr-3 font-display">{refsText(n.citedByIn)}</td>
+                <td className="py-2 pr-3">
+                  {n.citedBy == null ? <span className="text-muted" title={L(lang, "ไม่มีข้อมูล", "No data")}>–</span> : (
+                    <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
+                      <span className="font-display tabular-nums">{n.citedBy.toLocaleString("en-US")}</span>
+                      {n.citedBySource && <span className="text-[0.75rem] text-muted">{SOURCE_LABEL[n.citedBySource]}</span>}
+                    </span>
+                  )}
+                </td>
+                <td className="py-2">{n.coverage ? SOURCE_LABEL[n.coverage] : <span className="text-muted">{L(lang, "ไม่มีข้อมูล", "No data")}</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       }
     />
   );
