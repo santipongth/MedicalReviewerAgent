@@ -51,10 +51,11 @@ class HttpClient:
 
     async def get(
         self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None,
-        timeout: float | None = None,
+        timeout: float | None = None, retries: int | None = None,
     ) -> httpx.Response:
         host = httpx.URL(url).host
-        for attempt in range(self.retries + 1):
+        retries = self.retries if retries is None else retries
+        for attempt in range(retries + 1):
             await self._throttle(host)
             try:
                 kwargs: dict[str, Any] = {"params": params, "headers": headers}
@@ -62,10 +63,10 @@ class HttpClient:
                     kwargs["timeout"] = timeout
                 resp = await self._client.get(url, **kwargs)
             except httpx.TransportError:
-                if attempt == self.retries:
+                if attempt == retries:
                     raise
             else:
-                if resp.status_code not in RETRY_STATUSES or attempt == self.retries:
+                if resp.status_code not in RETRY_STATUSES or attempt == retries:
                     return resp
             await self._sleep(self.backoff * 2**attempt)
         raise AssertionError("unreachable")

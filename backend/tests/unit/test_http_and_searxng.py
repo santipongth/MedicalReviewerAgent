@@ -118,10 +118,65 @@ async def test_searxng_client_passes_per_request_timeout():
     assert http.kwargs["timeout"] == 8.0
 
 
-def test_searxng_content_is_a_snippet_except_arxiv_summaries():
-    from app.services.searxng import parse_searxng_result
-    pubmed = parse_searxng_result({"title": "A cohort study", "content": "Some text", "engines": ["pubmed"]})
+def test_searxng_full_abstract_engines_are_not_snippets():
+    def parse(engines, **extra):
+        return parse_searxng_result({"title": "A cohort study", "content": "Some text", "engines": engines, **extra})
+
     arxiv = parse_searxng_result({"title": "A preprint", "content": "Full summary", "engines": ["arxiv"],
                                   "url": "https://arxiv.org/abs/2401.00001"})
-    assert pubmed.abstract_source == "snippet" and arxiv.abstract_source == "arxiv"
-    assert parse_searxng_result({"title": "No content", "engines": ["pubmed"]}).abstract_source is None
+    assert arxiv.abstract_source == "arxiv"
+    for engine in ("pubmed", "europe pmc", "doaj", "plos", "openaire"):
+        assert parse([engine]).abstract_source == "engine", engine
+    for engine in ("crossref", "openalex", "semantic scholar"):
+        assert parse([engine]).abstract_source == "snippet", engine
+    # a paper found by several engines keeps the strongest label, and every engine stays attributed
+    multi = parse(["crossref", "pubmed", "semantic scholar"])
+    assert multi.abstract_source == "engine" and multi.engines == ["crossref", "pubmed", "semantic scholar"]
+    assert parse(["pubmed"], content="").abstract_source is None
+
+
+def test_searxng_pmcid_from_europe_pmc_fields():
+    base = {"title": "T", "engines": ["europe pmc"]}
+    a = parse_searxng_result({**base, "url": "https://pubmed.ncbi.nlm.nih.gov/123/",
+                              "html_url": "https://europepmc.org/article/PMC/PMC9876543"})
+    assert (a.pmid, a.pmcid) == ("123", "PMC9876543")
+    b = parse_searxng_result({**base, "url": "https://europepmc.org/article/MED/5", "comments": "PMCID: PMC111"})
+    assert b.pmid is None and b.pmcid == "PMC111"
+    # preprints: no PMID, no PMCID, identified by DOI only
+    c = parse_searxng_result({**base, "url": "https://europepmc.org/article/PPR/PPR1307357",
+                              "doi": "10.21203/rs.3.rs-10413213/v1", "comments": "Preprint"})
+    assert c.pmid is None and c.pmcid is None and c.key == "doi:10.21203/rs.3.rs-10413213/v1"
+
+
+def test_new_engine_result_shapes_parse():
+    doaj = parse_searxng_result({"title": "T1", "content": "a" * 200, "engines": ["doaj"],
+                                 "url": "https://doi.org/10.1371/journal.pone.0097781", "doi": "10.1371/journal.pone.0097781",
+                                 "journal": "PLOS ONE", "publishedDate": "2014-01-01T00:00:00",
+                                 "authors": ["A B", "C D"]})
+    assert doaj.doi == "10.1371/journal.pone.0097781" and doaj.pmid is None and doaj.year == 2014
+    assert doaj.journal == "PLOS ONE" and doaj.abstract_source == "engine"
+    openaire = parse_searxng_result({"title": "T2", "content": "b" * 200, "engines": ["openaire"],
+                                     "url": "https://pubmed.ncbi.nlm.nih.gov/36862776/",
+                                     "doi": "https://doi.org/10.1158/0008-5472.CAN-22-3042"})
+    assert openaire.pmid == "36862776" and openaire.doi == "10.1158/0008-5472.can-22-3042"
+
+
+def test_merged_candidates_keep_all_engines_and_prefer_full_abstracts():
+    from app.services.dedupe import merge_candidates
+    snippet = parse_searxng_result({"title": "Same paper about metformin", "doi": "10.1/x", "engines": ["crossref"],
+                                    "content": "s" * 400, "url": "https://doi.org/10.1/x"})
+    full = parse_searxng_result({"title": "Same paper about metformin", "doi": "10.1/x", "engines": ["pubmed"],
+                                 "content": "f" * 300, "url": "https://pubmed.ncbi.nlm.nih.gov/9/"})
+    (m,) = merge_candidates([snippet, full])
+    assert m.engines == ["crossref", "pubmed"] and m.pmid == "9"
+    assert m.abstract_source == "engine" and m.abstract == "f" * 300
+
+
+@respx.mock
+async def test_searxng_client_retries_once_only():
+    route = respx.get("http://searxng:8080/search").mock(return_value=httpx.Response(503))
+    http = HttpClient(retries=3, sleep=SleepRecorder())
+    with pytest.raises(httpx.HTTPStatusError):
+        await SearxngClient(http, "http://searxng:8080", "pubmed").search("x")
+    await http.aclose()
+    assert route.call_count == 2

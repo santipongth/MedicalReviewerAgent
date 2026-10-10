@@ -53,9 +53,9 @@ class Settings(BaseSettings):
     stub_delay_seconds: float = 0.0  # stub graph only: simulated review duration for load tests
     prompt_version: str = "2026-10-10.1"
 
-    searxng_engines: str = "pubmed,arxiv,semantic scholar,openalex,crossref"
+    searxng_engines: str = "pubmed,europe pmc,openalex,semantic scholar,crossref,arxiv,doaj,openaire"
     searxng_pages: int = 1
-    searxng_timeout_seconds: float = 8.0
+    searxng_timeout_seconds: float = 15.0  # PubMed engine alone may take 12 s; SearXNG took up to 7.4 s under load
     europepmc_url: str = "https://www.ebi.ac.uk/europepmc/webservices/rest"
     http_timeout_seconds: float = 30.0
     screen_batch_size: int = 10

@@ -22,6 +22,9 @@ async def deps():
 async def test_live_searxng_returns_academic_candidates(deps):
     cands = await deps.searxng.search("metformin colorectal cancer")
     assert len(cands) >= 5 and any(c.doi for c in cands)
+    assert any("pubmed" in c.engines and c.pmid for c in cands)
+    assert any(c.abstract_source == "engine" and len(c.abstract or "") >= 150 for c in cands)
+    assert len({e for c in cands for e in c.engines}) >= 4
 
 
 async def test_live_europepmc_lookup_has_abstracts(deps):

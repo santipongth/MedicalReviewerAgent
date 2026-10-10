@@ -11,6 +11,10 @@ from app.services.text import normalize_title
 SCALARS = ("title", "doi", "pmid", "pmcid", "arxiv_id", "year", "journal", "url", "pdf_url")
 
 
+# Curated Europe PMC records win, then full abstracts from an engine/arXiv, then search snippets.
+_SOURCE_RANK = {"europepmc": 2, "arxiv": 1, "engine": 1, "snippet": 0}
+
+
 def _identifiers(c: Candidate) -> list[str]:
     ids = [f"doi:{c.doi}" if c.doi else "", f"pmid:{c.pmid}" if c.pmid else "",
            f"pmcid:{c.pmcid}" if c.pmcid else "", f"arxiv:{c.arxiv_id}" if c.arxiv_id else ""]
@@ -34,8 +38,8 @@ def _combine(group: list[Candidate]) -> Candidate:
         fields[name] = next((getattr(c, name) for c in group if getattr(c, name)), None)
     fields["title"] = fields["title"] or group[0].title
     # A curated abstract beats a (possibly truncated) search snippet even when the snippet is longer.
-    best = max((c for c in group if c.abstract), key=lambda c: (c.abstract_source != "snippet", len(c.abstract)),
-               default=None)
+    best = max((c for c in group if c.abstract), key=lambda c: (_SOURCE_RANK.get(c.abstract_source or "", 0),
+                                                                len(c.abstract)), default=None)
     fields["abstract"] = best.abstract if best else None
     fields["abstract_source"] = best.abstract_source if best else None
     fields["authors"] = next((c.authors for c in group if c.authors), [])
