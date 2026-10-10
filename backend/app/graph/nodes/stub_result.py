@@ -154,7 +154,7 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
                   "selected": len(papers), "extracted": len(papers), "excluded_screening": {"off_topic": 20, "population": 5, "publication_type": 3},
                   "non_research": 4, "year_excluded": 0, "no_abstract": 2,
                   "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
-                                         "study_design_corrected": 0, "low_relevance": 0},
+                                         "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
                   "related_reports": 0},
         "quality": {}, "errors": [], "prompt_version": "stub", "llm_preset": "stub", "models": {},
         "external_context": [],

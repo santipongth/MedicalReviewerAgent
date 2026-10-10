@@ -71,13 +71,26 @@ def settle_design_category(card: PaperCard, pub_types: list[str] | None) -> Pape
 def strip_non_quantitative(card: PaperCard) -> PaperCard:
     """Qualitative and mixed-methods cards are themes only, enforced in code (the prompt asks, models forget):
     every outcome gets effect_measure "none", null numbers and direction "unclear", and so does the card's overall
-    direction. sample_size, quotes and the theme text are kept."""
+    direction. A theme compares nothing (Plan 20 Task 10: the re-run's themes carried invented pairings such as
+    "patients with stigma vs patients without stigma (implied within cohort)"), so its comparison is null and it
+    matches the question. sample_size, quotes and the theme text are kept."""
     if card.design_category not in NON_QUANTITATIVE_CATEGORIES:
         return card
     outcomes = [o.model_copy(update={"effect_measure": "none", "effect_size": None, "effect_value": None,
-                                     "ci_lower": None, "ci_upper": None, "p_value": None, "direction": "unclear"})
+                                     "ci_lower": None, "ci_upper": None, "p_value": None, "direction": "unclear",
+                                     "comparison": None, "matches_question": True})
                 for o in card.outcomes]
     return card.model_copy(update={"outcomes": outcomes, "overall_direction": "unclear"})
+
+
+def strip_directions(card: PaperCard) -> PaperCard:
+    """A scoping review charts what exists and makes no claim of effect (Plan 20 Task 10): every outcome direction
+    and the card's overall direction are "unclear" (the extractor's guesses were shown on 24 of 30 mammography
+    cards). Numbers and text are kept."""
+    if card.overall_direction == "unclear" and all(o.direction == "unclear" for o in card.outcomes):
+        return card
+    return card.model_copy(update={"outcomes": [o.model_copy(update={"direction": "unclear"}) for o in card.outcomes],
+                                   "overall_direction": "unclear"})
 
 
 def design_problems(card: PaperCard, pub_types: list[str] | None) -> list[str]:
@@ -136,6 +149,32 @@ OBSERVATIONAL_WORDING = re.compile(
 COUNTS_STUDIES = re.compile(r"\b(\d[\d,]*|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+"
                             r"(eligible\s+|included\s+)?(studies|trials|articles|cohorts|reports)\b", re.IGNORECASE)
 _PRIMARY_OBSERVATIONAL = ("cohort", "case_control", "cross_sectional")
+# Plan 20 Task 10 (the mammography re-run): reviews of diagnostic-accuracy or screening-programme studies were
+# labelled sr_ma_rct, and a prospective paired-reader screening study rct.
+# Studies an SR/MA includes that are not randomised trials.
+NON_RCT_EVIDENCE = re.compile(
+    r"diagnostic (test )?accuracy|sensitivity|specificity|area under|\bauc\b|detection rates?|recall rates?|"
+    r"prospective (programs?|programmes?|studies|cohorts?)|screening programs?|screening programmes?|real-world|"
+    r"retrospective|observational|cohort|case-?control|cross-?sectional|registry", re.IGNORECASE)
+# A sentence about trials still to be done ("randomised trials are needed") is no evidence of included trials.
+_FUTURE = re.compile(r"\b(need(ed|s)?|warrant(ed|s)?|future|should|further|required|awaited)\b", re.IGNORECASE)
+_SENTENCES = re.compile(r"(?<=[.!?])\s+")
+# Designs with no randomisation by construction: every participant gets both tests (paired), or one arm only.
+NON_RANDOMISED_DESIGN = re.compile(
+    r"paired[- ]reader|paired design|paired screening|single[- ]arm|before[- ]and[- ]after|pre-?post|"
+    r"non-?randomi[sz]ed|uncontrolled", re.IGNORECASE)
+STRONG_RANDOMISATION = re.compile(
+    r"(were|was|been|being)\s+randomi[sz]ed\b|randomly (assigned|allocated)|randomi[sz]ed (\w+\s+){0,2}(to|1:1|2:1)\b|"
+    r"\brandomi[sz]ation\b|\brandomi[sz]ed (controlled )?trial\b", re.IGNORECASE)
+
+
+_TRIALS = re.compile(r"\btrials?\b(?!\s+emulation)", re.IGNORECASE)
+
+
+def _includes_trials(text: str) -> bool:
+    """Randomised-trial wording outside sentences about future research."""
+    return any((RANDOMISED_WORDING.search(s) or _TRIALS.search(s)) and not _FUTURE.search(s)
+               for s in _SENTENCES.split(text or ""))
 
 
 def _observational_category(*texts: str) -> str | None:
@@ -185,12 +224,33 @@ def check_design_consistency(card: PaperCard, pub_types: list[str] | None, title
                 inferred = infer_design_category(design)
                 if inferred and inferred not in POOLED_CATEGORIES:
                     new, reason = inferred, "no systematic-review or meta-analysis wording in the design or title"
+        elif category == "sr_ma_rct" and "randomized controlled trial" not in types:
+            # Plan 20 Task 10: an SR/MA of RCTs must show that it includes randomised trials
+            has_trials = (_includes_trials(own_text) or _includes_trials(abstract or "")
+                          or _includes_trials(card.sample_size_quote or ""))
+            if not has_trials:
+                non_rct = NON_RCT_EVIDENCE.search(f"{own_text}\n{abstract or ''}")
+                new = "sr_ma_observational" if non_rct else "sr_ma_mixed"
+                reason = ("no randomised trials named; the review pools "
+                          + ("diagnostic-accuracy or observational studies" if non_rct else "unstated designs"))
+            elif NON_RCT_EVIDENCE.search(own_text):
+                new, reason = "sr_ma_mixed", "the design or title names non-randomised studies besides trials"
     elif category == "rct" and "randomized controlled trial" not in types:
         randomised = (RANDOMISED_WORDING.search(own_text) or TRIAL_WORDING.search(own_text)
                       or RANDOMISED_IN_ABSTRACT.search(abstract or ""))
         observational = _observational_category(design, title) if OBSERVATIONAL_WORDING.search(own_text) else None
         if observational and not randomised:
             new, reason = observational, f"the design says {observational.replace('_', '-')}, with no randomisation"
+        elif (NON_RANDOMISED_DESIGN.search(own_text) and not RANDOMISED_WORDING.search(own_text)
+              and not STRONG_RANDOMISATION.search(abstract or "")):
+            # Plan 20 Task 10: a paired-reader or single-arm design is not randomised, whatever a registry number or
+            # the word "trial" suggests; only explicit randomisation wording keeps the label
+            if re.search(r"single[- ]arm|before[- ]and[- ]after|pre-?post|non-?randomi[sz]ed|uncontrolled", own_text,
+                         re.IGNORECASE):
+                new = "non_randomized_trial"
+            else:
+                new = observational or "cohort"
+            reason = "a paired or single-arm design with no randomisation"
     if new is None or new == category:
         return card, None
     return (card.model_copy(update={"design_category": new}),

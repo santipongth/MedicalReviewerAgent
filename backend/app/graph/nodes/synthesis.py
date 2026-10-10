@@ -1257,7 +1257,9 @@ def make_finalize(deps):
                                        "study_design_relaxed": selection.get("study_design_relaxed", 0),
                                        # read as a design outside the ticked types after selection: not evidence
                                        "study_design_corrected": len(design_excluded(state)),
-                                       "low_relevance": selection.get("low_relevance", 0)},
+                                       "low_relevance": selection.get("low_relevance", 0),
+                                       # Plan 20 Task 10: themes reviews, papers that never name the focus
+                                       "off_focus": selection.get("off_focus", 0)},
                 # Plan 20 Task 10: analysed papers that are further reports of a trial already analysed (PRISMA
                 # 2020 counts studies and reports apart); they are linked to its primary report, not evidence
                 "related_reports": len(linked),

@@ -138,14 +138,20 @@ QUALITATIVE_LEAD = "\nThe user's criteria include qualitative or mixed-methods s
 _SCREEN_QUALITATIVE_BLOCK = QUALITATIVE_LEAD + """
 - Qualitative studies (interviews, focus groups, thematic analysis) and mixed-methods studies that address the
   question are eligible even though they report no numeric outcome; set design_guess to qualitative or
-  mixed_methods."""
+  mixed_methods.
+- Focus: when the question asks about experiences, perceptions or barriers around a specific intervention, event or
+  phase of care (for example starting insulin), include only papers whose findings are about that specific focus.
+  A paper on the same condition but another aspect of care (diet or exercise adherence, a monitoring device,
+  treatment targets, self-management in general) is off_topic, with relevance below 35, even when it is a
+  qualitative study of the same population."""
 
 _EXTRACT_QUALITATIVE_BLOCK = QUALITATIVE_LEAD + """
 - design_category may also be qualitative (interviews, focus groups, thematic or phenomenological analysis) or
   mixed_methods (a qualitative and a quantitative component).
 - For qualitative and mixed_methods papers, outcomes are the themes the abstract reports: put the theme in outcome,
   a one-sentence finding in result and the verbatim sentence in evidence_quote; effect_measure "none", numeric
-  fields null and direction "unclear". Never turn a theme into a number."""
+  fields null and direction "unclear". Never turn a theme into a number. A theme compares nothing: comparison null
+  and matches_question true (never an implied pairing such as "patients with stigma vs without")."""
 
 # Appended whenever qualitative or mixed-methods cards reach the narrative (ticked or labelled by the extractor).
 _NARRATIVE_QUALITATIVE_BLOCK = """

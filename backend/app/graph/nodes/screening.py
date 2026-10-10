@@ -1,6 +1,7 @@
 """Screening with a borderline second vote (different model family) and escalation on disagreement."""
 from __future__ import annotations
 
+import re
 import time
 from collections import Counter
 from typing import Any
@@ -12,8 +13,9 @@ from app.graph.nodes.intake import harness_runner, harness_spec, review_question
 from app.graph.progress import progress_writer
 from app.graph.schemas import ScreenBatch
 from app.graph.state import ReviewState
+from app.harness.comparison import intervention_lexicon
 from app.harness.study_types import allowed_designs, canonical_types, design_allowed
-from app.schemas.review import SLR_LIKE, ReviewOptions, wants_qualitative
+from app.schemas.review import NON_QUANTITATIVE_TYPES, SLR_LIKE, ReviewOptions, wants_qualitative
 from app.services.llm import LLMError
 
 
@@ -139,6 +141,17 @@ MIN_MATCHING_DESIGNS = 3
 MIN_INCLUDE_RELEVANCE = 35  # default floor; the configured borderline band's lower edge wins
 
 
+def themes_review(options: ReviewOptions) -> bool:
+    """Every ticked study type is qualitative or mixed methods: the review summarises themes about one focus."""
+    return bool(options.study_types) and set(options.study_types) <= NON_QUANTITATIVE_TYPES
+
+
+def names_focus(candidate: dict[str, Any], lexicon: set[str]) -> bool:
+    """Whether the title or abstract has a word starting with one of the intervention stems (5 letters)."""
+    words = re.findall(r"[a-z][a-z0-9]+", f"{candidate.get('title') or ''} {candidate.get('abstract') or ''}".lower())
+    return any(w[:5] in lexicon for w in words if len(w) >= 3)
+
+
 def make_select_top(deps):
     async def select_top(state: ReviewState) -> dict:
         options = ReviewOptions.clamped(state.get("options"))
@@ -157,6 +170,18 @@ def make_select_top(deps):
         low_relevance = 0
         if len(above) >= MIN_MATCHING_DESIGNS:
             low_relevance, included = len(included) - len(above), above
+        # Plan 20 Task 10: a themes review (every ticked type qualitative / mixed methods) asks about one focus
+        # ("experiences of insulin initiation"); the re-run kept diet adherence, rtCGM and glycaemic-target papers of
+        # the same population. A paper whose title and abstract never name the question's intervention/exposure
+        # (its words, or the synonyms of a key term that shares one) is off focus. Recall elsewhere is untouched,
+        # and the floor never leaves fewer than MIN_MATCHING_DESIGNS papers.
+        off_focus = 0
+        if themes_review(options):
+            lexicon = intervention_lexicon(state.get("question"))
+            if lexicon:
+                focused = [d for d in included if names_focus(by_key[d["key"]], lexicon)]
+                if len(focused) >= MIN_MATCHING_DESIGNS:
+                    off_focus, included = len(included) - len(focused), focused
         # Ticked study types are enforced here only (the screener just labels designs): a paper whose design maps to none of them is excluded (PRISMA reason
         # study_design). Unknown designs stay. If fewer than MIN_MATCHING_DESIGNS remain, the mismatches are kept
         # after the matches (and flagged) rather than leaving the review empty.
@@ -201,10 +226,12 @@ def make_select_top(deps):
             stats["screening_failed"] = screening_failed
         if low_relevance:
             stats["low_relevance"] = low_relevance
+        if off_focus:
+            stats["off_focus"] = off_focus
         return {"selected": selected, "selection_stats": stats,
                 "quality": [{"stage": "select", "narrative_excluded": narrative_excluded,
                              "study_design_excluded": design_excluded, "study_design_relaxed": relaxed,
-                             "low_relevance": low_relevance}]}
+                             "low_relevance": low_relevance, "off_focus": off_focus}]}
 
     return select_top
 
