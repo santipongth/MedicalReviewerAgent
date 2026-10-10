@@ -37,6 +37,8 @@ from app.harness.grade import (
 )
 from app.harness.localize import Localized, localize_strings, untranslated
 from app.harness.matrix import (
+    DIFFERENCE_MEASURES,
+    RATIO_MEASURES,
     build_matrix,
     effect_side,
     expand_clusters,
@@ -162,20 +164,33 @@ NON_EFFECT_QUESTIONS = frozenset({"prevalence", "diagnosis"})
 def _directional(state: ReviewState, papers: list[dict[str, Any]] | None = None) -> bool:
     """Whether direction logic (consensus, conflicts, direction-based inconsistency) applies (audit I-11). It never
     does for a scoping review (it charts, it makes no claims), for a themes review (every ticked study type is
-    qualitative or mixed-methods), for a prevalence or diagnosis question, or for an "other" question whose evidence
-    has no effect estimate with a known no-effect value (themes or descriptive findings)."""
+    qualitative or mixed-methods), for a prevalence or diagnosis question, or for an "other" question that looks like
+    no effect question at all: no evidence outcome with a ratio or difference measure (even without a value) and no
+    intervention-vs-comparator question (themes or descriptive findings). A mislabelled "other" effect question
+    therefore keeps its consensus and conflicts."""
     options = ReviewOptions.clamped(state.get("options"))
     if options.review_type == "scoping":
         return False
     if options.study_types and set(options.study_types) <= NON_QUANTITATIVE_TYPES:
         return False
-    question_type = (state.get("question") or {}).get("question_type")
+    question = state.get("question") or {}
+    question_type = question.get("question_type")
     if question_type in NON_EFFECT_QUESTIONS:
         return False
     if question_type == "other":
         evidence = _evidence(state) if papers is None else papers
-        return any(effect_side(o) is not None for p in evidence for o in p["card"].get("outcomes") or [])
+        measured = any(o.get("effect_measure") in EFFECT_MEASURES or effect_side(o) is not None
+                       for p in evidence for o in p["card"].get("outcomes") or [])
+        compared = bool((question.get("intervention_or_exposure") or "").strip()
+                        and not _NO_COMPARATOR.match(question.get("comparator") or ""))
+        return measured or compared
     return True
+
+
+EFFECT_MEASURES = RATIO_MEASURES | DIFFERENCE_MEASURES
+# "None (qualitative inquiry ...)", "no comparator", "N/A", "": the question compares nothing
+_NO_COMPARATOR = re.compile(r"^\W*($|none\b|no (comparator|comparison|control)\b|n/?a\b|not applicable\b)",
+                            re.IGNORECASE)
 
 
 def _themes_only(papers: list[dict[str, Any]]) -> bool:
@@ -253,6 +268,7 @@ def make_normalize_outcomes(deps):
         elif not papers and _themes_only(_narrative_papers(state)):  # the level stays as the baseline gives it
             matrix["grade"]["factors"] = [QUALITATIVE_ONLY_FACTOR]
         entry |= {"outcomes": len(matrix["rows"]), "conflicts": len(matrix["conflicts"]),
+                  "directional": directional,  # false: consensus/conflict logic skipped (scoping, themes, ...)
                   "seconds": round(time.perf_counter() - started, 3)}
         return {"matrix": matrix, "cost_usd": cost, "errors": errors, "quality": [entry]}
 
@@ -452,6 +468,8 @@ def _consensus_explanation_th(c: dict[str, Any], outcome: str) -> str:
         extra += f" {_cite(c['nonsignificant'])} ชี้ไปในทิศทางเดียวกันแต่ไม่มีนัยสำคัญทางสถิติ"
     if c.get("corroborating"):
         extra += f" การทบทวนวรรณกรรมอย่างเป็นระบบ {_cite(c['corroborating'])} ให้ผลสอดคล้องกัน"
+    if c.get("discordant_reviews"):
+        extra += f" ส่วนการทบทวนวรรณกรรมอย่างเป็นระบบ {_cite(c['discordant_reviews'])} รายงานผลไปในทิศทางที่ต่างออกไป"
     if not dissent:
         return f"การศึกษา {len(c['refs'])} เรื่องรายงานผลไปในทิศทางเดียวกัน{_th_for(outcome)}{extra}"
     total = len(c["refs"]) + sum(len(refs) for refs in dissent.values())
@@ -476,6 +494,8 @@ def _consensus_explanation(c: dict[str, Any]) -> str:
                   f"statistical significance.")
     if c.get("corroborating"):
         extra += f" Systematic reviews {_cite(c['corroborating'])} agree."
+    if c.get("discordant_reviews"):  # reported, never silently dropped (they are not counted)
+        extra += f" Systematic reviews {_cite(c['discordant_reviews'])} report a different direction."
     if not dissent:
         return f"{len(c['refs'])} studies report the same direction for {c['outcome']}.{extra}"
     total = len(c["refs"]) + sum(len(refs) for refs in dissent.values())

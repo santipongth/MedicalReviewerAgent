@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from app.harness.design import NON_QUANTITATIVE_CATEGORIES, POOLED_CATEGORIES
-from app.harness.matrix import classify_row
+from app.harness.matrix import ci_includes_null, classify_row
 from app.harness.meta import (
     DESIGN_GROUP_LABEL,
     HIGH_I2,
@@ -54,19 +54,21 @@ def primary_row(matrix: dict[str, Any], question_outcomes: list[str] | None,
 
 def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any], question_outcomes: list[str] | None = None,
                    directional: bool = True) -> dict[str, Any]:
-    """GRADE-lite baseline (Plan 19, audit I-13), deterministic:
-    - Start tier: primary studies are always graded. The body starts high when more than half of the primary studies
-      are randomized, or when a systematic review/meta-analysis of RCTs exists (the best design available); the graded
-      body is then the randomized studies (primary RCTs plus SR/MAs of RCTs). Otherwise it starts low and the graded
-      body is the primary studies, or the SR/MAs when there are no primary studies. Other SR/MAs corroborate and are
-      never counted again; an observational or mixed SR/MA never lowers a body of RCTs.
+    """GRADE-lite baseline (Plan 19, audit I-13; methodology review fix round 1), deterministic and judged on the
+    primary outcome (the matrix row answering the question's first outcome, else the row with the most studies):
+    - Start tier from the best design with evidence on that outcome: any randomized evidence there (a primary RCT or
+      an SR/MA of RCTs) starts high and the graded body is those randomized studies; otherwise it starts low and the
+      body is the outcome's primary studies (its SR/MAs when it has none). The other studies are reported, not graded
+      again; an observational or mixed SR/MA never lowers a body of RCTs. Without any matrix row, all cards are used.
     - Risk of bias: >= 34 % of the graded body at high risk.
-    - Inconsistency: judged on the primary outcome only (the row answering the question's first outcome, else the row
-      with the most graded studies), by `classify_row` over the graded body's cells: a conflict (opposite sides of no
-      effect) downgrades; a dissenting minority or mixed significance is reported, not downgraded. Conflicts in other
-      outcomes are reported, not downgraded. Not assessed when the question has no effect direction.
-    - Imprecision: the primary outcome's sample size (its graded primary studies summed, or the largest SR/MA of the
-      same tier in the row, whichever is larger: an SR/MA's n already includes its studies) < 400, or not reported.
+    - Inconsistency: `classify_row` over the body's cells of the primary outcome. A conflict (a significant study on
+      each side of no effect, or non-overlapping CIs) downgrades; a non-significant estimate on the other side, an
+      SR/MA disagreeing with primary studies, or a dissenting minority is "minor inconsistency" (not downgraded).
+      Conflicts in other outcomes are reported, not downgraded. Not assessable for a one-study body; not assessed
+      when the question has no effect direction.
+    - Imprecision: the outcome's sample size (the body's primary studies summed, or the largest same-tier SR/MA in
+      the row, whichever is larger: an SR/MA's n already includes its studies) < 400 or not reported; and, for a
+      one-study body, a 95% CI that includes no effect, or a non-significant result without a CI.
     Downgrade factors start with their domain and a colon ("risk of bias:", "inconsistency:", "imprecision:")."""
     # qualitative/mixed-methods cards are themes, never graded evidence (callers pass _evidence; this is a guard)
     cards = {p.get("ref") or f"#{i}": p["card"] for i, p in enumerate(papers)
@@ -77,28 +79,27 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any], questio
     pooled = {r for r, c in cards.items() if c.get("design_category") in POOLED_CATEGORIES}
     primary = set(cards) - pooled
     randomized = {r for r in cards if is_randomized(cards[r])}
-    rct_primary, rct_pooled = primary & randomized, pooled & randomized
-    if primary and len(rct_primary) / len(primary) > 0.5:
-        body = rct_primary | rct_pooled
+    row = primary_row(matrix, question_outcomes, set(cards))
+    name = row["outcome"] if row else None
+    where = f"the primary outcome {name}" if row else "the graded studies"
+    scope = {c["ref"] for c in row["cells"]} & set(cards) if row else set(cards)
+    if scope & randomized:
+        body = scope & randomized
+        high = True
         level = LEVELS.index("high")
-        factors.append(f"start high: {len(rct_primary)}/{len(primary)} primary studies randomized")
-    elif rct_pooled:
-        body = rct_primary | rct_pooled
-        level = LEVELS.index("high")
-        overlap = (f"; {len(primary)} primary stud(ies), {len(primary - rct_primary)} non-randomized, may overlap "
-                   f"with them") if primary else ""
-        factors.append(f"start high: graded from pooled evidence, {len(rct_pooled)} systematic review(s)/"
-                       f"meta-analysis(es) of randomized trials{overlap}")
+        rest = len(scope - body)
+        factors.append(f"start high: randomized evidence for {where}: {len(body & primary)} randomized trial(s), "
+                       f"{len(body & pooled)} systematic review(s)/meta-analysis(es) of randomized trials"
+                       + (f"; {rest} non-randomized stud(ies) reported, not graded" if rest else ""))
     else:
-        body = primary or pooled
+        body = (scope & primary) or (scope & pooled)
+        high = False
         level = LEVELS.index("low")
-        non_randomized = len(body) - len(body & randomized)
-        factors.append(f"start low: {non_randomized}/{len(body)} primary studies non-randomized" if primary else
+        factors.append(f"start low: {len(body)}/{len(body)} primary studies non-randomized" if body & primary else
                        f"start low: graded from pooled evidence: {len(body)} systematic review(s)/meta-analysis(es), "
-                       f"{non_randomized}/{len(body)} not of randomized trials")
-    level_start = LEVELS[level]
-    corroborating = pooled - body
-    if corroborating and primary:
+                       f"{len(body)}/{len(body)} not of randomized trials")
+    corroborating = (scope & pooled) - body
+    if corroborating and body & primary:
         factors.append(f"{len(corroborating)} systematic review(s)/meta-analysis(es) corroborate; they may overlap "
                        f"with the primary studies, so they are not graded again")
     high_rob = sum(1 for r in body if cards[r].get("risk_of_bias") == "high")
@@ -106,45 +107,63 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any], questio
         level -= 1
         factors.append(f"risk of bias: {high_rob}/{len(body)} graded studies at high risk")
 
-    row = primary_row(matrix, question_outcomes, body)
-    name = row["outcome"] if row else None
+    single = len(body) == 1
+    what = "review" if body & pooled else "study"
+    body_cells = [c for c in row["cells"] if c["ref"] in body] if row else []
     if not directional:
         factors.append("inconsistency not assessed: the question has no effect direction")
+    elif single:
+        factors.append(f"inconsistency not assessable: one {what} for {where} (an abstract gives no between-study "
+                       f"spread)")
     elif row:
-        verdict = classify_row([c for c in row["cells"] if c["ref"] in body])
-        if verdict["verdict"] == "conflict":
+        verdict = classify_row(body_cells)
+        kind = verdict["verdict"]
+        if kind == "conflict":
             level -= 1
-            factors.append(f"inconsistency: studies on opposite sides of no effect for the primary outcome {name}")
-        elif verdict["verdict"] == "consensus" and verdict.get("dissent"):
-            factors.append(f"minor inconsistency: a dissenting minority for the primary outcome {name}")
-        elif verdict["verdict"] == "imprecise":
-            factors.append(f"mixed significance for the primary outcome {name}: non-significant results without "
-                           f"opposite effects are imprecision, not inconsistency")
+            factors.append(f"inconsistency: studies on opposite sides of no effect for {where}")
+        elif kind == "imprecise" and verdict.get("opposite_sides"):
+            factors.append(f"minor inconsistency: a non-significant estimate on the other side of no effect for "
+                           f"{where} (overlapping evidence, not downgraded)")
+        elif kind == "imprecise" and verdict.get("review_discordant"):
+            factors.append(f"minor inconsistency: systematic reviews and primary studies point different ways for "
+                           f"{where} (they likely overlap, not downgraded)")
+        elif kind == "consensus" and (verdict.get("dissent") or verdict.get("discordant_reviews")):
+            factors.append(f"minor inconsistency: a dissenting minority for {where}")
+        elif kind == "imprecise":
+            factors.append(f"mixed significance for {where}: non-significant results without opposite effects are "
+                           f"imprecision, not inconsistency")
     others = [c for c in matrix.get("conflicts") or [] if c.get("outcome") != name] if directional else []
     if others:
         factors.append(f"conflicting directions in {len(others)} other outcome(s): reported, not graded (GRADE-lite "
                        f"judges the primary outcome)")
 
-    in_row = {c["ref"] for c in row["cells"]} if row else set(cards)
-    where = f"the primary outcome {name}" if row else "the graded studies"
-    # SR/MAs of the same tier inform precision (an SR of RCTs for randomized bodies; any SR for a low start)
-    tier_pooled = rct_pooled if level_start == "high" else pooled
-    n = max(sum(_n(cards[r]) for r in in_row & body & primary),
-            max((_n(cards[r]) for r in in_row & tier_pooled), default=0))
-    source = f"sample size for {where}"
-    if n == 0 and body & pooled:
-        # A missing pooled n must never grade higher than a reported small one: judge from the primary studies the
-        # reviews pool (a lower bound), and call it imprecise when nothing reports a sample size at all.
-        n = sum(_n(cards[r]) for r in in_row & primary)
-        source = f"pooled sample sizes not reported; primary studies' sample size for {where}"
+    # SR/MAs of the same tier inform precision (an SR of RCTs for a randomized body; any SR for a low start); a
+    # randomized body is never made precise by non-randomized participants
+    tier_pooled = body & pooled if high else scope & pooled
+    n = max(sum(_n(cards[r]) for r in scope & primary & body),
+            max((_n(cards[r]) for r in scope & tier_pooled), default=0))
+    imprecise = False
     if n == 0:
         level -= 1
+        imprecise = True
         factors.append(f"imprecision: sample sizes for {where} not reported in the abstracts")
     elif n < IMPRECISE_N:
         level -= 1
-        factors.append(f"imprecision: {source} {n}")
-    elif source.startswith("pooled"):
-        factors.append(f"precision judged from the primary studies: {source} {n}")
+        imprecise = True
+        factors.append(f"imprecision: sample size for {where} {n}")
+    if single and directional and body_cells:
+        ci_null = [ci_includes_null(c) for c in body_cells]
+        if any(v is True for v in ci_null):
+            reason = f"the single graded {what}'s 95% CI for {where} includes no effect"
+        elif all(v is None for v in ci_null) and any(c.get("direction") == "null" for c in body_cells):
+            reason = f"the single graded {what} reports no significant effect for {where} and no CI"
+        else:
+            reason = ""
+        if reason and imprecise:
+            factors.append(f"imprecision (already downgraded): {reason}")
+        elif reason:
+            level -= 1
+            factors.append(f"imprecision: {reason}")
     factors.append(NOT_ASSESSED)
     return {"level": LEVELS[max(level, 0)], "factors": factors}
 
@@ -156,8 +175,12 @@ _DOMAIN_WORDS = {
     "imprecision": re.compile(r"imprecis|precision|sample size|small (sample|stud|trial)|few (participant|patient)|"
                               r"wide (95% )?(confidence )?interval|not reported", re.IGNORECASE),
 }
+# A stated starting level: the level right after "at/as/from (a)", or followed by certainty/quality/level, and never
+# a level that describes something else ("from cohorts with high risk of bias").
+_LEVEL = r"(very low|high|moderate|low)"
 _START = re.compile(r"\b(?:start(?:s|ed|ing)?|begin(?:s|ning)?|began|initial(?:ly)?)\b[^.;]{0,40}?"
-                    r"\b(very low|high|moderate|low)\b", re.IGNORECASE)
+                    rf"(?:\b(?:at|as|from)\s+(?:an?\s+)?{_LEVEL}\b(?!\s+risk)|\b{_LEVEL}\s+(?:certainty|quality|level))",
+                    re.IGNORECASE)
 
 
 def downgraded_domains(factors: list[str]) -> list[str]:
@@ -169,10 +192,11 @@ def rationale_problems(rationale: str, factors: list[str]) -> list[str]:
     or a downgraded domain it never mentions."""
     problems: list[str] = []
     start = next((f.split(":")[0].removeprefix("start ").strip() for f in factors if f.startswith("start ")), None)
-    said = _START.search(rationale or "")
-    if start and said and said.group(1).lower() != start:
-        problems.append(f"evidence_rationale says the rating starts at {said.group(1).lower()}, but the GRADE-lite "
-                        f"factors start at {start}")
+    match = _START.search(rationale or "")
+    said = (match.group(1) or match.group(2)).lower() if match else None
+    if start and said and said != start:
+        problems.append(f"evidence_rationale says the rating starts at {said}, but the GRADE-lite factors start at "
+                        f"{start}")
     for domain in downgraded_domains(factors):
         if not _DOMAIN_WORDS[domain].search(rationale or ""):
             problems.append(f"evidence_rationale must explain the {domain} downgrade listed in the GRADE-lite factors")

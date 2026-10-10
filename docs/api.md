@@ -128,14 +128,17 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - Design-label consistency (Plan 19). After extraction the label is cross-checked in code against the Europe PMC
   publication types, the card's `study_design`, the title, the abstract and the sample-size quote, and corrected
   only where the evidence is clear:
-  - an SR/MA label needs systematic-review/meta-analysis wording in the design or title, an SR/MA publication type,
-    or a sample-size quote that counts studies; a secondary, post hoc or prespecified analysis of a randomised trial
-    becomes `rct`, and any other design becomes what its own `study_design` says;
+  - an SR/MA label needs systematic-review/meta-analysis wording in the design or title ("meta-analysis",
+    "meta analysis", "review of randomized trials", ...), an SR/MA publication type, a sample-size quote that counts
+    studies, or a review footprint in the abstract (a database search, a random- or fixed-effects model, PRISMA,
+    "14 trials were included", "pooled 14 trials"). Without any of these, a secondary, post hoc or prespecified
+    analysis of a randomised trial becomes `rct`, and any other design becomes what its own `study_design` says;
   - a qualitative evidence synthesis (meta-synthesis, thematic synthesis, meta-ethnography) becomes `qualitative`
     (`mixed_methods` when it synthesises qualitative and quantitative studies): themes, not pooled effects;
   - an `rct` label whose design or title names an observational design (cohort, case-control, cross-sectional,
-    registry, retrospective) with no randomisation in the design, title, abstract or publication types becomes that
-    observational design.
+    registry, retrospective) becomes that observational design, unless the design or title says randomised or names
+    a trial (a target trial emulation does not count), the abstract says participants were randomised or allocated,
+    mentions a placebo or a trial registration (NCT, ISRCTN), or the publication types say RCT.
   A Randomized Controlled Trial publication type still wins over a non-randomised label. Each correction is listed
   in `result.quality.design_corrections` as `{ref, from, to, reason}` (`[]` when none; absent for results stored
   before Plan 19).
@@ -229,34 +232,47 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 
 **Synthesis.** `synthesis.consensus` explanations name any dissenting minority. `synthesis.conflicts` lists real splits, each with its likely reasons. Since Plan 19 both are decided by the side of the effect, not by statistical significance:
 - Each study in a `synthesis.comparison` row leans to the hypothesised side (`positive`), the opposite side
-  (`negative`) or neither. A `null` (non-significant) cell leans by its point estimate when the row's significant
-  cells fix which side of no effect (1 for HR/OR/RR, 0 for RD/MD/SMD/r) is the hypothesised one; without an
-  estimate, or with an `other`/`none` measure, it leans neither. `mixed` and `unclear` cells are ignored.
-- A conflict needs studies on opposite sides of no effect (and no 70 % majority of at least 3 studies). A
-  non-significant result on the same side as a significant one, or without a side, is imprecision, not a conflict.
+  (`negative`) or neither. A `null` (non-significant) cell leans by its point estimate when the significant cells
+  being counted fix which side of no effect (1 for HR/OR/RR, 0 for RD/MD/SMD/r) is the hypothesised one (an SR/MA
+  that is set aside never fixes it); without an estimate, or with an `other`/`none` measure, it leans neither.
+  `mixed` and `unclear` cells are ignored.
+- A conflict needs studies on opposite sides of no effect with a statistically significant study on each side, or
+  95% CIs of the two sides (same measure) that do not overlap, and no 70 % majority of at least 3 studies. A
+  non-significant result on the same side as a significant one, or without a side, or on the other side with an
+  overlapping CI, is imprecision, not a conflict. Two non-significant estimates are never a conflict.
 - Consensus needs agreement in direction: two or more studies all on one side (some may be non-significant; the
   explanation names them), a 70 % majority of at least 3 studies with the rest named as dissent, or two or more
   studies that all show no effect.
 - Systematic reviews/meta-analyses usually contain the row's primary studies: when the primary studies alone reach
   a consensus or a conflict, an SR/MA only corroborates (it is added to the consensus `refs` and named in the
-  explanation, never counted twice, never a conflict against them); otherwise each SR/MA counts as one study.
+  explanation) or, when it points elsewhere, is named in the explanation as a discordant review ("Systematic reviews
+  [P1] report a different direction."); it is never counted twice and never a conflict against them. Otherwise each
+  SR/MA counts as one study, except that a split running exactly between SR/MAs on one side and primary studies on
+  the other is "review discordant" (the review likely contains those trials): imprecision, never a conflict.
 - No direction logic at all (empty consensus and conflicts, every cell `direction` `"unclear"`) for scoping reviews,
   for themes reviews (every ticked study type is Qualitative or Mixed methods), for `prevalence` and `diagnosis`
-  questions, and for `other` questions whose evidence carries no estimate with a known no-effect value. The summary
-  then never says a theme "supports the hypothesised effect".
+  questions, and for `other` questions with no evidence outcome measured as HR/OR/RR/RD/MD/SMD/r (with or without a
+  value) and no intervention-vs-comparator question. The summary then never says a theme "supports the hypothesised
+  effect". The `normalize` quality entry records `directional: true|false`.
 - Literal placeholders ("null", "N/A", "not reported") never appear as a comparison row, a cell or a research gap.
 
-**GRADE-lite (Plan 19).** `synthesis.grade_baseline` is computed in code from the cards:
-- Primary studies are always graded. The body starts `high` when more than half of the primary studies are
-  randomised, or when a systematic review/meta-analysis of RCTs exists; the graded body is then the randomised
-  studies. Otherwise it starts `low` and the graded body is the primary studies (the SR/MAs when there are none).
-  Other SR/MAs corroborate and are not graded again; an observational or mixed SR/MA never lowers a body of RCTs.
+**GRADE-lite (Plan 19).** `synthesis.grade_baseline` is computed in code from the cards, for the primary outcome
+(the comparison row matching the question's first outcome, else the row with the most studies):
+- Start from the best design with evidence on that outcome: any randomised evidence there (a primary RCT or an
+  SR/MA of RCTs) starts `high`, and the graded body is those randomised studies; otherwise it starts `low` and the
+  graded body is the outcome's primary studies (its SR/MAs when it has none). The other studies are reported, not
+  graded; an observational or mixed SR/MA never lowers a body of RCTs. Without any comparison row, all cards count.
 - Risk of bias: one level down when at least 34 % of the graded body is at high risk.
-- Inconsistency: judged on the primary outcome only (the comparison row matching the question's first outcome, else
-  the row with the most graded studies) with the conflict rule above; a conflict in another outcome is reported, not
-  downgraded. Not assessed for questions without an effect direction.
-- Imprecision: the primary outcome's sample size (its graded primary studies summed, or the largest same-tier SR/MA
-  in that row, whichever is larger) below 400, or not reported.
+- Inconsistency: the conflict rule above, over the graded body's cells of the primary outcome. A conflict (a
+  significant study on each side, or non-overlapping CIs) downgrades one level. A non-significant estimate on the
+  other side, SR/MAs disagreeing with primary studies, or a dissenting minority is recorded as "minor
+  inconsistency" without a downgrade. A conflict in another outcome is reported, not downgraded. With one study or
+  one review in the body, inconsistency is not assessable (a factor says so); it is not assessed for questions
+  without an effect direction.
+- Imprecision: the primary outcome's sample size (the graded body's primary studies summed, or the largest
+  same-tier SR/MA in that row, whichever is larger; participants outside the graded body never count) below 400, or
+  not reported. With one study or one review in the body, also one level down (at most one level for the domain)
+  when its 95% CI includes no effect, or when it is non-significant and reports no CI.
 - Indirectness, publication bias and upgrades for observational evidence are not assessed (the factors say so).
 - The meta-analysis pooled-grade reasons (above) still apply once per domain on top of this baseline.
 - `synthesis.evidence_rationale` must agree with these factors: the narrative is sent back when it states another

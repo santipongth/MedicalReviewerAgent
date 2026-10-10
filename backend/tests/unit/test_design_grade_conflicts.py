@@ -196,7 +196,8 @@ def test_consensus_needs_agreement_in_direction():
     agree = [ev("P1", "rct", [out(cvd, "positive", "HR", 0.74)]), ev("P2", "rct", [out(cvd, "null", "HR", 0.92)])]
     assert matrix_of(agree)["consensus"][0]["nonsignificant"] == ["P2"]  # same side, not significant
     split = [ev("P1", "rct", [out(cvd, "positive", "HR", 0.74)]), ev("P2", "rct", [out(cvd, "null", "HR", 1.08)])]
-    assert matrix_of(split)["consensus"] == [] and matrix_of(split)["conflicts"][0]["refs"] == ["P1", "P2"]
+    m = matrix_of(split)  # opposite sides but P2 is not significant: imprecision, neither consensus nor conflict
+    assert m["consensus"] == [] and m["conflicts"] == [] and m["imprecise"][0]["opposite_sides"] is True
     # a mixed/unclear cell is not a direction at all
     assert classify_row([{"ref": "P1", "direction": "mixed"}, {"ref": "P2", "direction": "unclear"}]) == {
         "verdict": "none"}
@@ -204,11 +205,13 @@ def test_consensus_needs_agreement_in_direction():
 
 # ---- (b) GRADE-lite tiers (I-13) -----------------------------------------------------------------------
 def test_sglt2_rcts_reach_high_and_one_review_never_replaces_them():
-    for category, start in (("rct", "4/4"), ("sr_ma_rct", "3/3")):
+    for category in ("rct", "sr_ma_rct"):
         papers = meta_papers(category)
         g = grade_baseline(papers, matrix_of(papers))
         assert g["level"] == "high", (category, g)  # the audit run was moderate (graded from P4/P5, renal "conflict")
-        assert g["factors"][0] == f"start high: {start} primary studies randomized"
+        assert g["factors"][0] == ("start high: randomized evidence for the primary outcome Cardiovascular death or "
+                                   "heart failure hospitalization: 2 randomized trial(s), 1 systematic "
+                                   "review(s)/meta-analysis(es) of randomized trials")
 
 
 def test_an_observational_review_does_not_make_a_body_of_rcts_start_low():
