@@ -99,11 +99,102 @@ def test_an_outcome_cannot_take_the_estimate_of_another_outcome():
     assert (verified, total) == (1, 2)
 
 
-def test_binding_does_not_judge_the_first_estimate_of_the_window():
-    # documented limit: stroke taking mortality's (first) estimate is not caught; the number is still verbatim
+def test_first_estimate_is_bound_by_the_quote_lead_in():
+    # fix round 2 (R2): stroke cannot take mortality's first estimate; the lead-in names mortality only
     stroke = outcome(TWO_QUOTE, 0.86, 0.75, 0.99, name="Stroke")
     mortality = outcome(TWO_QUOTE, 0.86, 0.75, 0.99, name="Mortality")
-    assert card_problems(card([mortality, stroke]), TWO, 90) == []
+    assert card_problems(card([mortality, stroke]), TWO, 90) == [
+        "Stroke: effect_value 0.86 is reported for 'Mortality', not for this outcome"]
+
+
+STROKE_FIRST = "Results: stroke HR 0.80 (0.70-0.91) and mortality HR 0.86 (0.75-0.99) at two years of follow-up."
+
+
+def test_quoting_only_the_other_outcomes_clause_fails():
+    # the adversary's R2 case: the model quotes stroke's clause for mortality
+    o = outcome("Results: stroke HR 0.80 (0.70-0.91) and", 0.80, 0.70, 0.91, name="mortality")
+    assert outcome_problems(o, STROKE_FIRST, 90, ("stroke",)) == [
+        "mortality: effect_value 0.8 is reported for 'stroke', not for this outcome"]
+    own = outcome("and mortality HR 0.86 (0.75-0.99) at two years of follow-up.", 0.86, 0.75, 0.99, name="mortality")
+    assert outcome_problems(own, STROKE_FIRST, 90, ("stroke",)) == []
+
+
+def test_binding_limits_are_pinned():
+    # documented limits: a lead-in naming both outcomes, and outcome names sharing their words, are not judged
+    both = outcome(STROKE_FIRST, 0.80, 0.70, 0.91, name="mortality")
+    assert outcome_problems(both.model_copy(update={"evidence_quote": "stroke and mortality: " + STROKE_FIRST}),
+                            "stroke and mortality: " + STROKE_FIRST, 90, ("stroke",)) == []
+    shared = ("All-cause mortality HR 0.86 (0.75-0.99) and cardiovascular mortality HR 0.80 (0.70-0.91) at two "
+              "years.")
+    o = outcome(shared, 0.80, 0.70, 0.91, name="all-cause mortality")
+    assert outcome_problems(o, shared, 90, ("cardiovascular mortality",)) == []
+
+
+def test_a_general_lead_in_word_does_not_bind_the_first_estimate_elsewhere():
+    # f78b2184 P6 (audit run): "156 breasts" must not give the overall AUC to "performance by breast density"
+    source = ("In the overall cohort (156 breasts, including 15 breasts with malignancies), the AI algorithm achieved "
+              "an AUC of 0.96 (95% CI: 0.86-1.00). Performance remained high in non-dense breasts (AUC = 0.96; "
+              "95% CI: 0.88-1.00).")
+    o = outcome(source, 0.96, 0.86, 1.0, measure="other", name="Diagnostic accuracy (AUC)")
+    assert outcome_problems(o, source, 90, ("Comparison of performance by breast density",)) == []
+
+
+# ---- fix round 2 (R1): an altered number at the quote's edge -------------------------------------------------------
+EDGE_SRC = "Stroke occurred less often (HR 0.80). Mortality was also lower with the drug, HR 0.86 overall."
+
+
+@pytest.mark.parametrize("quote", [
+    "Stroke occurred less often (HR 0.80). Mortality was also lower with the drug, HR 0.80",
+    "Stroke occurred less often (HR 0.80). Mortality was also lower with the drug, HR 0.81",
+])
+def test_altered_number_at_the_quote_end_fails(quote):
+    o = outcome(quote, 0.80, name="Mortality")
+    assert any("changes, adds or leaves out a number" in p for p in outcome_problems(o, EDGE_SRC, 90, ("Stroke",)))
+    assert not _quote_is_faithful(quote, EDGE_SRC, 90)
+
+
+def test_altered_number_at_the_quote_end_fails_when_the_source_ends_there():
+    source = "Stroke occurred less often (HR 0.80). Mortality was also lower with the drug, HR 0.86"
+    quote = "Stroke occurred less often (HR 0.80). Mortality was also lower with the drug, HR 0.80"
+    assert outcome_problems(outcome(quote, 0.80, name="Mortality"), source, 90, ("Stroke",))
+
+
+LEAD_SRC = "HR 0.86 for mortality; stroke was unchanged (HR 0.80, P = .2) in the cohort of older adults."
+
+
+@pytest.mark.parametrize("quote", [
+    ".80 for mortality; stroke was unchanged (HR 0.80, P = .2) in the cohort of older adults.",
+    "0.80 for mortality; stroke was unchanged (HR 0.80, P = .2) in the cohort of older adults.",
+    "R 0.80 for mortality; stroke was unchanged (HR 0.80, P = .2) in the cohort of older adults.",
+])
+def test_altered_number_at_the_quote_start_fails(quote):
+    o = outcome(quote, 0.80, name="mortality")
+    assert outcome_problems(o, LEAD_SRC, 90, ("stroke",))
+
+
+def test_true_truncation_at_an_edge_is_excused_but_verifies_nothing():
+    quote = "Stroke occurred less often (HR 0.80). Mortality was also lower with the drug, HR 0.8"
+    assert _quote_is_faithful(quote, EDGE_SRC, 90)  # "0.8" is a true truncation of the cut "0.86"
+    o = outcome(quote, 0.8, name="Mortality")  # equals the truncated "0.8" (and stroke's 0.80)
+    assert any("does not appear in the paper text" in p for p in outcome_problems(o, EDGE_SRC, 90, ("Stroke",)))
+    # conservative: a value equal to an excused truncation verifies nothing, not even stroke's own 0.80
+    assert outcome_problems(outcome(quote, 0.80, name="Stroke"), EDGE_SRC, 90, ("Mortality",))
+
+
+def test_comma_decimal_in_a_decimal_point_abstract_verifies_nothing():
+    source = "Trial 2.0 of drug X. La mortalite etait reduite (HR 0,86; IC 95% 0,75-0,99) chez les patients."
+    quote = "La mortalite etait reduite (HR 0,86; IC 95% 0,75-0,99) chez les patients"
+    for value in (86, 0.86):
+        o = outcome(quote, value, measure="other")
+        assert any("does not appear" in p for p in outcome_problems(o, source, 90))
+
+
+def test_two_spaces_after_a_minus_keep_the_sign():
+    source = f"Mean difference was {MINUS}  0.5 points in the treatment arm over the year."
+    assert numbers_in(source) == [-0.5]
+    o = outcome(source, 0.5, measure="MD")
+    assert any("effect_value 0.5 does not appear" in p for p in outcome_problems(o, source, 90))
+    assert numbers_in(f"was {MINUS} {THIN}0.5 and - {NBSP}0.4") == [-0.5, -0.4]
 
 
 # 84edcb5d P5 and f78b2184 P7 (audit runs): correct bindings in multi-outcome sentences must keep verifying.
@@ -192,7 +283,8 @@ def test_negative_value_fails_against_a_range_dash():
 @pytest.mark.parametrize(("text", "expected"), [
     ("studies 1,2,5 and 7 (HR 0.85)", [1, 2, 5, 7, 0.85]),
     ("studies 1,2,5 were pooled", [1, 2, 5]),  # a list never turns into 2.5, even in comma-decimal text
-    ("at weeks 2,4 the HR was 0.85", [2, 4, 0.85]),
+    ("at weeks 2,4 the HR was 0.85", [0.85]),  # point mode: "2,4" is one opaque token, never 2 and 4 or 2.4
+    ("Trial 2.0: HR 0,86 (0,75-0,99)", [2.0]),  # mixed text: "0,86" is opaque, never 0 and 86
     ("HR 0,85 (0,71-0,90) at weeks 2 and 4", [0.85, 0.71, 0.90, 2, 4]),
 ])
 def test_decimal_comma_is_scoped_to_comma_decimal_text(text, expected):

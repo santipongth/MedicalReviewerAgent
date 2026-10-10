@@ -126,13 +126,15 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   - Scoping reviews still map them.
 - `verification` (Plan 19): a number is kept only when its exact value is in the abstract where the outcome's
   `evidence_quote` is found, and that quote repeats the passage's numbers exactly and in order (a quote that changes,
-  adds or drops a number keeps none). Formats such as `P = .003`, `111 725`, `0·85` and `− 0.5` are normalised first;
-  decimal commas (`0,85`) are read only in abstracts that use no decimal point. An effect with a CI must appear as
-  one run (effect, then lower and upper bound; only the CI level and integer counts may stand between). An estimate
-  whose phrase since the previous estimate names another outcome of the card, and not this one, is rejected. Known
-  limit: this binding is lexical; it does not judge the first estimate of a passage or wordings that name the
-  outcome after the number, so there an estimate can still go to the wrong outcome of the same passage (the number
-  itself is still verbatim). Fields are blanked one at a time, so an unverifiable p-value leaves a verified effect
+  adds or drops a number keeps none; only a number cut at the passage edge may be left out or truly truncated, and
+  such a number verifies nothing). Formats such as `P = .003`, `111 725`, `0·85` and `− 0.5` are normalised first;
+  decimal commas (`0,85`) are read only in abstracts that use no decimal point, and are otherwise unreadable (never
+  split into two numbers). An effect with a CI must appear as one run (effect, then lower and upper bound; only the
+  CI level and integer counts may stand between). An estimate is rejected when the phrase before it (since the
+  previous estimate, or the quote's lead-in for the first one) names another outcome of the card and not this one.
+  Known limit: this binding is lexical; it does not catch wordings that name the outcome after the number, lead-ins
+  that name both outcomes, or outcome names that share their words, so there an estimate can still go to the wrong
+  outcome of the same passage (the number itself is still verbatim). Fields are blanked one at a time, so an unverifiable p-value leaves a verified effect
   and CI in place; a CI is kept only whole and only with its effect (a half CI or a CI without an effect is blanked).
   An outcome's `result` text may only use numbers of its quote's passage, never a blanked value (others are masked
   as `[unverified]` or the text is replaced by the quote); `key_findings` are checked against the whole abstract. `numbers_total` counts the outcomes that carry numbers plus the sample size;
