@@ -37,6 +37,13 @@ def test_real_trial_names_are_still_found():
     assert trial_acronyms("DELIVER: a review", "") == []  # a plain capitals word needs a trial context
 
 
+def test_all_caps_names_next_to_program_are_accepted_unless_stoplisted():  # controller ruling on CANVAS
+    assert trial_acronyms("t", "Results from the CANVAS Program were consistent.") == ["CANVAS"]
+    assert trial_acronyms("t", "In the CANVAS programme, canagliflozin ...") == ["CANVAS"]
+    assert trial_acronyms("t", "We ran a PILOT program and the NIH program funded it.") == []
+    assert trial_acronyms("t", "A NATIONAL programme and the CLINICAL program.") == []
+
+
 def test_two_all_caps_trials_of_different_drugs_are_never_one_trial():
     a = report("P1", "EFFECT OF DRUG A ON HEART FAILURE: A RANDOMIZED CONTROLLED TRIAL", "Patients were randomized.")
     b = report("P2", "EFFECT OF DRUG B ON KIDNEY DISEASE: A RANDOMIZED CONTROLLED TRIAL", "Patients were randomized.")

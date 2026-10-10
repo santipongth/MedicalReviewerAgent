@@ -26,13 +26,14 @@ ACRONYM = (r"[A-Z][A-Z0-9]{2,}(?:[-–][A-Za-z0-9]+)*(?:\s(?:TIMI\s)?\d{1,3}\b)?
 # Task 10 review finding 1: a name is accepted only when it looks like a real trial name.
 # - Distinctive: hyphenated, digit-bearing or mixed-case (DAPA-HF, EMPEROR-Reduced, EMPA-REG, DECLARE-TIMI 58): any
 #   trial context below.
-# - A plain all-caps word (DELIVER, CANVAS): only right before trial(s)/study/investigators/ClinicalTrials.gov, or
+# - A plain all-caps word (DELIVER, CANVAS): only right before trial(s)/study/investigators/program(me)/
+#   ClinicalTrials.gov, or
 #   in brackets after a title-case phrase of at least 4 words ("... Trial in Chronic Heart Failure (EMPULSE)").
 # Never from an all-caps title or an all-caps heading run (3+ consecutive all-caps words), and never a generic
 # design/heading word or a disease, drug-class, biomarker or gene abbreviation (NOT_TRIAL_NAMES).
 _IN_CONTEXT = re.compile(
     rf"({ACRONYM})\s*\)?\s*(?i:(trials?|study|studies|programme|program|investigators|ClinicalTrials))\b")
-_STRICT_CONTEXT = frozenset({"trial", "trials", "study", "investigators", "clinicaltrials"})
+_STRICT_CONTEXT = frozenset({"trial", "trials", "study", "investigators", "clinicaltrials", "program", "programme"})
 _IN_BRACKETS = re.compile(rf"\b(?i:trial|study)\s*\(({ACRONYM})\)")
 _AFTER_TITLE_PHRASE = re.compile(rf"((?:\b[A-Za-z][\w'-]*\s+){{4,}})\(({ACRONYM})\)")
 _TITLE_LEAD = re.compile(rf"^\s*({ACRONYM})\s*:")
