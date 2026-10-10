@@ -1,4 +1,4 @@
-import { PHASES, PHASE_LABEL } from "@/lib/agent-team";
+import { PHASES, PHASE_LABEL } from "@/lib/team-copy";
 import { CHECK } from "../stage/icons";
 import { LegendGroup, LegendItem, PapersLegendGroup } from "../stage/stage-legend";
 
@@ -14,7 +14,7 @@ export function TeamLegend({ variant = "2d" }: { variant?: "2d" | "3d" }) {
         <LegendGroup title="ขั้นคิด">
           <LegendItem sample={<rect x={-4.5} y={-6} width={9} height={9} rx={1} className="fill-primary" />}>ขั้นที่กำลังทำ (ยกสูง)</LegendItem>
           <LegendItem sample={<rect x={-3.5} y={-3.5} width={7} height={7} rx={1} className="fill-ink" />}>ผ่านแล้ว</LegendItem>
-          <LegendItem sample={<rect x={-3.5} y={-3.5} width={7} height={7} rx={1} className="fill-rule" />}>ยังไม่ถึง</LegendItem>
+          <LegendItem sample={<rect x={-3.5} y={-3.5} width={7} height={7} rx={1} className="fill-rule stroke-muted" strokeWidth={1} />}>ยังไม่ถึง</LegendItem>
           <li data-phase-order>เรียงจากซ้ายไปขวา: {PHASES.map((p) => PHASE_LABEL[p]).join(" · ")}</li>
         </LegendGroup>
       </ul>

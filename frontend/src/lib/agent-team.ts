@@ -10,9 +10,9 @@ import {
 } from "./agent-scene";
 import { type ThoughtDetail, STEP_TITLE, latestFinished, paperLines } from "./agent-thought";
 import { READING_OR_QUEUED } from "./copy";
+import { PHASES, PHASE_LABEL, PHASE_NOTE, type Phase } from "./team-copy";
 
 export type MemberId = "planner" | "researcher" | "screener" | "reader" | "synthesizer";
-export type Phase = "think" | "analyse" | "plan" | "act";
 /** idle, working, paused (server restart), done, failed (error/rejected), stopped (run cancelled while it worked). */
 export type MemberStatus = "idle" | "working" | "paused" | "done" | "failed" | "stopped";
 
@@ -32,10 +32,8 @@ export interface MemberState {
 export interface Team { members: MemberState[]; speaking: MemberId | null }
 export interface Handoff { key: number; from: MemberId; to: MemberId; kind: PulseKind; n: number }
 
-export const PHASES: readonly Phase[] = ["think", "analyse", "plan", "act"];
-export const PHASE_LABEL: Record<Phase, string> = { think: "คิด", analyse: "วิเคราะห์", plan: "วางแผน", act: "ลงมือ" };
-/** The visible note that the phases are labels for real steps. */
-export const PHASE_NOTE = "ขั้นคิด/วิเคราะห์/วางแผน/ลงมือ มาจากเหตุการณ์จริงของระบบ ไม่ใช่ความคิดภายในของโมเดล";
+export { PHASES, PHASE_LABEL, PHASE_NOTE };
+export type { Phase };
 
 export const TEAM: readonly TeamMember[] = [
   { id: "planner", name: "ผู้วางแผน", role: "ตรวจหัวข้อ ตีความคำถาม และวางคำค้น", steps: ["guard", "refine", "plan"] },

@@ -1,7 +1,7 @@
 "use client";
 import { animate, useReducedMotion } from "motion/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { stageCaption, type ReaderSlot, type Scene } from "@/lib/agent-scene";
+import { SYNTH_CAPTION, showSynthCaption, stageCaption, type ReaderSlot, type Scene } from "@/lib/agent-scene";
 import { arc, REF_FONT, SLOT_R, type Pt } from "@/lib/agent-layout";
 import {
   PHASE_NOTE, TEAM, handoffs, memberLabel, teamOf, teamSummary, type MemberState, type TeamOpts,
@@ -235,6 +235,9 @@ export function TeamStage({ scene, connection, ...opts }: { scene: Scene; connec
             ))}
           </ol>
         </div>
+        {showSynthCaption(scene) && (
+          <p className="font-display text-xs text-muted" data-caption="synth">{SYNTH_CAPTION.join(" ")}</p>
+        )}
         <div className="grid gap-2 border-t border-rule pt-3">
           <TeamLegend />
           <p className="text-xs text-muted" data-phase-note>{PHASE_NOTE}</p>

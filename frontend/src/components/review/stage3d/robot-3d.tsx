@@ -1,7 +1,7 @@
 "use client";
 // One team member as a flat geometric robot: a short cylinder body, a box head with two sphere eyes, a stick antenna
 // with a ball, and four flat phase tiles on an arc above the head (คิด, วิเคราะห์, วางแผน, ลงมือ, left to right).
-// Colours come from memberVisual / TILE_COLOR (tokens only, no emissive glow). While the member works, a thin ring
+// Colours come from memberVisual / TILE_COLOR (tokens only, unlit, no glow). While the member works, a thin ring
 // grows and fades around the antenna ball (the 2D `stage-ping`); it does not request frames itself (Stage3D's
 // SpinTicker requests a throttled frame while any member pings), it just advances on whatever frames get drawn.
 // Also the low round table the team stands around.
@@ -22,7 +22,9 @@ const PING_R = 0.11;
 const ACTIVE_TILE_SCALE = 1.2;
 
 function Mat({ color }: { color: string }) {
-  return <meshStandardMaterial color={color} flatShading roughness={1} metalness={0} />;
+  // unlit and not tone-mapped, like Table3D: a lit fill came out darker than the dark theme's background, which made
+  // idle and done robots the same black silhouette. The Edges outlines carry the shape.
+  return <meshBasicMaterial color={color} toneMapped={false} />;
 }
 
 function Ping({ at, color }: { at: readonly [number, number, number]; color: string }) {
@@ -89,6 +91,8 @@ export function Robot3D({ m, status, speaking, phase, passed, tokens }: {
           >
             <boxGeometry args={[TILE, TILE, TILE_T]} />
             <Mat color={tokens[TILE_COLOR[st]]} />
+            {/* a rest tile is `rule` on `surface` (about 1.4:1 in dark): a muted outline keeps it visible */}
+            {st === "rest" && <Edges color={tokens.muted} />}
           </mesh>
         );
       })}

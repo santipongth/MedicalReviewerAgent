@@ -23,16 +23,16 @@ export interface MemberVisual {
 
 /**
  * Like the 2D avatar (a `surface` head stroked in its status colour): the speaking member (or any member at work) is
- * solid `primary`; done is outlined in `ink`; idle is a `rule` body outlined in `muted`; failed `err`, paused `warn`,
+ * solid `primary` (a failed member is checked first and stays `err`); done is outlined in `ink`; idle is a `rule` body outlined in `muted`; failed `err`, paused `warn`,
  * stopped `muted`. The eyes take the outline colour.
  */
 export function memberVisual(status: MemberStatus, speaking: boolean): MemberVisual {
+  if (status === "failed") return { fill: "surface", edge: "err", eyes: "err", ping: false, mark: "failed", dim: false };
   if (speaking || status === "working") {
     return { fill: "primary", edge: "primary", eyes: "surface", ping: status === "working", mark: null, dim: false };
   }
   switch (status) {
     case "done": return { fill: "surface", edge: "ink", eyes: "ink", ping: false, mark: "done", dim: false };
-    case "failed": return { fill: "surface", edge: "err", eyes: "err", ping: false, mark: "failed", dim: false };
     case "paused": return { fill: "surface", edge: "warn", eyes: "warn", ping: false, mark: null, dim: false };
     case "stopped": return { fill: "surface", edge: "muted", eyes: "muted", ping: false, mark: null, dim: true };
     // idle: a `rule` body (the 2D idle head is dimmed with `muted`, never opacity; a `rule` outline vanished in dark)

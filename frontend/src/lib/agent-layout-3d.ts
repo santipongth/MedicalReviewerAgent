@@ -66,7 +66,11 @@ export const NAME_DROP = 0.08; // top of a member's name label, below its feet
 export const BUBBLE_GAP = 0.12; // bubble's tail tip, above the top of the raised tile arc
 const NAME_ROOM: [number, number] = [0.75, 0.4]; // half-width, depth below the feet (one 12px line)
 export const BUBBLE_W = 4.3; // world width of the widest bubble (260px)
-export const BUBBLE_H = 1.05; // world height of a 3-line bubble with padding and tail
+// World height of a 3-line bubble (about 73px: 3 x 17.4px lines, padding, border, the 7px tail) at the narrowest
+// offered stage (1024px wide, where the fitted camera gives about 44 px per unit at the bubble's tail). A bubble is
+// DOM text of fixed pixel size while the scene scales with the stage, so this is sized for the worst case; wider
+// stages just get a little spare room above the bubble.
+export const BUBBLE_H = 1.7;
 /** The end members' bubbles grow inward from a tail this far (world units; 24px) from their outer edge. */
 export const BUBBLE_TAIL_IN = 0.4;
 /**

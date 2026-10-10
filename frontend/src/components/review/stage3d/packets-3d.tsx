@@ -15,15 +15,15 @@ import type { Tokens3D } from "./tokens-3d";
 
 const R = 0.085;
 
-interface Pool { flights: Flight[]; cursor: number; obj: Object3D; color: Color }
-const makePool = (): Pool => ({ flights: makeFlights(MAX_DOTS), cursor: 0, obj: new Object3D(), color: new Color() });
+export interface Pool { flights: Flight[]; cursor: number; obj: Object3D; color: Color }
+export const makePool = (): Pool => ({ flights: makeFlights(MAX_DOTS), cursor: 0, obj: new Object3D(), color: new Color() });
 
 function paint(mesh: InstancedMesh, pool: Pool, tokens: Tokens3D): void {
   for (let i = 0; i < pool.flights.length; i++) mesh.setColorAt(i, pool.color.set(tokens[PACKET_COLOR[pool.flights[i].kind]]));
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 }
 
-const TRAIL = [0.06, 0.12]; // trailing ghosts (Plan 17b), as fractions of the flight behind the packet
+export const TRAIL = [0.06, 0.12]; // trailing ghosts (Plan 17b), as fractions of the flight behind the packet
 const TRAIL_SCALE = [0.7, 0.45];
 
 /** Places (or hides) the trailing ghosts of flight `i` in the trail mesh. */
@@ -44,7 +44,7 @@ function stepTrail(trail: InstancedMesh | null, pool: Pool, i: number, t: number
 }
 
 /** Advances every flight to `now`; hides idle/pending/finished instances. Returns true while any is pending/flying. */
-function step(mesh: InstancedMesh, pool: Pool, now: number, trail: InstancedMesh | null = null): boolean {
+export function step(mesh: InstancedMesh, pool: Pool, now: number, trail: InstancedMesh | null = null): boolean {
   const { flights, obj } = pool;
   let busy = false;
   let dirty = false;

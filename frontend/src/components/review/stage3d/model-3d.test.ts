@@ -35,6 +35,8 @@ describe("member status -> visual", () => {
     // the speaker is primary even in a gap between its own steps; only real work pings
     expect(memberVisual("working", true)).toMatchObject({ fill: "primary", ping: true });
     expect(memberVisual("idle", true)).toMatchObject({ fill: "primary", ping: false });
+    // a failed member is never painted as the speaker: err and the cross cue win over speaking
+    expect(memberVisual("failed", true)).toMatchObject({ fill: "surface", edge: "err", eyes: "err", mark: "failed", ping: false });
     expect(memberVisual("working", false).eyes).toBe("surface");
     expect(memberVisual("done", false).eyes).toBe("ink");
   });

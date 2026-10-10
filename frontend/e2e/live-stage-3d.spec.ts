@@ -156,6 +156,51 @@ test.describe("3D stage view", () => {
     expect(scrollW).toBeLessThanOrEqual(innerW);
   });
 
+  // The bubble is DOM text of a fixed pixel size over a scene that scales with the stage; drei's container clips what
+  // sticks out. At the narrowest offered width (1024) a 3-line bubble must still sit inside the stage box.
+  const longQuestion = "ในผู้ใหญ่ที่เป็นเบาหวานชนิดที่สองและมีภาวะอ้วนร่วมด้วย การใช้เมตฟอร์มินต่อเนื่องระยะยาวช่วยลดความเสี่ยงการเกิดมะเร็งลำไส้ใหญ่และไส้ตรงเมื่อเทียบกับการใช้ยาลดน้ำตาลกลุ่มอื่นหรือไม่";
+  const bubbleCases: { name: string; speaker: string; frames: () => SseFrame[] }[] = [
+    {
+      name: "planner (refined question)", speaker: "planner",
+      frames: () => [{ delayMs: 0, events: [
+        PRE_READ[0], PRE_READ[1], PRE_READ[2], PRE_READ[3],
+        ["question_refined", { refined_question: longQuestion, interpretation: "ตีความ", sub_questions: [], assumptions: [], elapsed_s: 4 }],
+      ] }],
+    },
+    {
+      name: "reader (uncertain SR/MA of observational studies)", speaker: "reader",
+      frames: () => [{ delayMs: 0, events: [
+        ...PRE_READ, ...READING.slice(0, 12),
+        ...Array.from({ length: 11 }, (_, i): Ev => extracted(i + 1)),
+        ["extracted", { ref: "P12", ok: true, verified: 2, uncertain: true, direction: "mixed", design: "sr_ma_observational", elapsed_s: 40 }],
+      ] }],
+    },
+  ];
+  for (const c of bubbleCases) {
+    test(`a 3-line bubble stays inside the stage at 1024px: ${c.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1024, height: 900 });
+      await open(page, c.frames());
+      if (!(await browserHasWebGL(page))) test.skip(true, "this browser has no WebGL context");
+      await enable3d(page);
+      const bubble = stage3d(page).locator('[data-label3d="bubble"]');
+      await expect(bubble).toHaveAttribute("data-member", c.speaker, { timeout: 15_000 });
+      await expect(bubble.locator("p")).not.toHaveText("");
+      // let the camera settle on the speaker (it eases while the goal changes)
+      await expect.poll(async () => {
+        const [b, s] = [await bubble.boundingBox(), await stage3d(page).boundingBox()];
+        return b && s ? b.y - s.y : -1;
+      }, { timeout: 10_000 }).toBeGreaterThanOrEqual(0);
+      await page.waitForTimeout(800);
+      const b = (await bubble.boundingBox())!;
+      const s = (await stage3d(page).boundingBox())!;
+      expect(b.height, "the line wraps to three lines").toBeGreaterThan(60);
+      expect(b.y).toBeGreaterThanOrEqual(s.y);
+      expect(b.y + b.height).toBeLessThanOrEqual(s.y + s.height);
+      expect(b.x).toBeGreaterThanOrEqual(s.x);
+      expect(b.x + b.width).toBeLessThanOrEqual(s.x + s.width);
+    });
+  }
+
   for (const scheme of ["light", "dark"] as const) {
     test(`axe with 3D on, ${scheme}`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "no-preference" });

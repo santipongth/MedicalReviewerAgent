@@ -7,7 +7,7 @@ import { hasWebGL } from "@/lib/webgl";
 import {
   DEFAULT_VIEW, LEGACY_3D_KEY, VIEW_KEY, effectiveView, parseStageView, type StageViewKind,
 } from "@/lib/stage-view-pref";
-import { PHASE_NOTE } from "@/lib/agent-team";
+import { PHASE_NOTE } from "@/lib/team-copy";
 import { StagePlaceholder } from "./stage/stage-placeholder";
 import { TeamLegend } from "./team/team-legend";
 import { useWide } from "./stage/use-wide";

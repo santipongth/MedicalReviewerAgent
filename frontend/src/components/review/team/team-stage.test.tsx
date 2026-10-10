@@ -67,6 +67,15 @@ describe("TeamStage", () => {
     expect(planner).toHaveAttribute("data-phase", "plan");
   });
 
+  it("shows the synthesis caption (as the 3D figure does) only while the synthesizer works", () => {
+    const before = upTo(14);
+    const { rerender } = render(<TeamStage scene={before} />);
+    expect(document.querySelector("[data-caption=synth]")).toBeNull();
+    const synth = reduceScene(before, { kind: "event", ev: ev(99, "synthesizing", { papers: 3 }) });
+    rerender(<TeamStage scene={synth} />);
+    expect(document.querySelector("[data-caption=synth]")).toHaveTextContent("กำลังเทียบผลและเขียนสรุป");
+  });
+
   it("shows the honesty note and the legend under the stage", () => {
     render(<TeamStage scene={upTo(3)} />);
     expect(screen.getByText(PHASE_NOTE)).toBeInTheDocument();
