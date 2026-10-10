@@ -432,7 +432,7 @@ def make_write_synthesis(deps):
                                       review_type=review_type if not no_quantitative else "narrative",
                                       pooled_analysis=pools_for_prompt(meta) if meta else None)
         narrative_call = harness_runner(deps).call(
-            deps.llms.synthesizer, prompts.narrative_system(review_type, _themes_only(papers)), user,
+            deps.llms.synthesizer, prompts.narrative_system(review_type if not no_quantitative else "narrative", _themes_only(papers)), user,
             schema=SynthesisNarrative if graded else NarrativeNoGrade, validate=validate, trigger="narrative")
         res, cards = await asyncio.gather(narrative_call, _localize_cards(deps, papers, language),
                                           return_exceptions=True)
