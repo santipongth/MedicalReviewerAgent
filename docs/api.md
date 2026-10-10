@@ -125,22 +125,31 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   carry GRADE certainty wording; when the model's answer lacks the wording for the final `evidence_strength`
   (moderate "probably"/"likely", low "may"/"might", very low "very uncertain") and does not name its final level
   ("low certainty", "the certainty of the evidence is low"), a fixed sentence is appended ("The certainty of the
-  evidence is low."). A sentence that names another certainty level than the final one is removed first. The answer
-  carries no `[Pn]` citations (they are stripped in code). A `meta_analysis` whose `meta_analysis` has no pools
+  evidence is low."). A level word counts as a certainty claim only next to certainty, quality, confidence or
+  evidence ("low-certainty evidence", "the certainty of the evidence is low", "very-low"/"very low" are one level;
+  "patients at high risk" is no claim). A claim that names another level than the final one is rewritten in place to
+  the final level ("high-certainty" becomes "moderate-certainty"); nothing is removed for it. The answer carries no
+  `[Pn]` citations: its numbers, populations and measures are checked against the papers it cites, then the
+  citations are stripped in code. The answer is never left empty by these checks: when they would remove every
+  sentence, the model's sentence stays (with its level corrected) unless it carries a number, which could be
+  unverified; a graded answer then keeps at least the fixed certainty sentence. A `meta_analysis` whose `meta_analysis` has no pools
   (null, or `pools: []`) always says so: a fixed sentence ("Pooling was not possible: ...") leads the answer unless it
   already states that pooling was not possible, and any answer sentence that claims a pooled or overall effect is
   removed. "States that pooling was not possible" means a negation attached to pooling ("pooling was not possible",
   "could not be pooled", "no outcome could be pooled", "unable to pool", "too few ... to pool"); "does not reduce
-  mortality in the pooled analysis" is a pooled claim, not such a statement. `""` when the narrative step failed (or for results stored before Plan 20); a review with no papers repeats
+  mortality in the pooled analysis" is a pooled claim, not such a statement. `""` when the narrative step failed or
+  the model wrote no answer, and for an ungraded review whose every answer sentence carried an unverifiable number
+  (and for results stored before Plan 20); a review with no papers repeats
   its notice. Since Plan 20 Task 10 the same fixed sentence also leads `executive_summary` (and so `summary`) of such a
   meta-analysis when the summary does not already say that pooling was not possible.
 - `key_findings[]`: at most 5 items `{outcome, statement, refs[], k, certainty}`, most important first.
   - `certainty` is set in code, never by the model: the review's final `evidence_strength` for graded types, null for
     narrative and scoping reviews (and absent from results stored before Plan 20 Task 10's Task 1 fixes).
-  - A statement below high certainty is worded for it in code when it lacks the GRADE wording: each unhedged
-    present-tense causal verb ("reduces", "improves", "causes", "leads to", ...) becomes "probably reduces"
-    (moderate) or "may reduce" (low, very low), and a very-low statement ends with "but the evidence is very
-    uncertain". `result.quality.prose_check.key_findings_hedged` counts the hedged findings.
+  - Statements are never rewritten. At low or very low certainty a statement that makes a strong causal claim
+    ("reduces", "increases", "improves", "prevents" or "causes" used as a verb after its subject, in a clause with no
+    hedge, negation, "whether" or "neither" before it) is led by a fixed clause: "Low-certainty evidence suggests: "
+    or "Very low-certainty evidence: ", with the statement unchanged after the colon. The clause is part of
+    `statement`, so it is localized with it. `result.quality.prose_check.key_findings_certainty_lead` counts them.
   - In a `meta_analysis` without pools, statement sentences that claim a pooled or overall effect are removed (a
     finding left empty is dropped).
   - `outcome` is a `synthesis.comparison` row name when the finding is about a row (matched case-insensitively and
@@ -274,7 +283,7 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 
 **Meta-analysis (Plan 14b).** `review_type: "meta_analysis"` behaves exactly like `slr` (PICO, screening, selection, PRISMA, conflicts, grading) and adds `result.meta_analysis`. For every other type, and for results stored before Plan 14b, `meta_analysis` is `null` or absent. It is also `null` for a meta-analysis whose pooling step failed, or was skipped because the study numbers were not verified against the abstracts (`verify_quotes` off or no verification records); either is listed in `errors` and never fails the review. Pooled numbers are computed by the system, DerSimonian-Laird random effects, from the abstract-verified effect estimates and 95% CIs. They are not a result reported by any single study.
 - Search (Plan 19, for recall): a meta-analysis reads 2 SearXNG pages per query instead of 1, the planner may use 5 queries (one naming the major trials), and, when RCTs are acceptable (no ticked study type, or `RCT` ticked), up to 3 extra Europe PMC searches restricted to randomized controlled trials with an abstract, most cited first (each with an 8 s timeout). A query that is a list of trial names or acronyms is searched as alternatives (OR); other queries need all their words. Those hits join the round-robin as their own lists. At most 4 SearXNG requests per review run at once. The candidate cap is unchanged (`candidate_limit`).
-  - Trial-name harvest (Plan 20 Task 10): after that first round, the trial names that at least 2 hits name in a trial context are searched once more. A name must look like a real one (Task 10 review): a hyphenated, digit-bearing or mixed-case name (DAPA-HF, EMPEROR-Reduced, EMPA-REG OUTCOME, DECLARE-TIMI 58) in any trial context ("the X trial/study/studies/programme", "X ClinicalTrials.gov number", "trial (X)", a title opening "X:"); a plain all-caps word (DELIVER, CANVAS) only right before trial(s)/study/investigators/program/programme/ClinicalTrials.gov, after "trial (" or in brackets after a title-case phrase of at least 4 words. Nothing is taken from an all-caps title or an all-caps heading run (3+ words), and a stoplist excludes design and heading words (CONTROLLED, MULTICENTER, PILOT, REGISTRATION, ...), databases and appraisal tools (CENTRAL, ICTRP, MMAT, ...) and disease, drug-class, biomarker and gene abbreviations (COPD, ESKD, SGLT2, LDL-C, PCSK9, HFrEF, COVID-19, ...); a name needs at least 4 capitals. The names are searched in Europe PMC (RCTs with an abstract, most cited first), at most 12 names, OR-ed and ANDed with the review's intervention terms (the key terms, MeSH heading and synonyms that share a topic word with `intervention_or_exposure`; generic words such as "inhibitors", "therapy" or "standard" never link a key term). Acronyms such as DELIVER or CANVAS are ordinary words, so the intervention terms are required. The first 10 hits of this search lead the candidate list (they are the landmark trials of the question); the rest join the round-robin. It needs a refined question and runs only when the trial search runs.
+  - Trial-name harvest (Plan 20 Task 10): after that first round, the trial names that at least 2 hits name in a trial context are searched once more. A name must look like a real one (Task 10 review): a hyphenated, digit-bearing or mixed-case name (DAPA-HF, EMPEROR-Reduced, EMPA-REG OUTCOME, DECLARE-TIMI 58) in any trial context ("the X trial/study/studies/programme", "X ClinicalTrials.gov number", "trial (X)", a title opening "X:"); a plain all-caps word (DELIVER, CANVAS) only right before trial(s)/study/investigators/program/programme/ClinicalTrials.gov, after "trial (" or "study (", or in brackets after a title-case phrase of at least 4 words. Nothing is taken from an all-caps title or an all-caps heading run (3+ words), and a stoplist excludes design and heading words (CONTROLLED, MULTICENTER, PILOT, REGISTRATION, ...), databases and appraisal tools (CENTRAL, ICTRP, MMAT, ...) and disease, drug-class, biomarker and gene abbreviations (COPD, ESKD, SGLT2, LDL-C, PCSK9, HFrEF, COVID-19, ...); a name needs at least 4 capitals. The names are searched in Europe PMC (RCTs with an abstract, most cited first), at most 12 names, OR-ed and ANDed with the review's intervention terms (the key terms, MeSH heading and synonyms that share a topic word with `intervention_or_exposure`; generic words such as "inhibitors", "therapy" or "standard" never link a key term). Acronyms such as DELIVER or CANVAS are ordinary words, so the intervention terms are required. The first 10 hits of this search lead the candidate list (they are the landmark trials of the question); the rest join the round-robin. It needs a refined question and runs only when the trial search runs.
   - Europe PMC retries (Plan 20 Task 10): every Europe PMC request (trial searches, the enrichment lookup batches, reference lists) is retried after a 429/5xx answer at most twice, after 1 s and 2 s, and after a timeout or connection error once; the last attempt of a trial search drops the citation sort. A trial search or lookup batch that still fails is skipped and listed in `errors`; the review goes on (at most 3 attempts: a stalled Europe PMC delays a trial search by at most about 27 s, a timeout, a slow 5xx and another timeout plus the 3 s of backoff).
 - Diagnostic test accuracy (sensitivity, specificity, AUC) is not supported as a measure: such results are shown as reported (`effect_measure` `other` or `none`) and are never pooled or plotted.
 - Shape: `{version: "meta-1", pools[], excluded[], reference[], grade: {primary_outcome, design_group, reasons[]}}`.
@@ -347,12 +356,22 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   statement and the reviews named in its explanation; a split in the fallback pass stays imprecision. None of these
   downgrades the grade (below).
 - Reports of the same trial (Plan 20 Task 10). A trial's primary paper, commentaries on it and its subgroup or post
-  hoc analyses are one study. Papers are linked when they share a registry number (NCT, ISRCTN) or a trial name
-  (rules as for the trial-name harvest above) that is the paper's own subject: named in its title, its abstract's
-  first sentence, its methods section, its registration ("DAPA-HF ClinicalTrials.gov number") or a sentence about
-  its own study ("the aims of this study ... patients enrolled in the EMPEROR-Preserved trial"), and never right after
-  a citing cue ("consistent with", "unlike", "as in", "similar to", "compared with", "previous", "eligible for", ...).
-  A trial cited by another paper is not that paper's own, so a citing trial is never absorbed. Near-identical titles
+  hoc analyses are one study. Any two papers that share a registry number (NCT, ISRCTN) are linked. A trial name
+  links only trials: papers with an RCT or non-randomised-trial design, a trial publication type, or "trial" in the
+  design or title (a trial report or secondary analysis). Cohorts, case-control, cross-sectional, registry/database
+  studies and programme evaluations never link by name ("Korean NHIS", "the SNAP program" name data sources, not
+  studies); they link only by a shared registry number. The name (rules as for the trial-name harvest above, except
+  that a bracketed acronym after a title-case phrase counts only when that phrase names a trial or study) must be the
+  paper's own subject: in its title (citing cues never apply there: "...: the DAPA-MI trial" is its own); or, in the
+  abstract, in its first sentence, its structured Methods section ("Methods:", "METHODS" or "Methods" opening a
+  section; never the bare word "method"), its registration sentence ("DAPA-HF ClinicalTrials.gov number") or a sentence
+  with an explicit self pattern ("we conducted/performed/analysed/enrolled ...", "this secondary/post hoc/prespecified
+  analysis of", "the aims of this study", "patients enrolled in the X trial", "in the X trial, we"). In the abstract a
+  name right after a citing cue never counts ("consistent with", "agrees with", "supports", "in line with",
+  "confirms", "comparable to", "extends", "unlike", "as in", "similar to", "compared with", "previous", "eligible
+  for", ...). These rules keep a citing trial out of the trial it cites in the cases they cover; a name in another
+  self-referential phrasing can still link (an over-merge), and a trial named only in its results section does not
+  (an over-count). Near-identical titles
   (ratio ≥ 95) link papers only with the same first author, years at most one apart, the same reported sample size
   or a shared registry number, and no population word or proper name between them (men/women, Korea/Japan). Papers
   with different registry numbers are never one group, a paper naming several trials never links them together, and
@@ -455,7 +474,7 @@ Known gap: only numbers written in digits are checked; number words ("three tria
 pass the prose and numberless checks.
 `result.quality.prose_check` is `{numbers_removed, measures_fixed, measures_removed, population_removed,
 certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, conflict_repairs, rationale_fixed}`, plus
-(Plan 20) `answer_removed`, `key_findings_removed` and `key_findings_hedged` (absent for results
+(Plan 20) `answer_removed`, `key_findings_removed` and `key_findings_certainty_lead` (absent for results
 stored before Plan 19); `repairs` and `conflict_repairs` count the model rounds the check sent back for repair.
 `check_failed: true` is added only when the check crashed and failed closed (summary or conflict explanation
 replaced by its fixed fallback). `numbers_removed` also counts removed research-gap sentences, and
@@ -499,7 +518,7 @@ The web app also serves the whole interactive report as one HTML file that works
 
 | Format | Contents |
 |---|---|
-| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). Since Plan 20 it starts with "## Answer" (`synthesis.answer`) and "## Key findings" (one line per finding: outcome, statement, refs, k and certainty) before the summary; the `methods` block is not in it yet. Qualitative and mixed-methods cells in the comparison table carry no direction word. A paper with other comparisons (Plan 19) lists them on its line as "Other comparisons, not evidence for the question: …". `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
+| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). Since Plan 20 it starts with "## Answer" (`synthesis.answer`) and "## Key findings" (one line per finding: outcome, statement, refs, k and certainty) before the summary; a "## Methods" block before the papers lists the search date (`methods.searched_at`), the sources with their record counts (`methods.sources`), the queries, the models and the prompt version. Qualitative and mixed-methods cells in the comparison table carry no direction word. A paper with other comparisons (Plan 19) lists them on its line as "Other comparisons, not evidence for the question: …". `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
 | `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty; for qualitative and mixed-methods papers, `direction` and `overall_direction` are empty), then (Plan 19) `comparison` (the outcome's own comparison) and `matches_question` (`true`/`false`; `false` marks an other comparison, which is not evidence for the review question and whose `direction` is relative to its own comparison; outcomes stored before Plan 19 are `true`). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
 | `json` | `{review_id, topic, language, created_at, finished_at, result}` |
 

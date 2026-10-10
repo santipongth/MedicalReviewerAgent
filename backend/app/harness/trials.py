@@ -89,8 +89,11 @@ def _mostly_caps(text: str) -> bool:
     return bool(letters) and sum(ch.isupper() for ch in letters) > 0.6 * len(letters)
 
 
-def _name_matches(text: str) -> list[tuple[int, str]]:
-    """(position, name) of every accepted trial name in `text` (see the rules above)."""
+def _name_matches(text: str, own: bool = False) -> list[tuple[int, str]]:
+    """(position, name) of every accepted trial name in `text` (see the rules above). `own` (linking, fix round 2,
+    N3): a bracketed acronym after a title-case phrase counts only when the phrase names a trial or study ("...
+    Outcome Trial in ... (EMPEROR-Reduced)"), never a database or instrument ("National Health Insurance Service
+    (NHIS)", "Hospital Anxiety and Depression Scale (HADS)")."""
     caps_runs = [m.span() for m in _CAPS_RUN.finditer(text)]
 
     def in_caps_run(start: int) -> bool:
@@ -108,6 +111,8 @@ def _name_matches(text: str) -> list[tuple[int, str]]:
             found.append((m.start(1), _clean(m.group(1))))
     for m in _AFTER_TITLE_PHRASE.finditer(text):
         words = m.group(1).split()[-6:]
+        if own and not re.search(r"(?i)\b(trial|study)\b", m.group(1)):
+            continue
         if sum(w[:1].isupper() for w in words) >= 3 and not in_caps_run(m.start(2)):
             found.append((m.start(2), _clean(m.group(2))))
     return sorted(found)
@@ -129,29 +134,44 @@ def trial_acronyms(title: str | None, abstract: str | None = None) -> list[str]:
 
 # Mentions of another trial: "unlike the DAPA-HF trial", "consistent with", "as in", "similar to", "compared with"
 _CITING_CUE = re.compile(r"(?i)\b(unlike|consistent with|in line with|as in|similar to|similarly to|compared with|"
-                         r"compared to|previous|prior|earlier|like|following|after|based on|building on|extend\w*|"
-                         r"replicat\w*|confirm\w*|than|eligib\w*|real-world)\b[^.;]{0,40}$")
-_METHODS = re.compile(r"(?is)\bmethods?\b\s*[:.]?(.*?)(?=\bresults?\b\s*[:.]|$)")
+                         r"compared to|comparable to|previous|prior|earlier|like|following|after|based on|building on|"
+                         r"extend\w*|replicat\w*|confirm\w*|than|eligib\w*|real-world|agree\w* with|support\w*|"
+                         r"mirror\w*|echo\w*)\b[^.;]{0,40}$")
+# Only a structured "Methods" heading (fix round 2): "Methods:", "METHODS", or "Methods We ..." at the start of the
+# abstract or after a sentence end; never the bare word "method" inside a sentence. It ends at the next heading.
+_METHODS = re.compile(r"(?:^|(?<=[.!?])\s+)(?:Methods?|METHODS?|Materials and [Mm]ethods)\s*(?::|\.|\s(?=[A-Z]))\s*"
+                      r"(.*?)(?=(?:^|(?<=[.!?])\s+)(?:Results?|RESULTS?|Findings|FINDINGS|Conclusions?|CONCLUSIONS?|"
+                      r"Interpretation|INTERPRETATION)\b|$)", re.DOTALL)
 _SENTENCES = re.compile(r"(?<=[.!?])\s+")
-# A sentence about the paper's own study population or aim
-_SELF = re.compile(r"(?i)\b(we|our|this (study|analysis|trial|report|substudy|sub-study)|the (aims?|objectives?|"
-                   r"purpose) of|enrolled in|randomi[sz]ed in|participants (in|of|from) the|patients (in|of|from) the)\b")
+# A sentence that says the trial is the paper's own subject (fix round 2: an explicit self pattern; a bare we/our
+# sentence such as "our findings agree with the DAPA-HF trial" is not one)
+_SELF = re.compile(
+    r"(?i)\bwe (conducted|performed|analy[sz]ed|randomi[sz]ed|randomly assigned|enrolled|report|present|examined|"
+    r"assessed|evaluated|studied|used data from|followed)\b|"
+    r"\b(this|the present|the current) ((secondary|post[- ]?hoc|pre-?specified|exploratory|ancillary) )?"
+    r"(analysis|substudy|sub-study|study|report|trial) (of|from|in|using|was)\b|"
+    r"\bthe (aims?|objectives?|purpose) of this\b|\b(enrolled|randomi[sz]ed|participating) in the\b|"
+    r"\bin the [A-Z][\w-]+(?: [\w-]+){0,4} (trial|study)\s*,\s*we\b")
 
 
 def own_trial_names(title: str | None, abstract: str | None = None) -> list[str]:
-    """The trial names a paper reports on itself (Task 10 review finding 2): named in its title, or in its abstract's
-    first sentence, methods section or registration ("X ClinicalTrials.gov number"), and never right after a citing
-    cue ("consistent with the X trial", "unlike X", "as in X"). Mentions elsewhere cite other trials."""
+    """The trial names a paper reports on itself (Task 10 review finding 2, fix round 2): named in its title (citing
+    cues never apply there: "...: the DAPA-MI trial" is the paper's own), or, in the abstract, in its first sentence,
+    its structured Methods section, its registration ("X ClinicalTrials.gov number") or a sentence with an explicit
+    self pattern ("we analysed ... the X trial", "this secondary analysis of X", "patients enrolled in the X trial"),
+    and there never right after a citing cue ("consistent with", "agrees with", "supports", "unlike", "as in", ...).
+    A trial an abstract only cites outside these places, or after a cue, is not the paper's own."""
     title = "" if _mostly_caps(title or "") else (title or "")
     lead = _TITLE_LEAD.match(title)
     names = [_clean(lead.group(1))] if lead and _distinctive(lead.group(1)) and _is_name(_clean(lead.group(1))) else []
+    names += [name for _, name in _name_matches(title, own=True) if _is_name(name)]
     text = abstract or ""
     sentences = _SENTENCES.split(text.strip()) if text.strip() else []
-    places = [title] + sentences[:1] + [m.group(1) for m in _METHODS.finditer(text)]
+    places = sentences[:1] + [m.group(1) for m in _METHODS.finditer(text.strip())]
     places += [s for s in sentences if re.search(r"ClinicalTrials|\bNCT\d{8}|ISRCTN|registered", s)]
-    places += [s for s in sentences if _SELF.search(s)]  # "the aims of this study were ... in the X trial"
+    places += [s for s in sentences if _SELF.search(s)]
     for place in places:
-        for start, name in _name_matches(place):
+        for start, name in _name_matches(place, own=True):
             if not _CITING_CUE.search(place[:start]) and _is_name(name):
                 names.append(name)
     out: dict[str, str] = {}
@@ -191,6 +211,27 @@ def _ids(paper: dict[str, Any]) -> tuple[set[str], int]:
     ids = {f"name:{trial_key(n)}" for n in names}
     ids |= {f"reg:{r}" for r in registry_ids(c.get("title"), c.get("abstract"))}
     return ids, len(names)
+
+
+TRIAL_TYPES = frozenset({"randomized controlled trial", "clinical trial", "clinical trial, phase i",
+                         "clinical trial, phase ii", "clinical trial, phase iii", "clinical trial, phase iv",
+                         "controlled clinical trial", "pragmatic clinical trial"})
+_TRIAL_REPORT = re.compile(r"(?i)\b(secondary|post[- ]?hoc|pre-?specified|exploratory|ancillary|sub-?group)\b"
+                           r"[^.]{0,60}\b(trial|analysis of)\b|\btrial\b")
+
+
+def is_trial(paper: dict[str, Any]) -> bool:
+    """A trial or a report or secondary analysis of one (fix round 2 ruling): an RCT or non-randomised trial design,
+    a trial publication type, or a design text / title that names a trial. Only trials link by trial name."""
+    card = paper.get("card") or {}
+    c = paper.get("candidate") or {}
+    if card.get("design_category") in ("rct", "non_randomized_trial"):
+        return True
+    if card.get("design_category") not in (None, "other", "narrative_review"):
+        return False  # cohort, case-control, cross-sectional, ...: a registry-ID link only
+    types = {t.strip().lower() for t in c.get("pub_types") or []}
+    return bool(types & TRIAL_TYPES) or bool(_TRIAL_REPORT.search(f"{card.get('study_design') or ''} "
+                                                                 f"{c.get('title') or ''}"))
 
 
 def is_commentary(paper: dict[str, Any]) -> bool:
@@ -277,7 +318,10 @@ def related_reports(papers: list[dict[str, Any]],
             spelled.setdefault(trial_key(n), n)
         ids, n_names = _ids(p)
         registries = {i for i in ids if i.startswith("reg:")}
-        if n_names > 1:  # a multi-trial report: only its own single registry number may link it
+        if n_names > 1 or not is_trial(p):
+            # a multi-trial report, or a paper that is not a trial (cohort, registry, programme evaluation: "NHIS",
+            # "the SNAP program" name data sources, not studies; fix round 2, N3/N5): only its own single registry
+            # number may link it
             ids = registries if len(registries) == 1 else set()
         ids_of[p["ref"]] = ids
         regs[p["ref"]] = registries if len(registries) == 1 else set()

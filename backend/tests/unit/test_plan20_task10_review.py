@@ -50,6 +50,68 @@ def test_two_all_caps_trials_of_different_drugs_are_never_one_trial():
     assert related_reports([a, b]) == {}
 
 
+# ---- fix round 2: databases, instruments and programmes never link studies ---------------------------------------
+@pytest.mark.parametrize(("source", "drug"), [
+    ("Korean National Health Insurance Service (NHIS)", "metformin"),
+    ("Taiwan National Health Insurance Research Database (NHIRD)", "metformin"),
+    ("Clinical Practice Research Datalink (CPRD)", "statins"),
+    ("Supplemental Nutrition Assistance Program (SNAP)", "food vouchers"),
+    ("the SNAP program", "food vouchers"),
+    ("the PEPFAR program", "antiretroviral therapy"),
+])
+def test_cohorts_and_programme_evaluations_sharing_a_source_stay_separate(source, drug):
+    a = report("P1", f"{drug.capitalize()} and cancer risk: a nationwide cohort",
+               f"Methods: We used data from {source} for adults.", category="cohort", n=50000)
+    b = report("P2", "Another exposure and kidney outcomes: a nationwide cohort",
+               f"Methods: We used data from {source} for adults.", category="cohort", n=70000)
+    assert related_reports([a, b]) == {}
+
+
+def test_instruments_in_brackets_never_link_two_rcts():
+    a = report("P1", "Drug A for depression after stroke: a randomised trial",
+               "Methods: Mood was measured with the Hospital Anxiety and Depression Scale (HADS).", n=200)
+    b = report("P2", "Drug B for depression in heart failure: a randomised trial",
+               "Methods: Mood was measured with the Hospital Anxiety and Depression Scale (HADS).", n=300)
+    for abbr in ("EORTC", "PROMIS", "BRFSS", "EPDS"):
+        assert own_trial_names("t", f"Methods: We assessed the European Organisation Quality Score ({abbr}).") == []
+    assert related_reports([a, b]) == {}
+
+
+def test_canvas_program_reports_still_link():
+    main = report("P1", "Canagliflozin and cardiovascular and renal events in type 2 diabetes",
+                  "Methods: The CANVAS Program integrated data from two trials. (Funded by Janssen.)", n=10142,
+                  year=2017)
+    sub = report("P2", "Canagliflozin and heart failure in type 2 diabetes: results from the CANVAS Program",
+                 "We assessed heart failure outcomes.", n=10142, year=2018)
+    assert related_reports([main, sub]) == {"P2": {"primary": "P1", "reason": "same trial (CANVAS)"}}
+
+
+@pytest.mark.parametrize("sentence", [
+    "Our findings agree with the DAPA-HF trial.",
+    "Our results support the findings of the DAPA-HF trial.",
+    "The benefit was comparable to the DAPA-HF trial.",
+    "These data extend the DAPA-HF trial.",
+])
+def test_agreeing_or_supporting_a_trial_is_citing_it(sentence):
+    small = report("P1", "Dapagliflozin and walking distance in heart failure: a randomized trial",
+                   f"Background: Exercise matters. Methods: 120 patients were randomized. Results: Better. "
+                   f"Conclusions: {sentence}", n=120)
+    assert own_trial_names(small["candidate"]["title"], small["candidate"]["abstract"]) == []
+    assert related_reports([DAPA_HF, small]) == {}
+
+
+def test_the_bare_word_method_is_no_methods_section():
+    text = "A novel method improved scoring. Benefit mirrored the DELIVER trial in this cohort."
+    assert own_trial_names("Scoring heart failure", text) == []
+
+
+def test_explicit_self_sentences_and_titles_name_the_own_trial():
+    assert own_trial_names("Frailty and empagliflozin", "Background: Frailty matters. The aims of this study were to "
+                           "evaluate patients enrolled in the EMPEROR-Preserved trial.") == ["EMPEROR-Preserved"]
+    assert own_trial_names("Dapagliflozin after myocardial infarction: the DAPA-MI trial", "") == ["DAPA-MI"]
+    assert own_trial_names("Early rehabilitation following stroke: the AVERT trial", "") == ["AVERT"]
+
+
 # ---- 2. a cited trial is not the paper's own -------------------------------------------------------------------
 def test_a_trial_that_cites_another_is_never_absorbed():
     small = report("P1", "Dapagliflozin and exercise capacity in heart failure: a randomized trial",

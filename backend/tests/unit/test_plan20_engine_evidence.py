@@ -77,7 +77,10 @@ def test_commentary_and_subgroup_are_related_reports_of_the_primary_trial():
 
 
 def test_the_primary_report_is_chosen_whatever_the_ref_order():
-    first = report("P1", "EMPEROR-Preserved: a commentary", "On the EMPEROR-Preserved trial.", category="narrative_review",
+    # a commentary links by name only when it reports on the trial ("trial" in its title; fix round 2: only trials
+    # and their reports link by name)
+    first = report("P1", "EMPEROR-Preserved trial: a commentary", "On the EMPEROR-Preserved trial.",
+                   category="narrative_review",
                    pub_types=("comment",))
     primary = {**PRIMARY, "ref": "P5"}
     assert related_reports([first, primary]) == {"P1": {"primary": "P5", "reason": "same trial (EMPEROR-Preserved)"}}

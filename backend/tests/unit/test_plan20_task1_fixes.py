@@ -17,7 +17,7 @@ from app.graph.nodes.synthesis import (
     ANSWER_CERTAINTY,
     NO_POOL_ANSWER,
     _bottom_line,
-    _hedge,
+    _certainty_lead,
     _key_findings,
     _methods,
     make_write_synthesis,
@@ -67,19 +67,39 @@ def test_no_pool_key_findings_lose_pooled_claims_and_carry_the_certainty():
     assert out[0]["certainty"] is None and "pooled" in out[0]["statement"]
 
 
+LOW = "Low-certainty evidence suggests: "
+VERY_LOW = "Very low-certainty evidence: "
+
+
 @pytest.mark.parametrize(("strength", "statement", "expected"), [
-    ("moderate", "Metformin reduces CRC incidence.", "Metformin probably reduces CRC incidence."),
+    # fix round 2 (N2): the statement is never rewritten; a strong causal claim at low or very low gets a lead clause
     ("low", "Metformin reduces CRC incidence and improves survival.",
-     "Metformin may reduce CRC incidence and may improve survival."),
-    ("very_low", "Metformin causes fewer cancers.",
-     "Metformin may cause fewer cancers, but the evidence is very uncertain."),
-    ("low", "Metformin may reduce CRC incidence.", "Metformin may reduce CRC incidence."),  # already worded
-    ("low", "Metformin does not reduce mortality.", "Metformin does not reduce mortality."),  # negated
+     LOW + "Metformin reduces CRC incidence and improves survival."),
+    ("very_low", "Metformin causes fewer cancers.", VERY_LOW + "Metformin causes fewer cancers."),
+    ("moderate", "Metformin reduces CRC incidence.", "Metformin reduces CRC incidence."),
     ("high", "Metformin reduces CRC incidence.", "Metformin reduces CRC incidence."),
     (None, "Metformin reduces CRC incidence.", "Metformin reduces CRC incidence."),  # not graded
+    ("low", "Metformin may reduce CRC incidence.", "Metformin may reduce CRC incidence."),  # already worded
+    ("low", "Metformin does not reduce mortality.", "Metformin does not reduce mortality."),
+    # the reviewer's probes: nouns, sentence starts, negated and comparative clauses
+    ("low", "Increases in HbA1c were smaller with metformin.", "Increases in HbA1c were smaller with metformin."),
+    ("low", "Results were consistent across trials.", "Results were consistent across trials."),
+    ("low", "There is no evidence that metformin reduces mortality.",
+     "There is no evidence that metformin reduces mortality."),
+    ("low", "Metformin neither increases nor reduces mortality.",
+     "Metformin neither increases nor reduces mortality."),
+    ("low", "It is unclear whether metformin prevents cancer.", "It is unclear whether metformin prevents cancer."),
+    ("low", "The increases in weight were small.", "The increases in weight were small."),
 ])
-def test_causal_statements_are_hedged_for_their_certainty(strength, statement, expected):
-    assert _hedge(statement, strength)[0] == expected
+def test_strong_causal_claims_get_a_certainty_lead_and_stay_unchanged(strength, statement, expected):
+    assert _certainty_lead(statement, strength)[0] == expected
+
+
+async def test_the_certainty_lead_reaches_the_key_findings_and_is_counted():
+    drafts = [NarrativeFinding(outcome="CRC incidence", statement="Metformin reduces CRC incidence.", refs=["P1"])]
+    out, _, led = _key_findings(drafts, CTX, ALLOWED, [], strength="low")
+    assert out[0]["statement"] == LOW + "Metformin reduces CRC incidence." and led == 1
+    assert "hedged" not in out[0]  # no new KeyFinding field (controller correction)
 
 
 def test_key_finding_certainty_is_optional_and_set_in_code():
@@ -94,13 +114,59 @@ def test_answer_loses_its_citations():
     assert text == "Metformin may lower CRC incidence."
 
 
-def test_a_wrong_certainty_level_is_replaced():
+def test_a_wrong_certainty_level_is_rewritten_in_place():
     text, removed = _bottom_line("Metformin lowers CRC incidence. The certainty of the evidence is high.", CTX,
                                  ALLOWED, no_pool=False, strength="low")
-    assert text == f"Metformin lowers CRC incidence. {ANSWER_CERTAINTY['low']}" and removed == 1
+    assert text == "Metformin lowers CRC incidence. The certainty of the evidence is low." and removed == 0
     right, _ = _bottom_line("Metformin lowers CRC incidence (low-certainty evidence).", CTX, ALLOWED, no_pool=False,
                             strength="low")
     assert right == "Metformin lowers CRC incidence (low-certainty evidence)."
+
+
+@pytest.mark.parametrize(("answer", "strength", "expected"), [
+    # the re-review's N1 probes: the answer is never emptied
+    ("Metformin probably lowers colorectal cancer risk, with high-certainty evidence [P1].", "moderate",
+     "Metformin probably lowers colorectal cancer risk, with moderate-certainty evidence."),
+    ("Metformin may lower colorectal cancer risk; the certainty of the evidence is moderate.", "low",
+     "Metformin may lower colorectal cancer risk; the certainty of the evidence is low."),
+    ("Very-low certainty evidence suggests metformin may lower colorectal cancer risk.", "very_low",
+     "Very-low certainty evidence suggests metformin may lower colorectal cancer risk."),
+    ("Very low certainty evidence suggests metformin may lower risk.", "very_low",
+     "Very low certainty evidence suggests metformin may lower risk."),
+])
+def test_level_claims_are_rewritten_never_removed(answer, strength, expected):
+    text, removed = _bottom_line(answer, CTX, ALLOWED, no_pool=False, strength=strength)
+    assert text.startswith(expected) and removed == 0
+
+
+def test_a_level_word_away_from_certainty_is_no_claim():
+    text, _ = _bottom_line("Metformin may lower risk in patients at high risk.", CTX, ALLOWED, no_pool=False,
+                           strength="low")
+    assert text == "Metformin may lower risk in patients at high risk."  # "may" is the low wording; nothing rewritten
+    from app.graph.nodes.synthesis import _named_levels
+    assert _named_levels("the certainty of the evidence for patients at high risk is low") == {"low"}
+    assert _named_levels("patients at high risk") == set()
+
+
+def test_an_answer_the_checks_would_empty_keeps_its_sentence(monkeypatch):
+    from collections import Counter
+
+    from app.graph.nodes import synthesis as s
+
+    monkeypatch.setattr(s, "fix_statement",  # every sentence removed
+                        lambda text, prose, refs=None: ("", Counter(population_removed=1)))
+    text, _ = s._bottom_line("Metformin may lower colorectal cancer risk.", CTX, ALLOWED, no_pool=False,
+                             strength="moderate")
+    assert text == f"Metformin may lower colorectal cancer risk. {ANSWER_CERTAINTY['moderate']}"
+    # a sentence with a number is never put back (it may be unverified): the certainty sentence alone
+    text, _ = s._bottom_line("Metformin lowered risk by 20%.", CTX, ALLOWED, no_pool=False, strength="moderate")
+    assert text == ANSWER_CERTAINTY["moderate"]
+
+
+def test_numbers_and_populations_are_checked_against_the_cited_papers_first():  # N4
+    text, _ = _bottom_line("Metformin lowered the risk (HR 0.80) [P1].", CTX, ALLOWED, no_pool=False,
+                           strength="low")
+    assert "0.80" not in text and "[P1]" not in text
 
 
 # ---- finding 7: methods.second_vote is what the screening logged -------------------------------------------------
@@ -155,6 +221,20 @@ def test_markdown_leads_with_the_answer_and_key_findings():
     assert md.index("## Answer") < md.index("## Key findings") < md.index("## Summary")
     f = r["synthesis"]["key_findings"][0]
     assert f"- **{f['outcome']}** — {f['statement']} [{', '.join(f['refs'])}] (k={f['k']}" in md
+
+
+def test_markdown_has_a_methods_block():  # Task 1 review finding 9, exported now (fix round 2)
+    r = stub_result("t", "en", "slr")
+    r |= {"queries": ["metformin colorectal cancer"], "models": {"screener": "openrouter:qwen"},
+          "prompt_version": "2026-10-10.8"}
+    r["methods"] = {**(r.get("methods") or {}), "searched_at": "2026-10-10T11:00:00+00:00",
+                    "sources": {"pubmed": 80, "europe pmc": 200}}
+    md = render_markdown(_review(r))
+    block = md[md.index("## Methods"):md.index("## Papers")]
+    assert "- **Searched:** 2026-10-10T11:00:00+00:00" in block
+    assert "- **Sources (records before deduplication):** europe pmc 200, pubmed 80" in block
+    assert "`metformin colorectal cancer`" in block and "screener openrouter:qwen" in block
+    assert "- **Prompt version:** 2026-10-10.8" in block
 
 
 def test_exports_give_themes_no_direction():

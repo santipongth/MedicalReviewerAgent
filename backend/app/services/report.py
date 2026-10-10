@@ -102,6 +102,28 @@ def _other_comparisons(card: dict[str, Any] | None) -> str:
     return f" Other comparisons, not evidence for the question: {items}."
 
 
+def _methods_section(result: dict[str, Any]) -> list[str]:
+    """A short Methods block (Plan 20): search date, sources with their record counts, queries, models and the prompt
+    version. Absent when the result has none of them (results stored before Plan 20 still list queries and models)."""
+    methods = result.get("methods") or {}
+    lines: list[str] = []
+    if methods.get("searched_at"):
+        lines.append(f"- **Searched:** {methods['searched_at']}")
+    sources = methods.get("sources") or {}
+    if sources:
+        lines.append("- **Sources (records before deduplication):** "
+                     + ", ".join(f"{_cell(k)} {v}" for k, v in sorted(sources.items(), key=lambda kv: -kv[1])))
+    queries = result.get("queries") or []
+    if queries:
+        lines.append("- **Queries:** " + "; ".join(f"`{_cell(q)}`" for q in queries))
+    models = result.get("models") or {}
+    if models:
+        lines.append("- **Models:** " + ", ".join(f"{role} {_cell(m)}" for role, m in models.items() if m))
+    if result.get("prompt_version"):
+        lines.append(f"- **Prompt version:** {result['prompt_version']}")
+    return ["## Methods", "", *lines, ""] if lines else []
+
+
 def render_markdown(review) -> str:
     result = review.result
     out = [f"# Literature review: {review.topic}", ""]
@@ -148,6 +170,7 @@ def render_markdown(review) -> str:
             out.append("")
     if s.get("research_gaps"):
         out += ["## Research gaps", "", *[f"- {g}" for g in s["research_gaps"]], ""]
+    out += _methods_section(result)
     papers = result.get("papers") or []
     if papers:
         out += ["## Papers", ""]
