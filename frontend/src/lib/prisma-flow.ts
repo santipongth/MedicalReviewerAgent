@@ -114,12 +114,14 @@ export function prismaFlow({ stats, methods, options, type, lang }: {
   };
 
   // --- Screening ----------------------------------------------------------------------------------------------------
-  const top = candidates ?? cap;
-  const capNote = top != null
+  // "top N" only from the recorded candidates; a requested cap alone is a limit, not an outcome
+  const capNote = candidates != null
     ? T(lang,
-      `เรียงตามความเกี่ยวข้อง คัดกรอง ${top} อันดับแรก${withAbstract != null ? ` จาก ${withAbstract} ระเบียนที่มีบทคัดย่อ` : ""}${cap != null ? ` (เพดาน ${cap})` : ""}`,
-      `Ranked by relevance: the top ${top}${withAbstract != null ? ` of ${withAbstract} records with an abstract` : ""} were screened${cap != null ? ` (cap ${cap})` : ""}`)
-    : null;
+      `เรียงตามความเกี่ยวข้อง คัดกรอง ${candidates} อันดับแรก${withAbstract != null ? ` จาก ${withAbstract} ระเบียนที่มีบทคัดย่อ` : ""}${cap != null ? ` (เพดาน ${cap})` : ""}`,
+      `Ranked by relevance: the top ${candidates}${withAbstract != null ? ` of ${withAbstract} records with an abstract` : ""} were screened${cap != null ? ` (cap ${cap})` : ""}`)
+    : cap != null
+      ? T(lang, `เรียงตามความเกี่ยวข้อง คัดกรองไม่เกิน ${cap} ระเบียน`, `Ranked by relevance: at most ${cap} were screened`)
+      : null;
   const screenedBox: FlowBox = {
     key: "screened",
     title: T(lang, "ระเบียนที่คัดกรอง (ชื่อเรื่องและบทคัดย่อ)", "Records screened (title and abstract)"),
@@ -171,8 +173,8 @@ export function prismaFlow({ stats, methods, options, type, lang }: {
         label: maxPapers != null ? T(lang, `เกินจำนวนที่วิเคราะห์ (สูงสุด ${maxPapers})`, `Over the analysis limit (at most ${maxPapers})`)
           : T(lang, "เกินจำนวนที่วิเคราะห์", "Over the analysis limit") },
       { key: "study_design_corrected", value: num(sel?.study_design_corrected),
-        label: T(lang, "อ่านแล้วพบว่ารูปแบบไม่ตรงชนิดที่เลือก (คงไว้ในรายการ ไม่ใช้เป็นหลักฐาน)",
-          "Read as a design outside the ticked types (kept in the list, not used as evidence)") },
+        label: T(lang, "อ่านแล้วพบว่ารูปแบบไม่ตรงชนิดที่เลือก (คงไว้ในรายการ ไม่ใช้เป็นหลักฐาน นับอยู่ในรายงานที่รวม)",
+          "Read as a design outside the ticked types (kept in the list, not used as evidence; counted in the reports included)") },
     ],
     notes: relaxed
       ? [T(lang, `คงไว้ ${relaxed} ระเบียนที่รูปแบบไม่ตรงชนิดที่เลือก เพราะงานที่ตรงมีไม่ถึง 3 ฉบับ (มีธงกำกับ)`,
@@ -181,17 +183,24 @@ export function prismaFlow({ stats, methods, options, type, lang }: {
   };
 
   // --- Included -----------------------------------------------------------------------------------------------------
+  // PRISMA 2020 counts studies and reports apart. `selected` counts reports (further reports of a trial stay in it), so
+  // with `related_reports` recorded the studies are their difference; without it, only the reports are known.
   const related = num(s.related_reports);
+  const selected = num(s.selected);
+  const split = related != null && !scoping;
   const included: FlowBox = {
     key: "included",
     title: scoping ? T(lang, "แหล่งหลักฐานที่รวมในการทบทวน", "Sources of evidence included")
-      : T(lang, "รายงานที่รวมในการทบทวน", "Reports included in the review"),
-    value: num(s.selected),
+      : split ? T(lang, "การศึกษาที่รวมในการทบทวน", "Studies included in the review")
+        : T(lang, "รายงานที่รวมในการทบทวน", "Reports included in the review"),
+    value: split ? diff(selected, related) : selected,
     lines: [
+      ...(split ? [{ key: "reports_included", label: T(lang, "รายงานของการศึกษาที่รวม", "Reports of included studies"), value: selected }] : []),
       { key: "extracted", label: T(lang, "อ่านและสกัดข้อมูลได้", "Read and data extracted"), value: num(s.extracted) },
       ...(s.with_fulltext != null ? [{ key: "with_fulltext", label: T(lang, "ได้ฉบับเต็ม", "Full text obtained"), value: num(s.with_fulltext) }] : []),
       ...(related != null ? [{ key: "related_reports", value: related,
-        label: T(lang, "รายงานของการทดลองเดียวกัน (ไม่นับซ้ำ)", "Reports of the same trials (not counted again)") }] : []),
+        label: T(lang, "ในจำนวนนี้ เป็นรายงานเพิ่มเติมของการทดลองที่นับเป็นการศึกษาแล้ว",
+          "of which further reports of a trial already counted as a study") }] : []),
     ],
     notes: [],
   };
@@ -213,17 +222,21 @@ export interface FlowRow {
   depth: 0 | 1;
   label: string;
   value: FlowCount | undefined;
-  note?: string;
+  /** a line's own explanation */
+  detail?: string;
+  /** a box note (the cap, "not itemised", a relaxed count): text only, never a count */
+  note?: true;
 }
 
-/** The flow as table rows (the accessible twin): each box, then its lines, stage by stage. */
+/** The flow as table rows (the accessible twin): each box, its lines, then its notes, stage by stage. */
 export function flowRows(view: PrismaFlowView): FlowRow[] {
   const out: FlowRow[] = [];
   for (const st of view.stages) {
     for (const b of [st.main, st.side]) {
       if (!b) continue;
       out.push({ stage: st.label, depth: 0, label: b.title, value: b.value });
-      for (const l of b.lines) out.push({ stage: st.label, depth: 1, label: l.label, value: l.value, note: l.note });
+      for (const l of b.lines) out.push({ stage: st.label, depth: 1, label: l.label, value: l.value, detail: l.note });
+      for (const n of b.notes) out.push({ stage: st.label, depth: 1, label: n, value: undefined, note: true });
     }
   }
   return out;

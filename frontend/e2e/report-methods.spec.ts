@@ -44,7 +44,8 @@ for (const type of Object.keys(P20_FIXTURES) as Key[]) {
     const rob = page.locator("section[aria-labelledby=h-rob]");
     if (HAS_ROB[type]) {
       await expect(rob.getByRole("table")).toBeVisible();
-      await expect(rob.locator("[data-rob-caveat]")).toContainText("ประเมินจากบทคัดย่อโดยโมเดล");
+      // the legacy fixture is a full-text-era result: its caveat names the text read, not "the abstract"
+      await expect(rob.locator("[data-rob-caveat]")).toContainText(type === "legacy" ? "ประเมินจากข้อความที่อ่าน (บทคัดย่อหรือฉบับเต็ม)" : "ประเมินจากบทคัดย่อโดยโมเดล");
       await rob.getByRole("link", { name: /เกณฑ์ที่ใช้/ }).click();
       await expect(page.locator("#m-rob")).toBeInViewport();
     } else {

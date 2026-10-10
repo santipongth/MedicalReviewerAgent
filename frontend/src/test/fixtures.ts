@@ -448,7 +448,8 @@ function methodsFixture(over: Partial<ReviewMethods> = {}): ReviewMethods {
     sources: { pubmed: 30, "europe pmc": 12, "europe pmc (rct search)": 4, openalex: 9 },
     eligibility: { year_from: null, study_types: [], inclusion_criteria: ["Adults with type 2 diabetes"], exclusion_criteria: ["Editorials"] },
     limits: { candidate_limit: 60, max_papers: 30, min_abstract_chars: 150 },
-    screening: { model: DEEPSEEK, second_model: DEEPSEEK, second_vote: "same_model", borderline: [35, 70], relevance_floor: 35 },
+    // second_model is null unless the vote is two_models (docs/api.md "Methods")
+    screening: { model: DEEPSEEK, second_model: null, second_vote: "same_model", borderline: [35, 70], relevance_floor: 35 },
     extraction: { model: DEEPSEEK, second_model: DEEPSEEK, verify_quotes: true, quote_match_threshold: 90, text: "abstract" },
     synthesis: { model: DEEPSEEK, pooling: null, grading: "GRADE-lite" },
     ...over,
@@ -480,7 +481,11 @@ export const slrP20ReviewFixture: Review = {
         { outcome: "CRC mortality", statement: "The one study that reported it found no difference in mortality.", refs: ["P3"], k: 1 },
       ],
     },
-    stats: { ...resultFixture.stats, found: 55, unique: 41, with_abstract: 38, no_abstract: 3, candidates: 20, screened: 20, selected: 5 },
+    // contract-complete Plan 19 stats: unique = year_excluded + non_research + no_abstract + with_abstract
+    stats: { ...resultFixture.stats, found: 55, unique: 41, year_excluded: 2, non_research: 1, no_abstract: 3, with_abstract: 35,
+      candidates: 20, screened: 20, selected: 5,
+      excluded_screening: { off_topic: 8, population: 3, outcome: 2, publication_type: 1 },
+      excluded_selection: { narrative_excluded: 0, over_limit: 0, low_relevance: 1, study_design_relaxed: 0, study_design_corrected: 0 } },
     methods: methodsFixture(),
   },
 };

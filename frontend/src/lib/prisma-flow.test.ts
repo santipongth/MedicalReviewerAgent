@@ -100,11 +100,35 @@ describe("prismaFlow", () => {
     expect(box(slr, "included", "main").title).toMatch(/Reports included/);
   });
 
+  it("with related reports, PRISMA 2020's pair: studies = selected - related_reports, reports = selected", () => {
+    const v = prismaFlow({ stats: { ...full, selected: 22, related_reports: 3 }, type: "slr", lang: "en" })!;
+    const inc = box(v, "included", "main");
+    expect(inc.title).toBe("Studies included in the review");
+    expect(inc.value).toBe(19);
+    expect(lines(inc)).toEqual({ reports_included: 22, extracted: 21, related_reports: 3 });
+    expect(inc.lines.find((l) => l.key === "reports_included")!.label).toBe("Reports of included studies");
+    expect(inc.lines.find((l) => l.key === "related_reports")!.label).toMatch(/further reports of a trial already counted as a study/);
+    // a related count larger than selected never yields a negative study count
+    expect(box(prismaFlow({ stats: { ...full, selected: 2, related_reports: 3 }, type: "slr", lang: "en" }), "included", "main").value).toBeNull();
+  });
+
+  it("the cap note states a screened count only when candidates is recorded", () => {
+    const noCand = prismaFlow({ stats: { ...full, candidates: undefined }, options: { candidate_limit: 60 }, type: "slr", lang: "en" })!;
+    const note = box(noCand, "screening", "main").notes.join(" ");
+    expect(note).toMatch(/at most 60 were screened/);
+    expect(note).not.toMatch(/top 60/);
+  });
+
+  it("the corrected designs say they are counted in the reports included", () => {
+    const v = prismaFlow({ stats: full, type: "slr", lang: "en" })!;
+    expect(box(v, "selection", "side").lines.find((l) => l.key === "study_design_corrected")!.label).toMatch(/counted in the reports included/);
+  });
+
   it("related reports and off-focus papers show only when the API sends them", () => {
     const v = prismaFlow({ stats: { ...full, related_reports: 3, excluded_selection: { ...full.excluded_selection!, off_focus: 2 } }, type: "slr", lang: "en" })!;
     const inc = box(v, "included", "main");
-    expect(lines(inc)).toEqual({ extracted: 21, related_reports: 3 });
-    expect(inc.lines.find((l) => l.key === "related_reports")!.label).toMatch(/same trials \(not counted again\)/);
+    expect(lines(inc)).toEqual({ reports_included: 22, extracted: 21, related_reports: 3 });
+    expect(box(prismaFlow({ stats: full, type: "slr", lang: "en" }), "included", "main").title).toBe("Reports included in the review");
     expect(lines(box(v, "selection", "side"))).toHaveProperty("off_focus", 2);
     expect(lines(box(prismaFlow({ stats: full, type: "slr", lang: "en" }), "selection", "side"))).not.toHaveProperty("off_focus");
   });
@@ -128,8 +152,20 @@ describe("flowRows (the table twin)", () => {
     const v = prismaFlow({ stats: full, methods, type: "slr", lang: "en" })!;
     const rows = flowRows(v);
     expect(rows[0]).toMatchObject({ stage: "Identification", depth: 0, value: 166 });
-    expect(rows.filter((r) => r.stage === "Identification").map((r) => r.value)).toEqual([166, 30, 12, 4, 9, undefined, 46, 6, 9, 15, 30]);
+    // box, 4 sources, the per-source note, the side box, its 5 lines
+    expect(rows.filter((r) => r.stage === "Identification").map((r) => r.value)).toEqual([166, 30, 12, 4, 9, undefined, undefined, 46, 6, 9, 15, 30]);
+    expect(rows.filter((r) => r.stage === "Identification")[5]).toMatchObject({ depth: 1, note: true });
     expect(rows.at(-1)).toMatchObject({ stage: "Included", value: 21 });
+  });
+
+  it("keeps the box notes (cap, not itemised, a relaxed count) as rows with no count", () => {
+    const v = prismaFlow({ stats: { ...full, excluded_selection: { ...full.excluded_selection!, study_design_relaxed: 2 } }, methods, type: "slr", lang: "en" })!;
+    const notes = flowRows(v).filter((r) => r.note === true);
+    expect(notes.every((r) => r.value === undefined)).toBe(true);
+    const text = notes.map((r) => r.label).join(" | ");
+    expect(text).toMatch(/2 records whose design matched no ticked type were kept/);
+    expect(text).toMatch(/Ranked by relevance/);
+    expect(text).toMatch(/Not itemised/);
   });
 });
 

@@ -4,7 +4,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
-  legacyReviewFixture, metaP20ReviewFixture, narrativeP20ReviewFixture, P20_FIXTURES, scopingP20ReviewFixture, scopingReviewFixture,
+  emptyReviewFixture, legacyReviewFixture, metaP20ReviewFixture, narrativeP20ReviewFixture, P20_FIXTURES, scopingP20ReviewFixture, scopingReviewFixture,
   slrP20ReviewFixture,
 } from "@/test/fixtures";
 import type { Review } from "@/lib/types";
@@ -36,7 +36,9 @@ describe("PrismaFlow", () => {
     // counts are never the verified face, never a computed-number badge
     expect(container.querySelector(".num-verified, .num-computed, .font-num")).toBeNull();
     expect(container.querySelector("[data-flow-line='duplicates']")).toHaveTextContent("Duplicates14");
-    expect(container.querySelector("[data-flow-line='below_cap']")).toHaveTextContent("18");
+    expect(container.querySelector("[data-flow-line='below_cap']")).toHaveTextContent("15");
+    expect(container.querySelector("[data-flow-line='year_excluded']")).toHaveTextContent("2");
+    expect(container.querySelector("[data-flow-box='excluded_screening'] [data-flow-line='off_topic']")).toHaveTextContent("8");
   });
 
   it("shows 'unknown' for a count the result does not record, and the screening reasons with the not-itemised note", () => {
@@ -94,7 +96,29 @@ describe("MethodsSection", () => {
       expect(line(key), key).toBeNull();
     }
     expect(line("text")).toHaveTextContent(/predates abstract-only reading/);
-    expect(line("judged")).not.toBeNull(); // the fixed risk-of-bias approach still describes the system
+    // the fixed risk-of-bias approach still describes the system, but a full-text-era result was not read from abstracts only
+    expect(line("judged")).toHaveTextContent("from the text read (abstract or full text)");
+    expect(line("judged")).not.toHaveTextContent("from its abstract");
+  });
+
+  it("groups the models, names a second screening model only for a two-model vote, and localises fallback role keys", () => {
+    render(<MethodsSection review={slrP20ReviewFixture} result={slrP20ReviewFixture.result!} type="slr" lang="en" />);
+    const roles = line("roles")!;
+    expect(roles.textContent!.match(/deepseek\/deepseek-v4-pro/g)).toHaveLength(1);
+    expect(roles).not.toHaveTextContent("Second screening vote");
+    expect(roles).toHaveTextContent(/Screening, extraction, second extraction, synthesis/);
+    document.body.innerHTML = "";
+    const legacy = { ...legacyReviewFixture.result!, models: { screener: "openrouter:a/x", extractor: "openrouter:a/x", guard: "openrouter:b/y", custom_role: "openrouter:c/z" } };
+    render(<MethodsSection review={legacyReviewFixture} result={legacy} type="legacy" lang="th" />);
+    expect(line("roles")).toHaveTextContent(/คัดกรอง, สกัดข้อมูล a\/x/);
+    expect(line("roles")).toHaveTextContent(/ตรวจหัวข้อ b\/y/);
+    expect(line("roles")).not.toHaveTextContent(/screener|extractor|guard/);
+  });
+
+  it("the relevance floor mentions the two votes only when there was a second vote", () => {
+    render(<MethodsSection review={scopingP20ReviewFixture} result={scopingP20ReviewFixture.result!} type="scoping" lang="en" />);
+    expect(line("floor")).toHaveTextContent(/fewer than 3 would remain/);
+    expect(line("floor")).not.toHaveTextContent(/two votes/);
   });
 
   it("uses review.options when result.methods is absent, and collapses a long query list", async () => {
@@ -139,6 +163,12 @@ describe("RobSummarySection", () => {
     expect(screen.getByRole("link", { name: /เกณฑ์ที่ใช้/ })).toHaveAttribute("href", "#m-rob");
   });
 
+  it("a full-text-era result does not claim the judgements came from the abstract", () => {
+    render(<RobSummarySection papers={legacyReviewFixture.result!.papers!} type="legacy" lang="en" fullText />);
+    expect(screen.getByText(/Judged from the text read \(abstract or full text\) by a model/)).toBeInTheDocument();
+    expect(screen.queryByText(/Judged from the abstract/)).toBeNull();
+  });
+
   it("is hidden for scoping and when no paper has a judgement", () => {
     const { container, rerender } = render(<RobSummarySection papers={scopingP20ReviewFixture.result!.papers!} type="scoping" lang="th" />);
     expect(container).toBeEmptyDOMElement();
@@ -169,5 +199,10 @@ describe("Report placement (SECTIONS_BY_TYPE)", () => {
     }
     const { container } = render(<Report review={narrativeP20ReviewFixture} />);
     expect(container.querySelector("[data-prisma-flow]")).toBeNull();
+  });
+
+  it("a search that included no study still shows its selection flow (it explains the empty result)", () => {
+    const { container } = render(<Report review={emptyReviewFixture} />);
+    expect(container.querySelector("[data-prisma-flow]")!.closest("section")).toHaveAccessibleName("การคัดเลือกงานวิจัย");
   });
 });

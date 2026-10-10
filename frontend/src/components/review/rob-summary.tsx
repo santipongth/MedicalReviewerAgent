@@ -19,7 +19,11 @@ function C({ n }: { n: number }) {
  * abstract, and a link to the criteria in Methods. Hidden for scoping reviews (no appraisal) and when no paper has a
  * judgement. Qualitative and mixed-methods studies are listed under their design; the table has no direction at all.
  */
-export function RobSummarySection({ papers, type, lang }: { papers: Paper[]; type: ReviewTypeOrLegacy; lang: Lang }) {
+export function RobSummarySection({ papers, type, lang, fullText = false }: {
+  papers: Paper[]; type: ReviewTypeOrLegacy; lang: Lang;
+  /** a result from before abstract-only reading (stats.with_fulltext): some studies were read in full text */
+  fullText?: boolean;
+}) {
   const s = useMemo(() => (showsRiskOfBias(type) ? robSummary(papers, lang) : null), [papers, type, lang]);
   if (!s) return null;
   const caption = L(lang, "จำนวนงานวิจัยตามระดับความเสี่ยงอคติ แยกตามรูปแบบการศึกษา", "Studies by risk-of-bias judgement and study design");
@@ -30,8 +34,11 @@ export function RobSummarySection({ papers, type, lang }: { papers: Paper[]; typ
     <section aria-labelledby="h-rob" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
       <h2 id="h-rob" className={SECTION_H2}>{L(lang, "ความเสี่ยงอคติ", "Risk of bias")}</h2>
       <p className="max-w-[65ch] text-[0.9rem] text-muted" data-rob-caveat>
-        {L(lang, "ประเมินจากบทคัดย่อโดยโมเดล ทีละงาน ไม่ใช่การประเมินด้วยเครื่องมือมาตรฐานแบบเต็มโดยผู้เชี่ยวชาญ",
-          "Judged from the abstract by a model, one study at a time; not a full standard-tool assessment by experts")}
+        {fullText
+          ? L(lang, "ประเมินจากข้อความที่อ่าน (บทคัดย่อหรือฉบับเต็ม) โดยโมเดล ทีละงาน ไม่ใช่การประเมินด้วยเครื่องมือมาตรฐานแบบเต็มโดยผู้เชี่ยวชาญ",
+            "Judged from the text read (abstract or full text) by a model, one study at a time; not a full standard-tool assessment by experts")
+          : L(lang, "ประเมินจากบทคัดย่อโดยโมเดล ทีละงาน ไม่ใช่การประเมินด้วยเครื่องมือมาตรฐานแบบเต็มโดยผู้เชี่ยวชาญ",
+            "Judged from the abstract by a model, one study at a time; not a full standard-tool assessment by experts")}
         {" · "}
         <a href="#m-rob" className="font-display font-semibold text-primary underline underline-offset-2">
           {L(lang, "เกณฑ์ที่ใช้ (วิธีการ)", "Criteria used (Methods)")}

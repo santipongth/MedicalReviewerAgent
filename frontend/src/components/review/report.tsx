@@ -147,8 +147,9 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     ? <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} showRisk={showsRiskOfBias(type)} /> : null;
 
   const blocks: Record<BlockId, { show: boolean; node: ReactNode }> = {
-    // The flow counts every record of the search (result.stats), so the filters do not apply to it.
-    prisma: { show: hasPapers && showsSection(type, "prisma") && !!result.stats,
+    // The flow counts every record of the search (result.stats), so the filters do not apply to it; it shows even when no
+    // study was included, since then it explains the empty result.
+    prisma: { show: showsSection(type, "prisma") && !!result.stats,
       node: <PrismaFlow stats={result.stats} methods={result.methods} options={review.options} type={type} lang={lang} /> },
     evidence_map: { show: hasEvidenceMap, node: <EvidenceMapSection map={map} lang={lang} /> },
     lit_matrix: { show: hasLitMatrix, node: (
@@ -232,7 +233,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           </section>
         ) : null;
       case "rob":
-        return hasRob ? <RobSummarySection papers={papers} type={type} lang={lang} /> : null;
+        return hasRob ? <RobSummarySection papers={papers} type={type} lang={lang} fullText={result.stats?.with_fulltext != null} /> : null;
       case "methods":
         return <MethodsSection review={review} result={result} type={type} lang={lang} />;
       case "references":

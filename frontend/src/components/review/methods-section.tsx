@@ -24,6 +24,21 @@ function Code({ children }: { children: string }) {
 
 type Line = [key: string, node: ReactNode];
 
+/** Role names of backend/config/llm.yaml, as the report language says them; an unknown role keeps its key. */
+const ROLE_LABEL: Record<string, [string, string]> = {
+  guard: ["ตรวจหัวข้อ", "Topic check"], planner: ["วางแผน", "Planning"], refiner: ["ปรับคำถาม", "Question refinement"],
+  screener: ["คัดกรอง", "Screening"], screener_secondary: ["คัดกรองเสียงที่สอง", "Second screening vote"],
+  extractor: ["สกัดข้อมูล", "Extraction"], extractor_secondary: ["สกัดข้อมูลครั้งที่สอง", "Second extraction"],
+  normalizer: ["จัดรูปแบบผลลัพธ์", "Outcome normalisation"], synthesizer: ["สังเคราะห์", "Synthesis"],
+  conflict_explainer: ["อธิบายจุดขัดกัน", "Conflict explanation"], localizer: ["แปลภาษา", "Translation"],
+  escalation: ["ตัดสินเมื่อเห็นต่าง", "Escalation"],
+};
+
+function roleLabel(role: string, lang: Lang): string {
+  const l = ROLE_LABEL[role];
+  return l ? (lang === "th" ? l[0] : l[1]) : role;
+}
+
 /** One Methods subsection: an H3 and its lines; lines with nothing to say (missing fields) are left out. */
 function Part({ id, title, lines, children }: { id: string; title: string; lines: Line[]; children?: ReactNode }) {
   const shown = lines.filter(([, node]) => node != null && node !== false && node !== "");
@@ -139,14 +154,17 @@ export function MethodsSection({ review, result, type, lang }: {
           {L(lang, "ให้โมเดลเดียวกันลงคะแนนซ้ำ (ไม่ใช่เสียงอิสระ)", "were scored again by the same model (not an independent vote)")}</>
         : L(lang, "การคัดกรองไม่มีการลงคะแนนเสียงที่สอง", "Screening had no second vote")],
     ["floor", sc ? <>{L(lang, "ไม่วิเคราะห์งานที่คะแนนความเกี่ยวข้องต่ำกว่า", "Included records scoring below")} <N>{sc.relevance_floor}</N>{" "}
-      {L(lang, "เว้นแต่สองเสียงไม่ตรงกัน หรือจะเหลืองานไม่ถึง 3 ฉบับ", "were not analysed, unless the two votes disagreed or fewer than 3 would remain")}</> : null],
+      {sc.second_vote !== "off"
+        ? L(lang, "เว้นแต่สองเสียงไม่ตรงกัน หรือจะเหลืองานไม่ถึง 3 ฉบับ", "were not analysed, unless the two votes disagreed or fewer than 3 would remain")
+        : L(lang, "เว้นแต่จะเหลืองานไม่ถึง 3 ฉบับ", "were not analysed, unless fewer than 3 would remain")}</> : null],
     ["designs", slrLike && studyTypes?.length ? L(lang, "ใช้ชนิดงานวิจัยที่เลือกตอนคัดเลือก ถ้างานที่ตรงมีไม่ถึง 3 ฉบับ จะคงงานที่ไม่ตรงไว้พร้อมธงกำกับ",
       "The ticked study types were applied at selection; if fewer than 3 records matched, the others were kept and flagged") : null],
     ["narrative", slrLike && m ? L(lang, "ตัดบทความทบทวนแบบไม่เป็นระบบออก เมื่อมีงานวิจัยหลักหรือ SR/MA อย่างน้อย 3 ฉบับ",
       "Narrative reviews were left out when at least 3 primary studies or systematic reviews were available") : null],
     ["max", maxPapers != null ? <>{L(lang, "วิเคราะห์สูงสุด", "At most")} <N>{maxPapers}</N> {L(lang, "ฉบับตามอันดับความเกี่ยวข้อง", "records were analysed, in order of relevance")}</> : null],
     ["related", s.related_reports != null ? <>{L(lang, "รายงานหลายฉบับของการทดลองเดียวกันนับเป็นการศึกษาเดียว", "Several reports of the same trial count as one study")}{" "}
-      (<N>{s.related_reports}</N> {L(lang, "รายงานไม่นับซ้ำ", s.related_reports === 1 ? "report not counted again" : "reports not counted again")})</> : null],
+      (<N>{s.related_reports}</N> {L(lang, "รายงานเพิ่มเติมของการทดลองที่นับเป็นการศึกษาแล้ว",
+        s.related_reports === 1 ? "further report of a trial already counted as a study" : "further reports of a trial already counted as a study")})</> : null],
   ];
 
   // --- Extraction and verification ------------------------------------------------------------------------------------
@@ -176,7 +194,10 @@ export function MethodsSection({ review, result, type, lang }: {
   // --- Risk of bias, synthesis, certainty -----------------------------------------------------------------------------
   const rob: Line[] = type === "scoping"
     ? [["none", L(lang, "ไม่ได้ประเมินคุณภาพหรือความเสี่ยงอคติ ตามแนวทางของการทบทวนขอบเขต", "Quality and risk of bias were not appraised, as is usual for a scoping review")]]
-    : [["judged", <>{L(lang, "โมเดลประเมินความเสี่ยงอคติทีละงานจากบทคัดย่อ เป็น", "A model judged each study's risk of bias from its abstract as")}{" "}
+    : [["judged", <>{s.with_fulltext != null
+        // a full-text-era result read some studies in full: the judgement came from whatever text was read
+        ? L(lang, "โมเดลประเมินความเสี่ยงอคติทีละงานจากข้อความที่อ่าน (บทคัดย่อหรือฉบับเต็ม) เป็น", "A model judged each study's risk of bias from the text read (abstract or full text) as")
+        : L(lang, "โมเดลประเมินความเสี่ยงอคติทีละงานจากบทคัดย่อ เป็น", "A model judged each study's risk of bias from its abstract as")}{" "}
         {ROB_ORDER.map((k) => ROB_COLUMN[lang][k]).join(" / ")}</>],
       ["criteria", L(lang, "เกณฑ์: รูปแบบการศึกษา ขนาดตัวอย่าง การควบคุมปัจจัยกวน และความครบถ้วนของการรายงาน",
         "Criteria: study design, sample size, control of confounding, and completeness of reporting")],
@@ -208,15 +229,24 @@ export function MethodsSection({ review, result, type, lang }: {
       `No certainty rating: a ${REVIEW_TYPE_LABEL[type].en.toLowerCase()} does not grade the evidence`)]];
 
   // --- Models and versions --------------------------------------------------------------------------------------------
+  // A second screening model exists only for a two-model vote (the contract nulls it otherwise; older data may not).
   const roles: [string, string | null | undefined][] = m
-    ? [[L(lang, "คัดกรอง", "Screening"), m.screening.model], [L(lang, "คัดกรองเสียงที่สอง", "Second screening vote"), m.screening.second_model],
-      [L(lang, "สกัดข้อมูล", "Extraction"), m.extraction.model], [L(lang, "สกัดข้อมูลครั้งที่สอง", "Second extraction"), m.extraction.second_model],
-      [L(lang, "สังเคราะห์", "Synthesis"), m.synthesis.model]]
-    : Object.entries(result.models ?? {});
-  const rolesShown = roles.filter((r): r is [string, string] => !!r[1] && r[1] !== "stub");
+    ? [[roleLabel("screener", lang), m.screening.model],
+      [roleLabel("screener_secondary", lang), m.screening.second_vote === "two_models" ? m.screening.second_model : null],
+      [roleLabel("extractor", lang), m.extraction.model], [roleLabel("extractor_secondary", lang), m.extraction.second_model],
+      [roleLabel("synthesizer", lang), m.synthesis.model]]
+    : Object.entries(result.models ?? {}).map(([role, model]) => [roleLabel(role, lang), model]);
+  const byModel = new Map<string, string[]>();
+  for (const [role, model] of roles) {
+    if (!model || model === "stub") continue;
+    const name = modelName(model);
+    byModel.set(name, [...(byModel.get(name) ?? []), role]);
+  }
   const seconds = quality?.timings?.total;
   const models: Line[] = [
-    ["roles", rolesShown.length ? <>{L(lang, "โมเดล", "Models")}: {rolesShown.map(([role, model], i) => <span key={role}>{i > 0 && " · "}{role} <Code>{modelName(model)}</Code></span>)}</> : null],
+    ["roles", byModel.size ? <>{L(lang, "โมเดล", "Models")}: {[...byModel].map(([model, rs], i) => (
+      <span key={model}>{i > 0 && " · "}{rs.map((r, j) => (j > 0 && lang === "en" ? r.toLowerCase() : r)).join(", ")} <Code>{model}</Code></span>
+    ))}</> : null],
     ["preset", result.llm_preset && result.llm_preset !== "stub" ? <>{L(lang, "ชุดโมเดล", "Model preset")} <Code>{result.llm_preset}</Code></> : null],
     ["prompt", result.prompt_version ? <>{L(lang, "เวอร์ชันพรอมต์", "Prompt version")} <Code>{result.prompt_version}</Code></> : null],
     ["time", seconds != null ? <>{L(lang, "ใช้เวลา", "Run time")} <N>{Math.round(seconds)}</N> {L(lang, "วินาที", "s")}</> : null],

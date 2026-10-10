@@ -96,7 +96,11 @@ export function PrismaFlow({ stats, methods, options, type, lang }: {
             <p className={`label @[34rem]:row-span-2 @[34rem]:mr-3 @[34rem]:border-r @[34rem]:border-rule @[34rem]:pt-2.5 @[34rem]:pr-3 ${i === last ? "" : "@[34rem]:pb-7"}`}>
               {st.label}
             </p>
-            <Box box={st.main} lang={lang} side={false} />
+            {/* a short box keeps its own height beside a taller exclusion box; the connector line fills the rest */}
+            <div className="flex min-w-0 flex-col">
+              <Box box={st.main} lang={lang} side={false} />
+              {i < last && <span aria-hidden="true" className="mx-auto hidden w-[1.5px] flex-1 bg-muted @[34rem]:block" />}
+            </div>
             {st.side && (
               <>
                 <span className="hidden @[34rem]:flex @[34rem]:justify-center @[34rem]:pt-4"><ArrowRight /></span>
@@ -128,11 +132,14 @@ export function PrismaFlow({ stats, methods, options, type, lang }: {
               {rows.map((r, i) => (
                 <tr key={i} className="border-b border-rule align-top">
                   <td className="py-1.5 pr-3 text-muted">{r.stage}</td>
-                  <th scope="row" className={`py-1.5 pr-3 text-left break-words ${r.depth ? "pl-4 font-normal" : "font-semibold"}`}>
+                  <th scope="row" className={`py-1.5 pr-3 text-left break-words ${r.note ? "pl-4 text-[0.82rem] font-normal text-muted" : r.depth ? "pl-4 font-normal" : "font-semibold"}`}>
                     {r.label}
-                    {r.note && <span className="block text-[0.78rem] font-normal text-muted">{r.note}</span>}
+                    {r.detail && <span className="block text-[0.78rem] font-normal text-muted">{r.detail}</span>}
                   </th>
-                  <td className="py-1.5 text-right">{r.value === undefined ? <span className="sr-only">{L(lang, "ไม่มีจำนวนรวม", "no total")}</span> : <Count value={r.value} lang={lang} />}</td>
+                  <td className="py-1.5 text-right">
+                    {r.value !== undefined ? <Count value={r.value} lang={lang} />
+                      : <span className="sr-only">{r.note ? L(lang, "หมายเหตุ ไม่มีจำนวน", "note, no count") : L(lang, "ไม่มีจำนวนรวม", "no total")}</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>

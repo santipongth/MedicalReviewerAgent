@@ -219,7 +219,8 @@ describe("Report", () => {
   it("a review with no papers shows the explicit message and no matrix", () => {
     render(<Report review={emptyReviewFixture} />);
     expect(screen.getByText(/ไม่พบงานวิจัยที่ตรงกับหัวข้อนี้/)).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    // the only table is the selection flow's twin (Plan 20 Task 4: the flow explains the empty result); no matrix
+    expect(screen.queryAllByRole("table").filter((t) => !t.closest("[data-prisma-flow]"))).toHaveLength(0);
     // empty state: a next step instead of a rating for nothing (design review FINDING-003)
     expect(screen.getByRole("link", { name: "ถามคำถามใหม่" })).toHaveAttribute("href", "/");
     expect(screen.queryByText(/ความแข็งแรงของหลักฐาน/)).not.toBeInTheDocument();

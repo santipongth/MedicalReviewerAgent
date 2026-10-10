@@ -16,7 +16,7 @@ describe("Limitations", () => {
     const { container } = renderLim(slrP20ReviewFixture);
     expect(screen.getByRole("heading", { level: 2, name: "ข้อจำกัด" })).toBeInTheDocument();
     expect(item(container, "text")).toHaveTextContent(/อ่านเฉพาะชื่อเรื่องและบทคัดย่อ.*3 ฉบับ/);
-    expect(item(container, "cap")).toHaveTextContent("คัดกรองเฉพาะ 20 ฉบับที่เกี่ยวข้องที่สุด (เพดาน 60) จาก 38 ฉบับที่มีบทคัดย่อ");
+    expect(item(container, "cap")).toHaveTextContent("คัดกรองเฉพาะ 20 ฉบับที่เกี่ยวข้องที่สุด (เพดาน 60) จาก 35 ฉบับที่มีบทคัดย่อ");
     expect(item(container, "cap")).toHaveTextContent("วิเคราะห์ 5 ฉบับ (สูงสุด 30)");
     expect(item(container, "cap")!.querySelector(".num-verified")).toBeNull();
     expect(item(container, "llm")).toHaveTextContent(/ไม่มีผู้ทบทวนที่เป็นมนุษย์/);
