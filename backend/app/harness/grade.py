@@ -68,7 +68,8 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any], questio
       when the question has no effect direction.
     - Imprecision: the outcome's sample size (the body's primary studies summed, or the largest same-tier SR/MA in
       the row, whichever is larger: an SR/MA's n already includes its studies) < 400 or not reported; and, for a
-      one-study body, a 95% CI that includes no effect, or a non-significant result without a CI.
+      one-study body, a 95% CI that includes no effect, or a non-significant result without a CI; and (Plan 20 Task
+      10) a body of one primary study, which is not replicated (at most one imprecision downgrade in all).
     Downgrade factors start with their domain and a colon ("risk of bias:", "inconsistency:", "imprecision:")."""
     # qualitative/mixed-methods cards are themes, never graded evidence (callers pass _evidence; this is a guard)
     cards = {p.get("ref") or f"#{i}": p["card"] for i, p in enumerate(papers)
@@ -118,13 +119,13 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any], questio
     elif row:
         verdict = classify_row(body_cells)
         kind = verdict["verdict"]
-        if kind == "conflict":
+        if kind == "conflict" and not verdict.get("review_discordant"):
             level -= 1
             factors.append(f"inconsistency: studies on opposite sides of no effect for {where}")
         elif kind == "imprecise" and verdict.get("opposite_sides"):
             factors.append(f"minor inconsistency: a non-significant estimate on the other side of no effect for "
                            f"{where} (overlapping evidence, not downgraded)")
-        elif kind == "imprecise" and verdict.get("review_discordant"):
+        elif verdict.get("review_discordant"):  # imprecise, a conflict or a flagged consensus (Plan 20 Task 10)
             factors.append(f"minor inconsistency: systematic reviews and primary studies point different ways for "
                            f"{where} (they likely overlap, not downgraded)")
         elif kind == "consensus" and (verdict.get("dissent") or verdict.get("discordant_reviews")):
@@ -132,6 +133,12 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any], questio
         elif kind == "imprecise":
             factors.append(f"mixed significance for {where}: non-significant results without opposite effects are "
                            f"imprecision, not inconsistency")
+    split = f"minor inconsistency: systematic reviews and primary studies point different ways for {where}"
+    if directional and row and not any(f.startswith(split) for f in factors) and any(
+            c.get("outcome") == name and c.get("review_discordant")
+            for c in [*(matrix.get("conflicts") or []), *(matrix.get("consensus") or [])]):
+        # Plan 20 Task 10: the reviews are outside the graded body, but their disagreement is reported
+        factors.append(f"{split} (they likely overlap, not downgraded)")
     others = [c for c in matrix.get("conflicts") or [] if c.get("outcome") != name] if directional else []
     if others:
         factors.append(f"conflicting directions in {len(others)} other outcome(s): reported, not graded (GRADE-lite "
@@ -163,9 +170,21 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any], questio
             factors.append(f"imprecision (already downgraded): {reason}")
         elif reason:
             level -= 1
+            imprecise = True
             factors.append(f"imprecision: {reason}")
+    if single and what == "study":
+        # Plan 20 Task 10 (the SGLT2 re-run graded "high" from one trial per outcome): a single primary study is not
+        # replicated, and its optimal information size cannot be judged from an abstract, so it is downgraded once
+        # (a single SR/MA already combines several studies and is not)
+        text = f"one study for {where} (k = 1): its estimate is not replicated by another study"
+        if imprecise:
+            factors.append(f"imprecision (already downgraded): {text}")
+        else:
+            level -= 1
+            factors.append(f"imprecision: {text}")
     factors.append(NOT_ASSESSED)
-    return {"level": LEVELS[max(level, 0)], "factors": factors}
+    # k: the graded body on the primary outcome; studies: every graded card (the rationale may cite either count)
+    return {"level": LEVELS[max(level, 0)], "factors": factors, "k": len(body), "studies": len(cards)}
 
 
 # ---- the narrative's rationale must agree with the factors (audit I-13e) -------------------------
@@ -187,9 +206,47 @@ def downgraded_domains(factors: list[str]) -> list[str]:
     return [d for d in DOWNGRADE_DOMAINS if any(f.startswith(f"{d}:") for f in factors)]
 
 
-def rationale_problems(rationale: str, factors: list[str]) -> list[str]:
+# Claims the data must back (Plan 20 Task 10: the SGLT2 re-run's rationale said "three randomized controlled trials
+# ... narrow confidence intervals ... consistent" while each outcome had one trial). A count of studies must be the
+# graded body on the primary outcome (`k`) or the number of graded studies; consistency or agreement across studies
+# needs more than one study on the primary outcome.
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+                 "ten": 10, "eleven": 11, "twelve": 12, "a single": 1, "single": 1}
+_STUDY_COUNT = re.compile(
+    r"(?<![\d,.])(?<!phase )\b(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a single|"
+    r"single)\s+(?:(?!patients|participants|people|adults|subjects|years?|months?|weeks?|days?|of\b|in\b)"
+    r"[A-Za-z-]+\s+){0,3}?(?:trials?|studies|study|rcts?)\b", re.IGNORECASE)
+# "consistent with ..." compares with something else and is no claim about the studies' agreement
+_CONSISTENCY_CLAIM = re.compile(r"\b(?:consistent(?:ly)?|consistency)\b(?![^.]{0,20}\bwith\b)|"
+                                r"\bacross (?:the |all |both |several |multiple |different |\w+ )?"
+                                r"(?:trials|studies|rcts)\b|\breplicated\b", re.IGNORECASE)
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _overclaims(sentence: str, factors: list[str], k: int | None, studies: int | None) -> list[str]:
+    problems = []
+    single = any(f.startswith("inconsistency not assessable") for f in factors)
+    if single and _CONSISTENCY_CLAIM.search(sentence) and not re.search(r"not assess|cannot be assessed|single",
+                                                                        sentence, re.IGNORECASE):
+        problems.append("evidence_rationale claims consistency across studies, but the primary outcome has one study "
+                        "(inconsistency not assessable)")
+    if k is not None:
+        allowed = {k, studies} - {None}
+        for m in _STUDY_COUNT.finditer(sentence):
+            word = m.group(1).lower()
+            n = int(word) if word.isdigit() else _NUMBER_WORDS[word]
+            if n not in allowed:
+                problems.append(f"evidence_rationale counts {n} studies, but the graded body has {k} on the primary "
+                                f"outcome ({studies} graded in all)")
+    return problems
+
+
+def rationale_problems(rationale: str, factors: list[str], k: int | None = None,
+                       studies: int | None = None) -> list[str]:
     """Where the narrative's evidence_rationale disagrees with the GRADE-lite factors: a different starting level,
-    or a downgraded domain it never mentions."""
+    a downgraded domain it never mentions, or (Plan 20 Task 10) a claim the data do not show: a count of studies
+    that is neither `k` (the graded body on the primary outcome) nor `studies` (all graded), or consistency across
+    studies when the primary outcome has one study."""
     problems: list[str] = []
     start = next((f.split(":")[0].removeprefix("start ").strip() for f in factors if f.startswith("start ")), None)
     match = _START.search(rationale or "")
@@ -200,16 +257,26 @@ def rationale_problems(rationale: str, factors: list[str]) -> list[str]:
     for domain in downgraded_domains(factors):
         if not _DOMAIN_WORDS[domain].search(rationale or ""):
             problems.append(f"evidence_rationale must explain the {domain} downgrade listed in the GRADE-lite factors")
+    for sentence in _SENTENCE.split(rationale or ""):
+        problems += _overclaims(sentence, factors, k, studies)
     return problems
 
 
-def reconcile_rationale(rationale: str, factors: list[str]) -> tuple[str, str | None]:
+def reconcile_rationale(rationale: str, factors: list[str], k: int | None = None,
+                        studies: int | None = None) -> tuple[str, str | None]:
     """The rationale shown with the grade, made to agree with the factors in code when the model's did not:
-    a contradicting starting level replaces it with the factors; a missing downgrade is appended from the factors.
-    Returns (rationale, "replaced" | "appended" | None)."""
+    sentences with a claim the data do not show are removed (Plan 20 Task 10); then a contradicting starting level, or
+    nothing left, replaces it with the factors, and a missing downgrade is appended from the factors.
+    Returns (rationale, "replaced" | "appended" | "trimmed" | None)."""
+    sentences = _SENTENCE.split(rationale or "")
+    kept = [s for s in sentences if not _overclaims(s, factors, k, studies)]
+    trimmed = len(kept) != len(sentences)
+    rationale = " ".join(kept) if trimmed else rationale
     problems = rationale_problems(rationale, factors)
     if not problems:
-        return rationale, None
+        if trimmed and not rationale.strip():
+            return "; ".join(factors), "replaced"
+        return rationale, "trimmed" if trimmed else None
     if not rationale.strip() or any("starts at" in p for p in problems):
         return "; ".join(factors), "replaced"
     missing = [f for f in factors if any(f.startswith(f"{d}:") for d in downgraded_domains(factors))

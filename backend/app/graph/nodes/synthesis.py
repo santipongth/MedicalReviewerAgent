@@ -71,6 +71,7 @@ from app.harness.prose import (
 )
 from app.harness.quality import summarize_quality
 from app.harness.study_types import allowed_designs, design_allowed
+from app.harness.trials import related_reports
 from app.harness.verify import check_citations, strip_unknown_citations
 from app.schemas.review import NON_QUANTITATIVE_TYPES, SLR_LIKE, ReviewOptions
 from app.services.llm import LLMError
@@ -165,9 +166,24 @@ def design_excluded(state: ReviewState) -> list[str]:
     return [p["ref"] for p in _with_cards(state) if _outside_study_types(state, p)]
 
 
+def related(state: ReviewState) -> dict[str, dict[str, str]]:
+    """Reports of the same trial (Plan 20 Task 10, app.harness.trials): {related ref: {"primary", "reason"}}. Only
+    the primary report of each trial is evidence; the others stay in the paper list, linked to it. A scoping review
+    maps every report, so it has none. A crash of the check leaves every paper independent (logged)."""
+    if _review_type(state) == "scoping":
+        return {}
+    try:
+        return related_reports(_with_cards(state))
+    except Exception:
+        log.exception("related_reports failed; every paper counts as its own study")
+        return {}
+
+
 def _scoped(state: ReviewState) -> list[dict[str, Any]]:
-    """The papers with a card whose design fits the ticked study types (all of them when nothing is ticked)."""
-    return [p for p in _with_cards(state) if not _outside_study_types(state, p)]
+    """The papers with a card whose design fits the ticked study types (all of them when nothing is ticked), without
+    the related reports of a trial whose primary report is analysed."""
+    linked = related(state)
+    return [p for p in _with_cards(state) if not _outside_study_types(state, p) and p["ref"] not in linked]
 
 
 def _direction_papers(state: ReviewState) -> list[dict[str, Any]]:
@@ -400,8 +416,10 @@ def route_conflicts(state: ReviewState) -> list[Send] | str:
 
 def _deterministic_note(conflict: dict[str, Any]) -> dict[str, Any]:
     parts = [f"{d}: {', '.join(f'[{r}]' for r in refs)}" for d, refs in conflict.get("directions", {}).items() if refs]
+    who = ("Systematic reviews and primary studies report" if conflict.get("review_discordant")
+           else "Studies report")
     return {"outcome": conflict["outcome"], "refs": conflict["refs"], "likely_reasons": [],
-            "explanation": f"Studies report different directions for {conflict['outcome']} ({'; '.join(parts)})."}
+            "explanation": f"{who} different directions for {conflict['outcome']} ({'; '.join(parts)})."}
 
 
 def make_explain_conflict(deps):
@@ -533,6 +551,11 @@ DIRECTION_TEXT_TH = {"positive": "ผลการศึกษาสนับส�
 DIRECTION_LABEL_TH = {"positive": "สนับสนุนผลที่คาดไว้", "negative": "ทางตรงข้ามหรือผลเสีย",
                       "null": "ไม่มีนัยสำคัญทางสถิติ"}
 CONFLICT_STATEMENT = {"en": "studies disagree", "th": "ผลการศึกษาไม่สอดคล้องกัน"}
+# Plan 20 Task 10: a split between systematic reviews and primary studies (matrix `review_discordant`)
+REVIEW_CONFLICT_STATEMENT = {"en": "systematic reviews and primary studies disagree",
+                             "th": "ผลของการทบทวนวรรณกรรมอย่างเป็นระบบและการศึกษาปฐมภูมิไม่สอดคล้องกัน"}
+REVIEW_DISSENT = {"en": "; systematic reviews disagree",
+                  "th": " แต่การทบทวนวรรณกรรมอย่างเป็นระบบให้ผลต่างออกไป"}
 
 
 def _th_for(outcome: str) -> str:
@@ -542,7 +565,13 @@ def _th_for(outcome: str) -> str:
 
 def _consensus_statement(c: dict[str, Any], outcome: str | None = None, language: str = "en") -> str:
     texts = DIRECTION_TEXT_TH if language == "th" else DIRECTION_TEXT
-    return f"{outcome or c['outcome']}: {texts.get(c['direction'], c['direction'])}"
+    flag = REVIEW_DISSENT["th" if language == "th" else "en"] if c.get("review_discordant") else ""
+    return f"{outcome or c['outcome']}: {texts.get(c['direction'], c['direction'])}{flag}"
+
+
+def _conflict_statement(c: dict[str, Any], outcome: str | None = None, language: str = "en") -> str:
+    texts = REVIEW_CONFLICT_STATEMENT if c.get("review_discordant") else CONFLICT_STATEMENT
+    return f"{outcome or c['outcome']}: {texts['th' if language == 'th' else 'en']}"
 
 
 def _consensus_explanation_th(c: dict[str, Any], outcome: str) -> str:
@@ -566,7 +595,9 @@ def _consensus_explanation_th(c: dict[str, Any], outcome: str) -> str:
 def _deterministic_explanation_th(conflict: dict[str, Any], outcome: str) -> str:
     parts = [f"{DIRECTION_LABEL_TH.get(d, d)}: {_cite(refs)}" for d, refs in conflict.get("directions", {}).items()
              if refs]
-    return f"การศึกษารายงานทิศทางของผลแตกต่างกัน{_th_for(outcome)} ({'; '.join(parts)})"
+    who = ("การทบทวนวรรณกรรมอย่างเป็นระบบและการศึกษาปฐมภูมิ" if conflict.get("review_discordant")
+           else "การศึกษา")
+    return f"{who}รายงานทิศทางของผลแตกต่างกัน{_th_for(outcome)} ({'; '.join(parts)})"
 
 
 def _consensus_explanation(c: dict[str, Any]) -> str:
@@ -601,7 +632,7 @@ def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list
     conflicts = []
     for c in matrix.get("conflicts", []):
         note = by_outcome.get(c["outcome"]) or _deterministic_note(c)
-        conflicts.append(EvidenceCluster(statement=f"{c['outcome']}: {CONFLICT_STATEMENT['en']}", refs=c["refs"],
+        conflicts.append(EvidenceCluster(statement=_conflict_statement(c), refs=c["refs"],
                                          explanation=note["explanation"], likely_reasons=note["likely_reasons"]))
     return consensus, conflicts
 
@@ -850,8 +881,10 @@ def make_write_synthesis(deps):
         narrative_call = harness_runner(deps).call(
             deps.llms.synthesizer, prompts.narrative_system(review_type if not no_quantitative else "narrative", _themes_only(papers)), user,
             schema=SynthesisNarrative if graded else NarrativeNoGrade, validate=validate, trigger="narrative")
-        outside = set(design_excluded(state))  # not evidence, but their cards are still shown in the user's language
-        shown = papers + [p for p in _with_cards(state) if p["ref"] in outside]
+        # outside the ticked designs or a related report of a trial: not evidence, but their cards are still shown in
+        # the user's language
+        outside = set(design_excluded(state)) | set(related(state))
+        shown = papers + [p for p in _with_cards(state) if p["ref"] in outside and p["ref"] not in allowed]
         res, cards = await asyncio.gather(narrative_call, _localize_cards(deps, shown, language),
                                           return_exceptions=True)
         cost, errors = 0.0, []
@@ -904,7 +937,9 @@ def make_write_synthesis(deps):
         rationale_fix = None
         if graded and not entry["fallback"]:  # after every removal: what is shown must agree with the factors
             try:
-                text, rationale_fix = reconcile_rationale(narrative.evidence_rationale, factors)
+                grade = matrix.get("grade") or {}
+                text, rationale_fix = reconcile_rationale(narrative.evidence_rationale, factors,
+                                                          grade.get("k"), grade.get("studies"))
             except Exception as exc:
                 log.exception("reconcile_rationale failed")
                 errors.append(f"rationale reconciliation failed: {type(exc).__name__}")
@@ -919,6 +954,10 @@ def make_write_synthesis(deps):
         if wording and not entry["fallback"] and summary != PROSE_REMOVED and not wording.search(summary):
             summary, certainty_added = f"{summary} {CERTAINTY_SENTENCE[strength]}", 1
         no_pool = _no_pool(review_type, meta)
+        if no_pool and not _SAYS_NO_POOL.search(summary):
+            # Plan 20 Task 10: a meta-analysis that pooled nothing says so in the summary too, not only in the answer
+            summary = f"{NO_POOL_ANSWER} {summary}"
+            entry["no_pool_stated"] = True
         try:  # Plan 20; a crash fails closed: no model-written answer or findings (the no-pool sentence stays)
             answer, answer_removed = _bottom_line(narrative.answer, prose, allowed, no_pool=no_pool, strength=strength)
             key_findings, findings_dropped = _key_findings(narrative.key_findings, prose, allowed,
@@ -1018,7 +1057,7 @@ def _templated(synthesis: dict[str, Any], matrix: dict[str, Any]) -> dict[str, t
             out[f"consensus.{i}.statement"] = ("consensus_statement", c)
             if item.get("explanation") == _consensus_explanation(c):
                 out[f"consensus.{i}.explanation"] = ("consensus_explanation", c)
-    conflicts = {f"{c['outcome']}: {CONFLICT_STATEMENT['en']}": c for c in matrix.get("conflicts") or []}
+    conflicts = {_conflict_statement(c): c for c in matrix.get("conflicts") or []}
     for i, item in enumerate(synthesis.get("conflicts") or []):
         c = conflicts.get(item.get("statement"))
         if c is not None:
@@ -1038,7 +1077,7 @@ def _render_th(templated: dict[str, tuple[str, dict[str, Any]]], names: dict[str
         elif kind == "consensus_explanation":
             out[key] = _consensus_explanation_th(c, outcome)
         elif kind == "conflict_statement":
-            out[key] = f"{outcome}: {CONFLICT_STATEMENT['th']}"
+            out[key] = _conflict_statement(c, outcome, "th")
         else:
             out[key] = _deterministic_explanation_th(c, outcome)
     return out
@@ -1174,15 +1213,22 @@ def make_finalize(deps):
         synthesis_en = state.get("synthesis") or _empty_synthesis(NO_PAPERS["en"], _review_type(state))
         synthesis = state.get("synthesis_display") or synthesis_en
         localized = state.get("localized_cards") or {}
+        linked = related(state)  # Plan 20 Task 10: reports of the same trial
+        reports: dict[str, list[str]] = {}
+        for ref, link in linked.items():
+            reports.setdefault(link["primary"], []).append(ref)
         out_papers = []
         for p in papers:
             c = p["candidate"]
+            link = linked.get(p["ref"]) or {}
             out_papers.append({
                 "ref": p["ref"], "title": c["title"], "authors": c.get("authors") or [], "year": c.get("year"),
                 "journal": c.get("journal"), "doi": c.get("doi"), "pmid": c.get("pmid"), "pmcid": c.get("pmcid"),
                 "url": c.get("url"), "relevance": p.get("relevance"), "screen_reason": p.get("screen_reason"),
                 "card": localized.get(p["ref"]) or p.get("card"), "card_en": p.get("card"),
                 "verification": p.get("verification"), "error": p.get("error"),
+                "related_to": link.get("primary"), "related_reason": link.get("reason"),
+                "related_reports": sorted(reports.get(p["ref"], []), key=_ref_num),
             })
         stats = state.get("search_stats") or {}
         selection = state.get("selection_stats") or {}
@@ -1212,6 +1258,9 @@ def make_finalize(deps):
                                        # read as a design outside the ticked types after selection: not evidence
                                        "study_design_corrected": len(design_excluded(state)),
                                        "low_relevance": selection.get("low_relevance", 0)},
+                # Plan 20 Task 10: analysed papers that are further reports of a trial already analysed (PRISMA
+                # 2020 counts studies and reports apart); they are linked to its primary report, not evidence
+                "related_reports": len(linked),
             },
             "quality": summarize_quality(state.get("quality") or [], state.get("started_at")),
             "errors": list(state.get("errors") or []), "prompt_version": deps.settings.prompt_version,

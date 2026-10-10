@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate
 from app.graph.state import ReviewState
+from app.harness.trials import trial_acronyms, trial_key
 from app.schemas.review import ReviewOptions
 from app.services.dedupe import merge_candidates
 
@@ -68,23 +69,10 @@ def trial_search_queries(queries: list[str], limit: int) -> list[str]:
 # The planner is asked for a trial-name query but often writes none (the SGLT2 re-run had five keyword queries), and
 # the landmark trials then depend on keyword ranking. Their acronyms are, however, all over the first-round hits:
 # reviews, sub-studies and commentaries name them ("the EMPEROR-Reduced trial", "DAPA-HF ClinicalTrials.gov number").
-# An acronym counts only in a trial context (followed by trial/study/programme/investigators/ClinicalTrials.gov, or
-# in brackets after "trial"/"study"), has at least 4 capitals, and is named by at least TRIAL_NAME_MIN_DOCS hits.
-_ACRONYM = (r"[A-Z][A-Z0-9]{2,}(?:[-–][A-Za-z0-9]+)*(?:\s(?:TIMI\s)?\d{1,3}\b)?"
-            r"(?:\s(?:OUTCOMES?|PROGRAM(?:ME)?)\b)?")
-_ACRONYM_IN_CONTEXT = re.compile(
-    rf"({_ACRONYM})\s*\)?\s*(?i:trials?|study|studies|programme|program|investigators|ClinicalTrials)\b")
-_ACRONYM_IN_BRACKETS = re.compile(rf"\b(?i:trial|study)\s*\(({_ACRONYM})\)")
-_NOT_TRIAL_NAMES = frozenset({"OUTCOME", "OUTCOMES", "CVOT", "CVOTS", "RCT", "RCTS", "NYHA", "HFPEF", "HFREF",
-                              "HFMREF", "LVEF", "COVID", "COVID-19", "SARS", "MACE", "KCCQ", "PRISMA", "GRADE",
-                              "NHANES", "SEER", "MIMIC", "UK", "USA", "NIH", "WHO", "FDA", "EMA", "NICE"})
+# An acronym counts only in a trial context (app.harness.trials) and when at least TRIAL_NAME_MIN_DOCS hits name it.
 TRIAL_NAME_MIN_DOCS = 2
 TRIAL_NAME_LIMIT = 12
 TRIAL_NAME_FRONT = 10  # the name search's best hits that lead the candidate list
-
-
-def _trial_key(name: str) -> str:
-    return re.sub(r"[\s\-–]+", "-", name.strip()).upper()
 
 
 def harvest_trial_names(cands: list[Candidate], *, min_docs: int = TRIAL_NAME_MIN_DOCS,
@@ -94,18 +82,10 @@ def harvest_trial_names(cands: list[Candidate], *, min_docs: int = TRIAL_NAME_MI
     docs: Counter[str] = Counter()
     spellings: dict[str, Counter[str]] = {}
     for c in cands:
-        text = f"{c.title}. {c.abstract or ''}"
-        matches = sorted((m.start(1), m.group(1)) for pattern in (_ACRONYM_IN_CONTEXT, _ACRONYM_IN_BRACKETS)
-                         for m in pattern.finditer(text))
         keys: dict[str, None] = {}  # in text order, so ties rank deterministically
-        for _, name in matches:
-            name = re.sub(r"\s+", " ", name.replace("–", "-")).strip()
-            key = _trial_key(name)
-            if (key in _NOT_TRIAL_NAMES or key.split("-")[0] in _NOT_TRIAL_NAMES
-                    or sum(ch.isupper() for ch in name) < 4 or re.search(r"\d{5,}", name)):
-                continue
-            keys[key] = None
-            spellings.setdefault(key, Counter())[name] += 1
+        for name in trial_acronyms(c.title, c.abstract):
+            keys[trial_key(name)] = None
+            spellings.setdefault(trial_key(name), Counter())[name] += 1
         docs.update(list(keys))
     ranked = [k for k, n in docs.most_common() if n >= min_docs]
     return [spellings[k].most_common(1)[0][0] for k in ranked[:limit]]

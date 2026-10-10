@@ -128,7 +128,8 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   (null, or `pools: []`) always says so: a fixed sentence ("Pooling was not possible: ...") leads the answer unless it
   already states that pooling was not possible, and any answer sentence that claims a pooled or overall effect is
   removed. `""` when the narrative step failed (or for results stored before Plan 20); a review with no papers repeats
-  its notice.
+  its notice. Since Plan 20 Task 10 the same fixed sentence also leads `executive_summary` (and so `summary`) of such a
+  meta-analysis when the summary does not already say that pooling was not possible.
 - `key_findings[]`: at most 5 items `{outcome, statement, refs[], k}`, most important first.
   - `outcome` is a `synthesis.comparison` row name when the finding is about a row (matched case-insensitively and
     written exactly as the row), else a short outcome name. In `synthesis` it is localized like the row, so it
@@ -305,9 +306,31 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 - Systematic reviews/meta-analyses usually contain the row's primary studies: when the primary studies alone reach
   a consensus or a conflict, an SR/MA only corroborates (it is added to the consensus `refs` and named in the
   explanation) or, when it points elsewhere, is named in the explanation as a discordant review ("Systematic reviews
-  [P1] report a different direction."); it is never counted twice and never a conflict against them. Otherwise each
-  SR/MA counts as one study, except that a split running exactly between SR/MAs on one side and primary studies on
-  the other is "review discordant" (the review likely contains those trials): imprecision, never a conflict.
+  [P1] report a different direction."); it is never counted twice. Otherwise each SR/MA counts as one study, except
+  that a split running exactly between SR/MAs on one side and primary studies on the other is "review discordant"
+  (the review likely contains those trials) and is never decided by a majority.
+- Splits between reviews and primary studies (Plan 20 Task 10; the metformin re-run showed two non-significant
+  cohorts as a "no association" consensus while five SR/MAs reported a significant benefit). A review-discordant
+  split is a `synthesis.conflicts` entry when it is real: a statistically significant SR/MA on the side opposite a
+  directional primary consensus, a significant study on each side, or 95% CIs that do not overlap (HR, RR and OR
+  are compared with each other for this check only). Its statement reads "<outcome>: systematic reviews and primary
+  studies disagree" (fixed Thai in Thai reviews), the conflict explainer runs for it, and the matrix entry carries
+  `review_discordant: true`. Without a real split a primary consensus that significant SR/MAs contradict stays a
+  consensus, flagged `review_discordant: true` in the matrix, with "; systematic reviews disagree" added to its
+  statement and the reviews named in its explanation; a split in the fallback pass stays imprecision. None of these
+  downgrades the grade (below).
+- Reports of the same trial (Plan 20 Task 10). A trial's primary paper, commentaries on it and its subgroup or post
+  hoc analyses are one study. Papers are linked when they share a trial acronym written in a trial context ("the
+  EMPEROR-Preserved trial", "DAPA-HF ClinicalTrials.gov number", a title opening "EMPEROR-Preserved: ...") or a
+  registry number (NCT, ISRCTN), or when their titles are near-identical with the same first author and years at most
+  one apart. A paper naming several trials never links them together, and SR/MAs are never grouped. Of each group one
+  primary report is kept (a title that is not a subgroup/post hoc/commentary/design paper, then an RCT design and
+  publication type, more estimates with a CI, a larger sample, the earlier year). Only it is evidence: the others
+  are left out of the comparison, consensus, conflicts, pools, GRADE-lite, every k and (graded types) the narrative.
+  They stay in `papers` with `related_to` (the primary's ref) and `related_reason` ("same trial (EMPEROR-Preserved)",
+  "same trial (NCT03057951)" or "near-identical title, same first author and year"); the primary lists them in
+  `related_reports[]`. `stats.related_reports` counts them (PRISMA 2020 counts studies and reports apart). Scoping
+  reviews map every report and link none. Results stored before Plan 20 Task 10 have none of these keys.
 - No direction logic at all (empty consensus and conflicts, every cell `direction` `"unclear"`) for scoping reviews,
   for themes reviews (every ticked study type is Qualitative or Mixed methods), for `prevalence` and `diagnosis`
   questions, and for `other` questions with no evidence outcome measured as HR/OR/RR/RD/MD/SMD/r (with or without a
@@ -331,13 +354,24 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 - Imprecision: the primary outcome's sample size (the graded body's primary studies summed, or the largest
   same-tier SR/MA in that row, whichever is larger; participants outside the graded body never count) below 400, or
   not reported. With one study or one review in the body, also one level down (at most one level for the domain)
-  when its 95% CI includes no effect, or when it is non-significant and reports no CI.
+  when its 95% CI includes no effect, or when it is non-significant and reports no CI. Since Plan 20 Task 10 a body of
+  one primary study is always downgraded once for imprecision ("one study for ... (k = 1): its estimate is not
+  replicated"; again at most one level for the domain): one trial per outcome is never `high`. A single SR/MA, which
+  already combines studies, is not.
+- A review-discordant split on the primary outcome (above) is recorded as "minor inconsistency: systematic reviews
+  and primary studies point different ways ..." without a downgrade.
+- The baseline handed to the narrative model (internal, not a result key) also carries `k` (the graded body on the
+  primary outcome) and `studies` (all graded cards).
 - Indirectness, publication bias and upgrades for observational evidence are not assessed (the factors say so).
 - The meta-analysis pooled-grade reasons (above) still apply once per domain on top of this baseline.
 - `synthesis.evidence_rationale` must agree with these factors. It is reconciled in code, without a model round:
   when it omits a downgraded domain, the missing downgrade is appended from the factors, and when it states another
-  starting level, the rationale is replaced with the factors.
-  `result.quality.prose_check.rationale_fixed` is `"replaced"`, `"appended"` or `null`.
+  starting level, the rationale is replaced with the factors. Since Plan 20 Task 10 a rationale sentence that claims
+  what the data do not show is removed first: a count of trials/studies that is neither `k` nor `studies`, or
+  consistency, agreement "across trials" or replication when the primary outcome has one study ("consistent with
+  ..." comparisons are allowed). A rationale left empty is replaced with the factors.
+  `result.quality.prose_check.rationale_fixed` is `"replaced"`, `"appended"`, `"trimmed"` (sentences removed, nothing
+  else needed) or `null`.
 
 **Grounded prose (Plan 19).** The executive summary, the evidence rationale (graded types), each research gap, each
 conflict explanation and each conflict `likely_reasons` item are checked sentence by sentence, in English before
