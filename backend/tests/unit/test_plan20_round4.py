@@ -41,7 +41,6 @@ def answer(text: str, strength: str | None) -> str:
     ("Metformin may lower CRC incidence; there is no high-certainty evidence.", "low"),
     ("Metformin may lower CRC incidence; the certainty of the evidence is not high.", "low"),
     ("In earlier reviews, the certainty of the evidence was high. Metformin may lower CRC incidence.", "low"),
-    ("Metformin may lower CRC risk (GRADE: high).", "low"),  # not one of the narrow self-claim forms
     ("Metformin may lower risk in patients at high risk.", "low"),
 ])
 def test_level_words_outside_the_narrow_self_claims_are_untouched(text, strength):
@@ -94,8 +93,9 @@ def test_the_restored_answer_still_loses_a_wrong_self_claim(monkeypatch):
 
 # ---- N16: the crash fallback applies the same narrow removal and appends the certainty sentence -----------------
 @pytest.mark.parametrize(("text", "strength", "expected"), [
+    # fix round 5: the wrong-level label goes as a token (test_plan20_round5.py has the label cases)
     ("Metformin lowers CRC incidence (high-certainty evidence).", "low",
-     "Metformin lowers CRC incidence (high-certainty evidence). The certainty of the evidence is low."),
+     "Metformin lowers CRC incidence. The certainty of the evidence is low."),
     ("The certainty of the evidence is high. Metformin may lower CRC incidence [P1].", "low",
      "Metformin may lower CRC incidence. The certainty of the evidence is low."),
     ("Metformin may lower CRC incidence. The certainty of the evidence is low.", "low",

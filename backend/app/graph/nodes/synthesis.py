@@ -754,6 +754,21 @@ _SAYS_NO_POOL = re.compile(
     r"|\bno\s+pooled\s+(?:estimate|analysis)\s+(?:was|could)")
 _POOLED_CLAIM = re.compile(r"(?i)\b(?:pooled|pooling|overall effect|combined estimate)\b")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[])")
+# A piece that ends in a common abbreviation or an initial does not end a sentence (fix round 5, N20): "vs.",
+# "e.g.", "i.e.", "et al.", "approx.", "Fig.", "No.", "cf." or a single capital letter ("J. Smith").
+_ABBREVIATION_END = re.compile(r"(?:\b(?:vs|Vs|et al|approx|Approx|Figs?|No|Nos|cf)|\b[eE]\.g|\b[iI]\.e"
+                               r"|(?<![\w.])[A-Z])\.$")
+
+
+def _split_sentences(text: str) -> list[str]:
+    """The sentences of a text, split after . ! ? before a capital or "[", never after an abbreviation."""
+    out: list[str] = []
+    for piece in _SENTENCE_END.split(text) if text else []:
+        if out and _ABBREVIATION_END.search(out[-1]):
+            out[-1] = f"{out[-1]} {piece}"
+        else:
+            out.append(piece)
+    return out
 _CITE_GROUP = re.compile(r"\s*\[\s*P\d+[^\]]*\]")
 ANSWER_CERTAINTY = {"high": "The certainty of the evidence is high.",
                     "moderate": "The certainty of the evidence is moderate.",
@@ -804,7 +819,7 @@ def _fallback_answer(answer: str, allowed: set[str], *, no_pool: bool, strength:
     another certainty level is removed as in _bottom_line; the no-pool sentence leads and, for a graded review, the
     fixed certainty sentence always ends it (fix round 4, N16)."""
     text = _CITE_GROUP.sub("", strip_unknown_citations(answer or "", allowed)).strip()
-    kept = [s for s in _SENTENCE_END.split(text) if s and not re.search(r"\d", s)
+    kept = [s for s in _split_sentences(text) if s and not re.search(r"\d", s)
             and not (no_pool and _POOLED_CLAIM.search(s) and not _SAYS_NO_POOL.search(s))] if text else []
     text, _n = _drop_wrong_self_claims(" ".join(kept), strength)
     if no_pool and not _SAYS_NO_POOL.search(text):
@@ -820,7 +835,10 @@ def _fallback_answer(answer: str, allowed: set[str], *, no_pool: bool, strength:
 # - a sentence opening "<Level>-certainty evidence" or "<Level> certainty evidence" + shows/suggests/indicates/supports.
 # Everything else stays as written: negations ("is not high", "is lacking", "no high-certainty evidence"), needs,
 # per-outcome levels ("was high for incidence but low for mortality"), another source's claim ("Earlier reviews
-# reported ...", "In previous reviews, the certainty ...") and labels such as "(high-certainty evidence)".
+# reported ...", "In previous reviews, the certainty ..."). Since fix round 5 a wrong-level label ("(high-certainty
+# evidence)", "GRADE: high") is removed as a token (_drop_wrong_labels), never its sentence. Known residuals (N18,
+# N19): a removed self-claim takes its whole sentence with it, and an other-source word anywhere before the claim
+# keeps it (next to the appended sentence).
 _LEVEL = r"(?P<lvl>very[- ]low|low|moderate|high)"
 _SELF_CLAIMS = (
     re.compile(rf"(?i)(?:^|[,;:]\s*|\b(?:and|but|so)\s+)the (?:certainty|quality) of (?:the )?evidence"
@@ -845,12 +863,46 @@ def _wrong_self_claim(sentence: str, strength: str) -> bool:
     return False
 
 
+# Level labels (fix round 5, controller option): a wrong-level "(<level>-certainty evidence)" or "GRADE: <level>" is
+# removed as a token, with its brackets and its separator; the rest of the sentence stays as written.
+_LEVEL_LABELS = (
+    re.compile(rf"(?i)\s*\(\s*{_LEVEL}[- ]certainty(?: of(?: the)?)? evidence\s*\)"),
+    re.compile(rf"(?i)\s*\(\s*GRADE:\s*{_LEVEL}\s*\)"),
+    re.compile(rf"(?i)(?:\s*[;,]\s*|\s+|^)GRADE:\s*{_LEVEL}\b"),
+)
+
+
+def _drop_wrong_labels(sentence: str, strength: str) -> tuple[str, int]:
+    removed = 0
+
+    def drop(m: re.Match[str]) -> str:
+        nonlocal removed
+        if _level_key(m.group("lvl")) == strength:
+            return m.group(0)
+        removed += 1
+        return ""
+
+    for pattern in _LEVEL_LABELS:
+        sentence = pattern.sub(drop, sentence)
+    return sentence.strip(), removed
+
+
 def _drop_wrong_self_claims(text: str, strength: str | None) -> tuple[str, int]:
-    """Sentences that claim another certainty level for this review, removed (never rewritten). Ungraded: none."""
+    """Wrong-level labels removed as tokens, then the sentences that claim another certainty level for this review
+    removed (never rewritten). Ungraded: nothing. Returns (text, labels and sentences removed)."""
     if not strength or not text:
         return text, 0
-    kept = [s for s in _SENTENCE_END.split(text) if not _wrong_self_claim(s, strength)]
-    return " ".join(kept), len(_SENTENCE_END.split(text)) - len(kept)
+    kept, removed = [], 0
+    for sentence in _split_sentences(text):
+        sentence, n = _drop_wrong_labels(sentence, strength)
+        removed += n
+        if not re.search(r"\w", sentence):
+            continue  # nothing but the label was left ("GRADE: high.")
+        if _wrong_self_claim(sentence, strength):
+            removed += 1
+            continue
+        kept.append(sentence)
+    return " ".join(kept), removed
 
 
 def _with_certainty(text: str, strength: str | None) -> str:
@@ -865,7 +917,7 @@ def _with_certainty(text: str, strength: str | None) -> str:
 def _drop_pooled_claims(text: str) -> tuple[str, int]:
     """Sentences that claim a pooled or overall effect, removed (a meta-analysis that pooled nothing)."""
     kept, removed = [], 0
-    for sentence in _SENTENCE_END.split(text) if text else []:
+    for sentence in _split_sentences(text):
         if _POOLED_CLAIM.search(sentence) and not _SAYS_NO_POOL.search(sentence):
             removed += 1
             continue

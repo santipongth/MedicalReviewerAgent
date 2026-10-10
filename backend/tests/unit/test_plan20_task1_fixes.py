@@ -170,11 +170,11 @@ def test_quality_phrases_and_negated_claims_are_not_rewritten(answer, strength):
     assert text.startswith(answer)
 
 
-def test_grade_label_stays_and_a_certainty_of_evidence_self_claim_is_removed():
-    # fix round 4 (N10 ruling): "GRADE: high" is not one of the narrow self-claim forms, so it stays as written; the
+def test_grade_label_and_a_certainty_of_evidence_self_claim_are_removed():
+    # fix round 5: a wrong-level "GRADE: high" label is removed as a token with its brackets, never rewritten; the
     # certainty sentence carries the final level
     text, _ = _bottom_line("Metformin may lower CRC risk (GRADE: high).", CTX, ALLOWED, no_pool=False, strength="low")
-    assert text == f"Metformin may lower CRC risk (GRADE: high). {ANSWER_CERTAINTY['low']}"
+    assert text == f"Metformin may lower CRC risk. {ANSWER_CERTAINTY['low']}"
     text, _ = _bottom_line("Metformin may lower CRC risk. The certainty of evidence was high.", CTX, ALLOWED,
                            no_pool=False, strength="low")
     assert text == f"Metformin may lower CRC risk. {ANSWER_CERTAINTY['low']}"

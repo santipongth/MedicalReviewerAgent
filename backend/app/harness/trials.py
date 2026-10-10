@@ -177,6 +177,20 @@ _SELF_EXPLICIT = re.compile(
     r"\bthis (commentary|editorial|review|perspective|viewpoint) (of|on|about|discusses|summari[sz]es|reviews)\b|"
     r"\bin the [A-Z][\w-]+(?: [\w-]+){0,4} (trial|study)\s*,\s*we\b")
 _SELF_PATIENTS = re.compile(r"(?i)\b(enrolled|randomi[sz]ed|participating) in the\b")
+# Explicit ownership (fix round 5, N22): the non-"we" self patterns above, or a we-sentence whose ownership verb is
+# aimed at the trial itself ("we conducted/designed/performed/report(ed) (the results of) the X trial", "in the X
+# trial, we randomised/assigned"). A we-sentence that only uses or cites a trial ("we enrolled patients who met the X
+# trial criteria", "we followed the X trial protocol") is no explicit owner.
+_SELF_THIS = re.compile(
+    r"(?i)\b(this|the present|the current) ((secondary|post[- ]?hoc|pre-?specified|exploratory|ancillary) )?"
+    r"(analysis|substudy|sub-study|study|report|trial) (of|from|in|using|was)\b|"
+    r"\bthe (aims?|objectives?|purpose) of this\b|"
+    r"\bthis (commentary|editorial|review|perspective|viewpoint) (of|on|about|discusses|summari[sz]es|reviews)\b")
+_TRIAL_WORD = r"\s+(?i:trial|study|program|programme)\b"
+_OWNER_WE = re.compile(
+    rf"(?i:\bwe\s+(?:conducted|designed|performed|report(?:ed)?)\s+(?:the\s+(?:[\w-]+\s+)?results\s+of\s+)?"
+    rf"(?:the\s+)?)({ACRONYM})(?={_TRIAL_WORD})|"
+    rf"(?i:\bin\s+the\s+)({ACRONYM})(?={_TRIAL_WORD}\s*,\s*(?i:we)\s+(?i:randomi[sz]ed|randomly assigned|assigned)\b)")
 
 
 def own_trial_names(title: str | None, abstract: str | None = None, *, explicit: bool = False) -> list[str]:
@@ -186,8 +200,9 @@ def own_trial_names(title: str | None, abstract: str | None = None, *, explicit:
     self pattern ("we analysed ... the X trial", "this secondary analysis of X", "patients enrolled in the X trial"),
     and there never right after a citing cue ("consistent with", "agrees with", "supports", "unlike", "as in", ...).
     A trial an abstract only cites outside these places, or after a cue, is not the paper's own. `explicit` (fix
-    round 4, N15): only the title, the registration and the paper's own voice (_SELF_EXPLICIT) count, not the
-    Methods section or "patients enrolled in the X trial"."""
+    round 4, N15): only the title, the registration, the non-"we" self patterns (_SELF_THIS) and a we-sentence whose
+    ownership verb is aimed at the trial (_OWNER_WE, fix round 5, N22) count, not the Methods section, "patients
+    enrolled in the X trial" or a we-sentence that only uses or cites the trial."""
     title = "" if _mostly_caps(title or "") else (title or "")
     lead = _TITLE_LEAD.match(title)
     names = [_clean(lead.group(1))] if lead and _distinctive(lead.group(1)) and _is_name(_clean(lead.group(1))) else []
@@ -198,7 +213,12 @@ def own_trial_names(title: str | None, abstract: str | None = None, *, explicit:
     # ("The DAPA-HF trial showed ..." opens many follow-up trials); the self sentences below include it then
     places = [] if explicit else [m.group(1) for m in _METHODS.finditer(text.strip())]
     places += [s for s in sentences if re.search(r"ClinicalTrials|\bNCT\d{8}|ISRCTN|registered", s)]
-    places += [s for s in sentences if _SELF_EXPLICIT.search(s) or (not explicit and _SELF_PATIENTS.search(s))]
+    if explicit:  # fix round 5 (N22): the paper's own voice only with an ownership verb aimed at the trial
+        places += [s for s in sentences if _SELF_THIS.search(s)]
+        names += [_clean(g) for s in sentences for m in _OWNER_WE.finditer(s) for g in m.groups()
+                  if g and _is_name(_clean(g))]
+    else:
+        places += [s for s in sentences if _SELF_EXPLICIT.search(s) or _SELF_PATIENTS.search(s)]
     for place in places:
         for start, name in _name_matches(place, own=True):
             if not _CITING_CUE.search(place[:start]) and _is_name(name):
@@ -303,17 +323,39 @@ def _primary_score(paper: dict[str, Any]) -> tuple:
 _REPORT_TYPE = re.compile(
     r"(?i)\b((secondary|post[- ]?hoc|pre-?specified|exploratory|ancillary) analys[ie]s|sub-?stud(y|ies)|"
     r"sub-?group analys[ie]s|follow[- ]?up (of|from) the|extension (study )?of the|insights? from|"
-    r"according to\b[^.:;]{0,100}?\bin (the )?(?-i:[A-Z][A-Za-z0-9]*[A-Z])|an? report from the|an analysis from the|"
-    r"rationale and design|design and rationale|baseline characteristics)\b")
+    r"an? report from the|an analysis from the|rationale and design|design and rationale|baseline characteristics)\b")
+# "according to ... in (the) X" is a subgroup report only when X is a trial name (fix round 5, N21): a distinctive
+# name ("in DAPA-HF") or a name followed by trial/study/program(me) ("in the CANVAS Program"); never a disease or
+# setting acronym ("in COPD", "in ICU patients", "in HIV", "in ARIC participants").
+_ACCORDING_TO = re.compile(rf"(?i:according to)\b[^.:;]{{0,100}}?\b(?i:in)\s+(?:(?i:the)\s+)?({ACRONYM})"
+                           rf"(\s+(?i:trials?|study|program|programme))?")
+# The design text (free text from the extraction) counts only when it describes this paper as a report of a trial
+# (fix round 5, N21): "this (prespecified subgroup) analysis", "a secondary analysis of the X trial", "post hoc
+# analysis of a randomised trial", "substudy of the X trial"; never "RCT with prespecified subgroup analyses".
+_DESIGN_REPORT_TYPE = re.compile(
+    r"(?i)\bthis\s+(?:[\w-]+\s+){0,3}(?:analysis|sub-?study)\b|"
+    r"\b(?:(?:secondary|post[- ]?hoc|pre-?specified|exploratory|ancillary|sub-?group)\s+)+analys[ie]s\s+(?:of|from)\s+"
+    r"(?:the|an?)\s+(?:[\w-]+\s+){0,4}?(?:trial|study|RCT)\b|"
+    r"\bsub-?study\s+of\s+(?:the|an?)\b|\b(?:follow[- ]?up|extension(?: study)?)\s+of\s+the\b")
+
+
+def _according_to_trial(title: str) -> bool:
+    for m in _ACCORDING_TO.finditer(title):
+        name = _clean(m.group(1))
+        if _is_name(name) and (_distinctive(name) or m.group(2)):
+            return True
+    return False
 
 
 def is_secondary_report(paper: dict[str, Any]) -> bool:
     """A secondary report, sub-study, follow-up or commentary (fix round 3 ruling; report-type phrases only since fix
-    round 4): only these link to a trial by its name alone."""
+    round 4; an anchored design text and "according to" a trial name since round 5): only these link to a trial by
+    its name alone."""
     c = paper.get("candidate") or {}
     card = paper.get("card") or {}
-    return is_commentary(paper) or bool(_REPORT_TYPE.search(c.get("title") or "")) or bool(
-        _REPORT_TYPE.search(card.get("study_design") or ""))
+    title = c.get("title") or ""
+    return (is_commentary(paper) or bool(_REPORT_TYPE.search(title)) or _according_to_trial(title)
+            or bool(_DESIGN_REPORT_TYPE.search(card.get("study_design") or "")))
 
 
 def _n_fits(p: dict[str, Any], q: dict[str, Any], regs: dict[str, set[str]]) -> bool:

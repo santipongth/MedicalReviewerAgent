@@ -129,13 +129,24 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   evidence (overall / for this review / in this review) is/was <level>", opening the sentence or a clause (after a
   comma, semicolon, colon, "and", "but" or "so") with the level ending the clause; and a sentence that opens
   "<Level>-certainty evidence" or "<Level> certainty evidence" followed by shows/suggests/indicates/supports ("very-low"
-  and "very low" are one level). The whole sentence goes; these removals count in `prose_check.answer_removed`.
+  and "very low" are one level). The whole sentence goes, including any other claim it makes: "Metformin may lower CRC
+  incidence; the certainty of the evidence is moderate." on a low review leaves only the certainty sentence, and a
+  per-outcome sentence in this form ("For mortality, the certainty of the evidence was high.") is removed too (known
+  limit, N18). A wrong-level label is removed as a token instead, with its brackets and its separator, and the rest
+  of its sentence stays: "(high-certainty evidence)", "(High certainty evidence)", "(GRADE: high)" or "; GRADE: high"
+  (a sentence left with only the label goes). Labels of the final level stay. Label and sentence removals count in
+  `prose_check.answer_removed`. Sentences are split after ".", "!" or "?" before a capital letter, but never after
+  "vs.", "e.g.", "i.e.", "et al.", "approx.", "Fig.", "No.", "cf." or a single capital letter ("J. Smith"); so a
+  sentence that really ends in a one-letter word ("vitamin D.") is joined with the next one.
   Everything else stays as written: negations and needs ("is not high", "high-certainty evidence is lacking/needed",
   "no high-certainty evidence", "in the absence of", "neither ... nor", "whether"), per-outcome levels ("was high for
   incidence but low for mortality"), another source's claim (a sentence with "earlier", "previous", "prior", "other",
-  "published", "existing", "reported" or "according to" before the level), labels such as "(high-certainty evidence)"
-  or "GRADE: high", "quality" phrases about studies and level words elsewhere ("patients at high risk"); the appended
-  sentence carries the final level. Ungraded answers lose nothing for a level and get no certainty sentence. The
+  "published", "existing", "reported" or "according to" anywhere before the level), "quality" phrases about studies
+  and level words elsewhere ("patients at high risk"); the appended sentence carries the final level. Because the
+  other-source words are searched in the whole sentence before the claim, a real wrong self-claim can stay next to
+  the appended sentence, which then contradicts it ("... and other cancers, but the certainty of the evidence is high.
+  The certainty of the evidence is moderate."; known limit, N19); the appended sentence always comes last. Ungraded
+  answers lose nothing for a level and get no certainty sentence. The
   answer carries no `[Pn]` citations: its numbers, populations and measures are checked
   against the papers it cites, then the citations are stripped in code. When the checks would remove every sentence,
   the model's answer stays, minus any self-claim of another level, unless it carries a number, which could be
@@ -387,17 +398,25 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   with an explicit self pattern ("we conducted/performed/analysed/enrolled ...", "this secondary/post hoc/prespecified
   analysis of", "the aims of this study", "patients enrolled in the X trial", "in the X trial, we", "this commentary
   discusses"). The abstract's first sentence or Background section counts only through such a self pattern ("The
-  DAPA-HF trial showed ..." opens many follow-up trials and is no claim). Structural backstop (fix rounds 3 and 4): a
+  DAPA-HF trial showed ..." opens many follow-up trials and is no claim). Structural backstop (fix rounds 3 to 5): a
   shared name alone links a paper only when it, or every primary-looking member of the trial's group, is a secondary
-  report, sub-study, follow-up or commentary. That means a commentary, or a report-type phrase in the title or design
-  text: "secondary/post hoc/prespecified/exploratory/ancillary analysis", "substudy", "subgroup analysis", "follow-up
-  of the X", "extension (study) of the X", "insights from", "according to ... in (the) X", "a report from the X", "an
-  analysis from the X", "rationale and design" or "baseline characteristics". Bare words that primary trials use
+  report, sub-study, follow-up or commentary. That means a commentary, or a report-type phrase in the title:
+  "secondary/post hoc/prespecified/exploratory/ancillary analysis", "substudy", "subgroup analysis", "follow-up of the
+  X", "extension (study) of the X", "insights from", "a report from the X", "an analysis from the X", "rationale and
+  design" or "baseline characteristics"; or "according to ... in (the) X" where X is a trial name (a distinctive name
+  such as "DAPA-HF", or a name followed by trial/study/program(me); never "in COPD", "in ICU patients", "in HIV" or
+  "in ARIC participants"). The design text counts only when it describes the paper itself as such a report: "this
+  (prespecified subgroup) analysis/substudy", "a secondary/post hoc/... analysis of the X trial" or "of a randomised
+  trial", "substudy of the X", "follow-up/extension of the X"; never "RCT with prespecified subgroup analyses",
+  "secondary analyses of quality of life" or "baseline characteristics balanced". Bare words that primary trials use
   ("secondary prevention", "long-term", "12-month follow-up", "extension", "results from", "data from", "patients in
   the") are no cue. A secondary report joins a primary-looking report only when its n is at most that report's n
   (with an n unknown, only a shared registry number fits; a commentary reports no n and always fits) and that report
-  names the trial explicitly: in its title, its registration sentence or its own voice ("we ...", "this analysis
-  of", "the aims of this", "in the X trial, we"; not only its Methods section or "patients enrolled in the X trial").
+  names the trial explicitly: in its title, its registration sentence, a non-"we" self pattern ("this analysis of",
+  "the aims of this", "this commentary discusses") or a we-sentence whose ownership verb is aimed at the trial ("we
+  conducted/designed/performed/report(ed) (the results of) the X trial", "in the X trial, we randomised/assigned").
+  Its Methods section, "patients enrolled in the X trial" and a we-sentence that only uses or cites the trial ("we
+  enrolled patients who met the X trial criteria", "we followed the X trial protocol") do not count.
   A secondary report that no primary-looking report may take groups with the other secondary reports of that name.
   Two primary-looking reports with the same name also need the same reported n or a shared registry number. Names
   are owned by primary-looking reports first, the largest first. In the abstract a
