@@ -101,6 +101,7 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
             "card": card, "card_en": card,
             "verification": _verification(card),
             "error": None,
+            "design_excluded": False,  # Plan 20 Task 6 (parity with finalize; the stub ticks no study type)
             "related_to": "P1" if related else None, "related_reason": _RELATED_REASON if related else None,
             "related_reports": [],
         })

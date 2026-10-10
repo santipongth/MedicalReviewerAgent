@@ -224,7 +224,7 @@ export function ComparisonMatrix({ rows, refs: allRefs, lang, onSelect, selected
       <p data-matrix-filter>
         {view.hidden > 0
           ? L(lang, `แสดง ${view.rows.length} ผลลัพธ์ที่รายงานตั้งแต่ 2 การศึกษา (จาก ${view.total}) เรียงตามจำนวนการศึกษา`,
-            `Showing the ${view.rows.length} outcomes reported by 2 or more studies (of ${view.total}), most studies first`)
+            `Showing the ${view.rows.length} ${plural(view.rows.length, "outcome", "outcomes")} reported by 2 or more studies (of ${view.total}), most studies first`)
           : L(lang, `${view.total} ผลลัพธ์ เรียงตามจำนวนการศึกษา`, `${view.total} ${plural(view.total, "outcome", "outcomes")}, most studies first`)}
       </p>
       {(view.hidden > 0 || showAll) && (
@@ -444,9 +444,11 @@ export function StudyButton({ p, lang, onSelect, selected, type = "legacy" }: {
   const en = p.card_en ?? p.card; // the checked card: design, direction and comparison flags
   const others = en ? otherComparisons(en) : 0;
   const meta = useId();
+  // an unread paper has no source sentences to show: the cue promises only the paper
+  const cue = card ? L(lang, "ดูประโยคต้นฉบับ", "Show the source sentences") : L(lang, "ดูข้อมูลงานวิจัย", "Show the paper");
   return (
     <button type="button" onClick={() => onSelect(p.ref)} aria-pressed={selected} aria-describedby={meta}
-      aria-label={L(lang, `${p.ref} ดูประโยคต้นฉบับ: ${p.title}`, `${p.ref} Show the source sentences: ${p.title}`)}
+      aria-label={`${p.ref} ${cue}: ${p.title}`}
       className={`grid min-h-11 w-full min-w-0 gap-1 rounded-sm px-1 py-1 text-left hover:bg-ground ${selected ? "bg-ground" : ""}`}>
       <span id={meta} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.85rem] text-muted">
         {card && en ? (
@@ -485,7 +487,7 @@ export function StudyButton({ p, lang, onSelect, selected, type = "legacy" }: {
         </span>
       )}
       <span className="font-display text-[0.85rem] font-semibold text-primary underline underline-offset-2">
-        {L(lang, "ดูประโยคต้นฉบับ", "Show the source sentences")}
+        {cue}
       </span>
     </button>
   );

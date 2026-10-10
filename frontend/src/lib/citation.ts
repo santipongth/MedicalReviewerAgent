@@ -30,14 +30,71 @@ function normalizePmcid(pmcid: string | null | undefined): string {
   return /^\d+$/.test(v) ? `PMC${v}` : v;
 }
 
-export const doiHref = (doi: string): string => `https://doi.org/${normalizeDoi(doi)}`;
+/** doi.org link: each path segment URL-encoded (old SICI DOIs carry "#", "?", "<", ";"). */
+export const doiHref = (doi: string): string => `https://doi.org/${normalizeDoi(doi).split("/").map(encodeURIComponent).join("/")}`;
+
+// --- Author names in Vancouver form (NLM): "Surname Initials". Mirrors backend app/services/report.py vancouver_name;
+// both test suites share one table of cases. ------------------------------------------------------------------------
+
+/** Lower-case surname particles kept with the surname ("van der Berg", "de la Cruz"). */
+const PARTICLES = new Set(["van", "von", "der", "den", "de", "del", "della", "di", "da", "du", "la", "le", "dos", "das", "ten", "ter"]);
+
+const hasLetter = (s: string): boolean => /\p{L}/u.test(s);
+/** A name with a letter outside the Latin script (Thai, CJK, …) is left as written. */
+const nonLatin = (s: string): boolean => [...s].some((ch) => /\p{L}/u.test(ch) && !/\p{Script=Latin}/u.test(ch));
+/** "JH", "J.H.", "A": initials already. */
+const isInitials = (t: string): boolean => {
+  const bare = t.replace(/\./g, "");
+  return bare.length >= 1 && bare.length <= 3 && /^\p{Lu}+$/u.test(bare);
+};
+
+/** Initials of one given-name token: "J.A." → "JA", "Jean-Pierre" → "JP", "Andrew" → "A"; "" when it has no letter. */
+function initialsOf(token: string): string {
+  if (isInitials(token)) return token.replace(/\./g, "");
+  return token.split("-").map((part) => [...part].find((ch) => hasLetter(ch)) ?? "").join("").toUpperCase();
+}
+
+/**
+ * One author as "Surname Initials": "Smith, John A." and "John A. Smith" → "Smith JA"; "Kim JH" / "Kim J.H." → "Kim JH";
+ * particles stay with the surname ("van Beethoven L"); hyphenated given names give one initial per part. A single word,
+ * a non-Latin name or anything that does not parse (a surname without letters, a given name without initials) is kept
+ * as written.
+ */
+export function vancouverName(name: string): string {
+  const full = clean(name);
+  if (!full || nonLatin(full)) return full;
+  let surname: string[];
+  let given: string[];
+  const comma = full.indexOf(",");
+  if (comma >= 0) {
+    surname = full.slice(0, comma).trim().split(" ").filter(Boolean);
+    given = full.slice(comma + 1).trim().split(" ").filter(Boolean);
+    while (given.length && PARTICLES.has(given[given.length - 1])) surname = [given.pop()!, ...surname]; // "Beethoven, Ludwig van"
+  } else {
+    const tokens = full.split(" ");
+    if (tokens.length === 1) return full;
+    if (isInitials(tokens[tokens.length - 1])) return `${tokens.slice(0, -1).join(" ")} ${tokens[tokens.length - 1].replace(/\./g, "")}`;
+    let start = tokens.length - 1;
+    while (start > 1 && PARTICLES.has(tokens[start - 1])) start -= 1;
+    surname = tokens.slice(start);
+    given = tokens.slice(0, start);
+  }
+  const initials = given.map(initialsOf);
+  if (!surname.length || !hasLetter(surname.join("")) || !given.length || initials.some((i) => !i)) return full;
+  return `${surname.join(" ")} ${initials.join("")}`;
+}
+
+/** The author strings as names: an entry that holds a ";"-separated list is split there (never at a comma). */
+export function authorNames(authors: readonly string[] | null | undefined): string[] {
+  return (authors ?? []).flatMap((a) => (typeof a === "string" ? a.split(";") : [])).map(vancouverName).filter(Boolean);
+}
 export const pubmedHref = (pmid: string): string => `https://pubmed.ncbi.nlm.nih.gov/${clean(pmid)}/`;
 export const pmcHref = (pmcid: string): string => `https://pmc.ncbi.nlm.nih.gov/articles/${normalizePmcid(pmcid)}/`;
 
 /** The reference's text parts (authors, title, journal, year), each ending in its own punctuation, and its identifiers. */
 export function citationParts(p: CitationInput): { text: string[]; ids: CitationId[] } {
   const text: string[] = [];
-  const authors = (p.authors ?? []).map(clean).filter(Boolean);
+  const authors = authorNames(p.authors);
   if (authors.length) {
     const shown = authors.length > MAX_AUTHORS ? [...authors.slice(0, MAX_AUTHORS), "et al"] : authors;
     text.push(`${shown.join(", ")}.`);
@@ -71,7 +128,10 @@ const TYPE_NAME: Record<ReviewTypeOrLegacy, Record<Lang, string>> = {
   legacy: { th: "การทบทวนวรรณกรรม", en: "literature review" },
 };
 
-/** YYYY-MM-DD (UTC) of an ISO timestamp, or null. */
+/**
+ * YYYY-MM-DD of an ISO timestamp in UTC (like the title block's date), or null. UTC keeps the cited date the same on
+ * the server, every reader's browser and the offline file; a review finished early morning in Bangkok cites the UTC day.
+ */
 function isoDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);

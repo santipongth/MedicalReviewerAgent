@@ -2,9 +2,11 @@
 per-paper `design_excluded` flag, and the key findings' certainty stated once for the whole review."""
 from types import SimpleNamespace
 
+import pytest
+
 from app.graph.nodes.stub_result import stub_result
 from app.graph.nodes.synthesis import make_finalize
-from app.services.report import render_markdown, vancouver
+from app.services.report import doi_href, render_markdown, vancouver, vancouver_name
 from tests.unit.test_comparison_and_prose import card, outcome, paper
 from tests.unit.test_nodes_synthesis import deps, state
 
@@ -35,6 +37,59 @@ def test_vancouver_lists_six_authors_then_et_al():
 def test_vancouver_keeps_a_thai_title_as_written():
     assert vancouver({"title": "ผลของเมตฟอร์มินต่อมะเร็งลำไส้ใหญ่", "journal": "วารสารการแพทย์", "year": 2019}) == \
         "ผลของเมตฟอร์มินต่อมะเร็งลำไส้ใหญ่. วารสารการแพทย์. 2019."
+
+
+# The same table as frontend src/lib/citation.test.ts NAME_CASES: both formatters must agree byte for byte.
+NAME_CASES = [
+    ("Kim JH", "Kim JH"),
+    ("Kim J.H.", "Kim JH"),
+    ("van der Berg AB", "van der Berg AB"),
+    ("John A. Smith", "Smith JA"),
+    ("Smith, John", "Smith J"),
+    ("Smith, John Andrew", "Smith JA"),
+    ("Smith, J.A.", "Smith JA"),
+    ("Ludwig van Beethoven", "van Beethoven L"),
+    ("Beethoven, Ludwig van", "van Beethoven L"),
+    ("Anna de la Cruz", "de la Cruz A"),
+    ("Jean-Pierre Dupont", "Dupont JP"),
+    ("Maria Garcia-Lopez", "Garcia-Lopez M"),
+    ("Plato", "Plato"),
+    ("WHO Collaborative Group 2", "WHO Collaborative Group 2"),
+    ("สมชาย ใจดี", "สมชาย ใจดี"),
+    ("  ", ""),
+]
+
+
+@pytest.mark.parametrize(("name", "expected"), NAME_CASES)
+def test_vancouver_name(name, expected):
+    assert vancouver_name(name) == expected
+
+
+def test_an_author_list_joined_with_semicolons_is_split():
+    assert vancouver({"title": "T", "authors": ["Smith J; Doe A", "Roe, Richard"]}) == "Smith J, Doe A, Roe R. T."
+    assert vancouver({"title": "T", "authors": ["John A. Smith", "Jane Doe"]}) == "Smith JA, Doe J. T."
+
+
+def test_doi_links_encode_each_path_segment():
+    doi = "10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E#x?y%"
+    assert doi_href(doi) == ("https://doi.org/10.1002/(SICI)1097-0258(19980430)17%3A8%3C857%3A%3AAID-SIM777%3E3.0.CO"
+                             "%3B2-E%23x%3Fy%25")
+    r = stub_result("t", "en", "slr")
+    r["papers"][0]["doi"] = "10.1/a#b"
+    line = next(x for x in render_markdown(_review(r)).splitlines() if x.startswith("- [P1] "))
+    assert "doi: [10.1/a#b](https://doi.org/10.1/a%23b)." in line
+
+
+def test_markdown_notes_a_design_mismatch_paper():
+    r = stub_result("t", "en", "slr")
+    r["papers"][1]["verification"] = {**(r["papers"][1].get("verification") or {}), "design_mismatch": True}
+    line = next(x for x in render_markdown(_review(r)).splitlines() if x.startswith("- [P2] "))
+    assert line.endswith("Used as evidence although its design is outside the ticked study types, because fewer "
+                         "than 3 studies matched.")
+
+
+def test_stub_papers_carry_design_excluded():
+    assert all(p["design_excluded"] is False for p in stub_result("t", "en", "slr")["papers"])
 
 
 def _review(result):

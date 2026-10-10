@@ -69,6 +69,7 @@ export function DownloadsAndCite({ review, result, type, lang, offline }: {
       <p data-how-to-cite className="max-w-[75ch] rounded-sm border border-rule bg-ground px-3 py-2.5 text-[0.95rem] leading-[1.7] break-words">{cite}</p>
       <CopyTextButton text={cite} label={L(lang, "คัดลอกการอ้างอิง", "Copy citation")}
         name={L(lang, "คัดลอกการอ้างอิงรายงานนี้", "Copy the citation of this report")} copied={L(lang, "คัดลอกแล้ว", "Copied")}
+        failed={L(lang, "คัดลอกไม่ได้ เลือกข้อความไว้ให้แล้ว", "Couldn't copy; the text is selected below")}
         boxLabel={L(lang, "การอ้างอิงรายงานนี้ (เลือกแล้ว กดคัดลอกเอง)", "Citation of this report (selected; copy it yourself)")} />
     </div>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { EXCLUSION_REASON_LABEL } from "@/lib/charts-data";
 import { citationParts, vancouver, type CitationId } from "@/lib/citation";
 import type { Lang } from "@/lib/i18n";
@@ -26,7 +27,10 @@ function CitationText({ paper, lang }: { paper: Paper; lang: Lang }) {
         <span key={id.label}>
           {" "}{id.label}:{" "}
           <a href={id.href} target="_blank" rel="noreferrer" aria-label={`${ID_NAME[id.label]} ${id.value} ${opens}`}
-            className="break-all text-primary underline underline-offset-2">{id.value}</a>.
+            className="text-primary underline underline-offset-2 [overflow-wrap:anywhere]">
+            {/* a break opportunity after each "/" (DOIs): the value wraps there first, mid-value only if it must */}
+            {id.value.split("/").map((seg, i) => <Fragment key={i}>{i > 0 && <>/<wbr /></>}{seg}</Fragment>)}
+          </a>.
         </span>
       ))}
     </p>
@@ -59,12 +63,13 @@ function Reference({ paper, lang, onSelect, selectedRef, type, related = [], nes
         {paper.verification?.design_mismatch && (
           <p data-reference-note="design_mismatch" className="text-[0.88rem] text-muted">
             {L(lang, "ใช้เป็นหลักฐานแม้รูปแบบไม่ตรงชนิดที่เลือก เพราะงานที่ตรงมีไม่ถึง 3 ฉบับ",
-              "Used as evidence although its design is outside the ticked types, because fewer than 3 studies matched")}
+              "Used as evidence although its design is outside the ticked study types, because fewer than 3 studies matched")}
           </p>
         )}
         <StudyButton p={paper} lang={lang} onSelect={onSelect} selected={selectedRef === paper.ref} type={type} />
         <CopyTextButton text={vancouver(paper)} label={L(lang, "คัดลอกการอ้างอิง", "Copy citation")}
           name={L(lang, `คัดลอกการอ้างอิง ${paper.ref}`, `Copy citation ${paper.ref}`)} copied={L(lang, "คัดลอกแล้ว", "Copied")}
+          failed={L(lang, "คัดลอกไม่ได้ เลือกข้อความไว้ให้แล้ว", "Couldn't copy; the text is selected below")}
           boxLabel={L(lang, `การอ้างอิง ${paper.ref} (เลือกแล้ว กดคัดลอกเอง)`, `Citation ${paper.ref} (selected; copy it yourself)`)} />
         {related.length > 0 && (
           <ul className="mt-1" aria-label={L(lang, `รายงานเพิ่มเติมของ ${paper.ref}`, `Related reports of ${paper.ref}`)}>

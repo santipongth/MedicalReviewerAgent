@@ -1,7 +1,7 @@
 // Plan 20 Task 6: Vancouver references (the same rules as backend app/services/report.py `vancouver`), how to cite
 // the report, and the plural helper.
 import { describe, expect, it } from "vitest";
-import { citationParts, doiHref, howToCite, pmcHref, pubmedHref, vancouver } from "./citation";
+import { citationParts, doiHref, howToCite, pmcHref, pubmedHref, vancouver, vancouverName } from "./citation";
 import { countText, plural } from "./plural";
 
 const FULL = {
@@ -48,6 +48,44 @@ describe("vancouver", () => {
     expect(doiHref("doi: 10.1/a(b)")).toBe("https://doi.org/10.1/a(b)");
     expect(pubmedHref(" 42 ")).toBe("https://pubmed.ncbi.nlm.nih.gov/42/");
     expect(pmcHref("PMC9")).toBe("https://pmc.ncbi.nlm.nih.gov/articles/PMC9/");
+  });
+});
+
+// The same table as backend tests/unit/test_plan20_task6.py NAME_CASES: both formatters must agree byte for byte.
+const NAME_CASES: [string, string][] = [
+  ["Kim JH", "Kim JH"],
+  ["Kim J.H.", "Kim JH"],
+  ["van der Berg AB", "van der Berg AB"],
+  ["John A. Smith", "Smith JA"],
+  ["Smith, John", "Smith J"],
+  ["Smith, John Andrew", "Smith JA"],
+  ["Smith, J.A.", "Smith JA"],
+  ["Ludwig van Beethoven", "van Beethoven L"],
+  ["Beethoven, Ludwig van", "van Beethoven L"],
+  ["Anna de la Cruz", "de la Cruz A"],
+  ["Jean-Pierre Dupont", "Dupont JP"],
+  ["Maria Garcia-Lopez", "Garcia-Lopez M"],
+  ["Plato", "Plato"],
+  ["WHO Collaborative Group 2", "WHO Collaborative Group 2"],
+  ["สมชาย ใจดี", "สมชาย ใจดี"],
+  ["  ", ""],
+];
+
+describe("vancouverName", () => {
+  it.each(NAME_CASES)("%j → %j", (name, expected) => {
+    expect(vancouverName(name)).toBe(expected);
+  });
+
+  it("an author list joined with ';' is split, never a 'Surname, Given' name", () => {
+    expect(vancouver({ title: "T", authors: ["Smith J; Doe A", "Roe, Richard"] })).toBe("Smith J, Doe A, Roe R. T.");
+    expect(vancouver({ title: "T", authors: ["John A. Smith", "Jane Doe"] })).toBe("Smith JA, Doe J. T.");
+  });
+});
+
+describe("DOI links", () => {
+  it("encode each path segment of the DOI", () => {
+    expect(doiHref("10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E#x?y%")).toBe(
+      "https://doi.org/10.1002/(SICI)1097-0258(19980430)17%3A8%3C857%3A%3AAID-SIM777%3E3.0.CO%3B2-E%23x%3Fy%25");
   });
 });
 

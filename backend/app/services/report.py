@@ -4,7 +4,9 @@ from __future__ import annotations
 import csv
 import io
 import re
+import unicodedata
 from typing import Any
+from urllib.parse import quote
 
 from app.harness.design import NON_QUANTITATIVE_CATEGORIES
 from app.harness.meta import DESIGN_GROUP_LABEL
@@ -51,12 +53,79 @@ def _pmcid(value: Any) -> str:
     return f"PMC{v}" if v.isdigit() else v
 
 
+def doi_href(doi: Any) -> str:
+    """doi.org link with each path segment URL-encoded like JavaScript's encodeURIComponent (old SICI DOIs carry
+    "#", "?", "<", ";")."""
+    return "https://doi.org/" + "/".join(quote(seg, safe="!*'()") for seg in _doi(doi).split("/"))
+
+
+# Author names in Vancouver form (NLM): "Surname Initials". Mirrors frontend src/lib/citation.ts vancouverName; both
+# test suites share one table of cases.
+_PARTICLES = frozenset({"van", "von", "der", "den", "de", "del", "della", "di", "da", "du", "la", "le", "dos", "das",
+                        "ten", "ter"})
+
+
+def _has_letter(s: str) -> bool:
+    return any(ch.isalpha() for ch in s)
+
+
+def _non_latin(s: str) -> bool:
+    """A name with a letter outside the Latin script (Thai, CJK, ...) is left as written."""
+    return any(ch.isalpha() and not unicodedata.name(ch, "").startswith("LATIN") for ch in s)
+
+
+def _is_initials(t: str) -> bool:
+    bare = t.replace(".", "")
+    return 1 <= len(bare) <= 3 and bare.isalpha() and bare.isupper()
+
+
+def _initials_of(token: str) -> str:
+    """"J.A." -> "JA", "Jean-Pierre" -> "JP", "Andrew" -> "A"; "" when a part has no letter."""
+    if _is_initials(token):
+        return token.replace(".", "")
+    return "".join(next((ch for ch in part if ch.isalpha()), "") for part in token.split("-")).upper()
+
+
+def vancouver_name(name: Any) -> str:
+    """One author as "Surname Initials": "Smith, John A." and "John A. Smith" -> "Smith JA"; "Kim J.H." -> "Kim JH";
+    particles stay with the surname ("van Beethoven L"); hyphenated given names give one initial per part. A single
+    word, a non-Latin name or anything that does not parse is kept as written."""
+    full = _clean(name)
+    if not full or _non_latin(full):
+        return full
+    if "," in full:
+        head, _, tail = full.partition(",")
+        surname, given = head.split(), tail.split()
+        while given and given[-1] in _PARTICLES:  # "Beethoven, Ludwig van"
+            surname.insert(0, given.pop())
+    else:
+        tokens = full.split(" ")
+        if len(tokens) == 1:
+            return full
+        if _is_initials(tokens[-1]):
+            return f"{' '.join(tokens[:-1])} {tokens[-1].replace('.', '')}"
+        start = len(tokens) - 1
+        while start > 1 and tokens[start - 1] in _PARTICLES:
+            start -= 1
+        surname, given = tokens[start:], tokens[:start]
+    initials = [_initials_of(g) for g in given]
+    if not surname or not _has_letter("".join(surname)) or not given or not all(initials):
+        return full
+    return f"{' '.join(surname)} {''.join(initials)}"
+
+
+def author_names(authors: Any) -> list[str]:
+    """The author strings as names: an entry holding a ";"-separated list is split there (never at a comma)."""
+    parts = [part for a in authors or [] if isinstance(a, str) for part in a.split(";")]
+    return [n for n in (vancouver_name(part) for part in parts) if n]
+
+
 def _citation_parts(p: dict[str, Any]) -> tuple[list[str], list[tuple[str, str, str]]]:
     """The text parts of a Vancouver reference and its identifiers as (label, value, url). Only fields the result
     carries (no volume, issue or pages: the search sources do not give them); a missing part is left out. The title
     and journal stay in their own language. Mirrors frontend `src/lib/citation.ts`."""
     text: list[str] = []
-    authors = [a for a in (_clean(x) for x in p.get("authors") or [] if isinstance(x, str)) if a]
+    authors = author_names(p.get("authors"))
     if authors:
         shown = authors[:MAX_AUTHORS] + (["et al"] if len(authors) > MAX_AUTHORS else [])
         text.append(", ".join(shown) + ".")
@@ -69,7 +138,7 @@ def _citation_parts(p: dict[str, Any]) -> tuple[list[str], list[tuple[str, str, 
         text.append(f"{p['year']}.")
     ids: list[tuple[str, str, str]] = []
     if _doi(p.get("doi")):
-        ids.append(("doi", _doi(p.get("doi")), f"https://doi.org/{_doi(p.get('doi'))}"))
+        ids.append(("doi", _doi(p.get("doi")), doi_href(p.get("doi"))))
     if _clean(p.get("pmid")):
         ids.append(("PMID", _clean(p.get("pmid")), f"https://pubmed.ncbi.nlm.nih.gov/{_clean(p.get('pmid'))}/"))
     if _pmcid(p.get("pmcid")):
@@ -192,6 +261,9 @@ def _reference_line(p: dict[str, Any]) -> str:
     design = f" — {card.get('study_design')}, n={card.get('sample_size') or '?'}." if card else " — not extracted."
     excluded = (" Not used as evidence: read as a design outside the ticked study types."
                 if p.get("design_excluded") else "")
+    if (p.get("verification") or {}).get("design_mismatch"):  # the report's note too (Task 6 review finding 7)
+        excluded += (" Used as evidence although its design is outside the ticked study types, because fewer than 3 "
+                     "studies matched.")
     # Plan 20 Task 10: a further report of a trial counted once, under its primary report
     related = (f" Related report of [{p['related_to']}] ({p.get('related_reason') or 'same trial'}), not "
                f"counted again." if p.get("related_to") else "")

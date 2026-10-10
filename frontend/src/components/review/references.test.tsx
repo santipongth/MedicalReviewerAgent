@@ -16,6 +16,7 @@ vi.mock("../charts/echart", () => ({
 }));
 
 import { Report } from "./report";
+import { ComparisonMatrix } from "./report-parts";
 
 const section = (name: RegExp | string) => screen.getByRole("heading", { level: 2, name }).closest("section")!;
 const refs = () => section("เอกสารอ้างอิง");
@@ -79,6 +80,54 @@ describe("references", () => {
     expect(box).toHaveValue(vancouver(reviewFixture.result!.papers![0]));
   });
 
+  it("the fallback says the copy failed and moves focus to the selected text", async () => {
+    mockClipboard(() => Promise.reject(new Error("denied")));
+    render(<Report review={reviewFixture} />);
+    await act(async () => { within(entry("P1")).getByRole("button", { name: "คัดลอกการอ้างอิง P1" }).click(); });
+    expect(within(entry("P1")).getByRole("status")).toHaveTextContent("คัดลอกไม่ได้ เลือกข้อความไว้ให้แล้ว");
+    expect(within(entry("P1")).getByRole("textbox")).toHaveFocus();
+  });
+
+  it("the confirmation clears after a few seconds, so a second copy is announced again", async () => {
+    vi.useFakeTimers();
+    try {
+      mockClipboard(() => Promise.resolve());
+      render(<Report review={reviewFixture} />);
+      const button = within(entry("P3")).getByRole("button", { name: "คัดลอกการอ้างอิง P3" });
+      await act(async () => { button.click(); });
+      expect(within(entry("P3")).getByRole("status")).toHaveTextContent("คัดลอกแล้ว");
+      await act(async () => { vi.advanceTimersByTime(5000); });
+      expect(within(entry("P3")).getByRole("status")).toHaveTextContent("");
+      await act(async () => { button.click(); });
+      expect(within(entry("P3")).getByRole("status")).toHaveTextContent("คัดลอกแล้ว");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("copy citation stays a 44px target at every width", () => {
+    render(<Report review={reviewFixture} />);
+    const cls = within(entry("P1")).getByRole("button", { name: "คัดลอกการอ้างอิง P1" }).className;
+    expect(cls).toContain("min-h-11");
+    expect(cls).not.toMatch(/md:min-h-/);
+  });
+
+  it("an identifier wraps only where it must, preferably after '/', and its text is unchanged", () => {
+    render(<Report review={reviewFixture} />);
+    const doi = within(entry("P3")).getByRole("link", { name: /^DOI 10\.1000\/p3/ });
+    expect(doi.className).not.toContain("break-all");
+    expect(doi.querySelector("wbr")).not.toBeNull();
+    expect(doi.textContent).toBe("10.1000/p3");
+  });
+
+  it("a paper that could not be read promises the paper, not source sentences", () => {
+    render(<Report review={reviewFixture} />);
+    const p5 = within(entry("P5")).getByRole("button", { name: /^P5 / });
+    expect(p5).toHaveAccessibleName(/^P5 ดูข้อมูลงานวิจัย: /);
+    expect(p5).not.toHaveTextContent("ดูประโยคต้นฉบับ");
+    expect(within(entry("P3")).getByRole("button", { name: /^P3 / })).toHaveAccessibleName(/^P3 ดูประโยคต้นฉบับ: /);
+  });
+
   it("the study button in a reference still opens the source rail, and the rail links back to the reference", async () => {
     render(<Report review={reviewFixture} />);
     await userEvent.click(within(refs()).getByRole("button", { name: /^P3 / }));
@@ -112,6 +161,18 @@ describe("references", () => {
     expect(entry("P2").querySelector("[data-reference-note='design_excluded']"))
       .toHaveTextContent("ไม่ใช้เป็นหลักฐาน: อ่านแล้วพบว่ารูปแบบการศึกษาไม่ตรงชนิดที่เลือก");
     expect(entry("P1").querySelector("[data-reference-note]")).toBeNull();
+  });
+});
+
+describe("plural-safe counts", () => {
+  it("the findings matrix says 'the 1 outcome' when only one has two or more studies", () => {
+    const rows = [
+      { outcome: "A", cells: [{ ref: "P1", finding: "x", direction: "positive" as const }, { ref: "P2", finding: "y", direction: "positive" as const }] },
+      { outcome: "B", cells: [{ ref: "P1", finding: "z", direction: "null" as const }] },
+    ];
+    render(<ComparisonMatrix rows={rows} refs={["P1", "P2"]} lang="en" onSelect={() => {}} outcomeOf={() => undefined} />);
+    expect(document.querySelector("[data-matrix-filter]")).toHaveTextContent(
+      "Showing the 1 outcome reported by 2 or more studies (of 2), most studies first");
   });
 });
 
