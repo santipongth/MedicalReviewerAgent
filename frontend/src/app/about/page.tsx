@@ -81,7 +81,7 @@ export default async function AboutPage() {
         </ol>
         <dl className="grid max-w-[65ch] gap-2">
           <div><dt className="font-display font-semibold">รูปแบบการทบทวน (<code className="font-code">review_type</code>)</dt>
-            <dd className="text-muted"><code className="font-code">slr</code> อย่างเป็นระบบ (ค่าเริ่มต้น) · <code className="font-code">meta_analysis</code> อย่างเป็นระบบพร้อมค่ารวมที่ระบบคำนวณ · <code className="font-code">scoping</code> สำรวจขอบเขต · <code className="font-code">narrative</code> แบบบรรยาย</dd></div>
+            <dd className="text-muted"><code className="font-code">slr</code> การทบทวนวรรณกรรมอย่างเป็นระบบ (ค่าเริ่มต้น) · <code className="font-code">meta_analysis</code> แบบเดียวกันพร้อมค่ารวมที่ระบบคำนวณ · <code className="font-code">scoping</code> สำรวจขอบเขต · <code className="font-code">narrative</code> แบบบรรยาย</dd></div>
           <div><dt className="font-display font-semibold">ชนิดงานวิจัย (<code className="font-code">study_types</code>)</dt>
             <dd className="text-muted">RCT, Cohort, Case-control, Cross-sectional, Non-randomized trial, Qualitative, Mixed methods, Systematic review, Meta-analysis หรือ <code className="font-code">&quot;Other: …&quot;</code> (ไม่เกิน 60 ตัวอักษร) · ไม่ระบุ = ไม่จำกัด</dd></div>
           <div><dt className="font-display font-semibold">สิ่งที่อยู่ในผลลัพธ์</dt>
@@ -144,7 +144,7 @@ export default async function AboutPage() {
           <li>ใช้เฉพาะบทคัดย่อ ไม่ดาวน์โหลดฉบับเต็ม: ค่าเริ่มต้นคัดกรองงานที่มีบทคัดย่อ 60 ฉบับ (ปรับได้ 20–100) แล้ววิเคราะห์สูงสุด 30 ฉบับ (ปรับได้ 5–30) รายละเอียดที่มีแต่ในฉบับเต็มจึงอาจไม่ปรากฏ</li>
           <li>ระบบรับรีวิวใหม่วันละจำนวนจำกัดและจำกัดค่าใช้จ่ายต่อวันและต่อรีวิว เมื่อคิวเต็มหรือครบกำหนดวันจะได้ 503 พร้อมเหตุผลและเวลาที่เปิดรับอีกครั้ง (รีวิวที่เคยทำยังเปิดดูได้)</li>
           <li>ตัวเลขที่ตรวจกับประโยคในบทคัดย่อไม่ผ่านจะถูกเว้นว่างและแสดงเป็น “ไม่ยืนยัน” ไม่มีการเดาค่า</li>
-          <li>ความแข็งแรงของหลักฐาน (เฉพาะ systematic review และ meta-analysis) เป็นแบบ <Gloss k="grade">GRADE-lite</Gloss> ที่คำนวณจากรูปแบบการศึกษา ความเสี่ยงอคติ ความสอดคล้อง และขนาดตัวอย่าง</li>
+          <li>ความแข็งแรงของหลักฐาน (เฉพาะ systematic review และ meta-analysis) เป็นแบบ <Gloss k="grade" suffix="แบบย่อ">GRADE-lite</Gloss> ที่คำนวณจากรูปแบบการศึกษา ความเสี่ยงอคติ ความสอดคล้อง และขนาดตัวอย่าง</li>
           <li>เครือข่ายการอ้างอิงใช้ข้อมูลเมทาดาทาจาก OpenAlex (สำรองด้วย Europe PMC) เฉพาะระหว่างงานวิจัยในรีวิวเดียวกัน ถ้าไม่มีข้อมูลจะแสดงว่า “ไม่มีข้อมูล” ไม่ใช่ “ไม่อ้างอิง”</li>
           <li>งานเชิงคุณภาพและแบบผสมผสาน (Qualitative, Mixed methods) รองรับแบบจำกัด: สรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข ไม่นับในทิศทางผล แผนภาพ หรือค่ารวม</li>
           <li>ยังไม่รองรับการทบทวนความแม่นยำของการวินิจฉัย (diagnostic test accuracy): ค่าความไว (sensitivity) ความจำเพาะ (specificity) และ AUC แสดงเป็นผลทั่วไปจากบทคัดย่อ ไม่นำมารวมผลและไม่วาดใน forest plot คำถามด้านการวินิจฉัยไม่มีทิศทางของผล ระบบจึงไม่สรุปความเห็นพ้องหรือความขัดแย้งระหว่างงานวิจัย และระดับหลักฐาน GRADE-lite ไม่ประเมินความไม่สอดคล้อง (inconsistency) ควรตีความระดับหลักฐานอย่างระมัดระวัง</li>

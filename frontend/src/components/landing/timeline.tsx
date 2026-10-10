@@ -33,7 +33,7 @@ export function Timeline() {
       </div>
       <ol aria-label="ขั้นตอนของรีวิว" className="grid border-t border-rule">
         {STEPS.map(([t, title, body]) => (
-          <li key={t}className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-4 border-b border-rule py-4">
+          <li key={t} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-4 border-b border-rule py-4">
             <span className="font-display text-[0.95rem] font-semibold tabular-nums text-muted">{t}</span>
             <div className="min-w-0">
               <h3 className="text-[1.05rem] font-semibold">{title}</h3>

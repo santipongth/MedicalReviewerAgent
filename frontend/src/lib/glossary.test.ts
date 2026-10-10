@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GLOSS, GLOSSARY, glossText, type GlossEntry, type GlossKey } from "./glossary";
+import { REVIEW_TYPE_LABEL } from "./review-type";
 
 describe("glossary", () => {
   it("every key has non-empty th and en label and body", () => {
@@ -38,8 +39,24 @@ describe("inline glosses (home page)", () => {
   it("formats 'term (meaning)' and, in full, 'term (meaning — plain words)'", () => {
     expect(glossText("pico")).toBe("PICO (กรอบตั้งคำถาม: ผู้ป่วย · สิ่งที่ให้ · สิ่งเปรียบเทียบ · ผลลัพธ์)");
     expect(glossText("slr", "th", { full: true })).toBe(
-      "Systematic review (การทบทวนอย่างเป็นระบบ — รวบรวมงานวิจัยทุกชิ้นที่ตอบคำถามเดียวกัน ด้วยขั้นตอนที่ตรวจสอบได้)");
+      "Systematic review (การทบทวนวรรณกรรมอย่างเป็นระบบ — รวบรวมงานวิจัยทุกชิ้นที่ตอบคำถามเดียวกัน ด้วยขั้นตอนที่ตรวจสอบได้)");
     expect(glossText("rct", "en")).toBe("RCT (randomised controlled trial)");
+    expect(glossText("grade", "th", { term: "GRADE-lite", suffix: "แบบย่อ" })).toBe(
+      "GRADE-lite (ระบบให้ระดับความน่าเชื่อถือของหลักฐาน แบบย่อ)");
+  });
+
+  it("uses the scope form's Thai names for the review types (one name per type)", () => {
+    for (const [k, t] of [["slr", "slr"], ["metaAnalysis", "meta_analysis"], ["scopingReview", "scoping"],
+      ["narrativeReview", "narrative"]] as const) {
+      expect(GLOSS[k].name.th, k).toBe(REVIEW_TYPE_LABEL[t].th);
+    }
+  });
+
+  it("words the review fixes plainly and accurately", () => {
+    expect(GLOSS.logScale.name.th).toBe("แกนที่ค่า 0.5 กับ 2 อยู่ห่างจาก 1 เท่ากัน");
+    expect(GLOSS.rct.name.th).toBe("การทดลองแบบสุ่มและมีกลุ่มควบคุม");
+    expect(GLOSS.rct.plain?.th).toBe("สุ่มแบ่งคนเป็นกลุ่มที่ได้รับสิ่งที่ทดสอบ กับกลุ่มเปรียบเทียบ เช่น ยาหลอกหรือการรักษาเดิม");
+    expect(GLOSS.i2.plain?.th).toBe("ยิ่งสูง ผลของแต่ละงานยิ่งต่างกันมากเกินกว่าที่เกิดจากความบังเอิญ");
   });
 
   it("keeps the plain Thai the brief asked for", () => {

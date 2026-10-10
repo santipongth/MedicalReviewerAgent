@@ -168,11 +168,22 @@ describe("RequestSlip", () => {
   it("shows each study design as a tile: Thai name first, then the English term and its plain gloss", () => {
     render(<RequestSlip />);
     const group = screen.getByRole("group", { name: /หลักฐานและเกณฑ์คัดเลือก/ });
+    // the name is short (Thai name + term); the plain words are the description, so tabbing stays quick
     const rct = within(group).getByRole("checkbox", { name: /RCT/ });
-    expect(rct).toHaveAccessibleName(`การทดลองแบบสุ่ม RCT · ${GLOSS.rct.plain?.th}`);
-    expect(within(group).getByRole("checkbox", { name: /^การศึกษาติดตามกลุ่มคน Cohort/ })).toBeInTheDocument();
-    expect(within(group).getByRole("checkbox", { name: /^การสำรวจภาคตัดขวาง Cross-sectional · สำรวจ ณ จุดเวลาเดียว/ })).toBeInTheDocument();
+    expect(rct).toHaveAccessibleName("การทดลองแบบสุ่มและมีกลุ่มควบคุม RCT");
+    expect(rct).toHaveAccessibleDescription(GLOSS.rct.plain?.th ?? "");
+    expect(within(group).getByRole("checkbox", { name: "การศึกษาติดตามกลุ่มคน Cohort" })).toBeInTheDocument();
+    expect(within(group).getByRole("checkbox", { name: "การสำรวจภาคตัดขวาง Cross-sectional" }))
+      .toHaveAccessibleDescription("สำรวจ ณ จุดเวลาเดียว");
+    expect(within(group).getByRole("checkbox", { name: "อื่น ๆ — ระบุ" })).toBeInTheDocument();
     expect(within(group).getAllByRole("checkbox")).toHaveLength(8); // seven designs plus "other"
+  });
+
+  it("marks the folded options as something that opens", () => {
+    render(<RequestSlip />);
+    const summary = screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary") as HTMLElement;
+    expect(summary.querySelector("[data-chevron][aria-hidden=true]")).not.toBeNull();
+    expect(summary).toHaveTextContent("แก้ไข");
   });
 
   it("glosses PICO in the question hint and keeps the free, no-sign-up note in the submit row", () => {

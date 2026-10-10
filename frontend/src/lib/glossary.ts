@@ -250,7 +250,7 @@ export const GLOSS = {
   // Review types
   slr: {
     term: { th: "Systematic review", en: "Systematic review" },
-    name: { th: "การทบทวนอย่างเป็นระบบ", en: "systematic review" },
+    name: { th: "การทบทวนวรรณกรรมอย่างเป็นระบบ", en: "systematic review" },
     plain: {
       th: "รวบรวมงานวิจัยทุกชิ้นที่ตอบคำถามเดียวกัน ด้วยขั้นตอนที่ตรวจสอบได้",
       en: "gathers every study that answers the same question, by steps anyone can check",
@@ -268,14 +268,17 @@ export const GLOSS = {
   },
   narrativeReview: {
     term: { th: "Narrative review", en: "Narrative review" },
-    name: { th: "การทบทวนเชิงบรรยาย", en: "narrative review" },
+    name: { th: "การทบทวนแบบบรรยาย", en: "narrative review" },
     plain: { th: "สรุปภาพรวมแบบเล่าเรื่อง", en: "sums up the field as a story" },
   },
   // Study designs (the scope form's tiles: name first, then term · plain)
   rct: {
     term: { th: "RCT", en: "RCT" },
-    name: { th: "การทดลองแบบสุ่ม", en: "randomised controlled trial" },
-    plain: { th: "สุ่มแบ่งคนเป็นกลุ่มที่ได้รับและไม่ได้รับการรักษา", en: "people are split at random into a treated and an untreated group" },
+    name: { th: "การทดลองแบบสุ่มและมีกลุ่มควบคุม", en: "randomised controlled trial" },
+    plain: {
+      th: "สุ่มแบ่งคนเป็นกลุ่มที่ได้รับสิ่งที่ทดสอบ กับกลุ่มเปรียบเทียบ เช่น ยาหลอกหรือการรักษาเดิม",
+      en: "people are split at random into a group that gets what is tested and a comparison group, e.g. placebo or usual care",
+    },
   },
   nonRandomized: {
     term: { th: "Non-randomized trial", en: "Non-randomized trial" },
@@ -361,7 +364,10 @@ export const GLOSS = {
   i2: {
     term: { th: "I²", en: "I²" },
     name: { th: "ความต่างกันของผลระหว่างงานวิจัย", en: "how much results differ between studies" },
-    plain: { th: "ยิ่งสูง ผลของแต่ละงานยิ่งไม่ไปทางเดียวกัน", en: "the higher it is, the less the studies agree" },
+    plain: {
+      th: "ยิ่งสูง ผลของแต่ละงานยิ่งต่างกันมากเกินกว่าที่เกิดจากความบังเอิญ",
+      en: "the higher it is, the more the results differ beyond what chance would explain",
+    },
   },
   sampleSize: {
     term: { th: "n", en: "n" },
@@ -373,7 +379,7 @@ export const GLOSS = {
   },
   logScale: {
     term: { th: "log scale", en: "log scale" },
-    name: { th: "แกนที่ครึ่งเท่ากับสองเท่าอยู่ห่างจาก 1 เท่ากัน", en: "an axis where half and double sit equally far from 1" },
+    name: { th: "แกนที่ค่า 0.5 กับ 2 อยู่ห่างจาก 1 เท่ากัน", en: "an axis where 0.5 and 2 sit equally far from 1" },
   },
   // Sources and the engine
   abstract: {
@@ -427,14 +433,17 @@ export type GlossOptions = {
   named?: boolean;
   /** the word as this page writes it, e.g. "REST API" or "GRADE-lite" */
   term?: string;
+  /** a qualifier this page adds after the meaning, e.g. "แบบย่อ" for GRADE-lite */
+  suffix?: string;
 };
 
 /** Split a gloss into the shown word and the bracket text (shared by glossText and the Gloss component). */
 export function glossParts(k: GlossKey, lang: "th" | "en" = "th", opts: GlossOptions = {}): { term: string; meaning: string } {
   const g: GlossEntry = GLOSS[k];
-  if (opts.named && g.plain) return { term: opts.term ?? g.name[lang], meaning: g.plain[lang] };
+  const tail = opts.suffix ? ` ${opts.suffix}` : "";
+  if (opts.named && g.plain) return { term: opts.term ?? g.name[lang], meaning: g.plain[lang] + tail };
   const meaning = opts.full && g.plain ? `${g.name[lang]} — ${g.plain[lang]}` : g.name[lang];
-  return { term: opts.term ?? g.term[lang], meaning };
+  return { term: opts.term ?? g.term[lang], meaning: meaning + tail };
 }
 
 /** "term (meaning)" as plain text, for places that take only a string (option labels, aria text, tests). */

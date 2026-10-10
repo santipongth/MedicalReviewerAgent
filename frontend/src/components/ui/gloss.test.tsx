@@ -21,6 +21,11 @@ describe("Gloss", () => {
     expect(container.textContent).toBe("Meta-analysis (การวิเคราะห์อภิมาน — นำตัวเลขจากหลายงานวิจัยมารวมเป็นผลเดียว)");
   });
 
+  it("can qualify the meaning for this page (GRADE-lite is a simplified GRADE)", () => {
+    const { container } = render(<Gloss k="grade" suffix="แบบย่อ">GRADE-lite</Gloss>);
+    expect(container.textContent).toBe(`GRADE-lite (${GLOSS.grade.name.th} แบบย่อ)`);
+  });
+
   it("shows the English term with an English gloss in English mode", () => {
     const { container } = render(<Gloss k="rct" lang="en" />);
     expect(container.textContent).toBe("RCT (randomised controlled trial)");

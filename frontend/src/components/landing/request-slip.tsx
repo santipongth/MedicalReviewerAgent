@@ -6,6 +6,7 @@ import { ApiError, createReview, getStatus } from "@/lib/api";
 import { TYPICAL_DURATION_TH } from "@/lib/copy";
 import { GLOSS } from "@/lib/glossary";
 import type { ReviewType, ServiceStatus } from "@/lib/types";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { Gloss } from "../ui/gloss";
 import { ReviewTypePicker } from "./review-type-picker";
 
@@ -75,16 +76,22 @@ function StepNo({ n }: { n: number }) {
 
 const STEP_HEADING = "flex items-center font-display text-[1.05rem] font-semibold";
 const TILE =
-  "flex h-full min-h-11 cursor-pointer items-start gap-2.5 rounded-sm border border-rule bg-ground px-3 py-2.5 hover:border-ink has-[:checked]:border-primary has-[:checked]:bg-rail";
+  "flex h-full min-h-11 cursor-pointer items-start gap-2.5 rounded-sm border border-rule bg-ground px-3 py-2.5 hover:border-ink lg:py-2 has-[:checked]:border-primary has-[:checked]:bg-rail";
 
-/** One study-design checkbox tile: the Thai name first, then the English term and its plain words, smaller. */
-function Tile({ checked, onChange, name, sub }: { checked: boolean; onChange: () => void; name: ReactNode; sub: ReactNode }) {
+/** One study-design checkbox tile: the Thai name first, then the English term and its plain words, smaller. The
+ * checkbox's name is the Thai name + term; the plain words are its description, so tabbing through stays quick. */
+function Tile({ id, checked, onChange, name, term, plain }: {
+  id: string; checked: boolean; onChange: () => void; name: ReactNode; term?: ReactNode; plain: ReactNode;
+}) {
   return (
     <label className={TILE}>
-      <input type="checkbox" checked={checked} onChange={onChange} className="mt-1 size-4 flex-none accent-primary" />
+      <input type="checkbox" checked={checked} onChange={onChange} className="mt-1 size-4 flex-none accent-primary"
+        aria-labelledby={term ? `${id}-n ${id}-t` : `${id}-n`} aria-describedby={`${id}-p`} />
       <span className="grid min-w-0 gap-0.5">
-        <span className="font-display font-medium leading-snug">{name}</span>{" "}
-        <span className="text-[0.85rem] leading-snug text-muted">{sub}</span>
+        <span id={`${id}-n`} className="font-display font-medium leading-snug">{name}</span>{" "}
+        <span className="text-[0.85rem] leading-snug text-muted">
+          {term && <><span id={`${id}-t`}>{term}</span> · </>}<span id={`${id}-p`}>{plain}</span>
+        </span>
       </span>
     </label>
   );
@@ -185,8 +192,9 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
           </p>
         </div>
         <div className="grid gap-8 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-0 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div className="grid min-w-0 content-start gap-7 lg:pr-8">
-            <div className="grid gap-2">
+          {/* From 1024px the question box grows to fill the column, so steps 1-2 end level with step 3's tiles. */}
+          <div className="flex min-w-0 flex-col gap-7 lg:pr-8">
+            <div className="flex flex-col gap-2 lg:flex-1">
               <label className={STEP_HEADING} htmlFor={`${id}-topic`}>
                 <StepNo n={1} />คำถามหรือวัตถุประสงค์ <span aria-hidden className="ml-1 text-err">*</span>
               </label>
@@ -194,7 +202,7 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
                 id={`${id}-topic`} name="topic" value={topic} onChange={(e) => setTopic(e.target.value)} required minLength={3}
                 maxLength={TOPIC_MAX} rows={5} autoComplete="off" aria-describedby={`${id}-topic-hint`}
                 placeholder={"ต้องการทบทวนเรื่องใด เพื่อหาคำตอบอะไร?\nเช่น เมตฟอร์มินกับมะเร็งลำไส้ใหญ่"}
-                className="w-full resize-y rounded-sm border border-rule bg-ground px-3 py-2.5 text-[1.0625rem] text-ink outline-none focus:border-primary"
+                className="w-full resize-y rounded-sm lg:flex-1 border border-rule bg-ground px-3 py-2.5 text-[1.0625rem] text-ink outline-none focus:border-primary"
               />
               <p id={`${id}-topic-hint`} className="flex flex-wrap justify-between gap-x-3 text-[0.95rem] leading-[1.7] text-muted">
                 <span>พิมพ์หัวข้อสั้น ๆ หรือคำถามเต็มก็ได้ ถ้าถามถึงผลของการรักษา ลองคิดตาม <Gloss k="pico" /></span>
@@ -209,12 +217,14 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
           <fieldset className="grid min-w-0 content-start gap-3 lg:border-l lg:border-rule lg:pl-8">
             <legend className={`${STEP_HEADING} mb-2`}><StepNo n={3} />หลักฐานและเกณฑ์คัดเลือก</legend>
             <p className="text-[0.95rem] leading-[1.7] text-muted">ชนิดงานวิจัยที่ต้องการ เลือกได้หลายแบบ · <span className="nw">ไม่เลือก = ไม่จำกัดชนิดงานวิจัย</span></p>
-            <div className="grid auto-rows-fr gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            {/* Equal-height rows only where the tiles form a grid (640–1023px); a one-column list keeps natural heights. */}
+            <div className="grid gap-2 sm:auto-rows-fr sm:grid-cols-2 lg:auto-rows-auto lg:grid-cols-1">
               {STUDY_TYPES.map(([value, k]) => (
-                <Tile key={value} checked={types.includes(value)} onChange={() => toggleType(value)}
-                  name={GLOSS[k].name.th} sub={<>{GLOSS[k].term.th} · {GLOSS[k].plain.th}</>} />
+                <Tile key={value} id={`${id}-st-${k}`} checked={types.includes(value)} onChange={() => toggleType(value)}
+                  name={GLOSS[k].name.th} term={GLOSS[k].term.th} plain={GLOSS[k].plain.th} />
               ))}
-              <Tile checked={otherOn} onChange={() => setOtherOn((v) => !v)} name="อื่น ๆ — ระบุ" sub="พิมพ์ชนิดงานวิจัยที่ต้องการเอง" />
+              <Tile id={`${id}-st-other`} checked={otherOn} onChange={() => setOtherOn((v) => !v)} name="อื่น ๆ — ระบุ"
+                plain="พิมพ์ชนิดงานวิจัยที่ต้องการเอง" />
             </div>
             {otherOn && (
               <input
@@ -228,10 +238,14 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
             )}
           </fieldset>
         </div>
-        <details className="border-t border-rule px-4 sm:px-6">
+        <details className="group border-t border-rule px-4 sm:px-6">
           <summary className="flex min-h-12 cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 py-2 text-[0.95rem]">
-            <span className="font-display font-semibold">ตัวเลือกเพิ่มเติม</span>
+            <span className="flex items-center gap-2">
+              <DisclosureChevron />
+              <span className="font-display font-semibold">ตัวเลือกเพิ่มเติม</span>
+            </span>
             <span className="rounded-sm border border-rule px-2 py-0.5 font-display text-[0.88rem] tabular-nums text-muted">{summary}</span>
+            <span className="text-[0.88rem] text-primary underline underline-offset-2 group-open:hidden">แก้ไข</span>
           </summary>
           <div className="grid gap-6 pb-5 pt-2 lg:grid-cols-[auto_minmax(0,22rem)_auto] lg:items-start lg:gap-12">
             <fieldset className="grid gap-1">
