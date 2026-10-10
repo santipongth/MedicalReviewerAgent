@@ -66,7 +66,7 @@ export function RecentReviews() {
             <li key={r.id} className="border-b border-rule">
               <Link href={`/r/${r.id}`}
                 className={`${ROW} py-3 text-ink hover:text-primary`}>
-                <span className="min-w-0 break-words font-display font-medium">{r.topic}</span>
+                <span className="line-clamp-2 min-w-0 break-words font-display font-medium" title={r.topic}>{r.topic}</span>
                 <span className="text-right font-display tabular-nums sm:order-last">
                   {r.verification_rate != null
                     ? <><span data-testid="share">{Math.round(r.verification_rate * 100)}%</span><span className="sr-only"> ตัวเลขตรวจผ่าน</span></>

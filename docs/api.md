@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-10.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-10.2`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.
@@ -93,7 +93,7 @@ Field rules:
 - `study_types`: up to 10 entries, normalised to canonical names:
   - The canonical names are `RCT`, `Cohort`, `Case-control`, `Cross-sectional`, `Non-randomized trial`, `Qualitative`, `Mixed methods`, `Systematic review` and `Meta-analysis`.
   - Case, spacing, hyphens and common aliases are accepted, so `case control` and `quasi-experimental` both work.
-  - Any other value becomes a single `"Other: <text>"` entry. That text is capped at 60 characters and passed to the prompts only as data.
+  - Any other value becomes a single `"Other: <text>"` entry; several unknown values are joined into that one text. The text is capped at 60 characters and passed to the prompts only as data (a soft constraint: the refined question is never forced to repeat it). A bare `"Other"` is dropped, and `"Other: <canonical name>"` becomes that name.
   - An empty list means no restriction.
   - `Qualitative` and `Mixed methods` have limited support. Such studies are screened in and summarised as themes from the abstract. They never get effect numbers, directions, forest-plot rows, pools or grade.
 - `callback_url`: needs an API key, and must use https on a public host. Otherwise the request gets 403 (no key) or 422 (bad URL).
@@ -132,7 +132,7 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 
 **Review type (Plan 14a).** `result.review_type` is `narrative`, `slr`, `scoping` or (Plan 14b) `meta_analysis`, which is graded like `slr`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
 - `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`; `null` when the question was not refined), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
-- `synthesis.evidence_strength` and `synthesis.grade_baseline` are nullable. They are `null` for `narrative` and `scoping`, which are not graded; clients must not read `null` as "very low".
+- `synthesis.evidence_strength` and `synthesis.grade_baseline` are nullable. They are `null` for `narrative` and `scoping`, which are not graded, and for an `slr`/`meta_analysis` with no quantitative studies (every paper qualitative or mixed-methods; `evidence_rationale` then says so). Clients must not read `null` as "very low".
 - For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. The cards still carry `overall_direction`, `risk_of_bias`, `outcomes[].direction` and `synthesis.comparison[].cells[].direction` as raw agent extraction. The report and the CSV do not show them (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present these fields as findings.
 
 **Meta-analysis (Plan 14b).** `review_type: "meta_analysis"` behaves exactly like `slr` (PICO, screening, selection, PRISMA, conflicts, grading) and adds `result.meta_analysis`. For every other type, and for results stored before Plan 14b, `meta_analysis` is `null` or absent. It is also `null` for a meta-analysis whose pooling step failed, or was skipped because the study numbers were not verified against the abstracts (`verify_quotes` off or no verification records); either is listed in `errors` and never fails the review. Pooled numbers are computed by the system, DerSimonian-Laird random effects, from the abstract-verified effect estimates and 95% CIs. They are not a result reported by any single study.

@@ -1,4 +1,5 @@
-import { m } from "motion/react";
+"use client";
+import { m, useReducedMotion } from "motion/react";
 import type { AgentId, AgentStatus } from "@/lib/agent-scene";
 import type { Pt } from "@/lib/agent-layout";
 import { CountUp } from "./count-up";
@@ -45,10 +46,13 @@ export function AgentNode({ id, at, status, label, count, labelAt = "below" }: A
   // Right (narrow): the label is centred on the tile, or the label + count pair is when there is a count.
   const ly = right ? (hasCount ? -4 : 4) : LABEL_BELOW;
   const cy = right ? 13 : LABEL_BELOW + COUNT_GAP;
+  // the ping is a loop: never rendered under reduced motion, where a static ring would hide the dashed "working" outline
+  const reduced = useReducedMotion();
+  const ping = (status === "active" || status === "working") && !reduced;
   return (
     <g data-agent={id} data-status={status} transform={`translate(${at.x} ${at.y})`}>
-      {(status === "active" || status === "working") && (
-        // the agent at work sends out a thin ring (CSS loop, removed under reduced motion)
+      {ping && (
+        // the agent at work sends out a thin ring (CSS loop; also display:none under reduced motion in globals.css)
         <rect x={-HALF} y={-HALF} width={SIZE} height={SIZE} rx={2} fill="none" className="stroke-primary stage-ping"
           strokeWidth={1} aria-hidden="true" data-ping />
       )}

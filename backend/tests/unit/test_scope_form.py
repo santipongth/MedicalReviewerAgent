@@ -23,7 +23,7 @@ from app.schemas.review import (
     (["Meta-analysis", "Systematic review"], ["Meta-analysis", "Systematic review"]),  # older API values still accepted
     (["Other: Delphi study", "RCT"], ["RCT", "Other: Delphi study"]),
     (["delphi study"], ["Other: delphi study"]),  # unknown values become the one free-text entry
-    (["Other: a", "Other: b"], ["Other: a"]),
+    (["Other: a", "Other: b"], ["Other: a, b"]),  # several unknown values join into the one Other text
     ([" ", ""], []),
 ])
 def test_normalize_study_types(raw, expected):

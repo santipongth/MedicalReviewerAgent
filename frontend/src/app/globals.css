@@ -248,6 +248,10 @@ h4 {
     transition: none !important;
     animation: none !important;
   }
+  /* a static ping ring would sit on the tile edge and hide the dashed "working" outline */
+  .stage-ping {
+    display: none;
+  }
 }
 
 /* Agent stage loops (disabled by the reduced-motion block above). */
@@ -273,10 +277,11 @@ h4 {
 }
 /* Plan 17b: the agent that is working sends out a thin ring (stroke only: no glow, no fill). */
 @keyframes stage-ping {
-  from { opacity: 0.55; transform: scale(1); }
+  from { opacity: 0.55; transform: scale(1.08); } /* starts outside the tile outline, never on it */
   to { opacity: 0; transform: scale(1.45); }
 }
 .stage-ping {
+  opacity: 0; /* the keyframes drive it */
   animation: stage-ping 1.8s ease-out infinite;
   transform-box: fill-box;
   transform-origin: center;

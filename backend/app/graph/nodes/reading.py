@@ -9,7 +9,7 @@ from app.graph import prompts
 from app.graph.nodes.intake import harness_runner, harness_spec
 from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate, PaperCard
-from app.harness.design import design_problems, settle_design_category
+from app.harness.design import design_problems, settle_design_category, strip_non_quantitative
 from app.harness.runner import HarnessResult
 from app.harness.verify import card_problems, compare_cards, null_unverified_numbers
 from app.services.llm import LLMError
@@ -115,7 +115,14 @@ def make_read_paper(deps):
                 before = card
                 card, verified, total = null_unverified_numbers(card, text, threshold)
                 unverified = _blanked(before, card)
-            entry["card"] = settle_design_category(card, pub_types).model_dump()
+            # after verification: a qualitative/mixed card never carries effect numbers or a direction
+            settled = settle_design_category(card, pub_types)
+            stripped = strip_non_quantitative(settled)
+            if stripped is not settled:  # recount: only the numbers that remain (a verified sample size, if any)
+                kept = int(spec.verify_quotes and stripped.sample_size is not None)
+                verified = total = kept
+                unverified = [u for u in unverified if u["field"] != "effect"]
+            entry["card"] = stripped.model_dump()
         if isinstance(primary, BaseException) and not isinstance(primary, LLMError):
             raise primary
         entry["verification"] = {"numbers_verified": verified, "numbers_total": total, "agreement": agreement,

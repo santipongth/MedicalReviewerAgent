@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from app.graph.schemas import ReviewQuestion
+from app.schemas.review import STUDY_TYPES
 from app.services.text import normalize_title
 
 _THAI = re.compile(r"[฀-๿]")
@@ -52,10 +53,11 @@ def question_problems(q: ReviewQuestion, options: dict[str, Any], review_type: s
     if year_from and str(year_from) not in (q.timeframe or ""):
         problems.append(f"timeframe must state that only studies from {year_from} onward are included")
     designs = _loose(" ".join(q.study_designs))
-    for study_type in options.get("study_types") or []:
-        name = study_type.split(":", 1)[1].strip() if study_type.startswith("Other:") else study_type
-        if name and _loose(name) not in designs:
-            problems.append(f"study_designs must include {name} (requested by the user)")
+    # Only canonical names (a fixed list, never user text) are hard-checked. A free-text "Other: ..." entry stays a
+    # soft constraint (data in the User constraints line): it may be in any language, and a problem never quotes it.
+    missing = [t for t in options.get("study_types") or [] if t in STUDY_TYPES and _loose(t) not in designs]
+    if missing:
+        problems.append(f"study_designs must include {', '.join(missing)} (requested by the user)")
     return problems
 
 

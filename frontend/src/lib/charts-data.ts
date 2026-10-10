@@ -107,7 +107,8 @@ export function forestData(papers: Paper[], lang: Lang): ForestData {
   for (const p of papers) {
     const en = p.card_en ?? p.card;
     const shown = (lang === "en" ? p.card_en : p.card) ?? en;
-    if (!en || !shown) continue;
+    // qualitative/mixed-methods cards are themes: never a forest row, even if a number slipped through
+    if (!en || !shown || isNonQuantitative(en)) continue;
     en.outcomes.forEach((o, i) => {
       if (isBlankedEffect(p, o.outcome)) {
         unverified.push({ ref: p.ref, outcome: shown.outcomes[i]?.outcome ?? o.outcome });
@@ -215,12 +216,16 @@ export interface StudyPoint {
   design: string;
 }
 
-/** Studies with a publication year and a verified sample size (a blanked sample size is null and is not plotted). */
+/**
+ * Studies with a publication year and a verified sample size (a blanked sample size is null and is not plotted).
+ * Qualitative/mixed-methods studies are left out: the map colours points by effect direction, which they never have.
+ */
 export function studyPoints(papers: Paper[]): { points: StudyPoint[]; missing: number } {
   const points: StudyPoint[] = [];
   let missing = 0;
   for (const p of papers) {
     const card = p.card_en ?? p.card;
+    if (isNonQuantitative(card)) continue;
     if (!card || p.year == null || card.sample_size == null || card.sample_size <= 0) {
       missing += 1;
       continue;

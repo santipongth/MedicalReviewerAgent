@@ -36,6 +36,18 @@ describe("RecentReviews", () => {
     expect(first).toHaveTextContent("96% ตัวเลขตรวจผ่าน"); // screen readers hear what the figure is
   });
 
+  it("clamps a long topic to two lines and keeps the full text in the link name", async () => {
+    const topic = "คำถามยาว ".repeat(60);
+    listRecent.mockResolvedValue([
+      { id: "a1", topic, language: "th", status: "done", created_at: now, finished_at: now, verification_rate: 0.5 },
+    ]);
+    render(<RecentReviews />);
+    const link = await screen.findByRole("link");
+    const cell = link.children[0] as HTMLElement;
+    expect(cell).toHaveClass("line-clamp-2");
+    expect(cell).toHaveAttribute("title", topic);
+  });
+
   it("says so calmly when the list cannot be loaded", async () => {
     listRecent.mockRejectedValue(new Error("down"));
     render(<RecentReviews />);

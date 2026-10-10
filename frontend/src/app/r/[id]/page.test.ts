@@ -17,6 +17,16 @@ describe("generateMetadata", () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it("clamps a long topic to 120 characters with an ellipsis", async () => {
+    const topic = "ก".repeat(600);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ topic }), { status: 200 })));
+    const meta = await generateMetadata(props);
+    const title = meta.title as string;
+    expect(Array.from(title)).toHaveLength(120);
+    expect(title.endsWith("…")).toBe(true);
+    expect(meta.openGraph?.title).toBe(title);
+  });
+
   it("falls back on a network error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
     expect(await generateMetadata(props)).toEqual({ title: FALLBACK });
