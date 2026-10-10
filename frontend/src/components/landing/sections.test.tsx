@@ -31,7 +31,7 @@ describe("Timeline", () => {
     render(<Timeline />);
     const steps = within(screen.getByRole("list", { name: "ขั้นตอนของรีวิว" })).getAllByRole("listitem");
     expect(steps.map((s) => s.querySelector("h3")?.textContent)).toEqual(
-      ["ตีความคำถาม", "ค้นห้าฐานข้อมูล", "คัดกรอง", "อ่านและตรวจ", "รายงานพร้อม"]);
+      ["ตีความคำถาม", "ค้นหลายฐานข้อมูล", "คัดกรอง", "อ่านและตรวจ", "รายงานพร้อม"]);
   });
 
   it("shows the sample review's real pipeline counts", () => {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-const SOURCES = ["PubMed", "arXiv", "Semantic Scholar", "OpenAlex", "CrossRef", "Europe PMC (บทคัดย่อ)"];
+const SOURCES = ["PubMed", "Europe PMC", "OpenAlex", "Semantic Scholar", "Crossref", "arXiv", "DOAJ", "OpenAIRE"];
 
 export function SiteFooter() {
   return (

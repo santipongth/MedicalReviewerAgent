@@ -152,7 +152,7 @@ export function packetScale(t: number): number {
 
 // Framing: the camera keeps a fixed elevation (the Plan 12 view direction, from [0, 3.1, 7] toward [0, -1.1, 0]) and
 // backs off along it just far enough that the whole layout (lane, labels' room, pool, full piles, thought headroom)
-// fits the 960/254 wrapper (the 2D stage's constant box, so toggling never shifts the page) with an 8% side margin
+// fits the 960/288 wrapper (the 2D stage's constant box, so toggling never shifts the page) with an 8% side margin
 // and a 2% vertical one, plus a small pan toward the current agent.
 export const CAMERA_BASE: Vec3 = [0, 3.1, 7]; // initial Canvas camera only; the rig places the fitted camera at once
 const VIEW_UP = 4.2; // camera offset direction from the look-at point (y, z), i.e. ~31 degrees above the horizon
@@ -160,7 +160,7 @@ const VIEW_BACK = 7;
 const VIEW_LEN = Math.hypot(VIEW_UP, VIEW_BACK);
 const DIR_Y = VIEW_UP / VIEW_LEN;
 const DIR_Z = VIEW_BACK / VIEW_LEN;
-export const STAGE_ASPECT = 960 / 254; // = PLACEHOLDER_SIZE.wide (pinned by stage-3d.test.tsx)
+export const STAGE_ASPECT = 960 / 288; // = PLACEHOLDER_SIZE.wide (pinned by stage-3d.test.tsx)
 export const STAGE_FOV = 45;
 export const FIT_MARGIN = 0.08;
 /**

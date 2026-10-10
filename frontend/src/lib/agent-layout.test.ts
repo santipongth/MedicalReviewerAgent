@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AGENT_LABEL, PIPELINE, initialScene, reduceScene, type EdgeId } from "./agent-scene";
 import type { ReviewEvent } from "./types";
 import {
+  SATELLITES,
   REF_FONT, arc, clip, layoutFor, queryChars, segPath, segX, segY, type LayoutKind, type Rect, type StageLayout,
 } from "./agent-layout";
 
@@ -96,9 +97,10 @@ describe.each(["wide", "narrow"] as LayoutKind[])("layoutFor %s", (kind) => {
     expect(ids).toContain("read>external");
     expect(layoutFor(kind, { ...base, showExternal: false }).nodes.external).toBeUndefined();
   });
-  it("has five search-engine satellites and caps chips", () => {
+  it("has eight search-engine satellites and caps chips", () => {
     const l = layoutFor(kind, { ...base, batches: 99, queries: 99, slots: 99 });
-    expect(l.satellites.map((s) => s.label)).toEqual(["PubMed", "arXiv", "Semantic Scholar", "OpenAlex", "Crossref"]);
+    expect(l.satellites.map((s) => s.label)).toEqual(["PubMed", "Europe PMC", "OpenAlex", "Semantic Scholar", "Crossref", "arXiv", "DOAJ", "OpenAIRE"]);
+    expect(l.satellites).toHaveLength(SATELLITES.length);
     expect(l.queryChips).toHaveLength(5);
     expect(l.batchChips).toHaveLength(10);
     expect(l.slots).toHaveLength(30);
@@ -220,7 +222,10 @@ describe("wide composition", () => {
       const bottom = band.y + band.h;
       for (const s of l.slots) expect(s.y + l.slotR).toBeLessThanOrEqual(bottom);
       for (const r of l.queryChips) expect(r.y + r.h).toBeLessThanOrEqual(bottom);
-      expect(l.notes.synth.y).toBeGreaterThan(bottom);
+      for (const s of l.satellites) expect(s.text.y + 4).toBeLessThanOrEqual(bottom); // the source list is the tallest block
+      // the synth caption hangs under the query rows / reader pool (shorter than the list), inside the box
+      expect(l.notes.synth.y).toBeGreaterThan(Math.max(...l.slots.map((s) => s.y + l.slotR), l.queryChips[0].y + 5 * 18 - 1));
+      expect(l.notes.synth.y + 4).toBeLessThanOrEqual(l.height);
     }
   });
 

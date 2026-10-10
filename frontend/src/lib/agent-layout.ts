@@ -12,7 +12,7 @@ export interface Seg { a: Pt; c: Pt; b: Pt } // quadratic control through the li
 /**
  * Composition. Wide: one centred row of uniform tiles spanning the viewBox, a single-line label and a count on fixed
  * baselines under every tile, then one detail band (`band.y` is its common top edge) whose blocks sit in their agent's
- * column: queries hang right-aligned from the plan tile, the five sources list down from the search tile, the
+ * column: queries hang right-aligned from the plan tile, the eight sources list down from the search tile, the
  * screening bar is centred under screen, and the reader pool fills the read..finish columns. Narrow: a vertical lane
  * with every detail left-aligned in one column right of the spine (x = 70), under its agent's label.
  */
@@ -36,7 +36,7 @@ export interface StageLayout {
 export interface LayoutOpts { showLocalize: boolean; showExternal: boolean; slots: number; batches: number; queries: number }
 
 /** Search engines configured for SearXNG (backend/app/config.py `searxng_engines`), in display form. */
-export const SATELLITES = ["PubMed", "arXiv", "Semantic Scholar", "OpenAlex", "Crossref"] as const;
+export const SATELLITES = ["PubMed", "Europe PMC", "OpenAlex", "Semantic Scholar", "Crossref", "arXiv", "DOAJ", "OpenAIRE"] as const;
 
 const MAX_SLOTS = 30;
 const MAX_QUERY_CHIPS = 4;
@@ -50,7 +50,8 @@ const SLOT_PITCH = 28;
 const LANE_Y = 62; // tile row centre; the headroom above holds the external node (when shown)
 const EXT_RISE = 38; // external node centre above the row, nested in the gap between the read and synth tiles
 const BAND_GAP = 72; // row centre -> band top: under the tiles (+22), labels (baseline +38) and counts (baseline +55)
-const TAIL = 30; // under the band: the one-line synth caption
+const TAIL = 10; // under the band (the source list is its tallest block)
+const BLOCK_H = 5 * ROW; // queries (4 + "+n") and the 3-row reader pool; the synth caption hangs under them
 const BAR_W_WIDE = 84;
 const BAR_W_NARROW = 96;
 const SRC_W = 126; // wide source list width (dot + the longest name, "Semantic Scholar")
@@ -121,7 +122,7 @@ function wideLayout(o: LayoutOpts): StageLayout {
   const margin = 48;
   const laneY = LANE_Y;
   const bandY = laneY + BAND_GAP;
-  const bandH = 5 * ROW; // five source rows; the query rows and the 3-row reader pool fit inside
+  const bandH = SATELLITES.length * ROW; // one row per source; the query rows and the reader pool are shorter
   const vis = visibleAgents(o);
   const step = (width - 2 * margin) / (vis.length - 1);
   const nodes: Partial<Record<AgentId, Pt>> = {};
@@ -144,7 +145,7 @@ function wideLayout(o: LayoutOpts): StageLayout {
     const base = bandY + TEXT_BASE + i * ROW;
     return { label: name, at: { x: sx + 4, y: base - 4 }, text: { x: sx + 14, y: base } };
   });
-  zone.search = { x: sx - 6, y: bandY - 6, w: SRC_W, h: 5 * ROW + 10 };
+  zone.search = { x: sx - 6, y: bandY - 6, w: SRC_W, h: SATELLITES.length * ROW + 10 };
 
   // screening: one segmented bar centred under screen, the kept/cut split under it
   const nb = clampInt(o.batches, 0, MAX_BATCH_CHIPS);
@@ -185,7 +186,7 @@ function wideLayout(o: LayoutOpts): StageLayout {
     band: { y: bandY, h: bandH }, satellites, queryChips, queryAlign: "end", batchChips, slots, slotR: SLOT_R, zone,
     notes: {
       screen: { x: screen.x, y: bandY + TEXT_BASE + ROW - 1, anchor: "middle" }, // the row under the bar
-      synth: { x: px0 + full / 2, y: bandY + bandH + 18, anchor: "middle", stacked: false },
+      synth: { x: px0 + full / 2, y: bandY + BLOCK_H + 18, anchor: "middle", stacked: false },
     },
   };
 }
@@ -222,13 +223,13 @@ function narrowLayout(o: LayoutOpts): StageLayout {
       for (let i = 0; i < nq; i++) queryChips.push({ x: zx, y: zy + i * ROW, w: zw, h: ROW });
       zh = nq * ROW;
     } else if (id === "search") {
-      // two columns (3 + 2) of status dot + name, so the five names never meet
+      // two columns (4 + 4) of status dot + name, so the names never meet
       satellites = SATELLITES.map((name, i) => {
-        const base = zy + TEXT_BASE + (i % 3) * ROW;
-        const x = zx + Math.floor(i / 3) * SRC_COL;
+        const base = zy + TEXT_BASE + (i % 4) * ROW;
+        const x = zx + Math.floor(i / 4) * SRC_COL;
         return { label: name, at: { x: x + 4, y: base - 4 }, text: { x: x + 14, y: base } };
       });
-      zh = 3 * ROW;
+      zh = 4 * ROW;
     } else if (id === "screen" && nb > 0) {
       for (let i = 0; i < nb; i++) {
         const w = (bw - (nb - 1) * 2) / nb;

@@ -19,7 +19,7 @@ const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.Age
 // the 2D stage's aspect), so nothing changes when the chunk lands.
 const Stage3D = dynamic(() => import("./stage3d/stage-3d"), {
   ssr: false,
-  loading: () => <div aria-hidden data-placeholder="3d" className="mx-auto aspect-[960/254] w-full rounded-sm bg-surface" />,
+  loading: () => <div aria-hidden data-placeholder="3d" className="mx-auto aspect-[960/288] w-full rounded-sm bg-surface" />,
 });
 
 const STORAGE_KEY = "mra.stage3d";

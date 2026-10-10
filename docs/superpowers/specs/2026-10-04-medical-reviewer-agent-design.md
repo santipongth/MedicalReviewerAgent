@@ -287,3 +287,11 @@ D:\MedicalReviewerAgent\
   - `scoping`: กรอบ PCC (`concept`, `context`), คิวรีกว้าง, ไม่ให้เกรด ไม่สรุปทิศทาง/RoB ไม่มี consensus/conflicts
 - **มุมมองใหม่ในรายงาน:** ตารางงานวิจัย (Literature Review Matrix, ตัวเลขผ่าน `VerifiedNumber`/`Hole` เท่านั้น, CSV เพิ่มคอลัมน์), แผนที่ความรู้ (concept map แบบต้นไม้ พร้อม outline ที่เข้าถึงได้), แผนที่หลักฐานสำหรับ scoping (นับตามประเด็น/ปี × ชนิดงานวิจัย) และตารางเหตุผลที่คัดออกใน PRISMA/PRISMA-ScR
 - **การบอกผู้ใช้อย่างตรงไปตรงมา:** ป้ายชนิดมีคำว่า "อัตโนมัติ · อ่านเฉพาะบทคัดย่อ"; ทิศทางเป็นการอ่านของเอเจนต์เสมอ
+
+## Revision 2026-10-10: more scholarly sources (Plan 16)
+
+- **แหล่งค้นหา:** engine เริ่มต้นเป็น PubMed (แก้ใหม่), Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ และ OpenAIRE; PLOS เป็น opt-in (rate limit เข้ม); ไม่ต้องใช้ API key (key ที่ไม่บังคับใส่ได้ใน `.env`)
+  - Europe PMC เป็นทั้ง engine ค้นหาและแหล่งเสริม metadata/abstract เหมือนเดิม
+  - ข้อความที่บอกผู้ใช้ (footer, timeline, เวทีเอเจนต์) ไม่ระบุจำนวนแหล่งตายตัวนอกจากรายการบนเวที ซึ่งตรงกับ `SATELLITES` ใน `frontend/src/lib/agent-layout.ts`
+  - กล่องเวทีเอเจนต์แบบกว้างสูงขึ้นจาก 254 เป็น 288 (รายการแหล่ง 8 แถว) ค่าคงที่ตลอดการรัน
+- **การสำรวจ:** [open scholarly sources survey](../notes/2026-10-10-open-scholarly-sources-survey.md)

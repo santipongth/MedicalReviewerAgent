@@ -33,7 +33,7 @@ export const AGENT_LABEL: Record<AgentId, { th: string[]; role: string }> = {
   refine: { th: ["ตีความ", "คำถาม"], role: "แปลงคำถามให้ชัดแบบ PICO" },
   plan: { th: ["วางคำค้น"], role: "เลือกคำค้นภาษาอังกฤษ" },
   // label parts break only between words: 3D stacks them, 2D joins them on one line
-  search: { th: ["ค้น", "ฐานข้อมูล"], role: "ค้น PubMed, arXiv และฐานข้อมูลอื่น" },
+  search: { th: ["ค้น", "ฐานข้อมูล"], role: "ค้น PubMed, Europe PMC และฐานข้อมูลอื่น" },
   enrich: { th: ["ดึง", "บทคัดย่อ"], role: "เก็บเฉพาะงานที่มีบทคัดย่อพอให้อ่าน" },
   screen: { th: ["คัดกรอง"], role: "ให้คะแนนความตรงคำถาม ชุดละ 10 ฉบับ" },
   read: { th: ["ผู้อ่าน"], role: "อ่านบทคัดย่อและตรวจตัวเลขกับต้นฉบับ" },

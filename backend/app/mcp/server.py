@@ -90,8 +90,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
 
     @mcp.tool()
     async def search_papers(query: str, ctx: Context, limit: int = 10) -> dict[str, Any]:
-        """Search published biomedical papers (PubMed, arXiv, Semantic Scholar, OpenAlex, CrossRef; Europe PMC
-        metadata). Returns title, up to 6 authors, year, journal, DOI/PMID/PMCID, open-access flag and the abstract
+        """Search published biomedical papers (PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ,
+        OpenAIRE; Europe PMC also supplies curated metadata). Returns title, up to 6 authors, year, journal, DOI/PMID/PMCID, open-access flag and the abstract
         (first 600 characters). `limit` is clamped into 1-25; shares the paper-search rate limit with REST."""
         await papers_limit(await identity(ctx))
         try:

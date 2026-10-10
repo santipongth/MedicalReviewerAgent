@@ -19,7 +19,7 @@ export interface Thought {
 }
 
 const SHOWN_QUERIES = 2;
-const SEARCH_SOURCES = "PubMed, arXiv, Semantic Scholar, OpenAlex และ Crossref";
+const SEARCH_SOURCES = "PubMed, Europe PMC, OpenAlex และฐานข้อมูลอื่น";
 
 /** Headings per agent (also the grouped log's step titles). */
 export const STEP_TITLE: Record<AgentId, string> = {
