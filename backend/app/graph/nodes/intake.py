@@ -13,11 +13,13 @@ from app.graph.state import ReviewState
 from app.harness.localize import localize_strings
 from app.harness.question import question_problems
 from app.harness.runner import HarnessRunner
+from app.harness.study_types import missing_study_types
 from app.schemas.review import ReviewOptions
 from app.services.llm import LLMError, LLMOutputError, LLMRefusal
 from app.services.llm_config import HarnessSpec
 
 MAX_QUERIES = 4
+MAX_QUERIES_META = 5  # meta-analysis: one more query (trial names / acronyms) for recall (audit I-9)
 NO_DESIGN_QUERY = {"narrative", "scoping"}  # these want breadth; every other type keeps the design query
 
 
@@ -72,8 +74,8 @@ async def _localized_display(deps, runner: HarnessRunner, q: ReviewQuestion, lan
     cost = 0.0
     if harness_spec(deps).localize:
         try:
-            strings, _, cost = await localize_strings(getattr(deps.llms, "localizer", None), runner, strings,
-                                                      language)
+            res = await localize_strings(getattr(deps.llms, "localizer", None), runner, strings, language)
+            strings, cost = res.strings, res.cost
         except LLMError:  # display stays in English; the review itself is unaffected
             cost = 0.0
     display: dict[str, Any] = {
@@ -102,7 +104,7 @@ def make_refine_question(deps):
                 refiner, prompts.refine_system(review_type),
                 prompts.refine_user(topic=state["topic"], english_topic=english_topic, options=options,
                                     review_type=review_type),
-                schema=ReviewQuestion, validate=lambda q: question_problems(q, options, review_type),
+                schema=ReviewQuestion, validate=lambda q: question_problems(q, options, review_type, enforce_study_types=False),
             )
         except LLMError as exc:  # provider error or refusal: review the English topic as-is
             errors.append(f"question refinement failed: {type(exc).__name__}")
@@ -122,7 +124,7 @@ def make_refine_question(deps):
                     prompts.critique_user(topic=state["topic"], question=_draft_dump(question, review_type),
                                           options=options, review_type=review_type),
                     schema=QuestionCritique,
-                    validate=lambda c: question_problems(c.revised, options, review_type),
+                    validate=lambda c: question_problems(c.revised, options, review_type, enforce_study_types=False),
                     trigger="critique",
                 )
             except LLMError as exc:  # keep the validated draft
@@ -134,8 +136,15 @@ def make_refine_question(deps):
                     entry["critique_applied"] = True
                     entry["critique_issues"] = crit.value.issues
         if question is None:
+            errors.append("question refinement fell back to the English topic (no PICO): "
+                          + ("; ".join(res.problems) or "no valid draft"))
             entry["seconds"] = round(time.perf_counter() - started, 3)
             return {"question": None, "cost_usd": cost, "errors": errors, "quality": [entry]}
+        missing = missing_study_types(options, question.study_designs)
+        if missing:  # never reject a good PICO over a study type: add the requested names in code and say so
+            question = question.model_copy(update={"study_designs": [*question.study_designs, *missing]})
+            entry["study_designs_added"] = missing
+            errors.append("refined study_designs lacked the requested " + ", ".join(missing) + "; added in code")
         if review_type != "scoping" and (question.concept or question.context):  # PCC fields are scoping-only
             question = question.model_copy(update={"concept": None, "context": None})
         display, localize_cost = await _localized_display(deps, runner, question, state.get("language", "th"))
@@ -159,7 +168,8 @@ def _is_primary_design_query(query: str) -> bool:
     return bool(PRIMARY_DESIGN_TERMS.search(query)) and not REVIEW_TERMS.search(query)
 
 
-def ensure_design_query(queries: list[str], question: dict[str, Any] | None) -> list[str]:
+def ensure_design_query(queries: list[str], question: dict[str, Any] | None,
+                        max_queries: int = MAX_QUERIES) -> list[str]:
     """Search engines rank reviews highly; one query naming the right primary design makes sure original studies
     are found too (a review query does not count). Added in code (replacing the last query when the cap is
     reached) if the planner left it out; kept short like the planner's own keyword queries."""
@@ -169,7 +179,7 @@ def ensure_design_query(queries: list[str], question: dict[str, Any] | None) -> 
     intervention = " ".join((question.get("intervention_or_exposure") or "").split()[:4])
     population = " ".join((question.get("population") or "").split()[:3])
     query = " ".join(f"{intervention} {population} {design}".split())
-    return [*queries[: MAX_QUERIES - 1], query] if len(queries) >= MAX_QUERIES else [*queries, query]
+    return [*queries[: max_queries - 1], query] if len(queries) >= max_queries else [*queries, query]
 
 
 def make_plan_queries(deps):
@@ -203,9 +213,10 @@ def make_plan_queries(deps):
             q = " ".join(q.split())
             if q and q.lower() not in seen:
                 seen[q.lower()] = q
-        plan["queries"] = list(seen.values())[:MAX_QUERIES]
+        max_queries = MAX_QUERIES_META if review_type == "meta_analysis" else MAX_QUERIES
+        plan["queries"] = list(seen.values())[:max_queries]
         if review_type not in NO_DESIGN_QUERY:  # narrative/scoping reviews want breadth, not a design query
-            plan["queries"] = ensure_design_query(plan["queries"], question)
+            plan["queries"] = ensure_design_query(plan["queries"], question, max_queries)
         if question:  # PICO comes from the refined question so every stage judges against the same criteria
             for key in ("population", "intervention_or_exposure", "comparator", "outcomes"):
                 plan[key] = question[key]

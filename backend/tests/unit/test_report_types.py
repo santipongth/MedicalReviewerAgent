@@ -40,9 +40,25 @@ def test_legacy_result_without_type_has_no_type_line():
 def test_csv_appends_columns_at_the_end_and_joins_lists():
     assert CSV_FIELDS[:18][-1] == "error" and CSV_FIELDS[18:] == [
         "population", "intervention_or_exposure", "comparator", "risk_of_bias", "overall_direction", "key_findings",
-        "limitations"]
+        "limitations", "comparison", "matches_question"]
     rows = list(csv.DictReader(io.StringIO(render_csv(review("slr", "low").result).lstrip("﻿"))))
     assert rows[0]["key_findings"] == "a | b" and rows[0]["risk_of_bias"] == "low" and rows[0]["limitations"] == "small"
+    assert rows[0]["comparison"] == "" and rows[0]["matches_question"] == "true"  # a pre-Plan 19 outcome matches
+
+
+def test_csv_and_markdown_mark_other_comparisons():
+    """Final review finding 2: an other-comparison estimate is never exported as plain evidence."""
+    r = review("slr", "low")
+    r.result["papers"][0]["card"]["outcomes"] = [
+        {"outcome": "Pain", "direction": "positive", "comparison": "drug vs placebo", "matches_question": True},
+        {"outcome": "CRC", "direction": "positive", "effect_measure": "HR", "effect_value": 0.54,
+         "comparison": "GLP-1RAs vs insulin", "matches_question": False}]
+    rows = list(csv.DictReader(io.StringIO(render_csv(r.result).lstrip("﻿"))))
+    assert [(x["comparison"], x["matches_question"]) for x in rows] == [("drug vs placebo", "true"),
+                                                                       ("GLP-1RAs vs insulin", "false")]
+    md = render_markdown(r)
+    assert "Other comparisons, not evidence for the question: CRC (GLP-1RAs vs insulin)." in md
+    assert "Other comparisons" not in render_markdown(review("slr", "low"))
 
 
 def test_scoping_csv_leaves_direction_and_bias_empty_but_keeps_the_header():

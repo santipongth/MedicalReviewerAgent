@@ -147,10 +147,11 @@ def test_build_llms_wires_harness_roles_and_escalation_factory():
 
     settings = Settings(_env_file=None, llm_config_path=REPO_CONFIG, openrouter_api_key="sk-or-x")
     llms = build_llms(settings)
-    assert llms.normalizer.model == llms.localizer.model == llms.extractor_secondary.model == "qwen/qwen3.5-flash-02-23"
+    assert llms.normalizer.model == llms.localizer.model == "qwen/qwen3.5-flash-02-23"
+    assert llms.extractor_secondary.model == llms.screener_secondary.model == "google/gemini-2.5-flash-lite"
     assert llms.synthesizer.schema is SynthesisNarrative and llms.conflict_explainer.schema is ConflictNote
     esc = llms.escalation(PaperCard)
-    assert esc.model == "qwen/qwen3.5-flash-02-23" and esc.schema is PaperCard
+    assert esc.model == "google/gemini-3.1-flash-lite" and esc.schema is PaperCard
     assert llms.escalation(PaperCard) is esc  # cached per schema
     assert llms.harness.dual_extraction is True and llms.harness.max_repairs == 2
 

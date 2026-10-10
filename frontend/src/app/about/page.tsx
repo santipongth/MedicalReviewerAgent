@@ -81,7 +81,7 @@ export default async function AboutPage() {
           <div><dt className="font-display font-semibold">รูปแบบการทบทวน (<code className="font-code">review_type</code>)</dt>
             <dd className="text-muted"><code className="font-code">slr</code> อย่างเป็นระบบ (ค่าเริ่มต้น) · <code className="font-code">meta_analysis</code> อย่างเป็นระบบพร้อมค่ารวมที่ระบบคำนวณ · <code className="font-code">scoping</code> สำรวจขอบเขต · <code className="font-code">narrative</code> แบบบรรยาย</dd></div>
           <div><dt className="font-display font-semibold">ชนิดงานวิจัย (<code className="font-code">study_types</code>)</dt>
-            <dd className="text-muted">RCT, Cohort, Case-control, Cross-sectional, Non-randomized trial, Qualitative, Mixed methods หรือ <code className="font-code">&quot;Other: …&quot;</code> (ไม่เกิน 60 ตัวอักษร) · ไม่ระบุ = ไม่จำกัด</dd></div>
+            <dd className="text-muted">RCT, Cohort, Case-control, Cross-sectional, Non-randomized trial, Qualitative, Mixed methods, Systematic review, Meta-analysis หรือ <code className="font-code">&quot;Other: …&quot;</code> (ไม่เกิน 60 ตัวอักษร) · ไม่ระบุ = ไม่จำกัด</dd></div>
           <div><dt className="font-display font-semibold">สิ่งที่อยู่ในผลลัพธ์</dt>
             <dd className="text-muted">ตารางเทียบผล ตารางงานวิจัย (literature matrix) แผนที่ความรู้ แผนภาพ PRISMA และ forest plot เครือข่ายการอ้างอิง (<code className="font-code">result.citations</code>) และค่ารวมของ meta-analysis (<code className="font-code">result.meta_analysis</code>) ส่งออกได้เป็น Markdown, CSV, JSON และ HTML ที่เปิดได้ออฟไลน์</dd></div>
         </dl>
@@ -145,6 +145,7 @@ export default async function AboutPage() {
           <li>ความแข็งแรงของหลักฐาน (เฉพาะ systematic review และ meta-analysis) เป็นแบบ GRADE-lite ที่คำนวณจากรูปแบบการศึกษา ความเสี่ยงอคติ ความสอดคล้อง และขนาดตัวอย่าง</li>
           <li>เครือข่ายการอ้างอิงใช้ข้อมูลเมทาดาทาจาก OpenAlex (สำรองด้วย Europe PMC) เฉพาะระหว่างงานวิจัยในรีวิวเดียวกัน ถ้าไม่มีข้อมูลจะแสดงว่า “ไม่มีข้อมูล” ไม่ใช่ “ไม่อ้างอิง”</li>
           <li>งานเชิงคุณภาพและแบบผสมผสาน (Qualitative, Mixed methods) รองรับแบบจำกัด: สรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข ไม่นับในทิศทางผล แผนภาพ หรือค่ารวม</li>
+          <li>ยังไม่รองรับการทบทวนความแม่นยำของการวินิจฉัย (diagnostic test accuracy): ค่าความไว (sensitivity) ความจำเพาะ (specificity) และ AUC แสดงเป็นผลทั่วไปจากบทคัดย่อ ไม่นำมารวมผลและไม่วาดใน forest plot คำถามด้านการวินิจฉัยไม่มีทิศทางของผล ระบบจึงไม่สรุปความเห็นพ้องหรือความขัดแย้งระหว่างงานวิจัย และระดับหลักฐาน GRADE-lite ไม่ประเมินความไม่สอดคล้อง (inconsistency) ควรตีความระดับหลักฐานอย่างระมัดระวัง</li>
           <li>ชนิด meta-analysis รวมผลด้วยวิธี DerSimonian–Laird (random effects) เฉพาะงานวิจัยปฐมภูมิที่มีผลและช่วงเชื่อมั่น 95% ผ่านการตรวจกับบทคัดย่อ อย่างน้อย 3 ฉบับ ค่ารวมเป็นตัวเลขที่ระบบคำนวณเอง ไม่ใช่ผลจากงานวิจัยฉบับใด</li>
         </ul>
       </section>

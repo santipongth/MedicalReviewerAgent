@@ -18,12 +18,21 @@ def sha(text: str) -> str:
 
 
 SYSTEM_HASHES = {
-    "refine_system": (prompts.refine_system, "c98080d63c4f2c0e1da703789486dad2de1ec2907bb6d7cd9a857da9f9ddfe7c"),
-    "critique_system": (prompts.critique_system, "20dcf2409037bf9ae5854d99b6f9e870af67ac11f80060fe90edc460f86d02d4"),
+    # Plan 19 (prompt_version 2026-10-10.5, audit I-15): refine and critique stay within the user's scope (harm/safety
+    # only for an unrestricted therapy/prevention effect question; the critic removes unrequested sub-questions instead
+    # of asking for safety), and the screener excludes an already-diagnosed population for an incidence question.
+    # 2026-10-10.6 (Task 6 review): that screener rule is scoped to first-occurrence (incidence / primary prevention)
+    # questions, excepts recurrence, progression and secondary prevention, and applies to SLR-like types only (the
+    # narrative and scoping override blocks switch it off).
+    "refine_system": (prompts.refine_system, "f99a1d12f460a02c1007b06f1b026315be1b14e474d5076866210b8834b5084f"),
+    "critique_system": (prompts.critique_system, "9ac2baeaa7cfc551d12d82a877851b4993d8f6b9b0ecfab116fc156aadc1be04"),
     "plan_system": (prompts.plan_system, "4511213da99591cdf2d72fa93f128ca7fde79a50495585e8689cca18bf71bd58"),
-    "screen_system": (prompts.screen_system, "b5c17e3a4db2afe4da614f31d2bc63613f25b142392f5b2b90840c6dd3fadfb2"),
-    "extract_system": (prompts.extract_system, "74dc03786fb0fa75155f52a4005026ebc361162d834cd97f8b557cd6381dd82f"),
-    "narrative_system": (prompts.narrative_system, "a67d0d9906785bbff2a6f6ac6d673853c8bfe7e62141a199a7a67a8881461082"),
+    "screen_system": (prompts.screen_system, "f5ae19b693f69e3a1fe2269319bd337de895958530496317e8a6783437175e0c"),
+    # Plan 19 (prompt_version 2026-10-10.3): extraction states each outcome's comparison and matches_question
+    # (audit I-2a); the narrative gets the other-comparison, number/measure, population and GRADE certainty-wording
+    # rules (audit I-2b/c, I-14).
+    "extract_system": (prompts.extract_system, "be79abbcebcf454162d8f7d58245103387e748d2c33e52e066bae146ac5841fa"),
+    "narrative_system": (prompts.narrative_system, "c7e562f733bf0f9c21e1ce74f887d6369374500602858d4685964547834615ed"),
 }
 
 
@@ -40,7 +49,7 @@ def test_slr_later_stage_user_prompts_are_unchanged():
     assert sha(prompts.screen_user(english_topic="Q?", plan={"population": "P", "inclusion_criteria": ["a"]},
                                    items=[("C1", CARD), ("C2", {"title": "U"})])) ==         "3e9906647439f78cf429360bc578915c6e5d3180ad29d01537f4c095a0378c70"
     assert sha(prompts.extract_user(question="Q?", outcomes=["o"], candidate=CARD, source="abstract",
-                                    text="Text")) ==         "9f4efc581a01f8e2ef37aeb8e05ff3de75ace31f96ceaa0190a1e9d55eebd6fb"
+                                    text="Text")) ==         "16c0dfb7d2a853fec55729acff0ba3814e4a6e8bb86557ae5ff87e05010cbab0"  # Plan 19: comparison in example + checklist
     assert sha(prompts.normalize_user(question="Q?", pairs=[("P1", "o")])) ==         "a8f11049113c154762d69c6a196ff66233f7fdf824dcfd7724f007a17d1f26ce"
     assert sha(prompts.conflict_user(question="Q?", conflict={"outcome": "o", "refs": ["P1"]},
                                      papers=[{"ref": "P1"}])) ==         "3db817d97a68c42a77255b9dfb6a3919f7cf838e75a874241b6b9ef303f533c2"

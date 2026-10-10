@@ -110,9 +110,18 @@ def test_missing_file_is_a_clear_error(tmp_path):
 def test_repo_config_has_budget_default_and_all_presets_valid():
     cfg = load_llm_config(REPO_CONFIG)
     assert cfg.preset == "budget"
-    # user decision 2026-10-05: every budget role runs on Qwen3.5 Flash
-    assert {r.spec.model for r in cfg.roles.values()} == {"qwen/qwen3.5-flash-02-23"}
-    assert {r.spec.reasoning_effort for r in cfg.roles.values()} == {"none"}  # Qwen3.5 Flash breaks JSON when reasoning
+    # user decision 2026-10-05: every primary budget role runs on Qwen3.5 Flash. Plan 19 (audit I-10): the second
+    # vote / cross-check and the escalation are other model families, so "two models vote" is true and escalation
+    # never re-asks a model that already answered.
+    second_opinion = {"screener_secondary", "extractor_secondary", "escalation"}
+    qwen = {name: r for name, r in cfg.roles.items() if name not in second_opinion}
+    assert {r.spec.model for r in qwen.values()} == {"qwen/qwen3.5-flash-02-23"}
+    assert {r.spec.reasoning_effort for r in qwen.values()} == {"none"}  # Qwen3.5 Flash breaks JSON when reasoning
+    models = {name: cfg.roles[name].spec.model for name in second_opinion}
+    assert models["screener_secondary"].split("/")[0] != "qwen" and models["extractor_secondary"].split("/")[0] != "qwen"
+    assert models["escalation"] not in {cfg.roles["screener"].spec.model, models["screener_secondary"]}
+    claude = load_llm_config(REPO_CONFIG, preset="claude")
+    assert claude.roles["screener_secondary"].spec.model != claude.roles["screener"].spec.model
     for name in ("budget", "balanced", "claude", "gemini", "claude_direct"):
         resolved = load_llm_config(REPO_CONFIG, preset=name)
         assert set(resolved.roles) == set(ROLES) | set(OPTIONAL_ROLES)  # every repo preset sets all roles

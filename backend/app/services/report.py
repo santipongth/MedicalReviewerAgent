@@ -86,6 +86,16 @@ def _comparison(rows: list[dict[str, Any]], directions: bool = True) -> list[str
     return lines
 
 
+def _other_comparisons(card: dict[str, Any] | None) -> str:
+    """The paper's outcomes of another comparison (Plan 19), labelled so a reader never takes them as evidence."""
+    others = [o for o in (card or {}).get("outcomes") or [] if o.get("matches_question") is False]
+    if not others:
+        return ""
+    items = "; ".join(_cell(f"{o.get('outcome')} ({o['comparison']})" if o.get("comparison") else o.get("outcome"))
+                      for o in others)
+    return f" Other comparisons, not evidence for the question: {items}."
+
+
 def render_markdown(review) -> str:
     result = review.result
     out = [f"# Literature review: {review.topic}", ""]
@@ -127,7 +137,7 @@ def render_markdown(review) -> str:
             link = f" https://doi.org/{p['doi']}" if p.get("doi") else ""
             design = f" — {card.get('study_design')}, n={card.get('sample_size') or '?'}" if card else " — not extracted"
             out.append(f"- [{p['ref']}] {p.get('title')} ({p.get('year') or 'n.d.'}, {p.get('journal') or ''})"
-                       f"{design}.{link}")
+                       f"{design}.{link}{_other_comparisons(p.get('card_en') or card)}")
         out.append("")
     quality = result.get("quality") or {}
     if quality:
@@ -141,7 +151,10 @@ CSV_FIELDS = ["ref", "title", "year", "journal", "doi", "pmid", "design_category
               "outcome", "direction", "effect_measure", "effect_value", "ci_lower", "ci_upper", "p_value",
               "evidence_quote", "error",
               "population", "intervention_or_exposure", "comparator", "risk_of_bias", "overall_direction",
-              "key_findings", "limitations"]
+              "key_findings", "limitations",
+              # Plan 19, appended so existing column positions hold: the outcome's own comparison, and whether it is
+              # the review's intervention vs comparator (false: another comparison, never evidence for the question)
+              "comparison", "matches_question"]
 
 
 FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
@@ -177,7 +190,9 @@ def render_csv(result: dict[str, Any] | None) -> str:
                  **{k: " | ".join(str(x) for x in card.get(k) or []) for k in ("key_findings", "limitations")}}
         for o in card.get("outcomes") or [{}]:
             row = base | {k: o.get(k) for k in ("outcome", "direction", "effect_measure", "effect_value",
-                                                "ci_lower", "ci_upper", "p_value", "evidence_quote")}
+                                                "ci_lower", "ci_upper", "p_value", "evidence_quote", "comparison")}
+            if o:  # outcomes stored before Plan 19 answer the question
+                row["matches_question"] = "false" if o.get("matches_question") is False else "true"
             if scoping:
                 row |= {"direction": None, "overall_direction": None, "risk_of_bias": None}
             writer.writerow({k: _cell_value(v) for k, v in row.items()})

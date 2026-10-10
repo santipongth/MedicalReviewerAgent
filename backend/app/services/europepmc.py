@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -68,9 +69,21 @@ def parse_epmc_reference(r: Any) -> EpmcReference | None:
     )
 
 
+_TRIAL_NAME = re.compile(r"[A-Z][A-Z0-9]+(?:-[A-Za-z0-9]+)*|[A-Z]+-[A-Za-z0-9-]+")
+
+
+def trial_names(words: str) -> list[str]:
+    """The trial names or acronyms of a query that is a list of them (at least 2, and at least half of its words),
+    else []. Europe PMC ANDs plain words, so such a list must be searched as alternatives."""
+    tokens = words.split()
+    names = [t for t in tokens if len(t) >= 3 and _TRIAL_NAME.fullmatch(t)]
+    return list(dict.fromkeys(names)) if len(names) >= 2 and 2 * len(names) >= len(tokens) else []
+
+
 class EuropePmcClient:
     BATCH = 40
     CONCURRENCY = 3  # batches in flight; HttpClient's per-host spacing still applies
+    TRIAL_TIMEOUT = 8.0  # seconds per trial-search attempt (one retry): worst case ~17 s, not ~2 min
 
     def __init__(self, http: HttpClient, base_url: str) -> None:
         self.http = http
@@ -94,6 +107,32 @@ class EuropePmcClient:
             *(self._batch(terms[i : i + self.BATCH], gate) for i in range(0, len(terms), self.BATCH))
         )
         return [c for batch in batches for c in batch]  # batch order kept
+
+    async def search_trials(self, query: str, *, page_size: int = 25) -> list[Candidate]:
+        """Randomized controlled trials with an abstract that match the keyword query, most cited first (meta-analysis
+        recall, audit I-9: the landmark trials of a topic are its most cited RCTs; measured 2026-10-10, "SGLT2
+        inhibitors heart failure hospitalization" returns DAPA-HF, EMPEROR-Reduced, DELIVER, SOLOIST and EMPULSE in
+        the first 20, while the default order is newest first). The hits carry the SearXNG engine name "europe pmc"
+        so they are treated as search hits, not as lookup records. Words only: the query never carries user syntax."""
+        words = " ".join(re.sub(r"[^\w\s-]", " ", query).split())
+        if not words:
+            return []
+        names = trial_names(words)
+        if names:  # a list of trial names ("DAPA-HF EMPEROR-Reduced DELIVER"): any of them, not all at once
+            words = " OR ".join(f'"{n}"' for n in names)
+        resp = await self.http.get(
+            f"{self.base_url}/search",
+            params={"query": f'({words}) AND PUB_TYPE:"Randomized Controlled Trial" AND HAS_ABSTRACT:y',
+                    "format": "json", "resultType": "core", "pageSize": page_size, "sort": "CITED desc"},
+            # a recall extra: a slow Europe PMC must not hold the search node for minutes (3 searches run in parallel)
+            timeout=self.TRIAL_TIMEOUT, retries=1,
+        )
+        resp.raise_for_status()
+        out = []
+        for r in resp.json().get("resultList", {}).get("result", []):
+            c = parse_epmc_result(r)
+            out.append(c.model_copy(update={"engines": ["europe pmc"]}))
+        return out
 
     REF_PAGE = 1000
     REF_MAX_PAGES = 3

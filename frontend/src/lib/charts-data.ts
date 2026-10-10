@@ -48,6 +48,14 @@ export function isNonQuantitative(card: { design_category?: string | null } | nu
   return !!card?.design_category && NON_QUANTITATIVE_DESIGNS.includes(card.design_category);
 }
 
+/** The card's overall direction as evidence for the question: "unclear" when it reports outcomes and every one is
+ * another comparison (`matches_question: false`). Results since the Plan 19 final review already store it so; this
+ * keeps older results from counting a GLP-1RA-vs-insulin "positive" as support in a metformin review. */
+export function questionDirection(card: Pick<PaperCard, "overall_direction" | "outcomes">): Direction {
+  const outcomes = card.outcomes ?? [];
+  return outcomes.length && outcomes.every((o) => o.matches_question === false) ? "unclear" : card.overall_direction;
+}
+
 /** Papers that have a card, counted by the card's overall direction. A count of papers, not a number from a paper.
  * `skipReviews` leaves narrative-review articles out (they restate other studies; the matrix and map skip them too).
  * Qualitative and mixed-methods studies are never counted (they report themes, not a direction). */
@@ -57,7 +65,7 @@ export function directionTally(papers: Paper[], skipReviews = false): Record<Dir
     const card = p.card_en ?? p.card;
     if (skipReviews && card?.design_category === "narrative_review") continue;
     if (isNonQuantitative(card)) continue;
-    if (card && card.overall_direction in tally) tally[card.overall_direction] += 1;
+    if (card && questionDirection(card) in tally) tally[questionDirection(card)] += 1;
   }
   return tally;
 }
@@ -110,6 +118,7 @@ export function forestData(papers: Paper[], lang: Lang): ForestData {
     // qualitative/mixed-methods cards are themes: never a forest row, even if a number slipped through
     if (!en || !shown || isNonQuantitative(en)) continue;
     en.outcomes.forEach((o, i) => {
+      if (o.matches_question === false) return; // another comparison: on the card only, never a forest row
       if (isBlankedEffect(p, o.outcome)) {
         unverified.push({ ref: p.ref, outcome: shown.outcomes[i]?.outcome ?? o.outcome });
         return;
@@ -200,7 +209,10 @@ export function exclusionRows(stats: Stats | undefined, lang: Lang): { reasons: 
   const add = (key: string, th: string, en: string, value: number | undefined) => {
     if (typeof value === "number" && value > 0) extra.push({ key, label: lang === "th" ? th : en, value });
   };
+  add("year_excluded", "ตีพิมพ์ก่อนปีที่กำหนด", "Published before the start year", stats.year_excluded);
   add("non_research", "ไม่ใช่งานวิจัย", "Not research", stats.non_research);
+  add("no_abstract", "ไม่มีบทคัดย่อที่ใช้ได้", "No usable abstract", stats.no_abstract);
+  add("low_relevance", "คะแนนความเกี่ยวข้องต่ำ", "Low relevance score", stats.excluded_selection?.low_relevance);
   add("over_limit", "เกินจำนวนที่วิเคราะห์", "Over the analysis limit", stats.excluded_selection?.over_limit);
   add("narrative_excluded", "บทความทบทวนแบบไม่เป็นระบบ", "Narrative reviews", stats.excluded_selection?.narrative_excluded);
   return reasons.length || extra.length ? { reasons, extra } : null;
@@ -232,7 +244,7 @@ export function studyPoints(papers: Paper[]): { points: StudyPoint[]; missing: n
     }
     points.push({
       ref: p.ref, title: p.title, year: p.year, n: card.sample_size,
-      nText: asReported(card.sample_size, card.sample_size_quote), direction: card.overall_direction, design: card.study_design,
+      nText: asReported(card.sample_size, card.sample_size_quote), direction: questionDirection(card), design: card.study_design,
     });
   }
   return { points, missing };

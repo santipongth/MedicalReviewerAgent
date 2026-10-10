@@ -6,7 +6,7 @@ import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
 import { isGraded, REVIEW_TYPE_LABEL, showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, QuestionBlock, Quality, Synthesis } from "@/lib/types";
-import { Glyph, UncertainFlag } from "../ui/evidence";
+import { DesignMismatchFlag, Glyph, UncertainFlag } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { L } from "./text";
 
@@ -305,6 +305,7 @@ export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy"
                     <span className="text-err">{L(lang, "อ่านไม่สำเร็จ", "Could not be read")}{p.error ? ` · ${p.error}` : ""}</span>
                   )}
                   {p.verification?.uncertain && <UncertainFlag lang={lang} />}
+                  {p.verification?.design_mismatch && <DesignMismatchFlag lang={lang} />}
                 </span>
               </span>
             </button>

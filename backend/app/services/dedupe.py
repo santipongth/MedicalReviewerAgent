@@ -50,7 +50,11 @@ def _combine(group: list[Candidate]) -> Candidate:
     return Candidate(**fields)
 
 
-def merge_candidates(cands: Iterable[Candidate], *, fuzzy_threshold: int = 95) -> list[Candidate]:
+def merge_candidates(cands: Iterable[Candidate], *, fuzzy_threshold: int = 95, rank_from: int = 0) -> list[Candidate]:
+    """Merge duplicates. Fields are combined in input order (earlier items win scalar fields). Groups come out in
+    order of their earliest member at index >= `rank_from`: pass the number of leading metadata-only records (e.g.
+    Europe PMC lookups) so they win fields without moving their group ahead of better-ranked search hits (audit
+    I-8). Groups made only of those leading records come last."""
     items = list(cands)
     parent = list(range(len(items)))
 
@@ -85,6 +89,10 @@ def merge_candidates(cands: Iterable[Candidate], *, fuzzy_threshold: int = 95) -
                 union(a, b)
 
     groups: dict[int, list[Candidate]] = {}
+    rank: dict[int, int] = {}
     for i, c in enumerate(items):
-        groups.setdefault(find(i), []).append(c)
-    return [_combine(groups[root]) for root in sorted(groups)]
+        root = find(i)
+        groups.setdefault(root, []).append(c)
+        if i >= rank_from and root not in rank:
+            rank[root] = i
+    return [_combine(groups[root]) for root in sorted(groups, key=lambda r: (r not in rank, rank.get(r, r)))]

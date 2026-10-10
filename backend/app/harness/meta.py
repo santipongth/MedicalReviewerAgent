@@ -455,11 +455,17 @@ def primary_outcome(meta: dict[str, Any] | None, question_outcomes: list[str] | 
     if not pools:
         return None
     names = list(dict.fromkeys(p["outcome"] for p in pools))
+    totals = {n: sum(p["k"] for p in pools if p["outcome"] == n) for n in names}
+    return pick_outcome(names, totals, question_outcomes)
+
+
+def pick_outcome(names: list[str], weights: dict[str, int], question_outcomes: list[str] | None) -> str:
+    """The name that answers the question's first outcome (fuzzy name match, >= 80), else the one with the largest
+    weight (ties: list order). Shared by the pooled primary outcome and GRADE-lite's primary matrix row."""
     for wanted in (question_outcomes or [])[:1]:
         key = normalize_title(wanted) or wanted.lower()
         scored = [(fuzz.token_set_ratio(key, normalize_title(n) or n.lower()), -i, n) for i, n in enumerate(names)]
         best = max(scored)
         if best[0] >= 80:
             return best[2]
-    totals = {n: sum(p["k"] for p in pools if p["outcome"] == n) for n in names}
-    return max(names, key=lambda n: (totals[n], -names.index(n)))
+    return max(names, key=lambda n: (weights[n], -names.index(n)))

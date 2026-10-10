@@ -12,6 +12,7 @@ from app.graph.nodes.intake import harness_runner, harness_spec, review_question
 from app.graph.progress import progress_writer
 from app.graph.schemas import ScreenBatch
 from app.graph.state import ReviewState
+from app.harness.study_types import allowed_designs, canonical_types, design_allowed
 from app.schemas.review import SLR_LIKE, ReviewOptions, wants_qualitative
 from app.services.llm import LLMError
 
@@ -23,7 +24,9 @@ def route_to_screening(state: ReviewState, batch_size: int = 10) -> list[Send] |
     common = {"plan": state.get("plan") or {}, "question": review_question(state),
               "language": state.get("language", "th"),
               "review_type": ReviewOptions.clamped(state.get("options")).review_type,
-              "qualitative": wants_qualitative(state.get("options"))}
+              "qualitative": wants_qualitative(state.get("options")),
+              "study_types": (canonical_types(state.get("options"))
+                              if ReviewOptions.clamped(state.get("options")).review_type in SLR_LIKE else [])}
     return [Send("screen_batch", {"batch": cands[i : i + batch_size], **common})
             for i in range(0, len(cands), batch_size)]
 
@@ -61,7 +64,8 @@ def make_screen_batch(deps):
 
         def user_for(subset: list[str]) -> str:
             return prompts.screen_user(english_topic=payload["question"], plan=payload["plan"],
-                                       items=[(r, items[r]) for r in subset])
+                                       items=[(r, items[r]) for r in subset],
+                                       study_types=payload.get("study_types") or None)
 
         cost, errors = 0.0, []
         quality: dict[str, Any] = {"stage": "screen", "batch": len(batch), "borderline": 0, "disagreements": 0,
@@ -80,6 +84,9 @@ def make_screen_batch(deps):
         low, high = spec.screen_borderline
         borderline = [r for r in refs if r in decisions and low <= decisions[r]["relevance"] <= high]
         secondary = getattr(deps.llms, "screener_secondary", None)
+        if secondary is not None and getattr(secondary, "model", None) == getattr(deps.llms.screener, "model", 0):
+            secondary = None  # the same model at temperature 0 is no second opinion, only a second bill (audit I-10)
+            quality["second_vote"] = "same_model"
         if borderline and secondary is not None:
             quality["borderline"] = len(borderline)
             try:
@@ -101,7 +108,8 @@ def make_screen_batch(deps):
             quality["disagreements"] = len(disputed)
             if disputed:
                 esc = await runner.escalate(system, user_for(disputed), schema=ScreenBatch,
-                                            validate=_coverage(disputed), reason="disagreement")
+                                            validate=_coverage(disputed), reason="disagreement",
+                                            already_asked=(deps.llms.screener, secondary))
                 resolved = _decisions(esc.value, disputed) if esc and esc.ok else {}
                 if esc:
                     cost += esc.cost
@@ -127,6 +135,8 @@ def make_screen_batch(deps):
 
 
 MIN_PRIMARY_FOR_NO_REVIEWS = 3
+MIN_MATCHING_DESIGNS = 3
+MIN_INCLUDE_RELEVANCE = 35  # default floor; the configured borderline band's lower edge wins
 
 
 def make_select_top(deps):
@@ -139,27 +149,62 @@ def make_select_top(deps):
                 best[d["key"]] = d
         by_key = {c["key"]: c for c in state.get("candidates") or []}
         included = [d for d in best.values() if d["include"] and d["key"] in by_key]
+        # Relevance floor (audit I-21): an "include" at relevance 10 contradicts itself. The floor is the bottom of the
+        # borderline band (35), so includes the second vote agreed on are kept; disputed papers kept for recall
+        # (uncertain) are exempt, and the floor never leaves fewer than MIN_MATCHING_DESIGNS papers.
+        floor = min(harness_spec(deps).screen_borderline or (MIN_INCLUDE_RELEVANCE,))
+        above = [d for d in included if d["relevance"] >= floor or d.get("uncertain")]
+        low_relevance = 0
+        if len(above) >= MIN_MATCHING_DESIGNS:
+            low_relevance, included = len(included) - len(above), above
+        # Ticked study types are enforced here only (the screener just labels designs): a paper whose design maps to none of them is excluded (PRISMA reason
+        # study_design). Unknown designs stay. If fewer than MIN_MATCHING_DESIGNS remain, the mismatches are kept
+        # after the matches (and flagged) rather than leaving the review empty.
+        allowed = allowed_designs(state.get("options"), options.review_type)
+        design_excluded = relaxed = 0
+        if allowed:
+            fit_keys = {d["key"] for d in included if design_allowed(d.get("design"), allowed)}
+            fits = [d for d in included if d["key"] in fit_keys]
+            misfits = [d for d in included if d["key"] not in fit_keys]
+            if len(fits) >= MIN_MATCHING_DESIGNS or not misfits:
+                design_excluded = len(misfits)
+                included = fits
+            else:
+                relaxed = len(misfits)
+                included = fits + [{**d, "design_mismatch": True} for d in misfits]  # copies: state stays untouched
         primary = [d for d in included if d.get("design") != "narrative_review"]
         # Narrative reviews restate other studies: leave them out when enough original or pooled evidence exists.
         narrative_excluded = (len(included) - len(primary)
                               if not keep_narrative and len(primary) >= MIN_PRIMARY_FOR_NO_REVIEWS else 0)
         pool = primary if narrative_excluded else included
-        ranked = sorted(pool, key=lambda d: -d["relevance"])
+        ranked = sorted(pool, key=lambda d: (bool(d.get("design_mismatch")), -d["relevance"]))
         chosen = ranked[: options.max_papers]
         # Technical failures are not exclusion decisions: keep them out of the PRISMA reason tallies.
         excluded_screening = Counter(d.get("exclusion_reason") or "other" for d in best.values()
                                      if not d["include"] and not d.get("screen_failed"))
+        if design_excluded:
+            excluded_screening["study_design"] += design_excluded
         screening_failed = sum(1 for d in best.values() if d.get("screen_failed") and not d["include"])
+        # `uncertain` means only that the screening votes disagreed; a design kept despite the ticked study types is
+        # its own flag (final review finding 11)
         selected = [{"ref": f"P{i + 1}", "relevance": d["relevance"], "reason": d["reason"],
-                     "uncertain": d.get("uncertain", False), "candidate": by_key[d["key"]]}
+                     "uncertain": bool(d.get("uncertain", False)),
+                     **({"design_mismatch": True} if d.get("design_mismatch") else {}),
+                     "candidate": by_key[d["key"]]}
                     for i, d in enumerate(chosen)]
         progress_writer()({"type": "screened", "kept": len(selected), "total": len(best)})
         stats = {"excluded_screening": dict(excluded_screening), "narrative_excluded": narrative_excluded,
                  "over_limit": len(ranked) - len(chosen)}
+        if relaxed:
+            stats["study_design_relaxed"] = relaxed
         if screening_failed:
             stats["screening_failed"] = screening_failed
+        if low_relevance:
+            stats["low_relevance"] = low_relevance
         return {"selected": selected, "selection_stats": stats,
-                "quality": [{"stage": "select", "narrative_excluded": narrative_excluded}]}
+                "quality": [{"stage": "select", "narrative_excluded": narrative_excluded,
+                             "study_design_excluded": design_excluded, "study_design_relaxed": relaxed,
+                             "low_relevance": low_relevance}]}
 
     return select_top
 

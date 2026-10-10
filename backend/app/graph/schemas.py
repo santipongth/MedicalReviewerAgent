@@ -146,7 +146,16 @@ class ScreenBatch(BaseModel):
     decisions: list[ScreenDecision]
 
 
+def _require_comparison(schema: dict) -> None:
+    # Required for the model; the Python defaults only serve outcomes stored before Plan 19 (treated as matching).
+    for name in ("comparison", "matches_question"):
+        schema.setdefault("required", []).append(name)
+        schema["properties"][name].pop("default", None)  # strict tool schemas reject "default"
+
+
 class OutcomeResult(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_require_comparison)
+
     outcome: str
     result: str
     evidence_quote: str  # verbatim sentence(s) from the paper that support result and numbers
@@ -157,6 +166,11 @@ class OutcomeResult(BaseModel):
     ci_upper: float | None
     p_value: float | None
     direction: Direction
+    # Plan 19: the two groups this estimate compares ("metformin vs sulfonylureas"), and whether that is the review
+    # question's intervention vs comparator. A false outcome is an "other comparison": shown on the card, never in
+    # the matrix, conflicts, pools or grade.
+    comparison: str | None = None
+    matches_question: bool = True
 
 
 MAX_OUTCOMES = 6  # an abstract rarely reports more; the extractor lists the most relevant first

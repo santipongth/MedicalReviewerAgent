@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resultFixture, legacyReviewFixture } from "@/test/fixtures";
-import { EXCLUSION_REASON_LABEL, exclusionRows, designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
+import { EXCLUSION_REASON_LABEL, exclusionRows, designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, prismaStages, questionDirection, studyPoints } from "./charts-data";
 
 const papers = resultFixture.papers!;
 
@@ -33,6 +33,13 @@ describe("forestData", () => {
     expect(g.rows[1].valueText).toBe("HR 0.80");
     expect(g.rows[1].ciText).toBe("0.71–0.90");
     expect(d.unverified).toEqual([{ ref: "P2", outcome: "CRC incidence" }]);
+  });
+
+  it("never plots another comparison (matches_question false), even with verified numbers", () => {
+    const other = papers.map((p) => p.ref !== "P4" ? p : {
+      ...p, card_en: { ...p.card_en!, outcomes: p.card_en!.outcomes.map((o) => ({ ...o, matches_question: false, comparison: "GLP-1RA vs insulin" })) },
+    });
+    expect(forestData(other, "en").groups[0].rows.map((r) => r.ref)).toEqual(["P1", "P3"]);
   });
 
   it("axis bounds contain every interval and the null line", () => {
@@ -77,6 +84,14 @@ describe("exclusionRows", () => {
     expect(r.extra.map((x) => [x.label, x.value])).toEqual([["ไม่ใช่งานวิจัย", 3], ["เกินจำนวนที่วิเคราะห์", 4]]);
   });
 
+  it("lists year, abstract and relevance exclusions when the result records them (Plan 19)", () => {
+    const r = exclusionRows({ ...stats, year_excluded: 5, no_abstract: 9,
+      excluded_selection: { narrative_excluded: 0, over_limit: 4, low_relevance: 2 } }, "en")!;
+    expect(r.extra.map((x) => [x.key, x.value])).toEqual([
+      ["year_excluded", 5], ["non_research", 3], ["no_abstract", 9], ["low_relevance", 2], ["over_limit", 4],
+    ]);
+  });
+
   it("has a Thai and English label for every reason", () => {
     for (const v of Object.values(EXCLUSION_REASON_LABEL)) { expect(v.th.trim()).not.toBe(""); expect(v.en.trim()).not.toBe(""); }
     expect(Object.keys(EXCLUSION_REASON_LABEL)).toHaveLength(7);
@@ -97,6 +112,18 @@ describe("directionTally", () => {
     expect(directionTally(withReview).unclear).toBe(directionTally(papers).unclear + 1);
     expect(directionTally(withReview, true)).toEqual(directionTally(papers.filter((p) => (p.card_en ?? p.card)?.design_category !== "narrative_review"), true));
     expect(directionTally(withReview, true).unclear).toBe(directionTally(papers).unclear);
+  });
+
+  it("counts a paper whose outcomes are all other comparisons as unclear, also on the study map", () => {
+    const base = papers.find((p) => (p.card_en ?? p.card)?.overall_direction === "positive")!;
+    const card = base.card_en ?? base.card!;
+    const other = { ...card, outcomes: card.outcomes.map((o) => ({ ...o, matches_question: false })) };
+    const p = { ...base, ref: "P9", card: other, card_en: other };
+    expect(questionDirection(other)).toBe("unclear");
+    expect(questionDirection({ ...other, outcomes: [] })).toBe("positive");
+    expect(directionTally([p])).toEqual({ positive: 0, negative: 0, null: 0, mixed: 0, unclear: 1 });
+    const point = studyPoints([p]).points[0];
+    if (point) expect(point.direction).toBe("unclear");
   });
 
   it("counts papers that have a card by overall direction and flags pooled SR/MA papers", () => {

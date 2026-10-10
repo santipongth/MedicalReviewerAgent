@@ -5,7 +5,8 @@ import re
 from typing import Any
 
 from app.graph.schemas import ReviewQuestion
-from app.schemas.review import STUDY_TYPES
+from app.harness.study_types import loose as _loose  # noqa: F401  (kept: imported by tests)
+from app.harness.study_types import missing_study_types
 from app.services.text import normalize_title
 
 _THAI = re.compile(r"[฀-๿]")
@@ -20,7 +21,8 @@ def _english_fields(q: ReviewQuestion) -> list[str]:
     return texts
 
 
-def question_problems(q: ReviewQuestion, options: dict[str, Any], review_type: str = "slr") -> list[str]:
+def question_problems(q: ReviewQuestion, options: dict[str, Any], review_type: str = "slr",
+                      enforce_study_types: bool = True) -> list[str]:
     scoping = review_type == "scoping"
     problems: list[str] = []
     rq = q.refined_question.strip()
@@ -52,15 +54,11 @@ def question_problems(q: ReviewQuestion, options: dict[str, Any], review_type: s
     year_from = options.get("year_from")
     if year_from and str(year_from) not in (q.timeframe or ""):
         problems.append(f"timeframe must state that only studies from {year_from} onward are included")
-    designs = _loose(" ".join(q.study_designs))
-    # Only canonical names (a fixed list, never user text) are hard-checked. A free-text "Other: ..." entry stays a
-    # soft constraint (data in the User constraints line): it may be in any language, and a problem never quotes it.
-    missing = [t for t in options.get("study_types") or [] if t in STUDY_TYPES and _loose(t) not in designs]
+    # Only canonical names (a fixed list, never user text) are hard-checked, through their synonyms. A free-text
+    # "Other: ..." entry stays a soft constraint (data in the User constraints line): it may be in any language, and
+    # a problem never quotes it. The refiner turns the check off and appends missing names in code instead.
+    missing = missing_study_types(options, q.study_designs) if enforce_study_types else []
     if missing:
         problems.append(f"study_designs must include {', '.join(missing)} (requested by the user)")
     return problems
 
-
-def _loose(text: str) -> str:
-    """Case-, hyphen- and space-insensitive form, so "Case-control" matches "case control studies"."""
-    return "".join(ch for ch in text.lower() if ch.isalnum())

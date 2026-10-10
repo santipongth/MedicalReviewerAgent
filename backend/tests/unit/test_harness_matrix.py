@@ -54,7 +54,8 @@ def test_consensus_needs_two_papers_same_direction():
     agreeing = [paper("P1", [("CRC", "positive", 0.8)]), paper("P2", [("CRC", "positive", 0.7)])]
     clusters = fallback_clusters(agreeing)
     m = build_matrix(agreeing, clusters)
-    assert m["consensus"] == [{"outcome": "CRC", "direction": "positive", "refs": ["P1", "P2"], "dissent": {}}]
+    assert m["consensus"] == [{"outcome": "CRC", "direction": "positive", "refs": ["P1", "P2"], "dissent": {},
+                               "nonsignificant": [], "corroborating": [], "discordant_reviews": []}]
     assert m["conflicts"] == []
 
 
@@ -68,10 +69,17 @@ def test_fallback_clusters_group_by_normalized_name():
 def test_grade_baseline():
     m = build_matrix(PAPERS, CLUSTERS)
     g = grade_baseline(PAPERS, m)
-    assert g["level"] in {"high", "moderate", "low", "very_low"}
-    # GRADE: mostly observational → start "low"; inconsistency (a conflicting outcome) → "very_low"
-    assert g["level"] == "very_low" and any("inconsistency" in f for f in g["factors"])
-    agreeing = [p for p in PAPERS if p["ref"] != "P3"]
+    # GRADE rates from the best design with evidence on the primary outcome (methodology review #4): the one RCT
+    # (P2) starts high and is the graded body; the conflicting cohorts are reported, not graded
+    assert g["level"] == "high"
+    assert g["factors"][0].startswith("start high: randomized evidence for the primary outcome Colorectal cancer "
+                                      "incidence: 1 randomized trial(s)")
+    assert any(f.startswith("inconsistency not assessable: one study") for f in g["factors"])
+    # observational only: start "low"; a significant study on each side (a conflict) → "very_low"
+    cohorts = [p for p in PAPERS if p["ref"] != "P2"]
+    g = grade_baseline(cohorts, build_matrix(cohorts, fallback_clusters(cohorts)))
+    assert g["level"] == "very_low" and any(f.startswith("inconsistency:") for f in g["factors"])
+    agreeing = [p for p in cohorts if p["ref"] != "P3"]
     assert grade_baseline(agreeing, build_matrix(agreeing, fallback_clusters(agreeing)))["level"] == "low"
     rcts = [paper(f"P{i}", [("CRC", "positive", 0.8)], design="randomized controlled trial", rob="low", n=5000)
             for i in range(1, 4)]
@@ -79,19 +87,26 @@ def test_grade_baseline():
     assert grade_baseline([], build_matrix([], fallback_clusters([])))["level"] == "very_low"
 
 
-def _row(directions):
-    papers = [paper(f"P{i + 1}", [("CRC", d, 0.8)]) for i, d in enumerate(directions)]
+def _row(directions, values=None):
+    """One outcome row; a direction's HR is 0.8 for positive, 1.25 for negative, and `values` overrides it (None:
+    no estimate)."""
+    default = {"positive": 0.8, "negative": 1.25, "null": None}
+    values = values or [default[d] for d in directions]
+    papers = [paper(f"P{i + 1}", [("CRC", d, v)]) for i, (d, v) in enumerate(zip(directions, values, strict=True))]
     return papers, build_matrix(papers, fallback_clusters(papers))
 
 
 def test_a_small_dissenting_minority_does_not_break_consensus():
-    papers, m = _row(["positive"] * 9 + ["null"])
+    papers, m = _row(["positive"] * 9 + ["negative"])
     assert m["conflicts"] == []
-    assert m["consensus"] == [{"outcome": "CRC", "direction": "positive", "refs": [f"P{i}" for i in range(1, 10)],
-                               "dissent": {"null": ["P10"]}}]
+    [c] = m["consensus"]
+    assert c["direction"] == "positive" and c["refs"] == [f"P{i}" for i in range(1, 10)]
+    assert c["dissent"] == {"negative": ["P10"]}
     g = grade_baseline(papers, m)
     assert not any(f.startswith("inconsistency") for f in g["factors"])  # not downgraded...
     assert any(f.startswith("minor inconsistency") for f in g["factors"])  # ...but reported
+    _, nulls = _row(["positive"] * 9 + ["null"])  # a null without an estimate is dissent "no significant association"
+    assert nulls["consensus"][0]["dissent"] == {"null": ["P10"]}
 
 
 def test_real_splits_are_still_conflicts():
@@ -99,8 +114,63 @@ def test_real_splits_are_still_conflicts():
     assert _row(["positive", "negative"])[1]["conflicts"] and not _row(["positive", "negative"])[1]["consensus"]
     two_agree = _row(["positive", "positive"])[1]
     assert two_agree["consensus"][0]["refs"] == ["P1", "P2"] and two_agree["conflicts"] == []
-    _, three = _row(["positive", "positive", "null"])  # 67 % < 70 %
-    assert three["conflicts"] and not three["consensus"]
+
+
+def test_significant_vs_non_significant_on_the_same_side_is_not_a_conflict():
+    # audit I-11: one underpowered null study used to make a conflict and a GRADE downgrade
+    _, m = _row(["positive", "null"], [0.8, 0.9])  # HR 0.9, not significant, same side as the HR 0.8 benefit
+    assert m["conflicts"] == []
+    assert m["consensus"][0]["refs"] == ["P1", "P2"] and m["consensus"][0]["nonsignificant"] == ["P2"]
+    _, unknown = _row(["positive", "positive", "null"])  # no estimate: no side, 67 % < 70 %: imprecision only
+    assert unknown["conflicts"] == [] and unknown["consensus"] == []
+    assert unknown["imprecise"][0]["directions"] == {"positive": ["P1", "P2"], "null": ["P3"]}
+
+
+def test_a_non_significant_estimate_on_the_other_side_is_not_a_conflict():
+    # methodology review #1/#6: a conflict needs a significant study on each side, or CIs that do not overlap
+    _, m = _row(["positive", "null"], [0.8, 1.2])  # opposite sides, P2 not significant
+    assert m["conflicts"] == []
+    assert m["imprecise"][0]["opposite_sides"] is True
+    assert m["imprecise"][0]["directions"] == {"positive": ["P1"], "negative": ["P2"], "null": []}
+    _, both_null = _row(["null", "null"], [0.9, 1.1])  # two non-significant estimates: consistent with no effect
+    assert both_null["conflicts"] == [] and both_null["consensus"][0]["direction"] == "null"
+    _, both = _row(["positive", "negative"], [0.8, 1.25])  # a significant study on each side
+    assert both["conflicts"][0]["refs"] == ["P1", "P2"]
+
+
+def test_non_overlapping_cis_make_a_conflict_even_without_significance_on_one_side():
+    papers = [paper("P1", [("CRC", "positive", 0.6)]), paper("P2", [("CRC", "null", 1.3)])]
+    papers[0]["card"]["outcomes"][0] |= {"ci_lower": 0.5, "ci_upper": 0.7}
+    papers[1]["card"]["outcomes"][0] |= {"ci_lower": 0.95, "ci_upper": 1.8}
+    m = build_matrix(papers, fallback_clusters(papers))
+    assert m["conflicts"][0]["nonsignificant"] == ["P2"]
+    papers[1]["card"]["outcomes"][0] |= {"ci_lower": 0.65, "ci_upper": 2.6}  # overlapping CIs: imprecision
+    assert build_matrix(papers, fallback_clusters(papers))["conflicts"] == []
+
+
+def test_pooled_cells_corroborate_and_are_not_counted_twice():
+    sr = _pooled("P1", "negative")  # an SR on the other side never makes a conflict with its own primary studies
+    agree = _pooled("P4")
+    papers = [sr, agree, paper("P2", [("CRC", "positive", 0.8)]), paper("P3", [("CRC", "positive", 0.7)])]
+    m = build_matrix(papers, fallback_clusters(papers))
+    assert m["conflicts"] == []
+    [c] = m["consensus"]
+    assert c["refs"] == ["P2", "P3"] and c["corroborating"] == ["P4"]
+    only_reviews = [_pooled("P1"), _pooled("P2", "negative")]
+    only_reviews[1]["card"]["outcomes"][0]["effect_value"] = 1.3
+    assert build_matrix(only_reviews, fallback_clusters(only_reviews))["conflicts"]  # no primary study: they count
+
+
+def test_directionless_matrix_has_no_claims_and_no_placeholder_rows():
+    papers = [paper("P1", [("Research gaps", "null", None), ("Settings", "null", None)]),
+              paper("P2", [("Research gaps", "null", None)])]
+    papers[0]["card"]["outcomes"][1]["result"] = "null"  # a literal placeholder finding
+    m = build_matrix(papers, fallback_clusters(papers), directional=False)
+    assert m["consensus"] == [] and m["conflicts"] == [] and m["imprecise"] == []
+    assert [r["outcome"] for r in m["rows"]] == ["Research gaps"]  # the placeholder-only row is gone
+    assert {c["direction"] for r in m["rows"] for c in r["cells"]} == {"unclear"}
+    directional = build_matrix(papers, fallback_clusters(papers))
+    assert directional["consensus"][0]["outcome"] == "Research gaps"  # what scoping used to emit
 
 
 def _pooled(ref, direction="positive"):
@@ -121,8 +191,13 @@ def test_grade_starts_from_pooled_evidence_and_flags_overlap():
     papers = [_pooled("P1"), _pooled("P2")] + [paper(f"P{i}", [("CRC", "positive", 0.8)]) for i in range(3, 6)]
     m = build_matrix(papers, fallback_clusters(papers))
     g = grade_baseline(papers, m)
-    assert g["level"] == "high"  # 2 SR/MA of RCTs, pooled sample sizes not reported: not called imprecise
-    assert any("pooled" in f and "overlap" in f for f in g["factors"])
+    # the 2 SR/MAs of RCTs set the tier and are the body; their n is not reported, and the cohorts' 3,000
+    # participants never make randomized evidence precise (methodology review #3)
+    assert g["level"] == "moderate"
+    assert g["factors"][0] == ("start high: randomized evidence for the primary outcome CRC: 0 randomized trial(s), "
+                               "2 systematic review(s)/meta-analysis(es) of randomized trials; 3 non-randomized "
+                               "stud(ies) reported, not graded")
+    assert "imprecision: sample sizes for the primary outcome CRC not reported in the abstracts" in g["factors"]
     primary_only = [paper(f"P{i}", [("CRC", "positive", 0.8)]) for i in range(1, 4)]
     g2 = grade_baseline(primary_only, build_matrix(primary_only, fallback_clusters(primary_only)))
     assert g2["level"] == "low" and not any("pooled" in f for f in g2["factors"])  # unchanged without SR/MA

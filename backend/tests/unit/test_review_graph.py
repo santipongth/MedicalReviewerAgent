@@ -29,7 +29,7 @@ from app.graph.schemas import (
 )
 from app.services.llm import LLMOutputError, LLMs
 from app.services.llm_config import HarnessSpec
-from tests.fakes import FakeStructuredLLM
+from tests.fakes import FakeStructuredLLM, to_thai
 
 ABSTRACT = (
     "Methods: We enrolled 1,234 adults with type 2 diabetes in a population-based cohort. "
@@ -49,6 +49,12 @@ class FakeSearxng:
 
 
 class FakeEpmc:
+    trial_queries: list[str]
+
+    async def search_trials(self, query, *, page_size=25):  # meta-analysis RCT search (audit I-9)
+        self.trial_queries = [*getattr(self, "trial_queries", []), query]
+        return []
+
     async def lookup(self, *, dois, pmids):
         return [Candidate(title="Paper 0 about metformin and colorectal cancer", doi="10.1/0", pmcid="PMC0",
                           is_open_access=True, abstract="enriched abstract", engines=["europepmc"])]
@@ -101,7 +107,7 @@ def explain(system, user):
 
 def thai(system, user):
     items = json.loads(re.search(r"<items>\n(.*)\n</items>", user, flags=re.DOTALL).group(1))
-    return TranslationBatch(items=[TranslationItem(id=i["id"], text="TH " + i["text"]) for i in items])
+    return TranslationBatch(items=[TranslationItem(id=i["id"], text=to_thai(i["text"])) for i in items])
 
 
 def make_deps(*, allowed=True, results=None, extractor=None):
@@ -158,17 +164,20 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
     r = values["result"]
     assert [p["ref"] for p in r["papers"]] == [f"P{i}" for i in range(1, 9)]
     assert r["papers"][0]["doi"] == "10.1/0" and "fulltext_source" not in r["papers"][0]
-    assert r["papers"][0]["card"]["population"].startswith("TH ")
+    assert r["papers"][0]["card"]["population"] == to_thai("adults with type 2 diabetes")
     assert r["papers"][0]["card_en"]["population"] == "adults with type 2 diabetes"
     assert r["papers"][0]["verification"]["numbers_verified"] == 2
     assert r["stats"] == {"found": 20, "unique": 10, "with_abstract": 10, "candidates": 10, "screened": 10, "selected": 8,
-                          "extracted": 8, "non_research": 0, "excluded_screening": {},
-                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 2}}
-    assert r["summary"].startswith("TH Metformin") and r["synthesis_en"]["executive_summary"].startswith("Metformin")
-    assert r["synthesis"]["comparison"][0]["outcome"] == "TH Colorectal cancer incidence"
+                          "extracted": 8, "non_research": 0, "year_excluded": 0, "no_abstract": 0,
+                          "excluded_screening": {},
+                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
+                                                 "study_design_corrected": 0, "low_relevance": 0}}
+    assert r["summary"] == to_thai(r["synthesis_en"]["executive_summary"])
+    assert r["synthesis_en"]["executive_summary"].startswith("Metformin")
+    assert r["synthesis"]["comparison"][0]["outcome"] == to_thai("Colorectal cancer incidence")
     assert r["synthesis"]["conflicts"][0]["refs"] == [f"P{i}" for i in range(1, 9)]
-    assert r["synthesis"]["conflicts"][0]["likely_reasons"] == ["TH follow-up"]
-    assert r["question"]["refined_question"].startswith("TH In adults")
+    assert r["synthesis"]["conflicts"][0]["likely_reasons"] == [to_thai("follow-up")]
+    assert r["question"]["refined_question"] == to_thai(r["question"]["english"]["refined_question"])
     assert r["question"]["english"]["refined_question"].startswith("In adults")
     assert r["llm_preset"] == "test" and r["queries"] == ["metformin colorectal cancer", "metformin CRC cohort"]
     t = r["quality"]["timings"]
@@ -176,6 +185,9 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
                   "conflict", "narrative", "localize_cards", "localize", "total"):
         assert t[stage] is not None and t[stage] >= 0, stage
     assert r["quality"]["verification_rate"] == 1.0 and r["quality"]["question_refined"] is True
+    # the fake translates every item, so the main path runs: nothing retried, nothing left in English
+    assert r["quality"]["localize"] == {"untranslated": 0, "retried": 0, "citations_restored": 0}
+    assert r["quality"]["localization_kept_english"] == 0
     assert values["cost_usd"] == pytest.approx(0.01 * all_calls(deps))
     types = [e["type"] for e in events]
     assert types.index("question_refined") < types.index("planning")
@@ -198,6 +210,11 @@ async def test_english_review_skips_localization():
     r = values["result"]
     assert r["summary"].startswith("Metformin") and r["papers"][0]["card"] == r["papers"][0]["card_en"]
     assert deps.llms.localizer.calls == []
+    # Plan 19: nothing is localized and no Thai leaks into the generated output; no localize telemetry
+    generated = json.dumps([r["synthesis"], r["papers"], r["summary"], r["question"]["refined_question"]],
+                           ensure_ascii=False)
+    assert not re.search(r"[\u0E00-\u0E7F]", generated)
+    assert "localize" not in r["quality"] and r["quality"]["localization_kept_english"] == 0
 
 
 async def test_rejected_topic_stops_before_search():

@@ -77,12 +77,18 @@ class HarnessRunner:
         return HarnessResult(last_value, cost, attempts, attempts > 1, False, problems, False)
 
     async def escalate(self, system: str, user: str, *, schema: type[BaseModel],
-                       validate: Validator | None = None, reason: str) -> HarnessResult | None:
-        """Escalate directly (e.g. two models disagree). None when not configured for this reason."""
+                       validate: Validator | None = None, reason: str,
+                       already_asked: Iterable[StructuredLLM | None] = ()) -> HarnessResult | None:
+        """Escalate directly (e.g. two models disagree). None when not configured for this reason, or when the
+        escalation model is one of `already_asked` (the models that produced the disagreement): asking the same
+        model again only repeats the cost (audit I-10)."""
         if reason not in self.escalate_on or self.escalation is None:
             return None
         esc = self.escalation(schema)
         if esc is None:
+            return None
+        asked = {getattr(m, "model", None) for m in already_asked if m is not None} - {None}
+        if getattr(esc, "model", None) in asked:
             return None
         return await self._run_escalation(esc, system, user, validate)
 

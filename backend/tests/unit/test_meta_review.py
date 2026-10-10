@@ -9,6 +9,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from app.graph import prompts
 from app.graph.graph import build_graph, initial_state
 from app.graph.nodes.stub_result import stub_result
+from app.graph.nodes.synthesis import CERTAINTY_SENTENCE
 from app.graph.schemas import SynthesisNarrative
 from app.harness.grade import apply_meta_grade, grading_pools
 from app.harness.meta import (
@@ -20,7 +21,7 @@ from app.harness.meta import (
 )
 from app.schemas.review import REVIEW_TYPES, ReviewOptions
 from app.services.report import POOLED_HEADING, render_csv, render_markdown
-from tests.fakes import FakeStructuredLLM
+from tests.fakes import FakeStructuredLLM, to_thai
 from tests.unit.test_review_graph import make_deps
 
 META = {"max_papers": 8, "candidate_limit": 20, "review_type": "meta_analysis"}
@@ -58,15 +59,21 @@ def test_meta_is_a_review_type():
 
 
 # ---- prompts: SLR pins are in test_prompts_by_type; meta only appends blocks ---------------------------
-def test_meta_prompts_equal_slr_except_extract_and_narrative():
-    for builder in (prompts.refine_system, prompts.critique_system, prompts.plan_system, prompts.screen_system):
+def test_meta_prompts_equal_slr_except_plan_extract_and_narrative():
+    for builder in (prompts.refine_system, prompts.critique_system, prompts.screen_system):
         assert builder("meta_analysis") == builder("slr")
     for builder, base in ((prompts.extract_system, prompts.EXTRACT_SYSTEM),
-                          (prompts.narrative_system, prompts.NARRATIVE_SYSTEM)):
+                          (prompts.narrative_system, prompts.NARRATIVE_SYSTEM),
+                          (prompts.plan_system, prompts.PLAN_SYSTEM)):
         system = builder("meta_analysis")
         assert system.startswith(base) and system[len(base):].startswith(prompts.OVERRIDE_LEAD)
     assert "adjusted" in prompts.extract_system("meta_analysis")
-    assert "do not state pooled numbers" in prompts.narrative_system("meta_analysis")
+    # audit I-24: only the system's pooled_analysis numbers are withheld; SR cards' own estimates may be stated
+    narrative = prompts.narrative_system("meta_analysis")
+    assert "do not state the numbers of pooled_analysis" in narrative and "systematic-review card" in narrative
+    # audit I-9: the planner is asked for more queries and the major trial names
+    assert "acronyms" in prompts.plan_system("meta_analysis") and "never invent a trial name" in prompts.plan_system(
+        "meta_analysis")
 
 
 def test_meta_narrative_user_is_graded_and_carries_pools():
@@ -76,7 +83,7 @@ def test_meta_narrative_user_is_graded_and_carries_pools():
     assert prompts.narrative_user(**kwargs, pooled_analysis=[{"x": 1}]) == slr  # ignored outside meta
     meta = prompts.narrative_user(**kwargs, review_type="meta_analysis", pooled_analysis=[{"estimate": 0.8}])
     assert '"pooled_analysis": [{"estimate": 0.8}]' in meta and "GRADE-lite baseline: low" in meta
-    assert "no pooled estimate" in meta
+    assert "no pooled_analysis estimate" in meta
 
 
 # ---- graph ---------------------------------------------------------------------------------
@@ -99,13 +106,19 @@ async def test_meta_run_pools_grades_and_strips_pooled_numbers():
     assert types.index("synthesizing") < types.index("pooled") < types.index("finalizing")
     # the synthesizer saw the pools as rounded data and the meta block
     system, user = deps.llms.synthesizer.calls[0][:2]
-    assert "do not state pooled numbers" in system
+    assert "do not state the numbers of pooled_analysis" in system
     assert '"pooled_analysis": [{"outcome": "Colorectal cancer incidence"' in user and '"estimate": 0.8' in user
     # the post-check removed every sentence restating a pooled number, and counted them
     s = r["synthesis_en"]
+    # (Plan 19: the summary lacked low-certainty wording, so the fixed GRADE sentence is appended)
     assert s["executive_summary"] == ("Metformin is associated with lower CRC risk [P1, P2]. "
-                                      "One cohort reported HR 0.80 [P4]. Some cohorts disagree [P3].")
-    assert s["evidence_rationale"] == "Observational cohorts [P1]."
+                                      "One cohort reported HR 0.80 [P4]. Some cohorts disagree [P3]. "
+                                      + CERTAINTY_SENTENCE[s["evidence_strength"]])
+    # (Plan 19: the rationale never named the inconsistency downgrade, so the factor is appended in code)
+    assert s["evidence_rationale"] == ("Observational cohorts [P1]. GRADE-lite downgrades: inconsistency: studies "
+                                       "on opposite sides of no effect for the primary outcome Colorectal cancer "
+                                       "incidence.")
+    assert r["quality"]["prose_check"]["rationale_fixed"] == "appended"
     assert s["research_gaps"] == ["RCTs"]
     stage = next(q for q in values["quality"] if q["stage"] == "pooled_numbers")
     assert stage == {"stage": "pooled_numbers", "removed": 3, "kept_single_study": 1}
@@ -129,7 +142,7 @@ async def test_meta_outcome_display_is_localized():
     values, _, _ = await run_graph(deps, META, language="th", thread="m2")
     [pool] = values["result"]["meta_analysis"]["pools"]
     assert pool["outcome"] == "Colorectal cancer incidence"
-    assert pool["outcome_display"] == "TH Colorectal cancer incidence"
+    assert pool["outcome_display"] == to_thai("Colorectal cancer incidence")
 
 
 async def test_slr_run_has_no_meta_and_an_unchanged_path():

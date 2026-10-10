@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any
 
@@ -9,10 +10,18 @@ from app.graph import prompts
 from app.graph.nodes.intake import harness_runner, harness_spec
 from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate, PaperCard
-from app.harness.design import design_problems, settle_design_category, strip_non_quantitative
+from app.harness.comparison import settle_comparisons
+from app.harness.design import (
+    check_design_consistency,
+    design_problems,
+    settle_design_category,
+    strip_non_quantitative,
+)
 from app.harness.runner import HarnessResult
-from app.harness.verify import card_problems, compare_cards, null_unverified_numbers
+from app.harness.verify import NUMERIC_FIELDS, card_problems, compare_cards, null_unverified_numbers
 from app.services.llm import LLMError
+
+log = logging.getLogger(__name__)
 
 
 def paper_text(cand: Candidate) -> str | None:
@@ -22,11 +31,16 @@ def paper_text(cand: Candidate) -> str | None:
 
 
 def _blanked(before: PaperCard, after: PaperCard) -> list[dict[str, Any]]:
-    """Values the verifier blanked, so the UI can show "not verified" instead of "not reported"."""
+    """Values the verifier blanked, so the UI can show "not verified" instead of "not reported".
+
+    Fields are blanked one at a time, so an outcome is listed when its estimate was blanked: its effect_value, or,
+    for an outcome without one, all of its numbers. A blanked p-value or CI next to a verified effect is not listed
+    (the effect is still verified). This mirrors the unit counts of `null_unverified_numbers`."""
     out: list[dict[str, Any]] = []
     for b, a in zip(before.outcomes, after.outcomes, strict=True):
-        had = any(v is not None for v in (b.effect_value, b.ci_lower, b.ci_upper, b.p_value))
-        if had and all(v is None for v in (a.effect_value, a.ci_lower, a.ci_upper, a.p_value)):
+        had = any(getattr(b, k) is not None for k in NUMERIC_FIELDS)
+        lost_effect = b.effect_value is not None and a.effect_value is None
+        if had and (lost_effect or all(getattr(a, k) is None for k in NUMERIC_FIELDS)):
             out.append({"field": "effect", "outcome": b.outcome})
     if before.sample_size is not None and after.sample_size is None:
         out.append({"field": "sample_size", "outcome": None})
@@ -94,7 +108,8 @@ def make_read_paper(deps):
         if p_card is not None and s_card is not None:
             agreement, disagreements = compare_cards(p_card, s_card)
             if any("direction" in d for d in disagreements):
-                esc = await runner.escalate(system, user, schema=PaperCard, validate=validate, reason="disagreement")
+                esc = await runner.escalate(system, user, schema=PaperCard, validate=validate, reason="disagreement",
+                                            already_asked=(deps.llms.extractor, secondary_llm))
                 if esc is not None:
                     cost += esc.cost
                 if esc is not None and esc.ok and esc.value is not None:
@@ -103,7 +118,9 @@ def make_read_paper(deps):
                     uncertain = True
 
         verified = total = 0
+        design_correction: dict[str, str] | None = None
         unverified: list[dict[str, Any]] = []
+        comparison_counts: dict[str, int] = {}
         if card is None:
             failure = primary if isinstance(primary, BaseException) else None
             message = (f"{type(failure).__name__}: {failure}" if failure else
@@ -115,8 +132,26 @@ def make_read_paper(deps):
                 before = card
                 card, verified, total = null_unverified_numbers(card, text, threshold)
                 unverified = _blanked(before, card)
+            # an estimate of another comparison stays on the card, flagged, and never becomes evidence (Plan 19).
+            # The deterministic post-checks are extras: a crash keeps the card as it was (the model's own flags and
+            # label) and is logged, never failing the paper or the review (final review finding 9).
+            try:
+                card, flipped = settle_comparisons(card, payload.get("question_detail"),
+                                                   payload.get("review_type") or "slr")
+            except Exception as exc:
+                log.exception("settle_comparisons failed for %s", paper["ref"])
+                errors.append(f"comparison check failed for {paper['ref']}: {type(exc).__name__}")
+                flipped = 0
+            comparison_counts = {"other_comparisons": sum(1 for o in card.outcomes if not o.matches_question),
+                                 "comparison_backstop": flipped}
             # after verification: a qualitative/mixed card never carries effect numbers or a direction
             settled = settle_design_category(card, pub_types)
+            # a label the pub types, design text, title or abstract clearly contradict is corrected in code (I-7)
+            try:
+                settled, design_correction = check_design_consistency(settled, pub_types, cand.title, text)
+            except Exception as exc:
+                log.exception("check_design_consistency failed for %s", paper["ref"])
+                errors.append(f"design check failed for {paper['ref']}: {type(exc).__name__}")
             stripped = strip_non_quantitative(settled)
             if stripped is not settled:  # recount: only the numbers that remain (a verified sample size, if any)
                 kept = int(spec.verify_quotes and stripped.sample_size is not None)
@@ -128,9 +163,14 @@ def make_read_paper(deps):
         entry["verification"] = {"numbers_verified": verified, "numbers_total": total, "agreement": agreement,
                                  "escalated": escalated, "repaired": repaired, "uncertain": uncertain,
                                  "unverified": unverified}
+        if paper.get("design_mismatch"):  # kept although its design is outside the ticked study types (relaxed)
+            entry["verification"]["design_mismatch"] = True
+            entry["design_mismatch"] = True
         quality = {"stage": "read", "ref": paper["ref"], "source": "abstract",
                    **{k: v for k, v in entry["verification"].items() if k != "unverified"},
-                   "seconds": round(time.perf_counter() - started, 3)}
+                   **comparison_counts, "seconds": round(time.perf_counter() - started, 3)}
+        if design_correction:
+            quality["design_corrected"] = design_correction
         extracted = {"type": "extracted", "ref": paper["ref"], "ok": entry["card"] is not None,
                      "verified": verified, "uncertain": uncertain,
                      "direction": entry["card"]["overall_direction"] if entry["card"] else None,
