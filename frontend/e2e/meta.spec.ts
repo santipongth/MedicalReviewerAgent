@@ -28,3 +28,20 @@ for (const width of [1440, 390]) {
     });
   }
 }
+
+test("computed numbers carry no verified tape and the pooled estimate is an outlined lozenge", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await mockApi(page, { [`GET /api/v1/reviews/${MID}`]: (route) => json(route, 200, metaReviewFixture) });
+  await page.goto(`/r/${MID}`);
+  const section = page.locator("section:has(#h-meta)");
+  await expect(section.getByText("คำนวณโดยระบบจากตัวเลขที่ตรวจกับบทคัดย่อแล้ว — ไม่ใช่ผลจากงานวิจัยฉบับใด")).toBeVisible();
+  const computed = section.locator("[data-computed=true]");
+  expect(await computed.count()).toBeGreaterThan(0);
+  // no computed number is, or sits inside, a verified (taped) number
+  expect(await section.locator(".num-computed.num-verified, .num-verified .num-computed, .num-computed .num-verified").count()).toBe(0);
+  await expect(computed.first().locator(".computed-tag")).toHaveText("คำนวณ");
+  // the pooled row is drawn (lozenge shape is unit-tested in figures); here: it is present with its accessible name
+  await expect(section.getByRole("img", { name: /Forest plot ค่ารวม/ })).toBeVisible();
+  await section.getByText("วิธีคำนวณ").click();
+  await expect(section.getByRole("table", { name: /ตัวเลขที่ใช้คำนวณค่ารวม/ })).toBeVisible();
+});
