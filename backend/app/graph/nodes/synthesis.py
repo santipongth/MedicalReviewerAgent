@@ -173,7 +173,13 @@ def related(state: ReviewState) -> dict[str, dict[str, str]]:
     if _review_type(state) == "scoping":
         return {}
     try:
-        return related_reports(_with_cards(state))
+        cards = _with_cards(state)
+        # only evidence may be a primary report (Task 10 review finding 4): in scope, direction evidence, answering
+        # the question
+        evidence = {p["ref"] for p in cards if not _outside_study_types(state, p)
+                    and p["card"].get("design_category") not in NO_DIRECTION_CATEGORIES
+                    and question_card(p["card"]) is not None}
+        return related_reports(cards, evidence)
     except Exception:
         log.exception("related_reports failed; every paper counts as its own study")
         return {}
@@ -332,7 +338,9 @@ def make_normalize_outcomes(deps):
         # Like pooling, the matrix and the grade are deterministic extras: an unexpected card shape must not fail the
         # review; the papers and their cards still render (final review finding 9).
         try:
-            matrix = build_matrix(papers, clusters or preclustered(groups), directional=directional)
+            # scoping: cells only chart which paper covers which aspect, no free-text finding (Task 10 review 9)
+            matrix = build_matrix(papers, clusters or preclustered(groups), directional=directional,
+                                  charted=_review_type(state) == "scoping")
         except Exception as exc:
             log.exception("build_matrix failed")
             errors.append(f"comparison matrix failed: {type(exc).__name__}")

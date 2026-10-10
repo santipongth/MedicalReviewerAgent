@@ -68,8 +68,8 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any], questio
       when the question has no effect direction.
     - Imprecision: the outcome's sample size (the body's primary studies summed, or the largest same-tier SR/MA in
       the row, whichever is larger: an SR/MA's n already includes its studies) < 400 or not reported; and, for a
-      one-study body, a 95% CI that includes no effect, or a non-significant result without a CI; and (Plan 20 Task
-      10) a body of one primary study, which is not replicated (at most one imprecision downgrade in all).
+      one-study body, a 95% CI that includes no effect, or a non-significant result without a CI. (Plan 20 Task 10)
+      A body of one primary study is not replicated: its certainty is capped at moderate (a cap, not a downgrade).
     Downgrade factors start with their domain and a colon ("risk of bias:", "inconsistency:", "imprecision:")."""
     # qualitative/mixed-methods cards are themes, never graded evidence (callers pass _evidence; this is a guard)
     cards = {p.get("ref") or f"#{i}": p["card"] for i, p in enumerate(papers)
@@ -172,16 +172,13 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any], questio
             level -= 1
             imprecise = True
             factors.append(f"imprecision: {reason}")
-    if single and what == "study":
+    if single and what == "study" and level > LEVELS.index("moderate"):
         # Plan 20 Task 10 (the SGLT2 re-run graded "high" from one trial per outcome): a single primary study is not
-        # replicated, and its optimal information size cannot be judged from an abstract, so it is downgraded once
-        # (a single SR/MA already combines several studies and is not)
-        text = f"one study for {where} (k = 1): its estimate is not replicated by another study"
-        if imprecise:
-            factors.append(f"imprecision (already downgraded): {text}")
-        else:
-            level -= 1
-            factors.append(f"imprecision: {text}")
+        # replicated, so the certainty is capped at moderate. A cap, not a downgrade (Task 10 review finding 5): one
+        # observational study keeps its tier; a single SR/MA already combines several studies and is not capped.
+        level = LEVELS.index("moderate")
+        factors.append(f"imprecision: one study for {where} (k = 1): its estimate is not replicated by another "
+                       f"study, so the certainty is capped at moderate")
     factors.append(NOT_ASSESSED)
     # k: the graded body on the primary outcome; studies: every graded card (the rationale may cite either count)
     return {"level": LEVELS[max(level, 0)], "factors": factors, "k": len(body), "studies": len(cards)}

@@ -152,10 +152,13 @@ _PRIMARY_OBSERVATIONAL = ("cohort", "case_control", "cross_sectional")
 # Plan 20 Task 10 (the mammography re-run): reviews of diagnostic-accuracy or screening-programme studies were
 # labelled sr_ma_rct, and a prospective paired-reader screening study rct.
 # Studies an SR/MA includes that are not randomised trials.
+# Narrow on purpose (Task 10 review finding 7): "sensitivity analyses" or "a cohort of trials" are no non-RCT evidence.
 NON_RCT_EVIDENCE = re.compile(
-    r"diagnostic (test )?accuracy|sensitivity|specificity|area under|\bauc\b|detection rates?|recall rates?|"
-    r"prospective (programs?|programmes?|studies|cohorts?)|screening programs?|screening programmes?|real-world|"
-    r"retrospective|observational|cohort|case-?control|cross-?sectional|registry", re.IGNORECASE)
+    r"diagnostic (test )?accuracy|sensitivity and specificity|diagnostic sensitivity|\bspecificity\b|area under|"
+    r"\bauc\b|detection rates?|recall rates?|prospective (programs?|programmes?|studies|cohorts)|"
+    r"screening programs?|screening programmes?|real-world|retrospective|observational (studies|data)|"
+    r"cohort studies|case-?control|cross-?sectional|registry (studies|data)|registries", re.IGNORECASE)
+_NON_RANDOMISED = re.compile(r"non-?randomi[sz]ed|non-?randomi[sz]ation", re.IGNORECASE)
 # A sentence about trials still to be done ("randomised trials are needed") is no evidence of included trials.
 _FUTURE = re.compile(r"\b(need(ed|s)?|warrant(ed|s)?|future|should|further|required|awaited)\b", re.IGNORECASE)
 _SENTENCES = re.compile(r"(?<=[.!?])\s+")
@@ -241,8 +244,10 @@ def check_design_consistency(card: PaperCard, pub_types: list[str] | None, title
         observational = _observational_category(design, title) if OBSERVATIONAL_WORDING.search(own_text) else None
         if observational and not randomised:
             new, reason = observational, f"the design says {observational.replace('_', '-')}, with no randomisation"
-        elif (NON_RANDOMISED_DESIGN.search(own_text) and not RANDOMISED_WORDING.search(own_text)
-              and not STRONG_RANDOMISATION.search(abstract or "")):
+        elif (NON_RANDOMISED_DESIGN.search(own_text)
+              # "non-randomised" itself is no randomisation wording (Task 10 review finding 6)
+              and not RANDOMISED_WORDING.search(_NON_RANDOMISED.sub(" ", own_text))
+              and not STRONG_RANDOMISATION.search(_NON_RANDOMISED.sub(" ", abstract or ""))):
             # Plan 20 Task 10: a paired-reader or single-arm design is not randomised, whatever a registry number or
             # the word "trial" suggests; only explicit randomisation wording keeps the label
             if re.search(r"single[- ]arm|before[- ]and[- ]after|pre-?post|non-?randomi[sz]ed|uncontrolled", own_text,

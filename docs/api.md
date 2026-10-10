@@ -215,8 +215,9 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   - (Plan 20 Task 10) an `sr_ma_rct` label needs randomised-trial wording ("randomised", "RCT", "trial(s)") in the
     design, title, abstract or sample-size quote, outside sentences about future research ("randomized trials are
     needed"). Without it the review becomes `sr_ma_observational` when it names diagnostic-accuracy or observational
-    evidence (sensitivity, specificity, AUC, detection or recall rates, prospective programmes, retrospective,
-    cohort, registry, ...), else `sr_ma_mixed`; with it, a design or title that also names such evidence makes it
+    evidence ("sensitivity and specificity", specificity, AUC, detection or recall rates, prospective programmes,
+    retrospective, observational studies, cohort studies, registries, ...; not "sensitivity analyses" or a bare
+    "cohort"), else `sr_ma_mixed`; with it, a design or title that also names such evidence makes it
     `sr_ma_mixed`.
   A Randomized Controlled Trial publication type still wins over a non-randomised label. Each correction is listed
   in `result.quality.design_corrections` as `{ref, from, to, reason}` (`[]` when none; absent for results stored
@@ -269,12 +270,12 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 **Review type (Plan 14a).** `result.review_type` is `narrative`, `slr`, `scoping` or (Plan 14b) `meta_analysis`, which is graded like `slr`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
 - `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`; `null` when the question was not refined), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
 - `synthesis.evidence_strength` and `synthesis.grade_baseline` are nullable. They are `null` for `narrative` and `scoping`, which are not graded, and for an `slr`/`meta_analysis` with no quantitative studies (every paper qualitative or mixed-methods; `evidence_rationale` then says so). Clients must not read `null` as "very low".
-- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. Since Plan 19 every `synthesis.comparison[].cells[].direction` of a scoping review is `"unclear"`. Since Plan 20 Task 10 the scoping cards' `overall_direction` and `outcomes[].direction` are `"unclear"` too (set in code after extraction); results stored before then may still carry the raw agent values. The cards still carry `risk_of_bias` as raw agent extraction. The report and the CSV do not show these fields (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present them as findings.
+- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. Since Plan 19 every `synthesis.comparison[].cells[].direction` of a scoping review is `"unclear"`. Since Plan 20 Task 10 every scoping cell's `finding` is `"✓"` (the paper covers that aspect): no free-text finding such as a device name; the cell's verified numbers stay. Since Plan 20 Task 10 the scoping cards' `overall_direction` and `outcomes[].direction` are `"unclear"` too (set in code after extraction); results stored before then may still carry the raw agent values. The cards still carry `risk_of_bias` as raw agent extraction. The report and the CSV do not show these fields (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present them as findings.
 
 **Meta-analysis (Plan 14b).** `review_type: "meta_analysis"` behaves exactly like `slr` (PICO, screening, selection, PRISMA, conflicts, grading) and adds `result.meta_analysis`. For every other type, and for results stored before Plan 14b, `meta_analysis` is `null` or absent. It is also `null` for a meta-analysis whose pooling step failed, or was skipped because the study numbers were not verified against the abstracts (`verify_quotes` off or no verification records); either is listed in `errors` and never fails the review. Pooled numbers are computed by the system, DerSimonian-Laird random effects, from the abstract-verified effect estimates and 95% CIs. They are not a result reported by any single study.
 - Search (Plan 19, for recall): a meta-analysis reads 2 SearXNG pages per query instead of 1, the planner may use 5 queries (one naming the major trials), and, when RCTs are acceptable (no ticked study type, or `RCT` ticked), up to 3 extra Europe PMC searches restricted to randomized controlled trials with an abstract, most cited first (each with an 8 s timeout). A query that is a list of trial names or acronyms is searched as alternatives (OR); other queries need all their words. Those hits join the round-robin as their own lists. At most 4 SearXNG requests per review run at once. The candidate cap is unchanged (`candidate_limit`).
-  - Trial-name harvest (Plan 20 Task 10): after that first round, the trial acronyms that at least 2 hits name in a trial context ("the EMPEROR-Reduced trial", "DAPA-HF ClinicalTrials.gov number", "trial (EMPA-REG OUTCOME)"; at least 4 capitals; generic abbreviations such as COVID-19, NHANES, HFpEF or CVOT and registry numbers excluded) are searched once more in Europe PMC (RCTs with an abstract, most cited first), at most 12 names, OR-ed and ANDed with the review's intervention terms (the key terms, MeSH heading and synonyms that share a word with `intervention_or_exposure`). Acronyms such as DELIVER or CANVAS are ordinary words, so the intervention terms are required. The first 10 hits of this search lead the candidate list (they are the landmark trials of the question); the rest join the round-robin. It needs a refined question and runs only when the trial search runs.
-  - Europe PMC retries (Plan 20 Task 10): every Europe PMC request (trial searches, the enrichment lookup batches, reference lists) is retried after a 429/5xx answer at most twice, after 1 s and 2 s, and after a timeout or connection error once; the last attempt of a trial search drops the citation sort. A trial search or lookup batch that still fails is skipped and listed in `errors`; the review goes on (a stalled Europe PMC delays a trial search by at most about 17 s).
+  - Trial-name harvest (Plan 20 Task 10): after that first round, the trial names that at least 2 hits name in a trial context are searched once more. A name must look like a real one (Task 10 review): a hyphenated, digit-bearing or mixed-case name (DAPA-HF, EMPEROR-Reduced, EMPA-REG OUTCOME, DECLARE-TIMI 58) in any trial context ("the X trial/study/studies/programme", "X ClinicalTrials.gov number", "trial (X)", a title opening "X:"); a plain all-caps word (DELIVER) only right before trial(s)/study/investigators/ClinicalTrials.gov, after "trial (" or in brackets after a title-case phrase of at least 4 words. Nothing is taken from an all-caps title or an all-caps heading run (3+ words), and a stoplist excludes design and heading words (CONTROLLED, MULTICENTER, PILOT, REGISTRATION, ...), databases and appraisal tools (CENTRAL, ICTRP, MMAT, ...) and disease, drug-class, biomarker and gene abbreviations (COPD, ESKD, SGLT2, LDL-C, PCSK9, HFrEF, COVID-19, ...); a name needs at least 4 capitals. (Names written only as "the CANVAS Program" are therefore missed.) The names are searched in Europe PMC (RCTs with an abstract, most cited first), at most 12 names, OR-ed and ANDed with the review's intervention terms (the key terms, MeSH heading and synonyms that share a topic word with `intervention_or_exposure`; generic words such as "inhibitors", "therapy" or "standard" never link a key term). Acronyms such as DELIVER or CANVAS are ordinary words, so the intervention terms are required. The first 10 hits of this search lead the candidate list (they are the landmark trials of the question); the rest join the round-robin. It needs a refined question and runs only when the trial search runs.
+  - Europe PMC retries (Plan 20 Task 10): every Europe PMC request (trial searches, the enrichment lookup batches, reference lists) is retried after a 429/5xx answer at most twice, after 1 s and 2 s, and after a timeout or connection error once; the last attempt of a trial search drops the citation sort. A trial search or lookup batch that still fails is skipped and listed in `errors`; the review goes on (at most 3 attempts: a stalled Europe PMC delays a trial search by at most about 27 s, a timeout, a slow 5xx and another timeout plus the 3 s of backoff).
 - Diagnostic test accuracy (sensitivity, specificity, AUC) is not supported as a measure: such results are shown as reported (`effect_measure` `other` or `none`) and are never pooled or plotted.
 - Shape: `{version: "meta-1", pools[], excluded[], reference[], grade: {primary_outcome, design_group, reasons[]}}`.
 - `pools[]`: `{outcome, outcome_display, measure, scale, design_group, k, studies[], pooled, tau2, i2, q, df, p_het, method, version, warnings[]}`.
@@ -346,15 +347,23 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   statement and the reviews named in its explanation; a split in the fallback pass stays imprecision. None of these
   downgrades the grade (below).
 - Reports of the same trial (Plan 20 Task 10). A trial's primary paper, commentaries on it and its subgroup or post
-  hoc analyses are one study. Papers are linked when they share a trial acronym written in a trial context ("the
-  EMPEROR-Preserved trial", "DAPA-HF ClinicalTrials.gov number", a title opening "EMPEROR-Preserved: ...") or a
-  registry number (NCT, ISRCTN), or when their titles are near-identical with the same first author and years at most
-  one apart. A paper naming several trials never links them together, and SR/MAs are never grouped. Of each group one
-  primary report is kept (a title that is not a subgroup/post hoc/commentary/design paper, then an RCT design and
-  publication type, more estimates with a CI, a larger sample, the earlier year). Only it is evidence: the others
+  hoc analyses are one study. Papers are linked when they share a registry number (NCT, ISRCTN) or a trial name
+  (rules as for the trial-name harvest above) that is the paper's own subject: named in its title, its abstract's
+  first sentence, its methods section, its registration ("DAPA-HF ClinicalTrials.gov number") or a sentence about
+  its own study ("the aims of this study ... patients enrolled in the EMPEROR-Preserved trial"), and never right after
+  a citing cue ("consistent with", "unlike", "as in", "similar to", "compared with", "previous", "eligible for", ...).
+  A trial cited by another paper is not that paper's own, so a citing trial is never absorbed. Near-identical titles
+  (ratio ≥ 95) link papers only with the same first author, years at most one apart, the same reported sample size
+  or a shared registry number, and no population word or proper name between them (men/women, Korea/Japan). Papers
+  with different registry numbers are never one group, a paper naming several trials never links them together, and
+  SR/MAs and qualitative/mixed-methods papers are never grouped. The primary report is chosen only among the group's
+  evidence (in the ticked study types, direction evidence, answering the question), never a commentary: an RCT design
+  and publication type first, then a title that is not a subgroup/post hoc/design paper, more estimates with a CI, a
+  larger sample, the earlier year. A group with no evidence member links nothing. Only the primary is evidence: the others
   are left out of the comparison, consensus, conflicts, pools, GRADE-lite, every k and (graded types) the narrative.
   They stay in `papers` with `related_to` (the primary's ref) and `related_reason` ("same trial (EMPEROR-Preserved)",
-  "same trial (NCT03057951)" or "near-identical title, same first author and year"); the primary lists them in
+  "same trial (NCT03057951)", "near-identical title, same first author, same sample size" or "... same registry
+  number"); the primary lists them in
   `related_reports[]`. The Markdown export ends such a paper's line with "Related report of [P1] (same trial
   (...)), not counted again.". `stats.related_reports` counts them (PRISMA 2020 counts studies and reports apart). Scoping
   reviews map every report and link none. Results stored before Plan 20 Task 10 have none of these keys.
@@ -381,10 +390,11 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 - Imprecision: the primary outcome's sample size (the graded body's primary studies summed, or the largest
   same-tier SR/MA in that row, whichever is larger; participants outside the graded body never count) below 400, or
   not reported. With one study or one review in the body, also one level down (at most one level for the domain)
-  when its 95% CI includes no effect, or when it is non-significant and reports no CI. Since Plan 20 Task 10 a body of
-  one primary study is always downgraded once for imprecision ("one study for ... (k = 1): its estimate is not
-  replicated"; again at most one level for the domain): one trial per outcome is never `high`. A single SR/MA, which
-  already combines studies, is not.
+  when its 95% CI includes no effect, or when it is non-significant and reports no CI. Since Plan 20 Task 10 the
+  certainty of a body of one primary study is capped at moderate ("imprecision: one study for ... (k = 1): its
+  estimate is not replicated by another study, so the certainty is capped at moderate"): one trial per outcome is
+  never `high`. It is a cap, not a downgrade: one observational study keeps its tier (`low`), and a single SR/MA,
+  which already combines studies, is not capped.
 - A review-discordant split on the primary outcome (above) is recorded as "minor inconsistency: systematic reviews
   and primary studies point different ways ..." without a downgrade.
 - The baseline handed to the narrative model (internal, not a result key) also carries `k` (the graded body on the

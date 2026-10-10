@@ -96,13 +96,17 @@ def intervention_terms(question: dict | None, limit: int = 10) -> list[str]:
     synonyms) that share a word with intervention_or_exposure, else its own comma/bracket-separated parts of at most
     four words. Empty without a refined question."""
     q = question or {}
-    own = {w for w in re.findall(r"[a-z0-9]+", (q.get("intervention_or_exposure") or "").lower()) if len(w) >= 4}
+
+    def words_of(text: str) -> set[str]:  # topic words: generic ones ("inhibitors", "therapy") never link a term
+        return {w.removesuffix("s") for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) >= 4} - _FOCUS_STOP
+
+    own = words_of(q.get("intervention_or_exposure") or "")
     if not own:
         return []
     out: list[str] = []
     for term in q.get("key_terms") or []:
         names = [term.get("term") or "", term.get("mesh") or "", *(term.get("synonyms") or [])]
-        words = {w for n in names for w in re.findall(r"[a-z0-9]+", n.lower())}
+        words = set().union(*(words_of(n) for n in names))
         if words & own:
             out += [n for n in names if n.strip()]
     if not out:
@@ -132,7 +136,9 @@ def focus_terms(question: dict | None) -> list[str]:
 # Words of the key terms that say nothing about the topic on their own.
 _FOCUS_STOP = frozenset({"with", "without", "from", "type", "due", "the", "and", "for", "patient", "people", "adult",
                          "disease", "risk", "study", "effect", "outcome", "use", "therapy", "treatment", "inhibitor",
-                         "care", "non", "dependent", "based", "related", "level", "factor", "health", "clinical"})
+                         "care", "non", "dependent", "based", "related", "level", "factor", "health", "clinical",
+                         "agonist", "antagonist", "agent", "drug", "medication", "standard", "blocker", "receptor",
+                         "usual", "placebo", "control"})
 MIN_FOCUS_WORDS = 2
 
 

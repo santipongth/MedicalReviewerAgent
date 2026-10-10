@@ -71,7 +71,7 @@ def test_grade_baseline():
     g = grade_baseline(PAPERS, m)
     # GRADE rates from the best design with evidence on the primary outcome (methodology review #4): the one RCT
     # (P2) starts high and is the graded body; the conflicting cohorts are reported, not graded. Plan 20 Task 10: a
-    # one-study body is not replicated, so it is downgraded once for imprecision
+    # one-study body is not replicated, so its certainty is capped at moderate
     assert g["level"] == "moderate"
     assert any(f.startswith("imprecision: one study for the primary outcome") for f in g["factors"])
     assert g["factors"][0].startswith("start high: randomized evidence for the primary outcome Colorectal cancer "
@@ -81,8 +81,8 @@ def test_grade_baseline():
     cohorts = [p for p in PAPERS if p["ref"] != "P2"]
     g = grade_baseline(cohorts, build_matrix(cohorts, fallback_clusters(cohorts)))
     assert g["level"] == "very_low" and any(f.startswith("inconsistency:") for f in g["factors"])
-    agreeing = [p for p in cohorts if p["ref"] != "P3"]  # one cohort: not replicated (Plan 20 Task 10)
-    assert grade_baseline(agreeing, build_matrix(agreeing, fallback_clusters(agreeing)))["level"] == "very_low"
+    agreeing = [p for p in cohorts if p["ref"] != "P3"]  # one cohort keeps its tier (the single-study rule is a cap)
+    assert grade_baseline(agreeing, build_matrix(agreeing, fallback_clusters(agreeing)))["level"] == "low"
     two = [*agreeing, paper("P4", [("CRC incidence", "positive", 0.75)])]
     assert grade_baseline(two, build_matrix(two, fallback_clusters(two)))["level"] == "low"
     rcts = [paper(f"P{i}", [("CRC", "positive", 0.8)], design="randomized controlled trial", rob="low", n=5000)

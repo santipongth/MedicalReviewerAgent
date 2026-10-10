@@ -350,7 +350,11 @@ def _verdict(counted: list[dict[str, Any]], aside: list[dict[str, Any]],
     return {"verdict": "none"}
 
 
-def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters, directional: bool = True) -> dict[str, Any]:
+CHARTED = "✓"  # a scoping cell: the paper covers this aspect (no free-text finding, Task 10 review finding 9)
+
+
+def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters, directional: bool = True,
+                 charted: bool = False) -> dict[str, Any]:
     """The comparison rows, plus consensus and conflicts by `classify_row`. `directional` False (a scoping review, a
     themes review, a question with no effect direction): every cell's direction is `unclear` and there is no
     consensus, conflict or imprecision list. Cells whose finding is a literal placeholder ("null", "N/A") and that
@@ -365,7 +369,7 @@ def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters, direct
             if outcome is None or (is_placeholder(outcome["result"]) and outcome.get("effect_value") is None):
                 continue
             cells.append({
-                "ref": member.ref, "finding": outcome["result"],
+                "ref": member.ref, "finding": CHARTED if charted else outcome["result"],
                 "direction": outcome["direction"] if directional else "unclear",
                 "effect_measure": outcome.get("effect_measure"), "effect_value": outcome.get("effect_value"),
                 "ci_lower": outcome.get("ci_lower"), "ci_upper": outcome.get("ci_upper"),

@@ -83,15 +83,31 @@ def test_the_primary_report_is_chosen_whatever_the_ref_order():
     assert related_reports([first, primary]) == {"P1": {"primary": "P5", "reason": "same trial (EMPEROR-Preserved)"}}
 
 
-def test_near_identical_titles_with_the_same_first_author_and_year_are_one_report():
+def test_near_identical_titles_with_the_same_first_author_and_sample_are_one_report():
     a = report("P1", "Metformin and colorectal cancer in diabetes: a cohort study", "A", category="cohort",
-               authors=("Lee JH",), year=2020)
+               authors=("Lee JH",), year=2020, n=12000)
     b = report("P2", "Metformin and colorectal cancer in diabetes - a cohort study.", "B", category="cohort",
-               authors=("Lee J",), year=2021)
+               authors=("Lee J",), year=2021, n=12000)
     other_author = report("P3", "Metformin and colorectal cancer in diabetes: a cohort study", "C", category="cohort",
-                          authors=("Kim S",), year=2020)
+                          authors=("Kim S",), year=2020, n=12000)
     links = related_reports([a, b, other_author])
-    assert set(links) == {"P2"} and links["P2"]["reason"] == "near-identical title, same first author and year"
+    assert set(links) == {"P2"}
+    assert links["P2"]["reason"] == "near-identical title, same first author, same sample size"
+    # a different (or unreported) sample size: two studies
+    assert related_reports([a, {**b, "card": {**b["card"], "sample_size": 9000}}]) == {}
+    assert related_reports([a, {**b, "card": {**b["card"], "sample_size": None}}]) == {}
+
+
+def test_companion_papers_of_two_populations_never_merge():  # Task 10 review finding 3
+    men = report("P1", "Metformin use and colorectal cancer risk in men with type 2 diabetes: a cohort study", "A",
+                 category="cohort", authors=("Lee JH",), year=2020, n=5000)
+    women = report("P2", "Metformin use and colorectal cancer risk in women with type 2 diabetes: a cohort study",
+                   "B", category="cohort", authors=("Lee JH",), year=2020, n=5000)
+    korea = report("P3", "Metformin use and colorectal cancer risk in Korea: a cohort study", "C", category="cohort",
+                   authors=("Lee JH",), year=2020, n=5000)
+    japan = report("P4", "Metformin use and colorectal cancer risk in Japan: a cohort study", "D", category="cohort",
+                   authors=("Lee JH",), year=2021, n=5000)
+    assert related_reports([men, women, korea, japan]) == {}
 
 
 def test_systematic_reviews_are_never_grouped():
@@ -151,8 +167,8 @@ def test_one_trial_per_outcome_is_not_high_and_the_rationale_cannot_claim_three_
     papers = [PRIMARY, DAPA_HF, DELIVER]
     g = grade_baseline(papers, build_matrix(papers, fallback_clusters(papers)), ["HF hospitalization"])
     assert g["level"] == "moderate" and g["k"] == 1 and g["studies"] == 3
-    assert "imprecision: one study for the primary outcome HF hospitalization (k = 1): its estimate is not " \
-           "replicated by another study" in g["factors"]
+    assert ("imprecision: one study for the primary outcome HF hospitalization (k = 1): its estimate is not "
+            "replicated by another study, so the certainty is capped at moderate") in g["factors"]
     problems = rationale_problems(SGLT2_RATIONALE, g["factors"], g["k"], g["studies"])
     assert any("consistency across studies" in p for p in problems)
     # "three" is the number of graded trials here, so the count passes; with only the one trial it does not

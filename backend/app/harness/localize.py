@@ -276,7 +276,7 @@ async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], 
         # prefer a complete translation; else the better of the partial ones; else the English source
         best = next((c for c in candidates if not untranslated(source, c[0], language)), None)
         if best is None and candidates:
-            best = max(candidates, key=lambda c: thai_share(c[0]))
+            best = max(candidates, key=lambda c: thai_share(c[0], source))
         if best is None:
             out.kept_english += 1
         else:

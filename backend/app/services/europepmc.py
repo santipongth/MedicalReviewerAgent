@@ -97,8 +97,10 @@ class EuropePmcClient:
     BATCH = 40
     CONCURRENCY = 3  # batches in flight; HttpClient's per-host spacing still applies
     TRIAL_TIMEOUT = 8.0  # seconds per trial-search attempt
-    # Bounded backoff before each retry (Plan 20 Task 10): two retries after a 429/5xx answer, one after a timeout or
-    # a connection error, so a stalled Europe PMC costs a trial search at most 2 x TRIAL_TIMEOUT + 1 s.
+    # Bounded backoff before each retry (Plan 20 Task 10): at most 3 attempts (two retries after a 429/5xx answer, at
+    # most one after a timeout or connection error). Worst case for a trial search: 3 x TRIAL_TIMEOUT + 1 s + 2 s,
+    # about 27 s (a timeout, a slow 5xx, then another timeout). A lookup batch keeps its concurrency slot while it
+    # waits.
     RETRY_DELAYS = (1.0, 2.0)
     TRANSPORT_RETRIES = 1
 
