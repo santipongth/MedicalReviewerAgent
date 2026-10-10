@@ -129,13 +129,32 @@ def focus_terms(question: dict | None) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+# Words of the key terms that say nothing about the topic on their own.
+_FOCUS_STOP = frozenset({"with", "without", "from", "type", "due", "the", "and", "for", "patient", "people", "adult",
+                         "disease", "risk", "study", "effect", "outcome", "use", "therapy", "treatment", "inhibitor",
+                         "care", "non", "dependent", "based", "related", "level", "factor", "health", "clinical"})
+MIN_FOCUS_WORDS = 2
+
+
+def _stem(word: str) -> str:
+    return word[:6] if len(word) >= 6 else word
+
+
 def on_focus(c: Candidate, terms: list[str]) -> bool:
-    """Whether the title or abstract names any key term (as a phrase; for a term with a digit, also with its spaces
-    and hyphens removed: "SGLT-2" = "SGLT2")."""
+    """Whether the title or abstract names a key term: as a phrase (for a term with a digit also with its spaces and
+    hyphens removed: "SGLT-2" = "SGLT2"), or by at least MIN_FOCUS_WORDS distinct topic words of the key terms in
+    any order ("beliefs about insulin ... a qualitative study" names "insulin" and "qualitative"). Lenient on
+    purpose: it only reorders the candidate cut, so a paper the screener should see must not fall behind."""
+    letters = [ch for ch in c.title if ch.isalpha()]
+    if letters and sum(ch.isascii() for ch in letters) * 2 < len(letters):
+        return True  # a title in another script (Cyrillic, Thai, ...): English key terms cannot judge it
     text = _norm(f"{c.title} {c.abstract or ''}")
     squashed = text.replace(" ", "")
-    return any(f" {t} " in text or (any(ch.isdigit() for ch in t) and t.replace(" ", "") in squashed)
-               for t in terms)
+    if any(f" {t} " in text or (any(ch.isdigit() for ch in t) and t.replace(" ", "") in squashed) for t in terms):
+        return True
+    topic = {_stem(w) for t in terms for w in t.split() if len(w) >= 4 and w not in _FOCUS_STOP}
+    found = {_stem(w) for w in text.split()} & topic
+    return len(found) >= MIN_FOCUS_WORDS
 
 
 def make_search(deps):

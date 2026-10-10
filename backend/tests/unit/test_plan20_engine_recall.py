@@ -288,6 +288,18 @@ def test_on_focus_matches_key_terms_with_plurals_and_digit_spacing():
     assert focus_terms(None) == []
 
 
+def test_on_focus_accepts_two_topic_words_in_any_order_and_other_scripts():
+    # the insulin re-run selected "Impact of patients' beliefs about insulin ... a qualitative study"; no key-term
+    # phrase is in it, but two of their topic words are
+    terms = focus_terms({"key_terms": [
+        {"term": "insulin initiation", "mesh": None, "synonyms": ["starting insulin"]},
+        {"term": "patient experience", "mesh": "Patient Experience", "synonyms": ["qualitative experience"]}]})
+    assert on_focus(_cand("Impact of patients' beliefs about insulin on adherence: a qualitative study"), terms)
+    assert not on_focus(_cand("Stutter diagnosis and therapy system based on deep learning"), terms)
+    assert not on_focus(_cand("Patient experience of telehealth"), terms[:1])  # one topic word is not enough
+    assert on_focus(_cand("СОВРЕМЕННЫЕ ПОДХОДЫ К СКРИНИНГУ РАКА МОЛОЧНОЙ ЖЕЛЕЗЫ"), terms)  # cannot be judged
+
+
 async def test_enrich_moves_off_focus_hits_behind_the_on_topic_ones():
     class NoLookup:
         async def lookup(self, *, dois, pmids, failures=None):

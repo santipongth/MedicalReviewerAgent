@@ -461,7 +461,7 @@ Plan 19 Task 6 adds these `result.quality` keys. Each one is absent when its sta
 
 Plan 20 Task 10 adds:
 - `europepmc_failures`: Europe PMC requests that still failed after their retries (trial searches plus enrichment lookup batches); absent when none failed.
-- `off_focus_demoted`: candidates whose title and abstract name none of the question's key terms (term, MeSH heading or synonym; plurals and "SGLT-2"/"SGLT2" spellings match). Before the `candidate_limit` cut they move behind the on-topic candidates, in their search order; none is dropped. 0 without a refined question.
+- `off_focus_demoted`: candidates whose title and abstract name none of the question's key terms (term, MeSH heading or synonym, as a phrase; plurals and "SGLT-2"/"SGLT2" spellings match) and fewer than 2 of their topic words in any order; a title in another script is never demoted. Before the `candidate_limit` cut they move behind the on-topic candidates, in their search order; none is dropped. 0 without a refined question. Measured on the four re-run questions (2026-10-10), 3-55 hits were demoted (unrelated arXiv papers on network admission control, robotics, programming languages) and no paper the re-runs had selected.
 - `localize_templated`: Thai reviews only. The consensus and conflict strings rendered from fixed Thai templates in code instead of being translated.
 
 ### Exports
