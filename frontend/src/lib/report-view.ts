@@ -6,8 +6,10 @@ import { designKey, designLabel, isNonQuantitative, isPooled, measureFamily, stu
 import { asReported, ciLabel, effectLabel, isBlankedEffect, isBlankedSampleSize } from "./evidence";
 import { DIRECTION_ORDER, type Lang } from "./i18n";
 import { DESIGN_GROUP_LABEL, fixed, pText } from "./meta-view";
+import { studyRefs } from "./trial-reports";
 import type {
-  ComparisonRow, Direction, EvidenceStrength, KeyFinding, MetaAnalysis, OutcomeResult, Paper, Pool, ReviewMethods, ReviewResult,
+  ComparisonRow, Direction, EvidenceCluster, EvidenceStrength, KeyFinding, MetaAnalysis, OutcomeResult, Paper, Pool, ReviewMethods,
+  ReviewResult,
 } from "./types";
 
 // --- Matrix cells → card outcomes ------------------------------------------------------------------------------------
@@ -153,6 +155,11 @@ export interface FindingView {
   pools: PooledText[];
   /** a single study's number (k = 1 and no pool), verified or blanked; null otherwise */
   effect: EffectState;
+  /**
+   * The finding's own certainty (set in code by the engine since Plan 20 Task 10); null when it is not graded or the
+   * result predates it (key findings then show none: the review's grade stays in the bottom line and the SoF table).
+   */
+  certainty: EvidenceStrength | null;
 }
 
 /**
@@ -167,12 +174,13 @@ export function keyFindingViews(findings: KeyFinding[], enFindings: KeyFinding[]
     const row = rowFor(ctx, f.outcome, enOutcome);
     const en = row ? enName(ctx, row) : null;
     const pools = poolsFor(ctx.meta, row?.outcome ?? f.outcome, enOutcome ?? en, ctx.lang);
-    // One source for the studies: the matched row (as in the summary of findings), else the finding's own refs.
+    // One source for the studies: the matched row (as in the summary of findings), else the finding's own refs. A
+    // further report of a trial counts as that trial (once), never as a second study.
     const refs = row ? refsOf(row) : f.refs ?? [];
-    const k = refs.length || f.k || 0;
+    const k = studyRefs(refs, byRef).length || f.k || 0;
     const effect = !pools.length && row && refs.length === 1 ? studyEffect(byRef.get(refs[0]), row, refs[0], en) : null;
     const themes = refs.length > 0 && refs.every((r) => isNonQuantitative(byRef.get(r)?.card_en ?? byRef.get(r)?.card));
-    return { outcome: f.outcome, statement: f.statement, refs, k, themes, pools, effect };
+    return { outcome: f.outcome, statement: f.statement, refs, k, themes, pools, effect, certainty: f.certainty ?? null };
   });
 }
 
@@ -313,10 +321,14 @@ export function sofRows(findings: KeyFinding[], enFindings: KeyFinding[] | undef
     const pools = poolsFor(ctx.meta, outcome, en, ctx.lang);
     const { tally, themes } = tallyOf(row, byRef);
     const own = finding?.certainty ?? null;
-    const certainty = own ?? strength ?? null;
+    // a finding whose certainty the engine set to null is not graded: never replaced by the review's grade
+    const ungraded = !!finding && "certainty" in finding && finding.certainty === null;
+    const certainty = ungraded ? null : own ?? strength ?? null;
+    // studies, not reports: a further report of a trial counts as that trial (rows already exclude them)
+    const studies = studyRefs(refs, byRef);
     return {
-      key: `${out.length}|${outcome}`, outcome, refs, k: refs.length, designs: designsOf(refs, byRef, ctx.lang),
-      participants: participantsOf(refs, byRef), effect: effectOf(row, row ? enName(ctx, row) : en, pools, byRef),
+      key: `${out.length}|${outcome}`, outcome, refs, k: studies.length, designs: designsOf(studies, byRef, ctx.lang),
+      participants: participantsOf(studies, byRef), effect: effectOf(row, row ? enName(ctx, row) : en, pools, byRef),
       certainty, certaintySource: certainty == null ? null : own != null ? "finding" : "review",
       statement: finding?.statement || null, tally, themes,
     };
@@ -482,6 +494,27 @@ export function forestPanels(ctx: OutcomeContext, opts: { minEffects?: number } 
     }
   });
   return { panels, unplaced };
+}
+
+// --- Consistency (Plan 20 Task 11) ---------------------------------------------------------------------------------------
+
+/** The engine's fixed statement endings for a split between systematic reviews and primary studies (synthesis.py). */
+const DISCORDANT_ENDINGS = [
+  ": systematic reviews and primary studies disagree", // conflict, English
+  ": ผลของการทบทวนวรรณกรรมอย่างเป็นระบบและการศึกษาปฐมภูมิไม่สอดคล้องกัน", // conflict, Thai
+  "; systematic reviews disagree", // consensus that significant reviews contradict, English
+  " แต่การทบทวนวรรณกรรมอย่างเป็นระบบให้ผลต่างออกไป", // the same, Thai
+];
+
+/**
+ * A conflict (or consensus) where systematic reviews and primary studies point different ways: the entry's
+ * `review_discordant` flag, else (results stored before the flag reached the synthesis entries) the engine's fixed
+ * statement wording. It never lowers the grade.
+ */
+export function isReviewDiscordant(c: Pick<EvidenceCluster, "statement" | "review_discordant">): boolean {
+  if (typeof c.review_discordant === "boolean") return c.review_discordant;
+  const s = c.statement.trim();
+  return DISCORDANT_ENDINGS.some((e) => s.endsWith(e));
 }
 
 // --- Findings matrix (Plan 20 Task 5) ------------------------------------------------------------------------------------

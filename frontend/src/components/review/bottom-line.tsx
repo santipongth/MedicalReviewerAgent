@@ -69,10 +69,18 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
           <span className="text-muted">{META_POOL_COPY[poolGap].reason[lang]}</span>
         </p>
       )}
-      {/* Model prose: plain text only. A number in it is never styled as verified (no tape, no verified face). */}
-      <p className={`max-w-[65ch] ${READING}`} data-prose data-answer={synthesis.answer?.trim() ? "" : undefined}>
-        <CitedText text={lead} onSelect={onSelect} refs={refs} />
-      </p>
+      {/* Model prose: plain text only. A number in it is never styled as verified (no tape, no verified face). The
+          engine can leave the answer "" (docs/api.md): the summary then leads, and with no text at all the certainty
+          line and the key findings carry the bottom line (never an empty paragraph). */}
+      {lead.trim() ? (
+        <p className={`max-w-[65ch] ${READING}`} data-prose data-answer={synthesis.answer?.trim() ? "" : undefined}>
+          <CitedText text={lead} onSelect={onSelect} refs={refs} />
+        </p>
+      ) : hasPapers && (
+        <p className="max-w-[65ch] text-[0.92rem] text-muted" data-no-answer>
+          {L(lang, "ไม่มีคำตอบสั้นที่ผ่านการตรวจ ดูผลการศึกษาด้านล่าง", "No short answer passed the checks; see the findings below.")}
+        </p>
+      )}
       {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} bar={!poolGap} />}
       {pools.length > 0 && (
         <div className="grid gap-1.5" data-bottom-pools>

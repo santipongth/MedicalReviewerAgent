@@ -312,7 +312,7 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 - Search (Plan 19, for recall): a meta-analysis reads 2 SearXNG pages per query instead of 1, the planner may use 5 queries (one naming the major trials), and, when RCTs are acceptable (no ticked study type, or `RCT` ticked), up to 3 extra Europe PMC searches restricted to randomized controlled trials with an abstract, most cited first (each with an 8 s timeout). A query that is a list of trial names or acronyms is searched as alternatives (OR); other queries need all their words. Those hits join the round-robin as their own lists. At most 4 SearXNG requests per review run at once. The candidate cap is unchanged (`candidate_limit`).
   - Trial-name harvest (Plan 20 Task 10): after that first round, the trial names that at least 2 hits name in a trial context are searched once more. A name must look like a real one (Task 10 review): a hyphenated, digit-bearing or mixed-case name (DAPA-HF, EMPEROR-Reduced, EMPA-REG OUTCOME, DECLARE-TIMI 58) in any trial context ("the X trial/study/studies/programme", "X ClinicalTrials.gov number", "trial (X)", a title opening "X:"); a plain all-caps word (DELIVER, CANVAS) only right before trial(s)/study/investigators/program/programme/ClinicalTrials.gov, after "trial (" or "study (", or in brackets after a title-case phrase of at least 4 words. Nothing is taken from an all-caps title or an all-caps heading run (3+ words), and a stoplist excludes design and heading words (CONTROLLED, MULTICENTER, PILOT, REGISTRATION, ...), databases and appraisal tools (CENTRAL, ICTRP, MMAT, ...) and disease, drug-class, biomarker and gene abbreviations (COPD, ESKD, SGLT2, LDL-C, PCSK9, HFrEF, COVID-19, ...); a name needs at least 4 capitals. The names are searched in Europe PMC (RCTs with an abstract, most cited first), at most 12 names, OR-ed and ANDed with the review's intervention terms (the key terms, MeSH heading and synonyms that share a topic word with `intervention_or_exposure`; generic words such as "inhibitors", "therapy" or "standard" never link a key term). Acronyms such as DELIVER or CANVAS are ordinary words, so the intervention terms are required. The first 10 hits of this search lead the candidate list (they are the landmark trials of the question); the rest join the round-robin. It needs a refined question and runs only when the trial search runs.
   - Europe PMC retries (Plan 20 Task 10): every Europe PMC request (trial searches, the enrichment lookup batches, reference lists) is retried after a 429/5xx answer at most twice, after 1 s and 2 s, and after a timeout or connection error once; the last attempt of a trial search drops the citation sort. A trial search or lookup batch that still fails is skipped and listed in `errors`; the review goes on (at most 3 attempts: a stalled Europe PMC delays a trial search by at most about 27 s, a timeout, a slow 5xx and another timeout plus the 3 s of backoff).
-- Diagnostic test accuracy (sensitivity, specificity, AUC) is not supported as a measure: such results are shown as reported (`effect_measure` `other` or `none`) and are never pooled or plotted.
+- Diagnostic test accuracy (sensitivity, specificity, AUC) is not supported as a measure: such results are shown as reported (`effect_measure` `other` or `none`) and are never pooled. The report plots only the values each study reported (paired sensitivity and specificity panels with their table), never a summary estimate.
 - Shape: `{version: "meta-1", pools[], excluded[], reference[], grade: {primary_outcome, design_group, reasons[]}}`.
 - `pools[]`: `{outcome, outcome_display, measure, scale, design_group, k, studies[], pooled, tau2, i2, q, df, p_het, method, version, warnings[]}`.
   - `outcome` is the English matrix row name. `outcome_display` is the same row in the review language.
@@ -381,7 +381,11 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   `review_discordant: true`. Without a real split a primary consensus that significant SR/MAs contradict stays a
   consensus, flagged `review_discordant: true` in the matrix, with "; systematic reviews disagree" added to its
   statement and the reviews named in its explanation; a split in the fallback pass stays imprecision. None of these
-  downgrades the grade (below).
+  downgrades the grade (below). Since Plan 20 Task 11 the flag also reaches the result: every `synthesis.consensus[]`
+  and `synthesis.conflicts[]` entry (and `synthesis_en`) carries `review_discordant` (`true` for these entries, else
+  `false`); results stored before then lack the key, and clients can fall back to the fixed statement endings above
+  (English and Thai). The report labels such entries "Systematic reviews and primary studies disagree" and says that
+  they do not lower the grade.
 - Reports of the same trial (Plan 20 Task 10). A trial's primary paper, commentaries on it and its subgroup or post
   hoc analyses are one study. Any two papers that share a registry number (NCT, ISRCTN) are linked. A trial name
   links only trials: papers with an RCT or non-randomised-trial design, or, when the design is unclassified (none,
@@ -438,7 +442,10 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   number"); the primary lists them in
   `related_reports[]`. The Markdown export ends such a paper's line with "Related report of [P1] (same trial
   (...)), not counted again.". `stats.related_reports` counts them (PRISMA 2020 counts studies and reports apart). Scoping
-  reviews map every report and link none. Results stored before Plan 20 Task 10 have none of these keys.
+  reviews map every report and link none. Results stored before Plan 20 Task 10 have none of these keys. The report
+  (Plan 20 Task 11) lists such a paper as "Related report of [P1] (same trial)" with its reason, the primary names its
+  further reports, and no study count includes it. Under `GRAPH_MODE=stub` every non-scoping result carries one such
+  report, a review-discordant conflict and per-finding certainty (illustrative data for manual QA).
 - No direction logic at all (empty consensus and conflicts, every cell `direction` `"unclear"`) for scoping reviews,
   for themes reviews (every ticked study type is Qualitative or Mixed methods), for `prevalence` and `diagnosis`
   questions, and for `other` questions with no evidence outcome measured as HR/OR/RR/RD/MD/SMD/r (with or without a

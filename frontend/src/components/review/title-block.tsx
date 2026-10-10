@@ -7,6 +7,7 @@ import type { TermKey } from "@/lib/glossary";
 import type { Lang } from "@/lib/i18n";
 import { reportDate, sourceNames } from "@/lib/report-view";
 import { REVIEW_TYPE_LABEL, type ReviewTypeOrLegacy } from "@/lib/review-type";
+import { includedCounts } from "@/lib/trial-reports";
 import type { Review, ReviewResult, ReviewType } from "@/lib/types";
 import { CopyLinkButton } from "../ui/copy-link";
 import { Term } from "../ui/term";
@@ -53,9 +54,9 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
   const date = reportDate(result.methods?.searched_at ?? review.started_at ?? review.created_at, lang);
   const sources = sourceNames(result.methods?.sources);
   const queries = result.queries?.length ?? 0;
-  // Studies actually read (a card was extracted); papers that could not be read are counted aside.
-  const included = (result.papers ?? []).filter((p) => p.card || p.card_en).length;
-  const unread = (result.papers?.length ?? 0) - included;
+  // Studies actually read (a card was extracted); papers that could not be read, and further reports of a trial
+  // already counted (Plan 20 Task 10), are counted aside.
+  const { studies: included, related, unread } = includedCounts(result.papers ?? []);
   return (
     <header aria-labelledby="h-title" className="grid gap-4">
       <h1 id="h-title" className="max-w-[44ch] text-[clamp(1.4rem,2.4vw,1.9rem)] leading-snug font-semibold break-words">
@@ -80,6 +81,12 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
           {unread > 0 && (
             <span className="text-[0.82rem] text-muted" data-unread>
               {" "}{L(lang, `(อ่านไม่สำเร็จอีก ${unread})`, `(${unread} more could not be read)`)}
+            </span>
+          )}
+          {related > 0 && (
+            <span className="block text-[0.82rem] text-muted" data-related-count>
+              {L(lang, `รวมรายงานเพิ่มเติมของการทดลองเดียวกันอีก ${related} ฉบับ (ไม่นับซ้ำ)`,
+                `plus ${related} further ${related === 1 ? "report" : "reports"} of the same trial (not counted again)`)}
             </span>
           )}
         </Meta>

@@ -79,9 +79,12 @@ export interface Paper {
   error?: string | null;
   /** Plan 20 Task 10 (engine): a further report of a trial already analysed: the primary report's ref. Absent before it. */
   related_to?: string | null;
-  /** e.g. "same trial (EMPEROR-Preserved)", "same trial (NCT03057951)", "near-identical title, same first author and year" */
+  /**
+   * English, from the engine: "same trial (EMPEROR-Preserved)", "same trial (NCT03057951)", "near-identical title, same
+   * first author, same sample size" or "… same registry number" (shown through `relatedReasonText`).
+   */
   related_reason?: string | null;
-  /** On the primary report: the refs of the other reports of the same trial. */
+  /** On the primary report: the refs of the other reports of the same trial ([] on every other paper). */
   related_reports?: string[];
 }
 
@@ -107,6 +110,12 @@ export interface EvidenceCluster {
   refs: string[];
   explanation: string;
   likely_reasons?: string[];
+  /**
+   * Plan 20 Task 11: systematic reviews and primary studies point different ways (a conflict, or a consensus that
+   * significant reviews contradict). Never lowers the grade. Absent before it: the engine's fixed statement wording
+   * still tells (see `isReviewDiscordant`).
+   */
+  review_discordant?: boolean;
 }
 
 export type EvidenceStrength = "high" | "moderate" | "low" | "very_low";
@@ -128,11 +137,19 @@ export interface Synthesis {
 
 /** Plan 20: `outcome` is a comparison row name when it is about a row (localized like the row in `synthesis`). */
 export interface KeyFinding {
+  /** a comparison row name when it is about a row (localized like the row in `synthesis`) */
   outcome: string;
-  statement: string; // no numbers, no [Pn]
+  /**
+   * no numbers, no [Pn]. At low / very low certainty a strong causal claim is led by a fixed clause that is part of the
+   * statement ("Low-certainty evidence suggests: …", "Very low-certainty evidence: …"), localized with it.
+   */
+  statement: string;
   refs: string[];
   k: number; // refs.length
-  /** Set in code (Plan 20 fix round): equals the global evidence_strength; absent before it, then use the global value. */
+  /**
+   * Set in code, never by the model (Plan 20 Task 10): the review's final evidence_strength for graded types, null for
+   * narrative and scoping reviews (not graded). Absent in results stored before it: the review-level grade, labelled.
+   */
   certainty?: EvidenceStrength | null;
 }
 
@@ -215,6 +232,18 @@ export interface Quality {
   citation_fixes?: number;
   /** meta_analysis: sentences the post-check removed for restating a pooled number (when the backend reports it). */
   pooled_numbers?: { removed: number; kept_single_study: number };
+  /** Plan 19 grounded-prose check (only the keys the report reads; absent in older results). */
+  prose_check?: {
+    /**
+     * How the evidence rationale was reconciled with the GRADE-lite factors in code: "replaced" (by the factors),
+     * "appended" (a missing downgrade added), "trimmed" (Plan 20 Task 10: sentences that claimed more than the data show
+     * were removed) or null (kept as written).
+     */
+    rationale_fixed?: "replaced" | "appended" | "trimmed" | null;
+    answer_removed?: number;
+    key_findings_removed?: number;
+    key_findings_certainty_lead?: number;
+  };
   timings?: Record<string, number | null>;
 }
 

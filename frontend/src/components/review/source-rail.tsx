@@ -9,7 +9,8 @@ import { showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/
 import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
-import { ReadingFlag } from "./report-parts";
+import { isRelatedReport, relatedLabelParts, relatedReasonText, relatedReportsLabel } from "@/lib/trial-reports";
+import { ReadingFlag, type Select } from "./report-parts";
 import { L } from "./text";
 
 // Results stored before abstract-only reading name the full text they read; new results are always the abstract.
@@ -129,9 +130,46 @@ function Links({ paper, lang }: { paper: Paper; lang: Lang }) {
   );
 }
 
+/** A ref that opens its paper in the rail when it can, else plain text. */
+function RefLink({ refId, lang, onSelect }: { refId: string; lang: Lang; onSelect?: Select }) {
+  if (!onSelect) return <>{refId}</>;
+  return (
+    <button type="button" onClick={() => onSelect(refId)} aria-label={L(lang, `เปิด ${refId}`, `Open ${refId}`)}
+      className="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">{refId}</button>
+  );
+}
+
+/**
+ * Reports of the same trial (Plan 20 Task 10): a further report names its primary report and why they were linked; the
+ * primary lists its further reports. Both open in the rail.
+ */
+function RelatedNote({ paper, lang, onSelect }: { paper: Paper; lang: Lang; onSelect?: Select }) {
+  const reason = relatedReasonText(paper.related_reason, lang);
+  const [before, after] = relatedLabelParts(lang);
+  return (
+    <>
+      {isRelatedReport(paper) && (
+        <p className="grid gap-0.5 border-t border-rule pt-2 text-[0.9rem]" data-related-to={paper.related_to}>
+          <span className="font-display font-semibold">{before}<RefLink refId={paper.related_to!} lang={lang} onSelect={onSelect} />{after}</span>
+          {reason && <span className="text-muted">{reason}</span>}
+          <span className="text-[0.82rem] text-muted">{L(lang, "ไม่นับเป็นการศึกษาซ้ำ", "Not counted as another study")}</span>
+        </p>
+      )}
+      {!!paper.related_reports?.length && (
+        <p className="flex flex-wrap items-baseline gap-x-2 border-t border-rule pt-2 text-[0.9rem]" data-related-reports>
+          <span className="text-muted">{relatedReportsLabel(lang)}:</span>
+          {paper.related_reports.map((r, i) => <span key={r}>{i > 0 && ", "}<RefLink refId={r} lang={lang} onSelect={onSelect} /></span>)}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** The paper behind whatever the reader selected: facts, each outcome's number and the exact sentence it came from. */
-export function SourceRail({ paper, outcome, lang, onClose, headingId, visible = true, type = "legacy" }: {
+export function SourceRail({ paper, outcome, lang, onClose, headingId, visible = true, type = "legacy", onSelect }: {
   paper: Paper | null; outcome?: string; lang: Lang; onClose?: () => void;
+  /** opens another paper in the rail (the primary report of a further report, and back) */
+  onSelect?: Select;
   /** review type: scoping shows no direction and no risk of bias. */
   type?: ReviewTypeOrLegacy;
   /** id of the heading (the drawer's accessible name and initial focus target). */
@@ -169,6 +207,7 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
           )}
           <p className="font-display text-base font-semibold leading-snug break-words">{paper.title}</p>
           {paper.journal && <p className="-mt-3 text-sm text-muted">{paper.journal}</p>}
+          <RelatedNote paper={paper} lang={lang} onSelect={onSelect} />
           {card ? (
             <>
               <Facts paper={paper} card={card} cardEn={cardEn} lang={lang} riskOfBias={showsRiskOfBias(type)} />

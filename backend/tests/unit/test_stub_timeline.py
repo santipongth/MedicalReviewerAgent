@@ -62,7 +62,8 @@ async def test_event_types_arrive_in_pipeline_order():
     assert seq.index("synthesizing") > max(i for i, t in enumerate(seq) if t == "extracted")
     assert last_reading < seq.index("synthesizing")
     assert final.values["result"]["summary"].startswith("Stub review for:")
-    assert len(final.values["result"]["papers"]) == 6 and final.values["result"]["review_type"] == "slr"
+    # six studies plus a further report of P1's trial (Plan 20 Task 11)
+    assert len(final.values["result"]["papers"]) == 7 and final.values["result"]["review_type"] == "slr"
 
 
 async def test_payload_keys_match_the_real_events():

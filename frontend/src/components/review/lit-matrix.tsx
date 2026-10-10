@@ -9,6 +9,7 @@ import {
   litColumnLabel, litColumns, litFramework, litRows, outcomesClamped, paginate, showsCitedBy, type LitColumn, type LitFramework, type LitRow,
 } from "@/lib/lit-matrix";
 import { showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
+import { relatedLabel } from "@/lib/trial-reports";
 import type { Citations, Paper, QuestionBlock } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
@@ -153,6 +154,7 @@ function StudyCell({ row, onSelect, lang, citedBy, flag }: { row: LitRow; onSele
       {citedBy && (
         <span className="text-[0.75rem] text-muted" data-cited-by>{L(lang, "ถูกอ้างอิง ", "Cited by ")}<CitedBy row={row} lang={lang} /></span>
       )}
+      {row.relatedTo && <span className="text-[0.75rem] text-muted" data-related-to={row.relatedTo}>{relatedLabel(row.relatedTo, lang)}</span>}
       {/* without a direction column (scoping, themes), the uncertain flag lives next to the ref */}
       {flag && row.uncertain && <ReadingFlag lang={lang} />}
     </span>

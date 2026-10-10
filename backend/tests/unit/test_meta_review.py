@@ -356,11 +356,12 @@ def test_stub_meta_result_is_computed_by_meta_py():
     grade, reasons = apply_meta_grade(STUB_BASELINE, meta["pools"], "Primary outcome", "observational")
     assert meta["grade"]["reasons"] == reasons and reasons  # P4 disagrees: heterogeneous and/or imprecise
     assert r["synthesis"]["evidence_strength"] == r["synthesis"]["grade_baseline"] == grade["level"]
-    assert r["stats"]["selected"] == r["stats"]["extracted"] == len(r["papers"]) == 7
-    assert len(r["citations"]["coverage"]) == 7
+    # seven studies plus P8, a further report of P1's trial (Plan 20 Task 11), never pooled
+    assert r["stats"]["selected"] == r["stats"]["extracted"] == len(r["papers"]) == 8
+    assert len(r["citations"]["coverage"]) == 8
     for rt in ("slr", "narrative", "scoping"):
         other = stub_result("t", "en", rt)
-        assert other["meta_analysis"] is None and len(other["papers"]) == 6
+        assert other["meta_analysis"] is None and len(other["papers"]) == (6 if rt == "scoping" else 7)
         if rt == "slr":
             assert other["synthesis"]["evidence_strength"] == "low"
             assert other["synthesis"]["evidence_rationale"] == "Simulated data."

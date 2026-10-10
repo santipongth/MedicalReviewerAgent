@@ -58,6 +58,8 @@ export interface LitRow {
   limitations: string;
   /** Cited-by count from OpenAlex / Europe PMC (a count, not a paper number); absent when the review has no citations. */
   citedBy?: CitedByCell;
+  /** Plan 20 Task 11: a further report of this primary report's trial (one study, not another row of evidence). */
+  relatedTo?: string;
 }
 
 /**
@@ -83,6 +85,7 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
       ref: p.ref, title: p.title, byline, year: p.year ?? null, uncertain: !!p.verification?.uncertain,
       designMismatch: !!p.verification?.design_mismatch, theme: isNonQuantitative(p.card_en ?? p.card),
       ...(citations ? { citedBy: citedByCell(citations, p.ref) } : {}),
+      ...(p.related_to ? { relatedTo: p.related_to } : {}),
     };
     if (!card || !en) {
       return { ...base, failed: true, design: null, population: "", exposure: "", comparator: "", outcomes: [], findings: "",

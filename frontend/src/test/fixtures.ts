@@ -652,6 +652,86 @@ export const dtaReviewFixture: Review = {
   },
 };
 
+// --- Plan 20 Task 11: the merged engine fields (docs/api.md) ------------------------------------------------------------
+// P6 is a further report of P1's cohort (shared registry number): listed, never a comparison cell, consensus, conflict or
+// key-finding ref, and not a second study anywhere. Per-finding certainty (code-set, the review's grade), a key finding
+// led by the engine's fixed certainty clause, a review-discordant conflict next to an ordinary one, and a trimmed
+// rationale.
+
+const p6card = card({
+  study_design: "cohort (10-year follow-up of a national diabetes cohort)", sample_size: 12004,
+  sample_size_quote: "Of these, 12,004 adults were followed for ten years.", risk_of_bias: "moderate",
+  outcomes: [{ outcome: "CRC incidence", result: "Lower incidence at ten years", evidence_quote: "Incidence remained lower among metformin users at ten years.",
+    effect_size: null, effect_measure: "none", effect_value: null, ci_lower: null, ci_upper: null, p_value: null, direction: "positive" }],
+});
+
+const relatedReport: Paper = {
+  ref: "P6", title: "Metformin and colorectal cancer: ten-year follow-up of a national diabetes cohort", year: 2023,
+  journal: "Diabetes Care", doi: "10.1000/p6", relevance: 84, card: { ...p6card, population: "ผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2" },
+  card_en: p6card, verification: verification({ numbers_verified: 1, numbers_total: 1 }),
+  related_to: "P1", related_reason: "same trial (NCT01234567)", related_reports: [],
+};
+
+const DISCORDANT_TH = "อุบัติการณ์มะเร็งลำไส้ใหญ่: ผลของการทบทวนวรรณกรรมอย่างเป็นระบบและการศึกษาปฐมภูมิไม่สอดคล้องกัน";
+const DISCORDANT_EN = "CRC incidence: systematic reviews and primary studies disagree";
+
+/** SLR (Thai) with every Plan 20 Task 10 engine field the report shows. */
+export const engineP20ReviewFixture: Review = {
+  ...slrP20ReviewFixture,
+  id: "20200000-0000-4000-8000-000000000011",
+  result: {
+    ...slrP20ReviewFixture.result!,
+    papers: [
+      ...slrP20ReviewFixture.result!.papers!.map((p) => ({
+        ...p, related_to: null, related_reason: null, related_reports: p.ref === "P1" ? ["P6"] : [],
+      })),
+      relatedReport,
+    ],
+    synthesis: {
+      ...slrP20ReviewFixture.result!.synthesis!,
+      key_findings: [
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "หลักฐานที่มีความเชื่อมั่นต่ำชี้ว่า: เมตฟอร์มินลดอุบัติการณ์มะเร็งลำไส้ใหญ่ในงานเชิงสังเกตส่วนใหญ่",
+          refs: ["P1", "P2", "P3", "P4"], k: 4, certainty: "low" },
+        { outcome: "การเสียชีวิตจากมะเร็งลำไส้ใหญ่", statement: "งานเดียวที่รายงานพบว่าอัตราตายไม่ต่างกัน", refs: ["P3"], k: 1, certainty: "low" },
+      ],
+      conflicts: [
+        { ...resultFixture.synthesis!.conflicts![0], review_discordant: false },
+        { statement: DISCORDANT_TH, refs: ["P1", "P3", "P4"], review_discordant: true,
+          explanation: "การทบทวนวรรณกรรมอย่างเป็นระบบ [P4] รายงานผลไปในทิศทางที่ต่างจากการศึกษาปฐมภูมิ [P1, P3]",
+          likely_reasons: ["การทบทวนอาจรวมงานที่การค้นครั้งนี้ไม่พบ"] },
+      ],
+    },
+    synthesis_en: {
+      ...slrP20ReviewFixture.result!.synthesis_en!,
+      key_findings: [
+        { outcome: "CRC incidence", statement: "Low-certainty evidence suggests: Metformin lowers colorectal cancer incidence in most observational studies.",
+          refs: ["P1", "P2", "P3", "P4"], k: 4, certainty: "low" },
+        { outcome: "CRC mortality", statement: "The one study that reported it found no difference in mortality.", refs: ["P3"], k: 1, certainty: "low" },
+      ],
+      conflicts: [
+        { statement: "CRC incidence: studies disagree", refs: ["P1", "P3", "P4"], review_discordant: false,
+          explanation: "[P4] had shorter follow-up and may reflect detection bias.", likely_reasons: ["Short follow-up"] },
+        { statement: DISCORDANT_EN, refs: ["P1", "P3", "P4"], review_discordant: true,
+          explanation: "Systematic reviews [P4] report a different direction from the primary studies [P1, P3].",
+          likely_reasons: ["The review may include studies this search did not find"] },
+      ],
+    },
+    stats: { ...slrP20ReviewFixture.result!.stats!, selected: 6, extracted: 5, related_reports: 1 },
+    quality: { ...slrP20ReviewFixture.result!.quality, prose_check: { rationale_fixed: "trimmed" } },
+  },
+};
+
+/** The engine's empty answer (api.md: e.g. an ungraded review whose every answer sentence carried a number). */
+export const emptyAnswerP20ReviewFixture: Review = {
+  ...engineP20ReviewFixture,
+  id: "20200000-0000-4000-8000-000000000012",
+  result: {
+    ...engineP20ReviewFixture.result!,
+    synthesis: { ...engineP20ReviewFixture.result!.synthesis!, answer: "" },
+    synthesis_en: { ...engineP20ReviewFixture.result!.synthesis_en!, answer: "" },
+  },
+};
+
 /** Every Plan 20 fixture, for e2e mocks and per-type screenshots. */
 export const P20_FIXTURES: Record<"slr" | "meta" | "metaNoPool" | "scoping" | "narrative" | "legacy", Review> = {
   slr: slrP20ReviewFixture, meta: metaP20ReviewFixture, metaNoPool: metaNoPoolP20ReviewFixture, scoping: scopingP20ReviewFixture,

@@ -238,6 +238,9 @@ class EvidenceCluster(BaseModel):
     refs: list[str]
     explanation: str
     likely_reasons: list[str] = Field(default_factory=list)
+    # Plan 20 Task 11: the matrix entry's flag, so clients can tell a split between systematic reviews and primary
+    # studies (or a consensus that significant reviews contradict) from an ordinary one; it never lowers the grade
+    review_discordant: bool = False
 
 
 class KeyFinding(BaseModel):

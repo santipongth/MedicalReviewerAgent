@@ -4,6 +4,7 @@ import type { Lang } from "@/lib/i18n";
 import type { EffectState, FindingView, PooledText } from "@/lib/report-view";
 import { ComputedNumber, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
+import { CertaintyMark } from "./certainty";
 import { READING, RefButtons, themeFoundText, type Select } from "./report-parts";
 import { SECTION_H2 } from "./report-nav";
 import { L } from "./text";
@@ -68,8 +69,16 @@ export function KeyFindings({ findings, lang, onSelect }: { findings: FindingVie
         {findings.map((f, i) => (
           <li key={`${f.outcome}-${i}`} className="grid gap-1.5 border-b border-rule py-3" data-key-finding>
             <p className="font-display font-semibold break-words">{f.outcome}</p>
+            {/* Plain prose in the reading face, as written: a fixed lead clause ("Low-certainty evidence suggests: …") is
+                part of the statement, never styled as a quote */}
             <p className={`max-w-[65ch] ${READING}`} data-prose>{f.statement}</p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[0.9rem]">
+              {f.certainty && (
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 font-display" data-finding-certainty>
+                  <Term k="evidenceStrength" lang={lang}><span className="text-muted">{L(lang, "ความแข็งแรงของหลักฐาน", "Certainty")}</span></Term>
+                  <CertaintyMark level={f.certainty} lang={lang} />
+                </span>
+              )}
               <StudyCount k={f.k} lang={lang} themes={f.themes} />
               {f.pools.map((p) => <PooledValue key={p.key} pool={p} lang={lang} />)}
               {!f.pools.length && f.effect && <StudyEffectValue state={f.effect} lang={lang} onSelect={onSelect} />}

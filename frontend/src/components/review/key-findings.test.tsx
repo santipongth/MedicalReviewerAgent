@@ -71,7 +71,7 @@ describe("KeyFindings", () => {
 
   it("a blanked single-study number is a visible gap", () => {
     const f: FindingView = { outcome: "X", statement: "s", refs: ["P2"], k: 1, themes: false, pools: [],
-      effect: { kind: "blanked", ref: "P2", outcomeKey: "CRC incidence" } };
+      effect: { kind: "blanked", ref: "P2", outcomeKey: "CRC incidence" }, certainty: null };
     render(<KeyFindings findings={[f]} lang="en" onSelect={() => {}} />);
     expect(screen.getByText("not verified")).toHaveClass("hole");
     expect(items()[0]).toHaveTextContent("1 study");

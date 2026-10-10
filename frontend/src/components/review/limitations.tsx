@@ -25,6 +25,7 @@ function capText(result: ReviewResult, lang: Lang): ReactNode {
   const pool = s.with_abstract ?? s.unique ?? s.found;
   const th = lang === "th";
   const screened = s.candidates ?? s.screened;
+  const related = s.related_reports ?? 0;
   if (screened == null && s.selected == null) return null;
   return (
     <>
@@ -32,9 +33,14 @@ function capText(result: ReviewResult, lang: Lang): ReactNode {
         ? <>คัดกรองเฉพาะ <N>{screened}</N> ฉบับที่เกี่ยวข้องที่สุด{lim && <> (เพดาน <N>{lim.candidate_limit}</N>)</>}{pool != null && <> จาก <N>{pool}</N> ฉบับที่{s.with_abstract != null ? "มีบทคัดย่อ" : "ค้นพบ"}</>} งานที่อยู่นอกอันดับนี้ไม่ได้อ่าน</>
         : <>Only the <N>{screened}</N> most relevant records were screened{lim && <> (cap <N>{lim.candidate_limit}</N>)</>}{pool != null && <> out of <N>{pool}</N> {s.with_abstract != null ? "with an abstract" : "found"}</>}; records ranked lower were not read</>)}
       {screened != null && s.selected != null && (th ? " · " : "; ")}
-      {s.selected != null && (th
+      {s.selected != null && !related && (th
         ? <>วิเคราะห์ <N>{s.selected}</N> ฉบับ{lim && <> (สูงสุด <N>{lim.max_papers}</N>)</>}</>
         : <><N>{s.selected}</N> {s.selected === 1 ? "study was" : "studies were"} analysed{lim && <> (at most <N>{lim.max_papers}</N>)</>}</>)}
+      {/* `selected` counts reports; with further reports of a trial (Plan 20 Task 10) the studies are the difference,
+          as in the PRISMA flow (subtracted once, from the stats) */}
+      {s.selected != null && related > 0 && (th
+        ? <>วิเคราะห์ <N>{s.selected}</N> ฉบับ (<N>{Math.max(0, s.selected - related)}</N> การศึกษา รายงานเพิ่มเติมของการทดลองเดียวกัน <N>{related}</N> ฉบับไม่นับซ้ำ){lim && <> (สูงสุด <N>{lim.max_papers}</N>)</>}</>
+        : <><N>{s.selected}</N> records were analysed (<N>{Math.max(0, s.selected - related)}</N> {s.selected - related === 1 ? "study" : "studies"}; <N>{related}</N> further {related === 1 ? "report" : "reports"} of the same trial not counted again){lim && <> (at most <N>{lim.max_papers}</N>)</>}</>)}
     </>
   );
 }

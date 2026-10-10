@@ -4,7 +4,8 @@ import { createContext, Fragment, useContext, useState, type ReactNode } from "r
 import { designKey, designLabel, isNonQuantitative, questionDirection } from "@/lib/charts-data";
 import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
-import { matrixView } from "@/lib/report-view";
+import { isReviewDiscordant, matrixView } from "@/lib/report-view";
+import { isRelatedReport, relatedLabel, relatedReasonText, relatedReportsLabel } from "@/lib/trial-reports";
 import { isGraded, REVIEW_TYPE_LABEL, showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ComparisonCell, ComparisonRow, EvidenceCluster, Paper, PaperCard, QuestionBlock, Quality, Synthesis } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, UncertainFlag } from "../ui/evidence";
@@ -111,6 +112,25 @@ export function QuestionDetails({ question, lang, type = "legacy" }: { question?
   );
 }
 
+/**
+ * How code reconciled the rationale with the GRADE-lite factors (`quality.prose_check.rationale_fixed`): a small note
+ * under the rationale, so a reader knows the text was edited by rules, not written that way.
+ */
+const FIXED_NOTE: Record<"replaced" | "appended" | "trimmed", Record<Lang, string>> = {
+  trimmed: {
+    th: "ระบบตัดประโยคที่อ้างเกินกว่าข้อมูลแสดง (เช่น จำนวนงานหรือความสอดคล้องที่ไม่มีจริง) ออกจากเหตุผลนี้แล้ว",
+    en: "Sentences that claimed more than the data show (such as a study count or consistency that is not there) were removed from this rationale by rule.",
+  },
+  appended: {
+    th: "ระบบเติมเหตุผลการลดระดับที่ขาดไป จากปัจจัย GRADE-lite ที่คำนวณ",
+    en: "A missing downgrade was added from the computed GRADE-lite factors.",
+  },
+  replaced: {
+    th: "เหตุผลนี้คือปัจจัย GRADE-lite ที่ระบบคำนวณ (ข้อความของโมเดลไม่ตรงกับปัจจัยจึงถูกแทนที่)",
+    en: "This rationale is the computed GRADE-lite factors (the model's text disagreed with them and was replaced).",
+  },
+};
+
 export function StrengthLine({ synthesis, lang, quality, type = "legacy", bar = true }: {
   synthesis: Synthesis; lang: Lang; quality?: Quality; type?: ReviewTypeOrLegacy;
   /** false for a meta-analysis without a pooled estimate: the grade rests on single studies, so no graded bar */
@@ -121,6 +141,7 @@ export function StrengthLine({ synthesis, lang, quality, type = "legacy", bar = 
   const level = synthesis.evidence_strength ?? "very_low";
   const typeName = type === "legacy" ? "" : REVIEW_TYPE_LABEL[type][lang];
   const rationale = (!ungraded || isGraded(type)) && synthesis.evidence_rationale;
+  const fixed = quality?.prose_check?.rationale_fixed ?? null;
   return (
     <div className="grid gap-1.5">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.92rem]">
@@ -150,6 +171,9 @@ export function StrengthLine({ synthesis, lang, quality, type = "legacy", bar = 
             {L(lang, "เหตุผลของระดับหลักฐาน", "Why this certainty")}
           </summary>
           <p className="mt-1 max-w-[65ch] text-muted">{rationale}</p>
+          {fixed && FIXED_NOTE[fixed] && (
+            <p className="mt-1 max-w-[65ch] text-[0.8rem] text-muted" data-rationale-fixed={fixed}>{FIXED_NOTE[fixed][lang]}</p>
+          )}
         </details>
       ))}
     </div>
@@ -345,11 +369,21 @@ export function RefButtons({ refs, onSelect, lang }: { refs: string[]; onSelect:
   );
 }
 
-export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs }: {
+/** The label of a split between systematic reviews and primary studies (Plan 20 Task 11). */
+export const REVIEW_DISCORDANT_LABEL: Record<Lang, string> = {
+  th: "การทบทวนอย่างเป็นระบบกับการศึกษาปฐมภูมิให้ผลต่างกัน",
+  en: "Systematic reviews and primary studies disagree",
+};
+
+export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs, graded = true }: {
   consensus: EvidenceCluster[]; conflicts: EvidenceCluster[]; lang: Lang; onSelect: Select; refs: Set<string>;
+  /** the review is graded: the note says such a split does not lower the certainty */
+  graded?: boolean;
 }) {
   if (!consensus.length && !conflicts.length) return null;
+  const discordant = [...consensus, ...conflicts].some(isReviewDiscordant);
   return (
+    <div className="grid gap-4">
     <div className="grid gap-6 md:grid-cols-2">
       {([[L(lang, "จุดที่เห็นตรงกัน", "Where studies agree"), consensus, false], [L(lang, "จุดที่ขัดกัน", "Where studies conflict"), conflicts, true]] as const).map(([title, items, isConflict]) => (
         <section key={title} className="grid content-start gap-3">
@@ -358,8 +392,15 @@ export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs }: {
             <p className="text-[0.9rem] text-muted">{isConflict ? L(lang, "ไม่พบผลที่ขัดกัน", "No conflicting findings") : L(lang, "ยังไม่มีผลลัพธ์ที่สองการศึกษาขึ้นไปเห็นตรงกัน", "No outcome where two or more studies agree")}</p>
           ) : (
             <ul className="grid gap-3">
-              {items.map((c) => (
-                <li key={c.statement} className={`grid gap-1.5 rounded-sm p-3 ${isConflict ? "bg-warn-bg" : "bg-ground"}`}>
+              {items.map((c) => {
+                // reviews vs primary studies: its own ruled card (info tint), never the warning tint of a real conflict
+                const split = isReviewDiscordant(c);
+                return (
+                <li key={c.statement} data-claim data-conflict={isConflict || undefined} data-review-discordant={split || undefined}
+                  className={`grid gap-1.5 rounded-sm p-3 ${split ? "border border-rule bg-info-bg" : isConflict ? "bg-warn-bg" : "bg-ground"}`}>
+                  {split && (
+                    <span className="label w-fit rounded-sm border border-ink px-1.5 py-0.5 text-ink">{REVIEW_DISCORDANT_LABEL[lang]}</span>
+                  )}
                   <b className="font-display">{c.statement}</b>
                   <p className={READING}><CitedText text={c.explanation} onSelect={onSelect} refs={refs} /></p>
                   {!!c.likely_reasons?.length && (
@@ -367,11 +408,22 @@ export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs }: {
                   )}
                   <RefButtons refs={c.refs} onSelect={onSelect} lang={lang} />
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>
       ))}
+    </div>
+    {discordant && (
+      <p className="max-w-[65ch] text-[0.88rem] text-muted" data-discordant-note>
+        {L(lang, "เมื่อการทบทวนอย่างเป็นระบบกับการศึกษาปฐมภูมิให้ผลต่างกัน การทบทวนมักรวมการศึกษาเหล่านั้นไว้แล้ว จึงไม่นับเป็นหลักฐานซ้ำ",
+          "When systematic reviews and primary studies disagree, the reviews likely include those studies, so they are not counted twice")}
+        {graded
+          ? L(lang, " ระบบบันทึกเป็นความไม่สอดคล้องเล็กน้อย และไม่ลดระดับความแข็งแรงของหลักฐาน", "; it is recorded as minor inconsistency and does not lower the certainty of the evidence.")
+          : L(lang, "", ".")}
+      </p>
+    )}
     </div>
   );
 }
@@ -419,6 +471,18 @@ export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy"
                   {p.verification?.uncertain && <ReadingFlag lang={lang} />}
                   {p.verification?.design_mismatch && <DesignMismatchFlag lang={lang} />}
                 </span>
+                {/* reports of the same trial (Plan 20 Task 10): one study, however many reports */}
+                {isRelatedReport(p) && (
+                  <span className="text-[0.85rem]" data-related-to={p.related_to}>
+                    <span className="font-display font-semibold">{relatedLabel(p.related_to!, lang)}</span>
+                    {relatedReasonText(p.related_reason, lang) && <span className="text-muted"> · {relatedReasonText(p.related_reason, lang)}</span>}
+                  </span>
+                )}
+                {!!p.related_reports?.length && (
+                  <span className="text-[0.85rem] text-muted" data-related-reports>
+                    {relatedReportsLabel(lang)}: {p.related_reports.join(", ")}
+                  </span>
+                )}
               </span>
             </button>
           </li>

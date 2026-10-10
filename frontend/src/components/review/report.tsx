@@ -179,7 +179,8 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
       <MetaAnalysisSection meta={result.meta_analysis} papers={papers} rows={metaRows} lang={lang} english={lang === "en"}
         filtered={isFiltered(filters)} quality={result.quality} onSelect={select} />
     ) },
-    claims: { show: hasClaims, node: <ClaimsPanel consensus={synthesis.consensus ?? []} conflicts={synthesis.conflicts ?? []} lang={lang} onSelect={select} refs={refs} /> },
+    claims: { show: hasClaims, node: <ClaimsPanel consensus={synthesis.consensus ?? []} conflicts={synthesis.conflicts ?? []} lang={lang} onSelect={select} refs={refs}
+      graded={graded} /> },
     concept_map: { show: hasConceptMap, node: tree && <ConceptMapSection tree={tree} lang={lang} onSelect={select} /> },
     citations: { show: hasCitations, node: citations && <CitationNetworkSection citations={citations} papers={visible} lang={lang} onSelect={select} /> },
   };
@@ -298,7 +299,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
         {hasPapers && (
           <RailDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} headingId={railHeading} returnFocus={returnFocus}>
             <SourceRail paper={active ? byRef.get(active.ref) ?? null : null} outcome={active?.outcome} lang={lang}
-              onClose={() => setDrawerOpen(false)} headingId={railHeading} visible={drawerOpen} type={type} />
+              onClose={() => setDrawerOpen(false)} headingId={railHeading} visible={drawerOpen} type={type} onSelect={select} />
           </RailDrawer>
         )}
       </div>

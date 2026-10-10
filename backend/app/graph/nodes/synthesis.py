@@ -634,14 +634,15 @@ def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list
     consensus = [EvidenceCluster(
         statement=_consensus_statement(c),
         refs=sorted({*c["refs"], *(c.get("corroborating") or [])}, key=_ref_num),
-        explanation=_consensus_explanation(c))
+        explanation=_consensus_explanation(c), review_discordant=bool(c.get("review_discordant")))
         for c in matrix.get("consensus", [])]
     by_outcome = {n["outcome"]: n for n in notes}
     conflicts = []
     for c in matrix.get("conflicts", []):
         note = by_outcome.get(c["outcome"]) or _deterministic_note(c)
         conflicts.append(EvidenceCluster(statement=_conflict_statement(c), refs=c["refs"],
-                                         explanation=note["explanation"], likely_reasons=note["likely_reasons"]))
+                                         explanation=note["explanation"], likely_reasons=note["likely_reasons"],
+                                         review_discordant=bool(c.get("review_discordant"))))
     return consensus, conflicts
 
 
