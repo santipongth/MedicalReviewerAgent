@@ -1,6 +1,7 @@
 import { m } from "motion/react";
 import type { AgentId, AgentStatus } from "@/lib/agent-scene";
 import type { Pt } from "@/lib/agent-layout";
+import { CountUp } from "./count-up";
 import { CHECK, CROSS, ICON } from "./icons";
 
 const SIZE = 44;
@@ -46,7 +47,12 @@ export function AgentNode({ id, at, status, label, count, labelAt = "below" }: A
   const cy = right ? 13 : LABEL_BELOW + COUNT_GAP;
   return (
     <g data-agent={id} data-status={status} transform={`translate(${at.x} ${at.y})`}>
-      <m.g animate={{ scale: status === "active" ? 1.06 : 1 }} transition={{ duration: 0.2, ease: "easeOut" }}>
+      {(status === "active" || status === "working") && (
+        // the agent at work sends out a thin ring (CSS loop, removed under reduced motion)
+        <rect x={-HALF} y={-HALF} width={SIZE} height={SIZE} rx={2} fill="none" className="stroke-primary stage-ping"
+          strokeWidth={1} aria-hidden="true" data-ping />
+      )}
+      <m.g animate={{ scale: status === "active" ? 1.06 : 1 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}>
         <rect
           x={-HALF} y={-HALF} width={SIZE} height={SIZE} rx={2}
           className={`${status === "paused" ? "fill-warn-bg" : "fill-surface"} ${st.cls}${status === "working" ? " stage-march" : ""}`}
@@ -71,9 +77,8 @@ export function AgentNode({ id, at, status, label, count, labelAt = "below" }: A
         {label.join("")}
       </text>
       {hasCount && (
-        <text x={lx} y={cy} textAnchor={right ? "start" : "middle"} className="font-display fill-muted" style={NUM} fontSize={LABEL_FONT} data-count>
-          {count}
-        </text>
+        <CountUp text={count} x={lx} y={cy} textAnchor={right ? "start" : "middle"} className="font-display fill-muted" style={NUM}
+          fontSize={LABEL_FONT} data-count />
       )}
     </g>
   );

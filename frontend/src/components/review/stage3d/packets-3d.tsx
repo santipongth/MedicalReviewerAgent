@@ -20,8 +20,28 @@ function paint(mesh: InstancedMesh, pool: Pool, tokens: Tokens3D): void {
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 }
 
+const TRAIL = [0.06, 0.12]; // trailing ghosts (Plan 17b), as fractions of the flight behind the packet
+const TRAIL_SCALE = [0.7, 0.45];
+
+/** Places (or hides) the trailing ghosts of flight `i` in the trail mesh. */
+function stepTrail(trail: InstancedMesh | null, pool: Pool, i: number, t: number | null): void {
+  if (!trail) return;
+  const { flights, obj } = pool;
+  const f = flights[i];
+  for (let j = 0; j < TRAIL.length; j++) {
+    const tj = t === null ? -1 : t - TRAIL[j];
+    if (f.seg && tj >= 0 && tj <= 1) {
+      const e = easeInOut(tj);
+      obj.position.set(arc3X(f.seg, e), arc3Y(f.seg, e), arc3Z(f.seg, e));
+      obj.scale.setScalar(packetScale(tj) * TRAIL_SCALE[j]);
+    } else obj.scale.setScalar(0);
+    obj.updateMatrix();
+    trail.setMatrixAt(i * TRAIL.length + j, obj.matrix);
+  }
+}
+
 /** Advances every flight to `now`; hides idle/pending/finished instances. Returns true while any is pending/flying. */
-function step(mesh: InstancedMesh, pool: Pool, now: number): boolean {
+function step(mesh: InstancedMesh, pool: Pool, now: number, trail: InstancedMesh | null = null): boolean {
   const { flights, obj } = pool;
   let busy = false;
   let dirty = false;
@@ -30,8 +50,12 @@ function step(mesh: InstancedMesh, pool: Pool, now: number): boolean {
     if (!f.seg) continue;
     const t = flightT(f, now);
     dirty = true;
-    if (t > 1) {
-      f.seg = null; // finished: hide
+    stepTrail(trail, pool, i, t);
+    if (t > 1 + TRAIL[TRAIL.length - 1]) {
+      f.seg = null; // finished, wake included: hide
+      obj.scale.setScalar(0);
+    } else if (t > 1) {
+      busy = true; // the head has landed; its wake is still catching up
       obj.scale.setScalar(0);
     } else if (t < 0) {
       busy = true; // waiting for its delay
@@ -45,12 +69,16 @@ function step(mesh: InstancedMesh, pool: Pool, now: number): boolean {
     obj.updateMatrix();
     mesh.setMatrixAt(i, obj.matrix);
   }
-  if (dirty) mesh.instanceMatrix.needsUpdate = true;
+  if (dirty) {
+    mesh.instanceMatrix.needsUpdate = true;
+    if (trail) trail.instanceMatrix.needsUpdate = true;
+  }
   return busy;
 }
 
 export function Packets3D({ scene, layout, tokens }: { scene: Scene; layout: Layout3D; tokens: Tokens3D }) {
   const mesh = useRef<InstancedMesh>(null);
+  const trail = useRef<InstancedMesh>(null);
   const invalidate = useThree((s) => s.invalidate);
   const seen = useRef(scene.lastSeq); // pulses that existed at mount are never animated
   const pool = useRef<Pool | null>(null); // preallocated; a ref because the frame loop mutates it in place
@@ -67,6 +95,11 @@ export function Packets3D({ scene, layout, tokens }: { scene: Scene; layout: Lay
     p.obj.updateMatrix();
     for (let i = 0; i < MAX_DOTS; i++) m.setMatrixAt(i, p.obj.matrix);
     m.instanceMatrix.needsUpdate = true;
+    const tr = trail.current;
+    if (tr) {
+      for (let i = 0; i < MAX_DOTS * TRAIL.length; i++) tr.setMatrixAt(i, p.obj.matrix);
+      tr.instanceMatrix.needsUpdate = true;
+    }
     paint(m, p, latest.current.tokens);
   }, []);
 
@@ -88,13 +121,20 @@ export function Packets3D({ scene, layout, tokens }: { scene: Scene; layout: Lay
   }, [seq, invalidate]);
 
   useFrame(() => {
-    if (mesh.current && pool.current && step(mesh.current, pool.current, performance.now())) invalidate();
+    if (mesh.current && pool.current && step(mesh.current, pool.current, performance.now(), trail.current)) invalidate();
   });
 
   return (
-    <instancedMesh ref={mesh} args={[undefined, undefined, MAX_DOTS]} frustumCulled={false}>
-      <sphereGeometry args={[R, 12, 8]} />
-      <meshStandardMaterial roughness={1} metalness={0} />
-    </instancedMesh>
+    <>
+      <instancedMesh ref={mesh} args={[undefined, undefined, MAX_DOTS]} frustumCulled={false}>
+        <sphereGeometry args={[R, 12, 8]} />
+        <meshStandardMaterial roughness={1} metalness={0} />
+      </instancedMesh>
+      {/* the wake: two smaller, translucent ghosts per packet, in the muted tone (flat, no glow) */}
+      <instancedMesh ref={trail} args={[undefined, undefined, MAX_DOTS * TRAIL.length]} frustumCulled={false}>
+        <sphereGeometry args={[R, 10, 6]} />
+        <meshStandardMaterial color={tokens.muted} transparent opacity={0.45} depthWrite={false} roughness={1} metalness={0} />
+      </instancedMesh>
+    </>
   );
 }

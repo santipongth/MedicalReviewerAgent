@@ -45,7 +45,8 @@ describe("PacketLayer", () => {
     const c = count(container);
     expect(c).toBeGreaterThan(0);
     expect(c).toBeLessThanOrEqual(24);
-    expect(container.querySelectorAll("circle").length).toBe(24);
+    expect(container.querySelectorAll("circle[data-head]").length).toBe(24); // + two trail ghosts per dot (Plan 17b)
+    expect(container.querySelectorAll("circle").length).toBe(72);
   });
 
   it("round-robin overwrites in-flight dots without exceeding the pool", () => {

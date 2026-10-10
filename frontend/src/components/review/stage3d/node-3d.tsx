@@ -4,7 +4,7 @@
 // SpinTicker requests a throttled frame while any ring spins), it just advances on whatever frames get drawn.
 import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
-import type { Group } from "three";
+import type { Group, Mesh, MeshStandardMaterial } from "three";
 import type { AgentStatus } from "@/lib/agent-scene";
 import type { Vec3 } from "@/lib/agent-layout-3d";
 import { NODE_VISUAL } from "./model-3d";
@@ -16,14 +16,22 @@ const TUBE = 0.03;
 const DASHES = 8;
 const DASH_ARC = (Math.PI * 2) / DASHES / 1.8; // dash length; the remaining part of each 1/8th is the gap
 const SPIN = 0.9; // rad/s
+const PING_S = 1.8; // seconds per ping (Plan 17b): a thin ring grows and fades while the agent works
 
 export function Node3D({ at, status, tokens }: { at: Vec3; status: AgentStatus; tokens: Tokens3D }) {
   const v = NODE_VISUAL[status];
   const color = tokens[v.color];
   const ring = useRef<Group>(null);
-  useFrame((_state, delta) => {
+  const ping = useRef<Mesh>(null);
+  useFrame((state, delta) => {
     if (!v.spin || !ring.current) return;
     ring.current.rotation.z += SPIN * Math.min(delta, 0.1);
+    const p = ping.current;
+    if (p) {
+      const k = (state.clock.elapsedTime % PING_S) / PING_S; // frames come from the spin ticker while working
+      p.scale.setScalar(1 + k * 0.7);
+      (p.material as MeshStandardMaterial).opacity = 0.5 * (1 - k);
+    }
   });
   return (
     <group position={at} scale={v.scale}>
@@ -31,6 +39,12 @@ export function Node3D({ at, status, tokens }: { at: Vec3; status: AgentStatus; 
         <icosahedronGeometry args={[CORE_R, 0]} />
         <meshStandardMaterial color={color} flatShading roughness={1} metalness={0} />
       </mesh>
+      {v.spin && (
+        <mesh ref={ping}>
+          <torusGeometry args={[RING_R, TUBE * 0.5, 6, 48]} />
+          <meshStandardMaterial color={color} transparent opacity={0.5} depthWrite={false} roughness={1} metalness={0} />
+        </mesh>
+      )}
       <group ref={ring}>
         {v.ring === "dashed" ? (
           Array.from({ length: DASHES }, (_, i) => (
