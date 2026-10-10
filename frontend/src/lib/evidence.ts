@@ -2,15 +2,76 @@
 // wrote them (never re-formatted or computed), and only values the backend verified are treated as verified.
 import type { OutcomeResult, Paper } from "./types";
 
-const NUM = /(?<![A-Za-z0-9_.])-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<![A-Za-z0-9_.])-?\d+(?:\.\d+)?/g;
-
-// Same normalisation as the backend verifier (app/harness/verify.py), one character for one character so indices
-// still point into the original quote: Lancet decimal point, unicode minus, en/em dashes used as ranges.
-const SAME_LENGTH: Record<string, string> = { "\u00b7": ".", "\u2212": "-", "\u2013": " ", "\u2014": " ", "\u00a0": " " };
+// The backend verifier's tokenizer (app/harness/verify.py `_tokens`), ported so a verified number is found in its
+// quote in every format the verifier accepts. FOLD maps one character to one character, so match offsets are offsets
+// in the original quote: em dash -> en dash, Lancet middle dot -> decimal point, no-break / thin / narrow no-break /
+// figure spaces -> space.
+const FOLD: Record<string, string> = {
+  "\u2014": "\u2013", "\u00b7": ".", "\u00a0": " ", "\u2009": " ", "\u202f": " ", "\u2007": " ",
+};
+const HEAD = String.raw`(?<![A-Za-z0-9_.])(?:(?<sign>[-\u2013]) {0,2}|(?<usign>\u2212) *)?(?:`;
+const TAIL = String.raw`(?<comma_k>\d{1,3}(?:,\d{3})+(?:\.\d+)?)(?!\d|,\d)` + // 1,234  1,234.5
+  String.raw`|(?<space_k>\d{1,3}(?: \d{3})+(?:\.\d+)?)(?!\d| \d)` + // 111 725
+  String.raw`|(?<plain>\d+(?:\.\d+)?)` +
+  String.raw`|(?<lead_dot>\.\d+))`; // P = .003
+// comma-decimal quotes only: 0,85 / 12,5 (three digits after the comma = thousands), never inside a list "1,2,5"
+const DEC_COMMA = String.raw`(?<!\d,)(?<dec_comma>0,\d+|[1-9]\d{0,2},\d{1,2})(?!\d|,\d)|`;
+// decimal-point quotes: "0,86" is one unreadable token that matches no value, never two integers
+const OPAQUE = String.raw`(?<!\d,)(?<opaque>\d+,\d{1,2})(?!\d|,\d)|`;
+const TOKEN_POINT = new RegExp(HEAD + OPAQUE + TAIL, "g");
+const TOKEN_COMMA = new RegExp(HEAD + DEC_COMMA + TAIL, "g");
 
 export interface Reported {
   text: string;
   index: number;
+}
+
+interface Token extends Reported {
+  value: number;
+}
+
+function fold(text: string): string {
+  return text.replace(/[\u2014\u00b7\u00a0\u2009\u202f\u2007]/g, (c) => FOLD[c] ?? c);
+}
+
+/** True when the text writes decimals with a comma: it has no decimal point at all (as the verifier decides). */
+function commaDecimals(text: string): boolean {
+  return !/\d\.\d/.test(fold(text));
+}
+
+/** Every readable number in `text`, with its spelling and offset in the original text. */
+function tokens(text: string, comma: boolean): Token[] {
+  const folded = fold(text);
+  const out: Token[] = [];
+  for (const m of folded.matchAll(comma ? TOKEN_COMMA : TOKEN_POINT)) {
+    const g = m.groups ?? {};
+    if (g.opaque !== undefined) continue; // unreadable: verifies nothing, so it is never "the" number
+    const raw = g.comma_k ?? g.space_k ?? g.dec_comma ?? g.plain ?? g.lead_dot ?? "";
+    let value = Number(
+      g.comma_k !== undefined || g.space_k !== undefined ? raw.replace(/[, ]/g, "")
+        : g.dec_comma !== undefined ? raw.replace(",", ".")
+          : g.lead_dot !== undefined ? `0${raw}` : raw);
+    const end = (m.index ?? 0) + m[0].length;
+    let start = end - raw.length;
+    if (g.usign !== undefined) { // the unicode minus is always a minus
+      value = -value;
+      start = m.index ?? start;
+    } else if (g.sign !== undefined) {
+      // a hyphen or en dash right after a number ("0.71 - 0.90", "12% \u2013 15%") is a range, not a minus
+      const before = folded.slice(0, m.index ?? 0).trimEnd();
+      const last = before.slice(-1);
+      if (!(last && (/\d/.test(last) || last === "%"))) {
+        value = -value;
+        start = m.index ?? start;
+      }
+    }
+    out.push({ value, index: start, text: text.slice(start, end) });
+  }
+  return out;
+}
+
+function same(parsed: number, value: number): boolean {
+  return Math.abs(parsed - value) <= Math.max(1e-9, Math.abs(value) * 0.005);
 }
 
 /**
@@ -20,20 +81,15 @@ export interface Reported {
 export function findReported(value: number, quote?: string | null,
   ci?: { lo?: number | null; hi?: number | null }): Reported | null {
   if (!quote) return null;
-  const normalised = quote.replace(/[\u00b7\u2212\u2013\u2014\u00a0]/g, (c) => SAME_LENGTH[c] ?? c);
-  const hits: Reported[] = [];
-  for (const m of normalised.matchAll(NUM)) {
-    const parsed = Number(m[0].replace(/,/g, ""));
-    if (Math.abs(parsed - value) <= Math.max(1e-9, Math.abs(value) * 0.005)) {
-      const index = m.index ?? 0;
-      hits.push({ text: quote.slice(index, index + m[0].length), index });
-    }
-  }
+  const comma = commaDecimals(quote);
+  const all = tokens(quote, comma);
+  const hits: Reported[] = all.filter((t) => same(t.value, value)).map(({ text, index }) => ({ text, index }));
   if (hits.length > 1 && ci?.lo != null && ci?.hi != null) {
     const { lo, hi } = ci;
     const own = hits.find((h) => {
-      const after = quote.slice(h.index + h.text.length, h.index + h.text.length + 60);
-      return findReported(lo, after) !== null && findReported(hi, after) !== null;
+      const from = h.index + h.text.length;
+      const after = all.filter((t) => t.index >= from && t.index + t.text.length <= from + 60); // the next 60 chars
+      return after.some((t) => same(t.value, lo)) && after.some((t) => same(t.value, hi));
     });
     if (own) return own;
   }

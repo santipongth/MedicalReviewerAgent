@@ -75,6 +75,14 @@ export function UncertainFlag({ lang = "th", label }: { lang?: Lang; label?: str
   );
 }
 
+export const DESIGN_MISMATCH_TH = "ชนิดงานวิจัยไม่ตรงเกณฑ์ที่เลือก";
+
+/** Marks a study kept although its design is none of the ticked study types (too few studies matched). The same
+ * warning flag, but its own wording: no two models disagreed here. */
+export function DesignMismatchFlag({ lang = "th" }: { lang?: Lang }) {
+  return <UncertainFlag lang={lang} label={L(lang, DESIGN_MISMATCH_TH, "design outside the selected study types")} />;
+}
+
 const GLYPH_CLASS: Record<Direction, string> = {
   positive: "g g-sup",
   negative: "g g-harm",

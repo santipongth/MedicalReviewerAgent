@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { ComputedNumber, Glyph, Hole, UncertainFlag, VerifiedNumber } from "./evidence";
+import { ComputedNumber, DesignMismatchFlag, Glyph, Hole, UncertainFlag, VerifiedNumber } from "./evidence";
 
 describe("evidence primitives", () => {
   it("VerifiedNumber uses the verified style and is a button when clickable", () => {
@@ -20,6 +20,14 @@ describe("evidence primitives", () => {
     expect(el.querySelector(".computed-tag")).toHaveTextContent("คำนวณ");
     rerender(<ComputedNumber value="81%" lang="en" tag={false} />);
     expect(screen.getByRole("img", { name: "81% (computed by the system, not a number from a study)" })).toHaveTextContent(/^81%$/);
+  });
+
+  it("a design mismatch has its own wording, not the models-disagree label", () => {
+    const { rerender } = render(<DesignMismatchFlag />);
+    expect(screen.getByText("ชนิดงานวิจัยไม่ตรงเกณฑ์ที่เลือก")).toBeInTheDocument();
+    expect(screen.queryByText("สองโมเดลอ่านต่างกัน")).toBeNull();
+    rerender(<DesignMismatchFlag lang="en" />);
+    expect(screen.getByText("design outside the selected study types")).toBeInTheDocument();
   });
 
   it("a pending VerifiedNumber has no tape yet", () => {

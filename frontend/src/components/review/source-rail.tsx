@@ -7,7 +7,7 @@ import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlan
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import { showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
-import { Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
+import { DesignMismatchFlag, Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { L } from "./text";
 
@@ -146,6 +146,11 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
             <p className="flex flex-wrap items-center gap-2 border-t-2 border-dashed border-harm pt-2 font-display text-[0.85rem] font-semibold text-warn">
               <UncertainFlag lang={lang} />
               <Term k="uncertain" lang={lang}>{L(lang, "หมายถึงอะไร", "what does this mean?")}</Term>
+            </p>
+          )}
+          {paper.verification?.design_mismatch && (
+            <p className="flex flex-wrap items-center gap-2 border-t-2 border-dashed border-harm pt-2 font-display text-[0.85rem] font-semibold text-warn">
+              <DesignMismatchFlag lang={lang} />
             </p>
           )}
           <p className="font-display text-base font-semibold leading-snug break-words">{paper.title}</p>

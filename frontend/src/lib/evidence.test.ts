@@ -25,6 +25,43 @@ describe("evidence helpers", () => {
     expect(asReported(0.5, "no such number")).toBe("0.5");
   });
 
+  // Plan 19 final review finding 5: the same formats the backend verifier accepts
+  it("finds a leading-dot p-value", () => {
+    const q = "lower risk (HR 0.80, 95% CI 0.71-0.90; P = .003)";
+    expect(findReported(0.003, q)).toEqual({ text: ".003", index: q.indexOf(".003") });
+    expect(asReported(0.003, q)).toBe(".003");
+  });
+
+  it("finds space and thin-space thousands", () => {
+    expect(asReported(111725, "A total of 111 725 adults were followed")).toBe("111 725");
+    expect(asReported(111725, "A total of 111 725 adults")).toBe("111 725");
+    expect(asReported(111725, "A total of 111 725 adults")).toBe("111 725");
+    expect(asReported(1234, "n = 1 234")).toBe("1 234");
+  });
+
+  it("reads decimal commas only in a quote without a decimal point", () => {
+    expect(asReported(0.85, "HR 0,85 (IC 95 % 0,72-0,99)")).toBe("0,85");
+    expect(asReported(0.99, "HR 0,85 (IC 95 % 0,72-0,99)")).toBe("0,99");
+    // a decimal-point quote: "0,85" is unreadable, never 0 and 85 nor 0.85
+    expect(findReported(0.85, "HR 0,85 and OR 1.20")).toBeNull();
+    expect(findReported(85, "HR 0,85 and OR 1.20")).toBeNull();
+    expect(asReported(1234, "We enrolled 1,234 adults")).toBe("1,234"); // thousands, not 1.234
+  });
+
+  it("keeps a spaced unicode minus negative", () => {
+    const q = "MD − 0.5 (95% CI −0.9 to −0.1)";
+    expect(findReported(-0.5, q)).toEqual({ text: "− 0.5", index: q.indexOf("− 0.5") });
+    expect(findReported(0.5, q)).toBeNull();
+    expect(asReported(-0.9, q)).toBe("−0.9");
+    expect(findReported(-0.9, "CI 0.71-0.90")).toBeNull(); // a range dash is not a minus
+    expect(asReported(-0.3, "MD -0.3 (-0.5 to -0.1)")).toBe("-0.3");
+  });
+
+  it("finds the Lancet middle dot as written", () => {
+    expect(asReported(0.85, "HR 0·85 (0·72–0·99)")).toBe("0·85");
+    expect(asReported(0.99, "HR 0·85 (0·72–0·99)")).toBe("0·99");
+  });
+
   it("an effect counts as verified only when present and not blanked", () => {
     const p = paper("P1", 0.8, { numbers_verified: 1, numbers_total: 1, agreement: 1, escalated: false,
       repaired: false, uncertain: false, unverified: [] });

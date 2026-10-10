@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resultFixture, legacyReviewFixture } from "@/test/fixtures";
-import { EXCLUSION_REASON_LABEL, exclusionRows, designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, prismaStages, studyPoints } from "./charts-data";
+import { EXCLUSION_REASON_LABEL, exclusionRows, designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, prismaStages, questionDirection, studyPoints } from "./charts-data";
 
 const papers = resultFixture.papers!;
 
@@ -112,6 +112,18 @@ describe("directionTally", () => {
     expect(directionTally(withReview).unclear).toBe(directionTally(papers).unclear + 1);
     expect(directionTally(withReview, true)).toEqual(directionTally(papers.filter((p) => (p.card_en ?? p.card)?.design_category !== "narrative_review"), true));
     expect(directionTally(withReview, true).unclear).toBe(directionTally(papers).unclear);
+  });
+
+  it("counts a paper whose outcomes are all other comparisons as unclear, also on the study map", () => {
+    const base = papers.find((p) => (p.card_en ?? p.card)?.overall_direction === "positive")!;
+    const card = base.card_en ?? base.card!;
+    const other = { ...card, outcomes: card.outcomes.map((o) => ({ ...o, matches_question: false })) };
+    const p = { ...base, ref: "P9", card: other, card_en: other };
+    expect(questionDirection(other)).toBe("unclear");
+    expect(questionDirection({ ...other, outcomes: [] })).toBe("positive");
+    expect(directionTally([p])).toEqual({ positive: 0, negative: 0, null: 0, mixed: 0, unclear: 1 });
+    const point = studyPoints([p]).points[0];
+    if (point) expect(point.direction).toBe("unclear");
   });
 
   it("counts papers that have a card by overall direction and flags pooled SR/MA papers", () => {

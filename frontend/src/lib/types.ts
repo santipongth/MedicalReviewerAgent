@@ -53,8 +53,9 @@ export interface Verification {
   agreement: number | null;
   escalated: boolean;
   repaired: boolean;
-  uncertain: boolean;
+  uncertain: boolean; // only: two models disagreed
   unverified?: Unverified[];
+  design_mismatch?: boolean; // Plan 19: kept although its design is outside the ticked study types (relaxed)
 }
 
 export interface Paper {
@@ -262,7 +263,11 @@ export interface Stats {
   year_excluded?: number; // Plan 19: before the year filter's cut-off
   no_abstract?: number; // Plan 19: no usable abstract (abstract-only review)
   excluded_screening?: Partial<Record<ExclusionReason, number>>;
-  excluded_selection?: { narrative_excluded: number; over_limit: number; low_relevance?: number };
+  excluded_selection?: {
+    narrative_excluded: number; over_limit: number; low_relevance?: number;
+    study_design_relaxed?: number; // design mismatches kept because fewer than 3 papers matched the ticked types
+    study_design_corrected?: number; // Plan 19: read as a design outside the ticked types; listed, not evidence
+  };
 }
 
 export interface ExternalNote {
