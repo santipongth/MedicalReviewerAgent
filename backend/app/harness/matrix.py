@@ -1,6 +1,7 @@
 """Deterministic evidence matrix: the structured part of the synthesis is built by code, not by the LLM."""
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from typing import Any
 
@@ -10,7 +11,7 @@ from app.services.text import normalize_title
 
 DIRECTIONS = ("positive", "negative", "null")
 # A row is consensus when at least this share of its studies (and at least 3 of them) report the same direction;
-# the rest are listed as dissent. Below it, two or more directions make a conflict.
+# the rest are listed as dissent. Below it, studies on opposite sides of no effect make a conflict (classify_row).
 CONSENSUS_SHARE = 0.7
 CONSENSUS_MIN_STUDIES = 3
 
@@ -88,7 +89,121 @@ def fallback_clusters(papers: list[dict[str, Any]]) -> OutcomeClusters:
     return OutcomeClusters(clusters=list(groups.values()))
 
 
-def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters) -> dict[str, Any]:
+RATIO_MEASURES = frozenset({"HR", "OR", "RR"})
+DIFFERENCE_MEASURES = frozenset({"RD", "MD", "SMD", "r"})
+# Literal placeholders a model writes instead of a finding; never shown as a row, a cell or a research gap.
+_PLACEHOLDER = re.compile(r"^\W*(null|none|nil|n/?a|not (reported|applicable|available)|unknown|-+)?\W*$",
+                          re.IGNORECASE)
+
+
+def is_placeholder(text: Any) -> bool:
+    return not isinstance(text, str) or bool(_PLACEHOLDER.match(text))
+
+
+def effect_side(cell: dict[str, Any]) -> int | None:
+    """Which side of no effect the point estimate lies on: -1 below, +1 above, 0 on it, None when unknown (no
+    estimate, or a measure whose no-effect value is unknown, e.g. "other")."""
+    value, measure = cell.get("effect_value"), cell.get("effect_measure")
+    if not isinstance(value, int | float):
+        return None
+    if measure in RATIO_MEASURES:
+        return None if value <= 0 else (value > 1) - (value < 1)
+    if measure in DIFFERENCE_MEASURES:
+        return (value > 0) - (value < 0)
+    return None
+
+
+def classify_row(cells: list[dict[str, Any]]) -> dict[str, Any]:
+    """Consensus, conflict or imprecision of one outcome row, by the SIDE of the effect, not by significance
+    (audit I-11). Each study leans to the hypothesised side ("positive"), the opposite side ("negative"), or neither:
+    - a `positive`/`negative` cell leans its way;
+    - a `null` (non-significant) cell leans by its point estimate when the row's labelled cells fix which side of no
+      effect is "positive" (e.g. positive cells all have HR < 1); otherwise, or with no estimate, it leans neither;
+    - `mixed`/`unclear` cells are ignored.
+    Systematic reviews/meta-analyses (`pooled`) usually contain the row's primary studies, so the primary studies
+    decide first: when they alone reach a consensus or a conflict, the pooled cells only corroborate (listed in
+    `corroborating`, never counted twice, never a conflict against their own studies). Only when the primary
+    studies alone reach no verdict (too few, or imprecise) does each SR/MA count as one study.
+    Verdicts:
+    - `conflict`: studies on opposite sides of no effect and no >= 70 % majority of >= 3 studies;
+    - `consensus`: agreement in direction: one side only (>= 2 studies, any of them may be non-significant), or a
+      >= 70 % majority of >= 3 studies with the rest listed as dissent; or >= 2 studies that all show no effect;
+    - `imprecise`: significant and non-significant findings without opposite sides (not a conflict, not consensus);
+    - `none`: fewer than two studies to compare."""
+    usable = [c for c in cells if c.get("direction") in DIRECTIONS]
+    sides = {(s if c["direction"] == "positive" else -s)
+             for c in usable if c["direction"] in ("positive", "negative")
+             for s in [effect_side(c)] if s}
+    orientation = next(iter(sides)) if len(sides) == 1 else None  # the numeric side of "positive"
+
+    def lean(cell: dict[str, Any]) -> int:
+        if cell["direction"] == "positive":
+            return 1
+        if cell["direction"] == "negative":
+            return -1
+        side = effect_side(cell)
+        return side * orientation if orientation and side else 0
+
+    primary = [c for c in usable if not c.get("pooled")]
+    pooled = [c for c in usable if c.get("pooled")]
+    if primary and pooled:
+        first = _verdict(primary, pooled, lean)
+        if first["verdict"] in ("consensus", "conflict"):
+            return first
+    return _verdict(usable, [], lean)
+
+
+def _verdict(counted: list[dict[str, Any]], aside: list[dict[str, Any]], lean) -> dict[str, Any]:
+    """classify_row over `counted`; the `aside` (pooled) cells only corroborate a consensus."""
+    leans: dict[str, set[int]] = defaultdict(set)
+    significant: set[str] = set()
+    for cell in counted:
+        leans[cell["ref"]].add(lean(cell))
+        if cell["direction"] != "null":
+            significant.add(cell["ref"])
+    pos = {r for r, s in leans.items() if 1 in s}
+    neg = {r for r, s in leans.items() if -1 in s}
+    zero = {r for r, s in leans.items() if s == {0}}
+    studies = pos | neg | zero
+
+    def ordered(refs: set[str]) -> list[str]:
+        return sorted(refs, key=_ref_num)
+
+    def consensus(direction: str, refs: set[str], dissent: dict[str, set[str]]) -> dict[str, Any]:
+        side = {"positive": 1, "negative": -1}.get(direction, 0)
+        return {"verdict": "consensus", "direction": direction, "refs": ordered(refs),
+                "dissent": {d: ordered(r) for d, r in dissent.items() if r},
+                "nonsignificant": ordered(refs - significant) if side else [],
+                "corroborating": ordered({c["ref"] for c in aside if side and lean(c) == side} - studies)}
+
+    if pos and neg:
+        if len(pos) != len(neg) and len(studies) >= CONSENSUS_MIN_STUDIES:
+            top, other, name, other_name = ((pos, neg, "positive", "negative") if len(pos) > len(neg)
+                                            else (neg, pos, "negative", "positive"))
+            # a study that also reports the majority direction (another outcome in this row) is not a dissenter
+            if len(top) / len(studies) >= CONSENSUS_SHARE:
+                return consensus(name, top, {other_name: other - top, "null": zero})
+        return {"verdict": "conflict", "refs": ordered(pos | neg),
+                "directions": {"positive": ordered(pos), "negative": ordered(neg)},
+                "nonsignificant": ordered((pos | neg) - significant)}
+    if pos or neg:
+        side, name = (pos, "positive") if pos else (neg, "negative")
+        if not zero:
+            return consensus(name, side, {}) if len(side) >= 2 else {"verdict": "none"}
+        if len(studies) >= CONSENSUS_MIN_STUDIES and len(side) / len(studies) >= CONSENSUS_SHARE:
+            return consensus(name, side, {"null": zero})
+        return {"verdict": "imprecise", "refs": ordered(studies),
+                "directions": {name: ordered(side), "null": ordered(zero)}}
+    if len(zero) >= 2:
+        return consensus("null", zero, {})
+    return {"verdict": "none"}
+
+
+def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters, directional: bool = True) -> dict[str, Any]:
+    """The comparison rows, plus consensus and conflicts by `classify_row`. `directional` False (a scoping review, a
+    themes review, a question with no effect direction): every cell's direction is `unclear` and there is no
+    consensus, conflict or imprecision list. Cells whose finding is a literal placeholder ("null", "N/A") and that
+    carry no estimate are dropped, and so are rows left empty or named by a placeholder."""
     by_ref = {p["ref"]: p["card"] for p in papers if p.get("card")}
     rows: list[dict[str, Any]] = []
     for cluster in sorted(clusters.clusters, key=lambda c: c.canonical.lower()):
@@ -96,38 +211,29 @@ def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters) -> dic
         for member in sorted(cluster.members, key=lambda m: (_ref_num(m.ref), m.outcome)):
             card = by_ref.get(member.ref)
             outcome = next((o for o in (card or {}).get("outcomes", []) if o["outcome"] == member.outcome), None)
-            if outcome is None:
+            if outcome is None or (is_placeholder(outcome["result"]) and outcome.get("effect_value") is None):
                 continue
             cells.append({
-                "ref": member.ref, "finding": outcome["result"], "direction": outcome["direction"],
+                "ref": member.ref, "finding": outcome["result"],
+                "direction": outcome["direction"] if directional else "unclear",
                 "effect_measure": outcome.get("effect_measure"), "effect_value": outcome.get("effect_value"),
                 "ci_lower": outcome.get("ci_lower"), "ci_upper": outcome.get("ci_upper"),
                 "design_category": card.get("design_category"),
                 "pooled": card.get("design_category") in POOLED_CATEGORIES,  # SR/MA: may include the primary studies
             })
-        if cells:
+        if cells and not is_placeholder(cluster.canonical):
             rows.append({"outcome": cluster.canonical, "cells": cells})
 
     consensus: list[dict[str, Any]] = []
     conflicts: list[dict[str, Any]] = []
-    for row in rows:
-        by_direction: dict[str, list[str]] = defaultdict(list)
-        for cell in row["cells"]:
-            if cell["direction"] in DIRECTIONS and cell["ref"] not in by_direction[cell["direction"]]:
-                by_direction[cell["direction"]].append(cell["ref"])
-        present = [d for d in DIRECTIONS if by_direction.get(d)]
-        studies = len({r for d in present for r in by_direction[d]})
-        top = max(present, key=lambda d: len(by_direction[d]), default=None)
-        if len(present) == 1 and len(by_direction[top]) >= 2:
-            consensus.append({"outcome": row["outcome"], "direction": top, "refs": by_direction[top], "dissent": {}})
-        elif (len(present) >= 2 and studies >= CONSENSUS_MIN_STUDIES
-              and len(by_direction[top]) / studies >= CONSENSUS_SHARE):
-            # a study that also reports the majority direction (another outcome in this row) is not a dissenter
-            dissent = {d: [r for r in by_direction[d] if r not in by_direction[top]] for d in present if d != top}
-            consensus.append({"outcome": row["outcome"], "direction": top, "refs": by_direction[top],
-                              "dissent": {d: refs for d, refs in dissent.items() if refs}})
-        elif len(present) >= 2:
-            refs = sorted({r for d in present for r in by_direction[d]}, key=_ref_num)
-            conflicts.append({"outcome": row["outcome"], "refs": refs,
-                              "directions": {d: by_direction[d] for d in present}})
-    return {"rows": rows, "consensus": consensus, "conflicts": conflicts}
+    imprecise: list[dict[str, Any]] = []
+    for row in rows if directional else []:
+        verdict = classify_row(row["cells"])
+        kind = verdict.pop("verdict")
+        if kind == "consensus":
+            consensus.append({"outcome": row["outcome"], **verdict})
+        elif kind == "conflict":
+            conflicts.append({"outcome": row["outcome"], **verdict})
+        elif kind == "imprecise":
+            imprecise.append({"outcome": row["outcome"], **verdict})
+    return {"rows": rows, "consensus": consensus, "conflicts": conflicts, "imprecise": imprecise}

@@ -124,6 +124,20 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `qualitative` and `mixed_methods` (Plan 17a) have themes as their outcomes:
   - `effect_measure` is `"none"`, the numbers are null and `direction` is `"unclear"`.
   - Like narrative reviews, they add no matrix cells, conflicts, pools or grade.
+- Design-label consistency (Plan 19). After extraction the label is cross-checked in code against the Europe PMC
+  publication types, the card's `study_design`, the title, the abstract and the sample-size quote, and corrected
+  only where the evidence is clear:
+  - an SR/MA label needs systematic-review/meta-analysis wording in the design or title, an SR/MA publication type,
+    or a sample-size quote that counts studies; a secondary, post hoc or prespecified analysis of a randomised trial
+    becomes `rct`, and any other design becomes what its own `study_design` says;
+  - a qualitative evidence synthesis (meta-synthesis, thematic synthesis, meta-ethnography) becomes `qualitative`
+    (`mixed_methods` when it synthesises qualitative and quantitative studies): themes, not pooled effects;
+  - an `rct` label whose design or title names an observational design (cohort, case-control, cross-sectional,
+    registry, retrospective) with no randomisation in the design, title, abstract or publication types becomes that
+    observational design.
+  A Randomized Controlled Trial publication type still wins over a non-randomised label. Each correction is listed
+  in `result.quality.design_corrections` as `{ref, from, to, reason}` (`[]` when none; absent for results stored
+  before Plan 19).
   - Scoping reviews still map them.
 - `verification` (Plan 19): a number is kept only when its exact value is in the abstract where the outcome's
   `evidence_quote` is found, and that quote repeats the passage's numbers exactly and in order (a quote that changes,
@@ -167,7 +181,7 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 **Review type (Plan 14a).** `result.review_type` is `narrative`, `slr`, `scoping` or (Plan 14b) `meta_analysis`, which is graded like `slr`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
 - `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`; `null` when the question was not refined), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
 - `synthesis.evidence_strength` and `synthesis.grade_baseline` are nullable. They are `null` for `narrative` and `scoping`, which are not graded, and for an `slr`/`meta_analysis` with no quantitative studies (every paper qualitative or mixed-methods; `evidence_rationale` then says so). Clients must not read `null` as "very low".
-- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. The cards still carry `overall_direction`, `risk_of_bias`, `outcomes[].direction` and `synthesis.comparison[].cells[].direction` as raw agent extraction. The report and the CSV do not show them (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present these fields as findings.
+- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. Since Plan 19 every `synthesis.comparison[].cells[].direction` of a scoping review is `"unclear"`. The cards still carry `overall_direction`, `risk_of_bias` and `outcomes[].direction` as raw agent extraction. The report and the CSV do not show them (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present these fields as findings.
 
 **Meta-analysis (Plan 14b).** `review_type: "meta_analysis"` behaves exactly like `slr` (PICO, screening, selection, PRISMA, conflicts, grading) and adds `result.meta_analysis`. For every other type, and for results stored before Plan 14b, `meta_analysis` is `null` or absent. It is also `null` for a meta-analysis whose pooling step failed, or was skipped because the study numbers were not verified against the abstracts (`verify_quotes` off or no verification records); either is listed in `errors` and never fails the review. Pooled numbers are computed by the system, DerSimonian-Laird random effects, from the abstract-verified effect estimates and 95% CIs. They are not a result reported by any single study.
 - Shape: `{version: "meta-1", pools[], excluded[], reference[], grade: {primary_outcome, design_group, reasons[]}}`.
@@ -210,7 +224,42 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 
   A sentence that cites exactly one paper and has no pooled wording is a single-study quote, so it is kept. I² and τ² values are removed whatever the sentence cites, but only when written right after an I², τ²/tau or heterogeneity label. Sentences split only before an uppercase letter or `[`, so "et al." and "vs." do not split a sentence. The `quality` stage `pooled_numbers` reports `{removed, kept_single_study}`, and the result carries it as `result.quality.pooled_numbers` (meta_analysis only; absent for other types).
 
-**Synthesis.** `synthesis.consensus` explanations name any dissenting minority. Consensus needs at least 70 % of at least 3 studies to agree. `synthesis.conflicts` lists real splits, each with its likely reasons.
+**Synthesis.** `synthesis.consensus` explanations name any dissenting minority. `synthesis.conflicts` lists real splits, each with its likely reasons. Since Plan 19 both are decided by the side of the effect, not by statistical significance:
+- Each study in a `synthesis.comparison` row leans to the hypothesised side (`positive`), the opposite side
+  (`negative`) or neither. A `null` (non-significant) cell leans by its point estimate when the row's significant
+  cells fix which side of no effect (1 for HR/OR/RR, 0 for RD/MD/SMD/r) is the hypothesised one; without an
+  estimate, or with an `other`/`none` measure, it leans neither. `mixed` and `unclear` cells are ignored.
+- A conflict needs studies on opposite sides of no effect (and no 70 % majority of at least 3 studies). A
+  non-significant result on the same side as a significant one, or without a side, is imprecision, not a conflict.
+- Consensus needs agreement in direction: two or more studies all on one side (some may be non-significant; the
+  explanation names them), a 70 % majority of at least 3 studies with the rest named as dissent, or two or more
+  studies that all show no effect.
+- Systematic reviews/meta-analyses usually contain the row's primary studies: when the primary studies alone reach
+  a consensus or a conflict, an SR/MA only corroborates (it is added to the consensus `refs` and named in the
+  explanation, never counted twice, never a conflict against them); otherwise each SR/MA counts as one study.
+- No direction logic at all (empty consensus and conflicts, every cell `direction` `"unclear"`) for scoping reviews,
+  for themes reviews (every ticked study type is Qualitative or Mixed methods), for `prevalence` and `diagnosis`
+  questions, and for `other` questions whose evidence carries no estimate with a known no-effect value. The summary
+  then never says a theme "supports the hypothesised effect".
+- Literal placeholders ("null", "N/A", "not reported") never appear as a comparison row, a cell or a research gap.
+
+**GRADE-lite (Plan 19).** `synthesis.grade_baseline` is computed in code from the cards:
+- Primary studies are always graded. The body starts `high` when more than half of the primary studies are
+  randomised, or when a systematic review/meta-analysis of RCTs exists; the graded body is then the randomised
+  studies. Otherwise it starts `low` and the graded body is the primary studies (the SR/MAs when there are none).
+  Other SR/MAs corroborate and are not graded again; an observational or mixed SR/MA never lowers a body of RCTs.
+- Risk of bias: one level down when at least 34 % of the graded body is at high risk.
+- Inconsistency: judged on the primary outcome only (the comparison row matching the question's first outcome, else
+  the row with the most graded studies) with the conflict rule above; a conflict in another outcome is reported, not
+  downgraded. Not assessed for questions without an effect direction.
+- Imprecision: the primary outcome's sample size (its graded primary studies summed, or the largest same-tier SR/MA
+  in that row, whichever is larger) below 400, or not reported.
+- Indirectness, publication bias and upgrades for observational evidence are not assessed (the factors say so).
+- The meta-analysis pooled-grade reasons (above) still apply once per domain on top of this baseline.
+- `synthesis.evidence_rationale` must agree with these factors: the narrative is sent back when it states another
+  starting level or omits a downgraded domain; if it still disagrees, a missing downgrade is appended from the
+  factors, and a contradicting starting level replaces the rationale with the factors.
+  `result.quality.prose_check.rationale_fixed` is `"replaced"`, `"appended"` or `null`.
 
 **Grounded prose (Plan 19).** The executive summary, the evidence rationale (graded types) and each conflict
 explanation are checked sentence by sentence, in English before translation. A sentence's scope is the papers it
@@ -243,7 +292,7 @@ emptied or uncited conflict explanation becomes the deterministic note.
 Graded summaries use GRADE certainty wording (moderate "probably", low "may", very low "very uncertain"); when the
 summary lacks the wording for its final `evidence_strength`, a fixed certainty sentence is appended.
 `result.quality.prose_check` is `{numbers_removed, measures_fixed, measures_removed, population_removed,
-certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, conflict_repairs}` (absent for results
+certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, conflict_repairs, rationale_fixed}` (absent for results
 stored before Plan 19); `repairs` and `conflict_repairs` count the model rounds the check sent back for repair.
 `result.quality.other_comparisons` counts the outcomes flagged as other comparisons and
 `result.quality.comparison_backstop` how many of them the deterministic backstop flagged.

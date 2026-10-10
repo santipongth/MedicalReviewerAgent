@@ -452,7 +452,7 @@ async def test_narrative_repairs_then_fixes_numbers_measures_and_appends_certain
     assert s["evidence_rationale"] == "start low: 3/3 non-randomized studies"  # emptied → GRADE-lite factors
     q = next(e for e in out["quality"] if e["stage"] == "prose_check")
     assert q == {"stage": "prose_check", "numbers_removed": 2, "measures_fixed": 1, "measures_removed": 0,
-                 "population_removed": 0, "certainty_added": 1, "repairs": 1}
+                 "population_removed": 0, "certainty_added": 1, "repairs": 1, "rationale_fixed": None}
 
 
 @pytest.mark.parametrize("strength,summary,added", [
@@ -511,7 +511,8 @@ def test_quality_summarizes_prose_check_and_other_comparisons():
     assert q["other_comparisons"] == 2 and q["comparison_backstop"] == 1
     assert q["prose_check"] == {"numbers_removed": 1, "measures_fixed": 1, "measures_removed": 0,
                                 "population_removed": 1, "certainty_added": 1, "repairs": 2,
-                                "conflict_sentences_removed": 2, "conflict_measures_fixed": 2, "conflict_repairs": 2}
+                                "conflict_sentences_removed": 2, "conflict_measures_fixed": 2, "conflict_repairs": 2,
+                                "rationale_fixed": None}
     assert "prose_check" not in summarize_quality([], None)
 
 
@@ -576,7 +577,7 @@ async def test_graph_keeps_other_comparisons_out_of_the_evidence_and_grounds_the
     assert r["quality"]["prose_check"] == {"numbers_removed": 2, "measures_fixed": 1, "measures_removed": 0,
                                            "population_removed": 0, "certainty_added": 1, "repairs": 1,
                                            "conflict_sentences_removed": 0, "conflict_measures_fixed": 0,
-                                           "conflict_repairs": 0}
+                                           "conflict_repairs": 0, "rationale_fixed": None}
     assert len(deps_.llms.synthesizer.calls) == 2  # the narrative got one repair round with the problems
     assert "Other comparisons" in deps_.llms.synthesizer.calls[0][0]
     # the extractor was asked for the comparison

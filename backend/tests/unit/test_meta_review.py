@@ -108,7 +108,11 @@ async def test_meta_run_pools_grades_and_strips_pooled_numbers():
     assert s["executive_summary"] == ("Metformin is associated with lower CRC risk [P1, P2]. "
                                       "One cohort reported HR 0.80 [P4]. Some cohorts disagree [P3]. "
                                       + CERTAINTY_SENTENCE[s["evidence_strength"]])
-    assert s["evidence_rationale"] == "Observational cohorts [P1]."
+    # (Plan 19: the rationale never named the inconsistency downgrade, so the factor is appended in code)
+    assert s["evidence_rationale"] == ("Observational cohorts [P1]. GRADE-lite downgrades: inconsistency: studies "
+                                       "on opposite sides of no effect for the primary outcome Colorectal cancer "
+                                       "incidence.")
+    assert r["quality"]["prose_check"]["rationale_fixed"] == "appended"
     assert s["research_gaps"] == ["RCTs"]
     stage = next(q for q in values["quality"] if q["stage"] == "pooled_numbers")
     assert stage == {"stage": "pooled_numbers", "removed": 3, "kept_single_study": 1}

@@ -60,6 +60,8 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
                                               + e.get("prose_measures_removed", 0) for e in conflicts),
             "conflict_measures_fixed": sum(e.get("prose_measures_fixed", 0) for e in conflicts),
             "conflict_repairs": sum(e.get("prose_repairs", 0) for e in conflicts),
+            # how the evidence rationale was made to agree with the GRADE-lite factors: "replaced", "appended" or null
+            "rationale_fixed": last.get("rationale_fixed"),
         }
     # Plan 19 localisation completeness (non-English reviews only; absent when nothing was localized): translatable
     # strings still not in the user's language after the retry pass, how many were retried, and how many had their
@@ -78,6 +80,9 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
         # and how many of them the deterministic backstop flagged
         "other_comparisons": sum(e.get("other_comparisons", 0) for e in read),
         "comparison_backstop": sum(e.get("comparison_backstop", 0) for e in read),
+        # Plan 19: design labels corrected in code by the consistency check (audit I-7)
+        "design_corrections": [{"ref": e.get("ref"), **e["design_corrected"]} for e in read
+                               if e.get("design_corrected")],
         "agreement_mean": _r(sum(agreements) / len(agreements)) if agreements else None,
         "extraction_escalations": sum(1 for e in read if e.get("escalated")),
         "extraction_repairs": sum(1 for e in read if e.get("repaired")),

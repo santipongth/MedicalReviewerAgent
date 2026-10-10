@@ -10,7 +10,12 @@ from app.graph.nodes.intake import harness_runner, harness_spec
 from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate, PaperCard
 from app.harness.comparison import settle_comparisons
-from app.harness.design import design_problems, settle_design_category, strip_non_quantitative
+from app.harness.design import (
+    check_design_consistency,
+    design_problems,
+    settle_design_category,
+    strip_non_quantitative,
+)
 from app.harness.runner import HarnessResult
 from app.harness.verify import NUMERIC_FIELDS, card_problems, compare_cards, null_unverified_numbers
 from app.services.llm import LLMError
@@ -109,6 +114,7 @@ def make_read_paper(deps):
                     uncertain = True
 
         verified = total = 0
+        design_correction: dict[str, str] | None = None
         unverified: list[dict[str, Any]] = []
         comparison_counts: dict[str, int] = {}
         if card is None:
@@ -129,6 +135,8 @@ def make_read_paper(deps):
                                  "comparison_backstop": flipped}
             # after verification: a qualitative/mixed card never carries effect numbers or a direction
             settled = settle_design_category(card, pub_types)
+            # a label the pub types, design text, title or abstract clearly contradict is corrected in code (I-7)
+            settled, design_correction = check_design_consistency(settled, pub_types, cand.title, text)
             stripped = strip_non_quantitative(settled)
             if stripped is not settled:  # recount: only the numbers that remain (a verified sample size, if any)
                 kept = int(spec.verify_quotes and stripped.sample_size is not None)
@@ -143,6 +151,8 @@ def make_read_paper(deps):
         quality = {"stage": "read", "ref": paper["ref"], "source": "abstract",
                    **{k: v for k, v in entry["verification"].items() if k != "unverified"},
                    **comparison_counts, "seconds": round(time.perf_counter() - started, 3)}
+        if design_correction:
+            quality["design_corrected"] = design_correction
         extracted = {"type": "extracted", "ref": paper["ref"], "ok": entry["card"] is not None,
                      "verified": verified, "uncertain": uncertain,
                      "direction": entry["card"]["overall_direction"] if entry["card"] else None,

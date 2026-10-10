@@ -32,11 +32,15 @@ from app.harness.grade import (
     analyse_meta,
     clamp_to_baseline,
     grade_baseline,
+    rationale_problems,
+    reconcile_rationale,
 )
 from app.harness.localize import Localized, localize_strings, untranslated
 from app.harness.matrix import (
     build_matrix,
+    effect_side,
     fallback_clusters,
+    is_placeholder,
     outcome_pairs,
     repair_clusters,
     validate_clusters,
@@ -51,7 +55,7 @@ from app.harness.meta import (
 from app.harness.prose import ProseContext, fix_prose, prose_context, prose_problems
 from app.harness.quality import summarize_quality
 from app.harness.verify import check_citations, strip_unknown_citations
-from app.schemas.review import SLR_LIKE, ReviewOptions
+from app.schemas.review import NON_QUANTITATIVE_TYPES, SLR_LIKE, ReviewOptions
 from app.services.llm import LLMError
 
 NO_PAPERS = {
@@ -147,6 +151,30 @@ def _narrative_papers(state: ReviewState) -> list[dict[str, Any]]:
             or p["card"].get("design_category") in NON_QUANTITATIVE_CATEGORIES]
 
 
+# Question types whose findings have no "side of no effect" (accuracy, frequency): no consensus, conflicts or
+# direction-based inconsistency. "other" joins them when no evidence cell carries an effect estimate.
+NON_EFFECT_QUESTIONS = frozenset({"prevalence", "diagnosis"})
+
+
+def _directional(state: ReviewState, papers: list[dict[str, Any]] | None = None) -> bool:
+    """Whether direction logic (consensus, conflicts, direction-based inconsistency) applies (audit I-11). It never
+    does for a scoping review (it charts, it makes no claims), for a themes review (every ticked study type is
+    qualitative or mixed-methods), for a prevalence or diagnosis question, or for an "other" question whose evidence
+    has no effect estimate with a known no-effect value (themes or descriptive findings)."""
+    options = ReviewOptions.clamped(state.get("options"))
+    if options.review_type == "scoping":
+        return False
+    if options.study_types and set(options.study_types) <= NON_QUANTITATIVE_TYPES:
+        return False
+    question_type = (state.get("question") or {}).get("question_type")
+    if question_type in NON_EFFECT_QUESTIONS:
+        return False
+    if question_type == "other":
+        evidence = _evidence(state) if papers is None else papers
+        return any(effect_side(o) is not None for p in evidence for o in p["card"].get("outcomes") or [])
+    return True
+
+
 def _themes_only(papers: list[dict[str, Any]]) -> bool:
     return any(p["card"].get("design_category") in NON_QUANTITATIVE_CATEGORIES for p in papers)
 
@@ -204,8 +232,10 @@ def make_normalize_outcomes(deps):
             except LLMError as exc:
                 errors.append(f"outcome normalization failed: {type(exc).__name__}")
             entry["fallback"] = clusters is None
-        matrix = build_matrix(papers, clusters or fallback_clusters(papers))
-        matrix["grade"] = grade_baseline(papers, matrix)
+        directional = _directional(state, papers)
+        matrix = build_matrix(papers, clusters or fallback_clusters(papers), directional=directional)
+        matrix["grade"] = grade_baseline(papers, matrix, (state.get("question") or {}).get("outcomes"),
+                                         directional=directional)
         if not papers and _direction_papers(state):  # every quantitative paper reports only other comparisons
             matrix["grade"]["factors"] = [OTHER_COMPARISONS_ONLY_FACTOR]
         elif not papers and _themes_only(_narrative_papers(state)):  # the level stays as the baseline gives it
@@ -274,7 +304,7 @@ def route_conflicts(state: ReviewState) -> list[Send] | str:
 
 
 def _deterministic_note(conflict: dict[str, Any]) -> dict[str, Any]:
-    parts = [f"{d}: {', '.join(f'[{r}]' for r in refs)}" for d, refs in conflict.get("directions", {}).items()]
+    parts = [f"{d}: {', '.join(f'[{r}]' for r in refs)}" for d, refs in conflict.get("directions", {}).items() if refs]
     return {"outcome": conflict["outcome"], "refs": conflict["refs"], "likely_reasons": [],
             "explanation": f"Studies report different directions for {conflict['outcome']} ({'; '.join(parts)})."}
 
@@ -379,23 +409,35 @@ async def _localize_cards(deps, papers: list[dict[str, Any]], language: str) -> 
     return cards, entry, res.cost
 
 
+def _cite(refs: list[str]) -> str:
+    return ", ".join(f"[{r}]" for r in refs)
+
+
 def _consensus_explanation(c: dict[str, Any]) -> str:
     dissent = c.get("dissent") or {}
+    extra = ""
+    nonsignificant = c.get("nonsignificant") or []
+    if nonsignificant:  # same side of no effect, not statistically significant: imprecision, not disagreement
+        extra += (f" {_cite(nonsignificant)} {'points' if len(nonsignificant) == 1 else 'point'} the same way without "
+                  f"statistical significance.")
+    if c.get("corroborating"):
+        extra += f" Systematic reviews {_cite(c['corroborating'])} agree."
     if not dissent:
-        return f"{len(c['refs'])} studies report the same direction for {c['outcome']}."
+        return f"{len(c['refs'])} studies report the same direction for {c['outcome']}.{extra}"
     total = len(c["refs"]) + sum(len(refs) for refs in dissent.values())
     def finding(d: str, n: int) -> str:
         text = DIRECTION_TEXT.get(d, d).replace("findings ", "")
         return text.replace("show ", "shows ", 1) if n == 1 else text
 
-    others = "; ".join(f"{', '.join(f'[{r}]' for r in refs)} {finding(d, len(refs))}" for d, refs in dissent.items())
-    return f"{len(c['refs'])} of {total} studies report the same direction for {c['outcome']}; {others}."
+    others = "; ".join(f"{_cite(refs)} {finding(d, len(refs))}" for d, refs in dissent.items())
+    return f"{len(c['refs'])} of {total} studies report the same direction for {c['outcome']}; {others}.{extra}"
 
 
 def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list, list]:
     consensus = [EvidenceCluster(
         statement=f"{c['outcome']}: {DIRECTION_TEXT.get(c['direction'], c['direction'])}",
-        refs=c["refs"], explanation=_consensus_explanation(c))
+        refs=sorted({*c["refs"], *(c.get("corroborating") or [])}, key=_ref_num),
+        explanation=_consensus_explanation(c))
         for c in matrix.get("consensus", [])]
     by_outcome = {n["outcome"]: n for n in notes}
     conflicts = []
@@ -519,14 +561,18 @@ def make_write_synthesis(deps):
             if graded and abs(LEVELS.index(n.evidence_strength) - LEVELS.index(baseline)) > 1:
                 problems.append(f"evidence_strength {n.evidence_strength} is more than one level away from the "
                                 f"GRADE-lite baseline {baseline}")
+            if graded:  # the rationale must agree with the computed GRADE-lite factors (audit I-13e)
+                problems += rationale_problems(rationale, factors)
             grounded = prose_problems(n.executive_summary, prose, "executive_summary")
             if graded:
                 grounded += prose_problems(rationale, prose, "evidence_rationale")
             prose_rounds.append(bool(grounded))
             return problems + grounded
 
+        factors = (matrix.get("grade") or {}).get("factors") or []
+        directional = _directional(state)
         prompt_matrix = matrix
-        if review_type == "scoping":  # no direction-based consensus or per-cell directions reach a scoping summary
+        if not directional:  # no direction-based consensus or per-cell directions reach a scoping/themes summary
             prompt_matrix = {"rows": [{**r, "cells": [{k: v for k, v in c.items() if k != "direction"}
                                                       for c in r.get("cells", [])]}
                                       for r in matrix.get("rows", [])], "consensus": []}
@@ -556,7 +602,7 @@ def make_write_synthesis(deps):
         entry: dict[str, Any] = {"stage": "narrative", "repaired": False, "escalated": False, "citation_fixes": 0,
                                  "fallback": False}
         consensus, conflicts = _clusters(matrix, notes)
-        if review_type == "scoping":  # a scoping review makes no claims
+        if not directional:  # a scoping review makes no claims; themes have no direction (matrix built without them)
             consensus, conflicts = [], []
         narrative: SynthesisNarrative | NarrativeNoGrade | None = None
         if isinstance(res, BaseException):
@@ -586,8 +632,13 @@ def make_write_synthesis(deps):
         if meta and meta.get("pools"):  # pooled numbers render only in the pooled-analysis view, never in prose
             narrative, removed, single = _strip_pooled(narrative, meta)
             quality.append({"stage": "pooled_numbers", "removed": removed, "kept_single_study": single})
-        factors = (matrix.get("grade") or {}).get("factors") or []
         narrative, prose_counts = _check_prose(narrative, prose, graded, factors)
+        rationale_fix = None
+        if graded and not entry["fallback"]:  # after every removal: what is shown must agree with the factors
+            text, rationale_fix = reconcile_rationale(narrative.evidence_rationale, factors)
+            if rationale_fix:
+                narrative = narrative.model_copy(update={"evidence_rationale": text})
+        gaps = [g for g in narrative.research_gaps if not is_placeholder(g)]  # never a "null" gap
         strength = clamp_to_baseline(narrative.evidence_strength, baseline) if graded else None
         summary = narrative.executive_summary
         certainty_added = 0
@@ -599,6 +650,7 @@ def make_write_synthesis(deps):
                         "measures_removed": prose_counts["measures_removed"],
                         "population_removed": prose_counts["population_removed"],
                         "certainty_added": certainty_added,
+                        "rationale_fixed": rationale_fix,  # "replaced" | "appended" | None (audit I-13e)
                         # narrative rounds the grounded-prose check sent back to the model (false positives show here)
                         "repairs": sum(prose_rounds[:-1])})
         # not graded: no strength, no baseline, a fixed rationale that localizes like any other text
@@ -607,7 +659,7 @@ def make_write_synthesis(deps):
             consensus=consensus, conflicts=conflicts, evidence_strength=strength,
             evidence_rationale=(narrative.evidence_rationale if graded else
                                 NO_QUANTITATIVE_RATIONALE if no_quantitative else _not_graded_rationale(review_type)),
-            research_gaps=narrative.research_gaps, grade_baseline=baseline if graded else None)
+            research_gaps=gaps, grade_baseline=baseline if graded else None)
         entry["seconds"] = round(time.perf_counter() - started, 3)
         quality.append(entry)
         return {"synthesis": synthesis.model_dump(), "localized_cards": localized_cards, "cost_usd": cost,
