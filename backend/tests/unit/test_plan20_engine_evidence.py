@@ -149,7 +149,7 @@ def test_markdown_labels_a_related_report():
     r = stub_result("t", "en", "slr")
     r["papers"][1] |= {"related_to": "P1", "related_reason": "same trial (EMPEROR-Preserved)"}
     md = render_markdown(SimpleNamespace(topic="t", status="done", error=None, result=r))
-    line = next(x for x in md.splitlines() if x.startswith("- [P2]"))
+    line = next(x for x in md.splitlines() if x.startswith("  - Related report [P2]"))  # under P1 (Task 6)
     assert line.endswith("Related report of [P1] (same trial (EMPEROR-Preserved)), not counted again.")
     assert "Related report" not in next(x for x in md.splitlines() if x.startswith("- [P1]"))
 

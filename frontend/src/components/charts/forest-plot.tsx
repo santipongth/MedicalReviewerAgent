@@ -8,6 +8,7 @@ import { Fragment, type ReactNode } from "react";
 import { armLabels, axisFraction, niceAxis, tickText, type Axis, type DtaData, type DtaMetric, type DtaValue } from "@/lib/charts-data";
 import { GLYPH_PATH, glyphSize, haloWidth } from "@/lib/glyphs";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import type { ForestPanelView, ForestRowView } from "@/lib/report-view";
 import type { Direction } from "@/lib/types";
 import { ScrollRegion } from "../review/scroll-region";
@@ -252,7 +253,7 @@ export function ForestPanel({ panel, arms, lang, onSelect }: { panel: ForestPane
   );
   const chart = (
     <div className="forest grid grid-cols-[minmax(0,1fr)]" role="group" data-forest-panel={panel.measure}
-      aria-label={L(lang, `Forest plot: ${panel.outcome}, ${panel.measure}, ${k} ผลการศึกษา`, `Forest plot: ${panel.outcome}, ${panel.measure}, ${k} ${k === 1 ? "effect" : "effects"}`)}>
+      aria-label={L(lang, `Forest plot: ${panel.outcome}, ${panel.measure}, ${k} ผลการศึกษา`, `Forest plot: ${panel.outcome}, ${panel.measure}, ${k} ${plural(k, "effect", "effects")}`)}>
       <HeadRow label={L(lang, "งานวิจัย", "Study")} num={numHead} />
       {panel.groups.map((g) => g.pool ? (
         // a pool is its own block: exactly the studies it combined, its lozenge directly under them

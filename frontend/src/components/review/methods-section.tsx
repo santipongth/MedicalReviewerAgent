@@ -3,6 +3,7 @@
 import { Fragment, type ReactNode } from "react";
 import { isNonQuantitative } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import { sourceRows } from "@/lib/prisma-flow";
 import { extractionReading, modelName, reportDate } from "@/lib/report-view";
 import { REVIEW_TYPE_LABEL, isGraded, type ReviewTypeOrLegacy } from "@/lib/review-type";
@@ -129,7 +130,7 @@ export function MethodsSection({ review, result, type, lang }: {
       {queries.length > 4 ? (
         <details>
           <summary className="inline-flex min-h-11 cursor-pointer items-center font-display text-[0.92rem] font-semibold md:min-h-0">
-            {L(lang, `ดูคำค้นทั้งหมด ${queries.length} ชุด`, `Show all ${queries.length} queries`)}
+            {L(lang, `ดูคำค้นทั้งหมด ${queries.length} ชุด`, `Show all ${queries.length} ${plural(queries.length, "query", "queries")}`)}
           </summary>
           <div className="mt-2">{queryList}</div>
         </details>
@@ -161,10 +162,10 @@ export function MethodsSection({ review, result, type, lang }: {
       "The ticked study types were applied at selection; if fewer than 3 records matched, the others were kept and flagged") : null],
     ["narrative", slrLike && m ? L(lang, "ตัดบทความทบทวนแบบไม่เป็นระบบออก เมื่อมีงานวิจัยหลักหรือ SR/MA อย่างน้อย 3 ฉบับ",
       "Narrative reviews were left out when at least 3 primary studies or systematic reviews were available") : null],
-    ["max", maxPapers != null ? <>{L(lang, "วิเคราะห์สูงสุด", "At most")} <N>{maxPapers}</N> {L(lang, "ฉบับตามอันดับความเกี่ยวข้อง", "records were analysed, in order of relevance")}</> : null],
+    ["max", maxPapers != null ? <>{L(lang, "วิเคราะห์สูงสุด", "At most")} <N>{maxPapers}</N> {L(lang, "ฉบับตามอันดับความเกี่ยวข้อง", `${plural(maxPapers, "record was", "records were")} analysed, in order of relevance`)}</> : null],
     ["related", s.related_reports != null ? <>{L(lang, "รายงานหลายฉบับของการทดลองเดียวกันนับเป็นการศึกษาเดียว", "Several reports of the same trial count as one study")}{" "}
       (<N>{s.related_reports}</N> {L(lang, "รายงานเพิ่มเติมของการทดลองที่นับเป็นการศึกษาแล้ว",
-        s.related_reports === 1 ? "further report of a trial already counted as a study" : "further reports of a trial already counted as a study")})</> : null],
+        plural(s.related_reports, "further report of a trial already counted as a study", "further reports of a trial already counted as a study"))})</> : null],
   ];
 
   // --- Extraction and verification ------------------------------------------------------------------------------------

@@ -166,8 +166,10 @@ function RelatedNote({ paper, lang, onSelect }: { paper: Paper; lang: Lang; onSe
 }
 
 /** The paper behind whatever the reader selected: facts, each outcome's number and the exact sentence it came from. */
-export function SourceRail({ paper, outcome, lang, onClose, headingId, visible = true, type = "legacy", onSelect }: {
+export function SourceRail({ paper, outcome, lang, onClose, headingId, visible = true, type = "legacy", onSelect, onReference }: {
   paper: Paper | null; outcome?: string; lang: Lang; onClose?: () => void;
+  /** the reader follows the link to the paper's reference (the drawer closes and focus lands there) */
+  onReference?: (ref: string) => void;
   /** opens another paper in the rail (the primary report of a further report, and back) */
   onSelect?: Select;
   /** review type: scoping shows no direction and no risk of bias. */
@@ -226,6 +228,11 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
             </p>
           )}
           <Links paper={paper} lang={lang} />
+          {/* Plan 20 Task 6: the rail links back to the paper's numbered reference */}
+          <a href={`#ref-${paper.ref}`} onClick={() => onReference?.(paper.ref)}
+            className="inline-flex min-h-11 w-fit items-center font-display text-[0.88rem] font-semibold text-primary underline underline-offset-2 md:min-h-0">
+            {L(lang, `ดูในเอกสารอ้างอิง (${paper.ref})`, `See in the references (${paper.ref})`)}
+          </a>
         </>
       )}
     </aside>

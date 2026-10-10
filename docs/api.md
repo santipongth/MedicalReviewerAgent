@@ -223,6 +223,14 @@ It is absent from results stored before Plan 20.
 Models are `provider:model` strings as in `result.models` (null when not configured).
 
 **Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`.
+- No volume, issue or pages: the search sources do not give them, so references (report and Markdown, Plan 20 Task 6)
+  are Vancouver style from these fields only: `Authors (the first 6, then "et al."). Title. Journal. Year. doi: …
+  PMID: … PMCID: …`, a missing part left out, titles and journals as written (never translated).
+- `design_excluded` (Plan 20 Task 6, bool): the paper is one of `stats.excluded_selection.study_design_corrected`,
+  read as a design outside the ticked study types; it stays in `papers` with its card but is not evidence. Absent in
+  results stored before it (the count is then the only record).
+- Per-record data for candidates excluded at screening is not stored in the result: only the reason counts in
+  `stats.excluded_screening`.
 - `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, qualitative, mixed_methods, other`.
 - `qualitative` and `mixed_methods` (Plan 17a) have themes as their outcomes:
   - `effect_measure` is `"none"`, the numbers are null and `direction` is `"unclear"`.
@@ -440,8 +448,8 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   They stay in `papers` with `related_to` (the primary's ref) and `related_reason` ("same trial (EMPEROR-Preserved)",
   "same trial (NCT03057951)", "near-identical title, same first author, same sample size" or "... same registry
   number"); the primary lists them in
-  `related_reports[]`. The Markdown export ends such a paper's line with "Related report of [P1] (same trial
-  (...)), not counted again.". `stats.related_reports` counts them (PRISMA 2020 counts studies and reports apart). Scoping
+  `related_reports[]`. The Markdown export lists such a paper indented under its primary reference ("  - Related report
+  [P2] …") and ends its line with "Related report of [P1] (same trial (...)), not counted again.". `stats.related_reports` counts them (PRISMA 2020 counts studies and reports apart). Scoping
   reviews map every report and link none. Results stored before Plan 20 Task 10 have none of these keys. The report
   (Plan 20 Task 11) lists such a paper as "Related report of [P1] (same trial)" with the trial's registry number or
   name (other reasons as written), the primary names its further reports, and no study count, study-map point or
@@ -580,7 +588,7 @@ The web app also serves the whole interactive report as one HTML file that works
 
 | Format | Contents |
 |---|---|
-| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). Since Plan 20 it starts with "## Answer" (`synthesis.answer`) and "## Key findings" (one line per finding: outcome, statement, refs, k and certainty) before the summary; a "## Methods" block before the papers lists the search date (`methods.searched_at`), the sources with their record counts (`methods.sources`), the queries, the models and the prompt version. Qualitative and mixed-methods cells in the comparison table carry no direction word. A paper with other comparisons (Plan 19) lists them on its line as "Other comparisons, not evidence for the question: …". `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
+| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). Since Plan 20 it starts with "## Answer" (`synthesis.answer`) and "## Key findings" (one line per finding: outcome, statement, refs and k; graded types put one line under the heading, "Certainty (whole review, not graded per outcome): <level>", since a finding's certainty is the review's one grade) before the summary; a "## Methods" block before the references lists the search date (`methods.searched_at`), the sources with their record counts (`methods.sources`), the queries, the models and the prompt version. Qualitative and mixed-methods cells in the comparison table carry no direction word. "## References" (Plan 20 Task 6; "## Papers" before it) lists each paper as "- [Pn] " + its Vancouver reference (the rules under "Papers", with doi, PMID and PMCID as links) + "— design, n=…."; a further report of a trial sits indented under its primary, and a `design_excluded` paper adds "Not used as evidence: read as a design outside the ticked study types.". A paper with other comparisons (Plan 19) lists them on its line as "Other comparisons, not evidence for the question: …". `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
 | `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty; for qualitative and mixed-methods papers, `direction` and `overall_direction` are empty), then (Plan 19) `comparison` (the outcome's own comparison) and `matches_question` (`true`/`false`; `false` marks an other comparison, which is not evidence for the review question and whose `direction` is relative to its own comparison; outcomes stored before Plan 19 are `true`). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
 | `json` | `{review_id, topic, language, created_at, finished_at, result}` |
 

@@ -47,7 +47,7 @@ describe("Plan 20 answer-first report, per review type", () => {
 
   it("SLR: one model read twice, so the flag says 'two readings disagree'", () => {
     render(<Report review={slrP20ReviewFixture} />);
-    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     expect(within(papers).getByText("การอ่านสองครั้งไม่ตรงกัน")).toBeInTheDocument();
     expect(screen.queryByText("สองโมเดลอ่านต่างกัน")).toBeNull();
   });
@@ -105,7 +105,7 @@ describe("Plan 20 answer-first report, per review type", () => {
     render(<Report review={slrP20ReviewFixture} />);
     const rail = screen.getByRole("complementary", { name: /ต้นฉบับ/ });
     expect(within(rail).getByText("แตะตัวเลขหรือรหัสงานวิจัยเพื่อดูประโยคต้นฉบับ")).toBeInTheDocument();
-    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     expect(within(papers).queryAllByRole("button", { pressed: true })).toHaveLength(0);
     const findings = screen.getByRole("heading", { level: 2, name: "ผลการศึกษาที่สำคัญ" }).closest("section")!;
     await userEvent.click(within(findings).getAllByRole("button", { name: "เปิด P3" })[0]);

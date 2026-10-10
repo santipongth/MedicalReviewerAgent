@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { Fragment, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { exportUrl } from "@/lib/api";
 import { conceptTree } from "@/lib/concept-map";
 import { emptyFilters, filterPapers, isFiltered, isPooled, themePapers, type Filters } from "@/lib/charts-data";
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
@@ -25,7 +24,9 @@ import { Limitations } from "./limitations";
 import { LitMatrixSection } from "./lit-matrix";
 import { MetaAnalysisSection } from "./meta-analysis";
 import { FilterBar, FilterStatus } from "./filter-bar";
-import { CitedText, ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, READING, SameModelReadings } from "./report-parts";
+import { CitedText, ClaimsPanel, ComparisonMatrix, MatrixLegend, READING, SameModelReadings } from "./report-parts";
+import { ReferencesSection } from "./references";
+import { DownloadsAndCite } from "./report-cite";
 import { MethodsSection } from "./methods-section";
 import { PrismaFlow } from "./prisma-flow";
 import { RobSummarySection } from "./rob-summary";
@@ -35,8 +36,6 @@ import { SofTable } from "./sof-table";
 import { SourceRail } from "./source-rail";
 import { TitleBlock } from "./title-block";
 import { L } from "./text";
-
-const DL = "inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
 
 type Selection = { ref: string; outcome?: string };
 
@@ -60,9 +59,11 @@ const TOP: Record<Exclude<TopSectionId, "title">, { id: string; nav: [string, st
   gaps: { id: "h-gaps", nav: ["สิ่งที่ยังไม่รู้", "Gaps"] },
   discussion: { id: "h-discussion", nav: ["อภิปราย", "Discussion"] },
   methods: { id: "h-method", nav: ["วิธีการ", "Methods"] },
-  references: { id: "h-papers", nav: ["งานวิจัยที่อ่าน", "Papers"] },
+  references: { id: "h-papers", nav: ["อ้างอิง", "References"] },
   downloads: { id: "h-downloads", nav: ["ดาวน์โหลด", "Downloads"] },
 };
+/** The offline file has no downloads: its last section is only how to cite the report. */
+const OFFLINE_DOWNLOADS_NAV: [string, string] = ["อ้างอิงรายงาน", "Cite"];
 
 /**
  * The report bench (Plan 20 answer-first order, from SECTIONS_BY_TYPE): title block, bottom line, key findings, summary
@@ -113,6 +114,16 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     returnFocus.current = focused instanceof HTMLElement && focused !== document.body ? focused : pressed.current;
     setSelection({ ref, outcome });
     setDrawerOpen(true);
+  }
+
+  /**
+   * The rail's "see in the references" link (Plan 20 Task 6): the anchor jumps to `#ref-Pn`, which takes focus; the
+   * drawer (narrow screens) closes and hands focus to that reference too, instead of the code that opened it.
+   */
+  function toReference(ref: string) {
+    const target = document.getElementById(`ref-${ref}`);
+    if (target) returnFocus.current = target;
+    setDrawerOpen(false);
   }
 
   // Key findings and the summary of findings use every paper (the filters narrow the tables and charts below them).
@@ -242,31 +253,21 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
       case "methods":
         return <MethodsSection review={review} result={result} type={type} lang={lang} />;
       case "references":
+        // Plan 20 Task 6: a complete reference list (the filters do not apply) and the records excluded at screening
         return hasPapers ? (
-          <section aria-labelledby="h-papers" className="grid gap-2">
-            <h2 id="h-papers" className={H2}>{L(lang, "งานวิจัยที่อ่าน", "Papers read")}</h2>
-            {filterHome ? filterStatus : filterBar}
-            <PaperList papers={visible} lang={lang} onSelect={select} selectedRef={active?.ref} type={type} />
-          </section>
+          <ReferencesSection papers={papers} stats={result.stats} lang={lang} onSelect={select} selectedRef={active?.ref} type={type} />
         ) : null;
       case "downloads":
-        return offline ? null : (
-          <section aria-labelledby="h-downloads" className="grid gap-3">
-            <h2 id="h-downloads" className={H2}>{L(lang, "ดาวน์โหลด", "Downloads")}</h2>
-            <ul aria-label={L(lang, "ดาวน์โหลดรีวิว", "Download this review")} className="flex flex-wrap gap-x-4 gap-y-1 text-[0.9rem]">
-              <li><a href={`/r/${encodeURIComponent(review.id)}/report.html`} download className={DL}>{L(lang, "HTML (เปิดได้ออฟไลน์)", "HTML (works offline)")}</a></li>
-              {([["md", "Markdown"], ["csv", "CSV"], ["json", "JSON"]] as const).map(([fmt, name]) => (
-                <li key={fmt}><a href={exportUrl(review.id, fmt)} download className={DL}>{name}</a></li>
-              ))}
-            </ul>
-          </section>
-        );
+        return <DownloadsAndCite review={review} result={result} type={type} lang={lang} offline={offline} />;
       default:
         return null;
     }
   }
 
-  const navItems: NavItem[] = sections.map(({ id }) => ({ id: TOP[id as Exclude<TopSectionId, "title">].id, label: L(lang, ...TOP[id as Exclude<TopSectionId, "title">].nav) }));
+  const navItems: NavItem[] = sections.map(({ id }) => {
+    const top = TOP[id as Exclude<TopSectionId, "title">];
+    return { id: top.id, label: L(lang, ...(offline && id === "downloads" ? OFFLINE_DOWNLOADS_NAV : top.nav)) };
+  });
   const showNav = hasPapers;
   return (
     <SameModelReadings.Provider value={sameModelReadings(result)}>
@@ -299,7 +300,8 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
         {hasPapers && (
           <RailDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} headingId={railHeading} returnFocus={returnFocus}>
             <SourceRail paper={active ? byRef.get(active.ref) ?? null : null} outcome={active?.outcome} lang={lang}
-              onClose={() => setDrawerOpen(false)} headingId={railHeading} visible={drawerOpen} type={type} onSelect={select} />
+              onClose={() => setDrawerOpen(false)} headingId={railHeading} visible={drawerOpen} type={type} onSelect={select}
+              onReference={toReference} />
           </RailDrawer>
         )}
       </div>

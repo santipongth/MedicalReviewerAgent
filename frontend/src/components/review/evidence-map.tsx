@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { rampLevel, type EvidenceMap, type MapTable } from "@/lib/evidence-map";
 import type { Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import { SectionHeading } from "./report-nav";
 import { ScrollRegion } from "./scroll-region";
 import { L } from "./text";
@@ -92,7 +93,7 @@ export function EvidenceMapSection({ map, lang }: { map: EvidenceMap; lang: Lang
       )}
       {map.unplaced > 0 && (
         <p className="text-[0.82rem] text-muted">
-          {L(lang, `ตารางช่วงปีไม่รวม ${map.unplaced} ฉบับที่ไม่มีปีหรืออ่านไม่สำเร็จ`, `The period table leaves out ${map.unplaced} studies without a year or that could not be read`)}
+          {L(lang, `ตารางช่วงปีไม่รวม ${map.unplaced} ฉบับที่ไม่มีปีหรืออ่านไม่สำเร็จ`, `The period table leaves out ${map.unplaced} ${plural(map.unplaced, "study", "studies")} without a year or that could not be read`)}
         </p>
       )}
     </section>

@@ -3,6 +3,7 @@
 import { directionTally, hasPooledPapers, themePapers } from "@/lib/charts-data";
 import { META_POOL_COPY, POOLED_OVERLAP_TH } from "@/lib/copy";
 import { DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import { DESIGN_GROUP_LABEL, fixed } from "@/lib/meta-view";
 import { metaPoolGap, reviewTypeOf, showsDirection } from "@/lib/review-type";
 import type { Paper, Pool, ReviewResult, Synthesis } from "@/lib/types";
@@ -121,7 +122,7 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
       {themes > 0 && (
         <p className="text-[0.92rem] text-muted" data-theme-count>
           {L(lang, `งานเชิงคุณภาพหรือแบบผสมผสาน ${themes} ฉบับ สรุปเป็นประเด็นที่พบ ไม่นับตามทิศทางผล`,
-            `${themes} qualitative or mixed-methods ${themes === 1 ? "study is" : "studies are"} summarised as the themes found, not counted by direction`)}
+            `${themes} qualitative or mixed-methods ${plural(themes, "study is", "studies are")} summarised as the themes found, not counted by direction`)}
         </p>
       )}
     </section>

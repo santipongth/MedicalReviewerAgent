@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import { showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import { ROB_COLUMN, ROB_ORDER, robSummary } from "@/lib/rob-summary";
 import type { Paper } from "@/lib/types";
@@ -79,7 +80,7 @@ export function RobSummarySection({ papers, type, lang, fullText = false }: {
       </div>
       {s.related > 0 && (
         <p className="text-[0.82rem] text-muted" data-rob-related>
-          {L(lang, `ไม่นับ ${s.related} รายงานของการทดลองที่นับแล้ว`, `${s.related} further ${s.related === 1 ? "report" : "reports"} of a trial already counted ${s.related === 1 ? "is" : "are"} not counted again`)}
+          {L(lang, `ไม่นับ ${s.related} รายงานของการทดลองที่นับแล้ว`, `${s.related} further ${plural(s.related, "report", "reports")} of a trial already counted ${plural(s.related, "is", "are")} not counted again`)}
         </p>
       )}
     </section>

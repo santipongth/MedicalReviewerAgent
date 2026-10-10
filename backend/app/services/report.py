@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from typing import Any
 
 from app.harness.design import NON_QUANTITATIVE_CATEGORIES
@@ -29,6 +30,67 @@ WARNING_LABEL = {
     "other_measures_not_pooled": "studies reporting another effect measure were not pooled",
     "md_units_assumed_equal": "mean differences assumed to share units",
 }
+
+
+_END = re.compile(r"[\s.,;:]+$")
+MAX_AUTHORS = 6  # ICMJE / Vancouver: the first six, then "et al."
+
+
+def _clean(value: Any) -> str:
+    """One line of metadata text without trailing punctuation (the formatter adds its own)."""
+    return _END.sub("", " ".join(str(value if value is not None else "").split()))
+
+
+def _doi(value: Any) -> str:
+    return re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", "", _clean(value),
+                  flags=re.IGNORECASE)
+
+
+def _pmcid(value: Any) -> str:
+    v = _clean(value)
+    return f"PMC{v}" if v.isdigit() else v
+
+
+def _citation_parts(p: dict[str, Any]) -> tuple[list[str], list[tuple[str, str, str]]]:
+    """The text parts of a Vancouver reference and its identifiers as (label, value, url). Only fields the result
+    carries (no volume, issue or pages: the search sources do not give them); a missing part is left out. The title
+    and journal stay in their own language. Mirrors frontend `src/lib/citation.ts`."""
+    text: list[str] = []
+    authors = [a for a in (_clean(x) for x in p.get("authors") or [] if isinstance(x, str)) if a]
+    if authors:
+        shown = authors[:MAX_AUTHORS] + (["et al"] if len(authors) > MAX_AUTHORS else [])
+        text.append(", ".join(shown) + ".")
+    title = re.sub(r"[\s.]+$", "", " ".join(str(p.get("title") or "").split()))
+    if title:
+        text.append(title if title[-1] in "?!" else f"{title}.")
+    if _clean(p.get("journal")):
+        text.append(f"{_clean(p.get('journal'))}.")
+    if p.get("year"):
+        text.append(f"{p['year']}.")
+    ids: list[tuple[str, str, str]] = []
+    if _doi(p.get("doi")):
+        ids.append(("doi", _doi(p.get("doi")), f"https://doi.org/{_doi(p.get('doi'))}"))
+    if _clean(p.get("pmid")):
+        ids.append(("PMID", _clean(p.get("pmid")), f"https://pubmed.ncbi.nlm.nih.gov/{_clean(p.get('pmid'))}/"))
+    if _pmcid(p.get("pmcid")):
+        ids.append(("PMCID", _pmcid(p.get("pmcid")), f"https://pmc.ncbi.nlm.nih.gov/articles/{_pmcid(p.get('pmcid'))}/"))
+    return text, ids
+
+
+def vancouver(p: dict[str, Any]) -> str:
+    """`Authors (up to 6, then et al.). Title. Journal. Year. doi: … PMID: … PMCID: …` as plain text."""
+    text, ids = _citation_parts(p)
+    return " ".join([*text, *(f"{label}: {value}." for label, value, _ in ids)])
+
+
+def _md_url(url: str) -> str:
+    return url.replace(" ", "%20").replace("(", "%28").replace(")", "%29")
+
+
+def _vancouver_md(p: dict[str, Any]) -> str:
+    """`vancouver` with the identifiers as Markdown links."""
+    text, ids = _citation_parts(p)
+    return " ".join([*text, *(f"{label}: [{value}]({_md_url(url)})." for label, value, url in ids)])
 
 
 def _num(value: float, decimals: int = 2) -> str:
@@ -124,6 +186,18 @@ def _methods_section(result: dict[str, Any]) -> list[str]:
     return ["## Methods", "", *lines, ""] if lines else []
 
 
+def _reference_line(p: dict[str, Any]) -> str:
+    """One reference: the Vancouver text, then what the review made of the paper (design, n, notes)."""
+    card = p.get("card") or {}
+    design = f" — {card.get('study_design')}, n={card.get('sample_size') or '?'}." if card else " — not extracted."
+    excluded = (" Not used as evidence: read as a design outside the ticked study types."
+                if p.get("design_excluded") else "")
+    # Plan 20 Task 10: a further report of a trial counted once, under its primary report
+    related = (f" Related report of [{p['related_to']}] ({p.get('related_reason') or 'same trial'}), not "
+               f"counted again." if p.get("related_to") else "")
+    return f"{_vancouver_md(p)}{design}{_other_comparisons(p.get('card_en') or card)}{excluded}{related}"
+
+
 def render_markdown(review) -> str:
     result = review.result
     out = [f"# Literature review: {review.topic}", ""]
@@ -143,12 +217,13 @@ def render_markdown(review) -> str:
     findings = s.get("key_findings") or []
     if findings:
         out += ["## Key findings", ""]
+        # a finding's certainty is the review's one grade (set in code), so it is said once, never per line
+        if review_type in (None, "slr", "meta_analysis") and s.get("evidence_strength"):
+            level = str(s["evidence_strength"]).replace("_", " ")
+            out += [f"Certainty (whole review, not graded per outcome): {level}", ""]
         for f in findings:
-            extra = f"k={f.get('k', len(f.get('refs') or []))}"
-            if f.get("certainty"):
-                extra += f", certainty {str(f['certainty']).replace('_', ' ')}"
             out.append(f"- **{_cell(f.get('outcome'))}** — {f.get('statement')} [{', '.join(f.get('refs') or [])}] "
-                       f"({extra})")
+                       f"(k={f.get('k', len(f.get('refs') or []))})")
         out.append("")
     out += ["## Summary", "", result.get("summary") or s.get("executive_summary", ""), ""]
     if "evidence_strength" in s and s["evidence_strength"] is None:
@@ -173,16 +248,19 @@ def render_markdown(review) -> str:
     out += _methods_section(result)
     papers = result.get("papers") or []
     if papers:
-        out += ["## Papers", ""]
+        # Plan 20 Task 6: Vancouver references in P-number order (the report's rules, lib/citation.ts); a further
+        # report of a trial (Task 10) is listed right under its primary report, not as a study of its own
+        out += ["## References", ""]
+        refs = {p.get("ref") for p in papers}
+        under: dict[str, list[dict[str, Any]]] = {}
         for p in papers:
-            card = p.get("card") or {}
-            link = f" https://doi.org/{p['doi']}" if p.get("doi") else ""
-            design = f" — {card.get('study_design')}, n={card.get('sample_size') or '?'}" if card else " — not extracted"
-            # Plan 20 Task 10: a further report of a trial counted once, under its primary report
-            related = (f" Related report of [{p['related_to']}] ({p.get('related_reason') or 'same trial'}), not "
-                       f"counted again." if p.get("related_to") else "")
-            out.append(f"- [{p['ref']}] {p.get('title')} ({p.get('year') or 'n.d.'}, {p.get('journal') or ''})"
-                       f"{design}.{link}{_other_comparisons(p.get('card_en') or card)}{related}")
+            if p.get("related_to") in refs:
+                under.setdefault(p["related_to"], []).append(p)
+        for p in papers:
+            if p.get("related_to") in refs:
+                continue
+            out.append(f"- [{p['ref']}] {_reference_line(p)}")
+            out += [f"  - Related report [{r['ref']}] {_reference_line(r)}" for r in under.get(p["ref"], [])]
         out.append("")
     quality = result.get("quality") or {}
     if quality:

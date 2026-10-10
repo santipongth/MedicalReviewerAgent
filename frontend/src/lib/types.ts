@@ -86,6 +86,11 @@ export interface Paper {
   related_reason?: string | null;
   /** On the primary report: the refs of the other reports of the same trial ([] on every other paper). */
   related_reports?: string[];
+  /**
+   * Plan 20 Task 6: read as a design outside the ticked study types (one of `excluded_selection.study_design_corrected`):
+   * listed with its card, not evidence. Absent before it.
+   */
+  design_excluded?: boolean;
 }
 
 export interface ComparisonCell {

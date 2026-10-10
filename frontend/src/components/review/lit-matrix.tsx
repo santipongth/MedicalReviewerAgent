@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { exportUrl } from "@/lib/api";
 import { isNonQuantitative } from "@/lib/charts-data";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import { SOURCE_ABBR, SOURCE_LABEL } from "@/lib/citation-network";
 import {
   litColumnLabel, litColumns, litFramework, litRows, outcomesClamped, paginate, showsCitedBy, type LitColumn, type LitFramework, type LitRow,
@@ -251,7 +252,7 @@ function Pager({ page, pages, start, end, total, lang, onPage }: {
       <button type="button" className={btn} disabled={page === 0} onClick={() => onPage(page - 1)}>{L(lang, "← ก่อนหน้า", "← Previous")}</button>
       <span className="font-display text-[0.85rem] tabular-nums text-muted" aria-live="polite">
         {/* rows are records: a further report of a trial is a row too, so the pager never calls them studies */}
-        {L(lang, `${start + 1}–${end} จาก ${total} รายการ · หน้า ${page + 1}/${pages}`, `${start + 1}–${end} of ${total} records · page ${page + 1}/${pages}`)}
+        {L(lang, `${start + 1}–${end} จาก ${total} รายการ · หน้า ${page + 1}/${pages}`, `${start + 1}–${end} of ${total} ${plural(total, "record", "records")} · page ${page + 1}/${pages}`)}
       </span>
       <button type="button" className={btn} disabled={page >= pages - 1} onClick={() => onPage(page + 1)}>{L(lang, "ถัดไป →", "Next →")}</button>
     </nav>

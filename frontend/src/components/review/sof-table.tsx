@@ -1,6 +1,7 @@
 "use client";
 
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import type { SofEffect, SofRow } from "@/lib/report-view";
 import { ComputedNumber, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
@@ -28,7 +29,7 @@ function Participants({ row, lang }: { row: SofRow; lang: Lang }) {
           {/* a sum the system added up: a computed number, never a paper's own figure */}
           <ComputedNumber value={COUNT.format(p.total)} lang={lang} />
           <span className={NOTE}>
-            {L(lang, `รวมจากที่ตรวจได้ ${p.counted} จาก ${p.of} การศึกษา`, `sum of the verified sizes, ${p.counted} of ${p.of} ${p.of === 1 ? "study" : "studies"}`)}
+            {L(lang, `รวมจากที่ตรวจได้ ${p.counted} จาก ${p.of} การศึกษา`, `sum of the verified sizes, ${p.counted} of ${p.of} ${plural(p.of, "study", "studies")}`)}
             {p.reviews > 0 && L(lang, " · ไม่นับ SR/MA", " · SR/MA not counted")}
           </span>
         </span>
@@ -158,7 +159,7 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
                 <th scope="row" className="px-3 pt-2.5 text-left align-top font-display font-semibold break-words max-md:block max-md:px-0 max-md:pt-0.5">{r.outcome}</th>
                 <td className={TD} data-label={col.studies}>
                   <span className="font-display font-semibold">
-                    <span className="tabular-nums">{r.k}</span> {L(lang, "การศึกษา", r.k === 1 ? "study" : "studies")}
+                    <span className="tabular-nums">{r.k}</span> {L(lang, "การศึกษา", plural(r.k, "study", "studies"))}
                   </span>
                   {r.designs.length > 0 && (
                     <ul className="mt-0.5 grid text-[0.8rem] text-muted" aria-label={L(lang, "รูปแบบการศึกษา", "Designs")}>

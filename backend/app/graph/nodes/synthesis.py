@@ -1436,6 +1436,7 @@ def make_finalize(deps):
         for ref, link in linked.items():
             reports.setdefault(link["primary"], []).append(ref)
         out_papers = []
+        left_out = set(design_excluded(state))  # Plan 20 Task 6: listed with a note, never used as evidence
         for p in papers:
             c = p["candidate"]
             link = linked.get(p["ref"]) or {}
@@ -1447,6 +1448,7 @@ def make_finalize(deps):
                 "verification": p.get("verification"), "error": p.get("error"),
                 "related_to": link.get("primary"), "related_reason": link.get("reason"),
                 "related_reports": sorted(reports.get(p["ref"], []), key=_ref_num),
+                "design_excluded": p["ref"] in left_out,
             })
         stats = state.get("search_stats") or {}
         selection = state.get("selection_stats") or {}

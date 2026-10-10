@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { designKey, designLabel, emptyFilters, isFiltered, type Filters } from "@/lib/charts-data";
 import { ROB_LABEL, type Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import type { Paper, RiskOfBias } from "@/lib/types";
 import { Term } from "../ui/term";
 import { L } from "./text";
@@ -16,7 +17,7 @@ export function FilterStatus({ filters, onChange, shown, total, lang }: {
   if (!isFiltered(filters)) return null;
   return (
     <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm bg-info-bg px-3 py-2 text-[0.88rem]">
-      <span>{L(lang, `กำลังกรอง: แสดง ${shown} จาก ${total} ฉบับ`, `Filtering: showing ${shown} of ${total} studies`)}</span>
+      <span>{L(lang, `กำลังกรอง: แสดง ${shown} จาก ${total} ฉบับ`, `Filtering: showing ${shown} of ${total} ${plural(total, "study", "studies")}`)}</span>
       <button type="button" onClick={() => onChange(emptyFilters())} className="min-h-11 font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">
         {L(lang, "ล้างตัวกรอง", "Clear filters")}
       </button>
@@ -42,7 +43,7 @@ export function FilterBar({ papers, filters, onChange, shown, lang, showRisk = t
     <div className="grid gap-2">
     <button type="button" aria-expanded={open} aria-controls={`${id}-panel`} onClick={() => setOpen(!open)}
       className="min-h-11 w-fit rounded-sm border border-rule px-3 font-display text-[0.9rem] hover:border-ink md:min-h-0 md:py-1.5">
-      {L(lang, `กรอง (แสดง ${shown} จาก ${papers.length} ฉบับ)`, `Filter (showing ${shown} of ${papers.length} studies)`)}
+      {L(lang, `กรอง (แสดง ${shown} จาก ${papers.length} ฉบับ)`, `Filter (showing ${shown} of ${papers.length} ${plural(papers.length, "study", "studies")})`)}
     </button>
     {open && (
     <div id={`${id}-panel`} role="group" aria-label={L(lang, "ตัวกรอง", "Filters")}

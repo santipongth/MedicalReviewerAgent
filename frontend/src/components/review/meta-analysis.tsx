@@ -3,6 +3,7 @@
 import { useId, useMemo, type HTMLAttributes } from "react";
 import { META_POOL_COPY } from "@/lib/copy";
 import type { Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import { metaView, type MetaPoolView, type MetaView } from "@/lib/meta-view";
 import type { ComparisonRow, MetaAnalysis, Paper, Quality } from "@/lib/types";
 import { MetaForestFigure } from "../charts/figures";
@@ -229,7 +230,7 @@ function ExcludedList({ view, lang }: { view: MetaView; lang: Lang }) {
           <li key={g.reason} className="grid gap-0.5 border-b border-rule py-2 text-[0.92rem]">
             <span>
               <span className="font-medium">{g.label}</span>{" "}
-              <span className="font-display text-muted tabular-nums">· {g.count} {L(lang, "รายการ", g.count === 1 ? "result" : "results")}</span>
+              <span className="font-display text-muted tabular-nums">· {g.count} {L(lang, "รายการ", plural(g.count, "result", "results"))}</span>
             </span>
             <span className="text-[0.88rem] text-muted break-words">
               {g.items.map((it, i) => (

@@ -5,6 +5,7 @@
 // system counts: the component sets them in the display face, never the verified-number face.
 import { EXCLUSION_REASON_LABEL } from "./charts-data";
 import type { Lang } from "./i18n";
+import { plural } from "./plural";
 import { SOURCE_NAME } from "./report-view";
 import type { ReviewTypeOrLegacy } from "./review-type";
 import type { ExclusionReason, ReviewMethods, Stats } from "./types";
@@ -118,7 +119,7 @@ export function prismaFlow({ stats, methods, options, type, lang }: {
   const capNote = candidates != null
     ? T(lang,
       `เรียงตามความเกี่ยวข้อง คัดกรอง ${candidates} อันดับแรก${withAbstract != null ? ` จาก ${withAbstract} ระเบียนที่มีบทคัดย่อ` : ""}${cap != null ? ` (เพดาน ${cap})` : ""}`,
-      `Ranked by relevance: the top ${candidates}${withAbstract != null ? ` of ${withAbstract} records with an abstract` : ""} were screened${cap != null ? ` (cap ${cap})` : ""}`)
+      `Ranked by relevance: the top ${candidates}${withAbstract != null ? ` of ${withAbstract} ${plural(withAbstract, "record", "records")} with an abstract` : ""} were screened${cap != null ? ` (cap ${cap})` : ""}`)
     : cap != null
       ? T(lang, `เรียงตามความเกี่ยวข้อง คัดกรองไม่เกิน ${cap} ระเบียน`, `Ranked by relevance: at most ${cap} were screened`)
       : null;
@@ -178,7 +179,7 @@ export function prismaFlow({ stats, methods, options, type, lang }: {
     ],
     notes: relaxed
       ? [T(lang, `คงไว้ ${relaxed} ระเบียนที่รูปแบบไม่ตรงชนิดที่เลือก เพราะงานที่ตรงมีไม่ถึง 3 ฉบับ (มีธงกำกับ)`,
-        `${relaxed} ${relaxed === 1 ? "record whose design matched no ticked type was" : "records whose design matched no ticked type were"} kept because fewer than 3 matched (flagged)`)]
+        `${relaxed} ${plural(relaxed, "record whose design matched no ticked type was", "records whose design matched no ticked type were")} kept because fewer than 3 matched (flagged)`)]
       : [],
   };
 

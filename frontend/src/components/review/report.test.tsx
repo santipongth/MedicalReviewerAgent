@@ -76,7 +76,7 @@ describe("Report", () => {
   it("lists a paper whose extraction failed with its reason", () => {
     render(<Report review={reviewFixture} />);
     expect(screen.getByText(/Antidiabetic drugs and adenoma/)).toBeInTheDocument();
-    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     expect(within(papers).getByText(/อ่านไม่สำเร็จ/)).toBeInTheDocument();
     // the title block counts only the studies that were read, and names the one that was not
     expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("4 ฉบับ (อ่านไม่สำเร็จอีก 1)");
@@ -94,7 +94,7 @@ describe("Report", () => {
 
   it("the paper list names each study's design category", () => {
     render(<Report review={reviewFixture} />);
-    const list = screen.getByRole("heading", { name: /งานวิจัยที่วิเคราะห์|งานวิจัยที่อ่าน/ }).closest("section")!;
+    const list = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     expect(within(list).getAllByText("Case-control").length).toBeGreaterThan(0);
     expect(within(list).queryByText("nested case-control")).toBeNull();
   });
@@ -129,7 +129,7 @@ describe("Report", () => {
     render(<Report review={reviewFixture} />);
     const matrix = screen.getByRole("heading", { name: "ผลแต่ละการศึกษา" }).closest("section")!;
     expect(within(matrix).getAllByText("สองโมเดลอ่านต่างกัน")).toHaveLength(1); // the legend, same wording as the flag
-    const list = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const list = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     expect(within(list).getAllByText("สองโมเดลอ่านต่างกัน").length).toBeGreaterThan(0); // paper list flag
     expect(screen.queryByText(/◆ ไม่แน่นอน/)).toBeNull();
   });
@@ -172,14 +172,15 @@ describe("Report", () => {
     expect(screen.queryByText(/กำลังกรอง/)).toBeNull();
     await openFilters();
     fireEvent.change(screen.getByLabelText(/ความเกี่ยวข้องขั้นต่ำ/), { target: { value: "90" } });
+    // the references list every paper whatever the filters (Plan 20 Task 6), so only the charts carry the status
     const statuses = screen.getAllByText("กำลังกรอง: แสดง 2 จาก 5 ฉบับ");
-    expect(statuses).toHaveLength(2);
+    expect(statuses).toHaveLength(1);
     const chartsWrap = screen.getByTestId("charts").closest("section")!.parentElement!;
     expect(within(chartsWrap).getByText(/กำลังกรอง/).compareDocumentPosition(screen.getByTestId("charts")))
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
-    expect(within(papers).getByText(/กำลังกรอง/)).toBeInTheDocument();
-    await userEvent.click(within(papers).getByRole("button", { name: "ล้างตัวกรอง" }));
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
+    expect(within(papers).queryByText(/กำลังกรอง/)).toBeNull();
+    await userEvent.click(within(chartsWrap).getByRole("button", { name: "ล้างตัวกรอง" }));
     expect(screen.queryByText(/กำลังกรอง/)).toBeNull();
     expect(screen.getByRole("button", { name: "กรอง (แสดง 5 จาก 5 ฉบับ)" })).toBeInTheDocument();
   });
@@ -205,16 +206,19 @@ describe("Report", () => {
 
   it("methods hold the disclaimer and downloads have their own section; offline there is no downloads section", () => {
     const { unmount } = render(<Report review={reviewFixture} />);
-    const downloads = screen.getByRole("heading", { name: "ดาวน์โหลด" }).closest("section")!;
+    const downloads = screen.getByRole("heading", { level: 2, name: "ดาวน์โหลดและการอ้างอิง" }).closest("section")!;
     expect(within(downloads).getByRole("link", { name: /HTML/ })).toBeInTheDocument();
-    expect(within(downloads).getByRole("link", { name: "CSV" })).toBeInTheDocument();
+    expect(within(downloads).getByRole("link", { name: /^CSV/ })).toBeInTheDocument();
     const method = screen.getByRole("heading", { name: "วิธีการ" }).closest("section")!;
     expect(within(method).getByText(/ไม่ใช่คำแนะนำทางการแพทย์/)).toBeInTheDocument();
     unmount();
     render(<Report review={reviewFixture} offline />);
     const offlineMethod = screen.getByRole("heading", { name: "วิธีการ" }).closest("section")!;
     expect(screen.getByRole("navigation", { name: "ในรายงานนี้" })).toHaveTextContent("วิธีการ");
-    expect(screen.queryByRole("heading", { name: "ดาวน์โหลด" })).toBeNull();
+    // offline: no downloads, only how to cite the report (Plan 20 Task 6)
+    expect(screen.queryByRole("heading", { name: /ดาวน์โหลด/ })).toBeNull();
+    expect(screen.queryByRole("list", { name: "ดาวน์โหลดรีวิว" })).toBeNull();
+    expect(screen.getByRole("heading", { level: 2, name: "วิธีอ้างอิงรายงานนี้" })).toBeInTheDocument();
     expect(within(offlineMethod).queryByRole("link")).toBeNull();
     // no site header in the offline file, so the sticky nav and anchor offsets use a zero header height
     expect(offlineMethod.closest<HTMLElement>("[style]")!.style.getPropertyValue("--header-h")).toBe("0px");
@@ -355,7 +359,7 @@ describe("Report per review type", () => {
 
   it("scoping: no direction glyph or risk-of-bias label in the paper list, source drawer or filters", async () => {
     render(<Report review={scopingReviewFixture} />);
-    const list = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const list = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     expect(within(list).queryAllByRole("img")).toHaveLength(0);
     expect(list).not.toHaveTextContent(/อคติ/);
     expect(list).not.toHaveTextContent(/สนับสนุนผล|ตรงข้าม/);

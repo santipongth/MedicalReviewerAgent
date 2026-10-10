@@ -1,10 +1,11 @@
 "use client";
 
-import { createContext, Fragment, useContext, useState, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useId, useState, type ReactNode } from "react";
 import { designKey, designLabel, isNonQuantitative, questionDirection } from "@/lib/charts-data";
 import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
 import { isReviewDiscordant, matrixView } from "@/lib/report-view";
+import { plural } from "@/lib/plural";
 import { isRelatedReport, relatedLabel, relatedReasonText, relatedReportsLabel } from "@/lib/trial-reports";
 import { isGraded, REVIEW_TYPE_LABEL, showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ComparisonCell, ComparisonRow, EvidenceCluster, Paper, PaperCard, QuestionBlock, Quality, Synthesis } from "@/lib/types";
@@ -224,7 +225,7 @@ export function ComparisonMatrix({ rows, refs: allRefs, lang, onSelect, selected
         {view.hidden > 0
           ? L(lang, `แสดง ${view.rows.length} ผลลัพธ์ที่รายงานตั้งแต่ 2 การศึกษา (จาก ${view.total}) เรียงตามจำนวนการศึกษา`,
             `Showing the ${view.rows.length} outcomes reported by 2 or more studies (of ${view.total}), most studies first`)
-          : L(lang, `${view.total} ผลลัพธ์ เรียงตามจำนวนการศึกษา`, `${view.total} outcomes, most studies first`)}
+          : L(lang, `${view.total} ผลลัพธ์ เรียงตามจำนวนการศึกษา`, `${view.total} ${plural(view.total, "outcome", "outcomes")}, most studies first`)}
       </p>
       {(view.hidden > 0 || showAll) && (
         <button type="button" onClick={() => setShowAll((s) => !s)} aria-pressed={showAll}
@@ -329,7 +330,7 @@ const THEME_CELL_LABEL: Record<Lang, string> = {
 
 /** "Found in k studies": how a qualitative theme is counted (never "supports"). */
 export function themeFoundText(k: number, lang: Lang): string {
-  return L(lang, `พบใน ${k} การศึกษา`, `Found in ${k} ${k === 1 ? "study" : "studies"}`);
+  return L(lang, `พบใน ${k} การศึกษา`, `Found in ${k} ${plural(k, "study", "studies")}`);
 }
 
 /** The matrix mark of a qualitative theme: a neutral word, not a direction shape. */
@@ -432,64 +433,60 @@ export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs, graded
 
 const otherComparisons = (card: PaperCard) => card.outcomes.filter((o) => o.matches_question === false).length;
 
-export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy" }: {
-  papers: Paper[]; lang: Lang; onSelect: Select; selectedRef?: string; type?: ReviewTypeOrLegacy;
+/**
+ * What the review made of one paper (year, design, direction, bias, flags, reports of the same trial), as the button
+ * that opens it in the source rail. Its accessible name starts with the ref ("P3 …"). Sits in its reference (Task 6).
+ */
+export function StudyButton({ p, lang, onSelect, selected, type = "legacy" }: {
+  p: Paper; lang: Lang; onSelect: Select; selected: boolean; type?: ReviewTypeOrLegacy;
 }) {
+  const card = lang === "en" ? p.card_en ?? p.card : p.card;
+  const en = p.card_en ?? p.card; // the checked card: design, direction and comparison flags
+  const others = en ? otherComparisons(en) : 0;
+  const meta = useId();
   return (
-    <ul className="border-t border-rule">
-      {papers.map((p) => {
-        const card = lang === "en" ? p.card_en ?? p.card : p.card;
-        const en = p.card_en ?? p.card; // the checked card: design, direction and comparison flags
-        return (
-          <li key={p.ref} className="border-b border-rule">
-            <button type="button" onClick={() => onSelect(p.ref)} aria-pressed={selectedRef === p.ref}
-              aria-label={`${p.ref} ${p.title}`}
-              className={`grid w-full grid-cols-[2.6rem_minmax(0,1fr)] gap-3 px-1 py-3 text-left hover:bg-ground ${selectedRef === p.ref ? "bg-ground" : ""}`}>
-              <span className="font-display text-[0.85rem] font-semibold">{p.ref}</span>
-              <span className="grid min-w-0 gap-1">
-                <span className="font-display font-semibold break-words">{p.title}</span>
-                <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.85rem] text-muted">
-                  {p.year && <span>{p.year}</span>}
-                  {card && en ? (
-                    <>
-                      <span>{designLabel(designKey(card), lang)}</span>
-                      {showsCardDirection(type, en) ? (
-                        <span className="inline-flex items-center gap-1.5"><Glyph direction={questionDirection(en)} lang={lang} />{DIRECTION_LABEL[lang][questionDirection(en)]}</span>
-                      ) : isNonQuantitative(en) && (
-                        <span data-theme-paper>{L(lang, "สรุปเป็นประเด็น ไม่มีทิศทางผล", "Themes, no direction")}</span>
-                      )}
-                      {showsRiskOfBias(type) && <span>{L(lang, "อคติ", "Bias")}: {ROB_LABEL[lang][card.risk_of_bias]}</span>}
-                      {otherComparisons(en) > 0 && (
-                        <span data-other-comparison>
-                          {otherComparisons(en) === en.outcomes.length
-                            ? L(lang, "การเปรียบเทียบอื่นทั้งหมด (ไม่นำไปสรุป)", "Other comparisons only (not used in the synthesis)")
-                            : L(lang, `มีการเปรียบเทียบอื่น ${otherComparisons(en)} ผล (ไม่นำไปสรุป)`, `${otherComparisons(en)} other comparison${otherComparisons(en) === 1 ? "" : "s"} (not used in the synthesis)`)}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-err">{L(lang, "อ่านไม่สำเร็จ", "Could not be read")}{p.error ? ` · ${p.error}` : ""}</span>
-                  )}
-                  {p.verification?.uncertain && <ReadingFlag lang={lang} />}
-                  {p.verification?.design_mismatch && <DesignMismatchFlag lang={lang} />}
-                </span>
-                {/* reports of the same trial (Plan 20 Task 10): one study, however many reports */}
-                {isRelatedReport(p) && (
-                  <span className="text-[0.85rem]" data-related-to={p.related_to}>
-                    <span className="font-display font-semibold">{relatedLabel(p.related_to!, lang)}</span>
-                    {relatedReasonText(p.related_reason, lang) && <span className="text-muted"> · {relatedReasonText(p.related_reason, lang)}</span>}
-                  </span>
-                )}
-                {!!p.related_reports?.length && (
-                  <span className="text-[0.85rem] text-muted" data-related-reports>
-                    {relatedReportsLabel(lang)}: {p.related_reports.join(", ")}
-                  </span>
-                )}
+    <button type="button" onClick={() => onSelect(p.ref)} aria-pressed={selected} aria-describedby={meta}
+      aria-label={L(lang, `${p.ref} ดูประโยคต้นฉบับ: ${p.title}`, `${p.ref} Show the source sentences: ${p.title}`)}
+      className={`grid min-h-11 w-full min-w-0 gap-1 rounded-sm px-1 py-1 text-left hover:bg-ground ${selected ? "bg-ground" : ""}`}>
+      <span id={meta} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.85rem] text-muted">
+        {card && en ? (
+          <>
+            <span>{designLabel(designKey(card), lang)}</span>
+            {showsCardDirection(type, en) ? (
+              <span className="inline-flex items-center gap-1.5"><Glyph direction={questionDirection(en)} lang={lang} />{DIRECTION_LABEL[lang][questionDirection(en)]}</span>
+            ) : isNonQuantitative(en) && (
+              <span data-theme-paper>{L(lang, "สรุปเป็นประเด็น ไม่มีทิศทางผล", "Themes, no direction")}</span>
+            )}
+            {showsRiskOfBias(type) && <span>{L(lang, "อคติ", "Bias")}: {ROB_LABEL[lang][card.risk_of_bias]}</span>}
+            {others > 0 && (
+              <span data-other-comparison>
+                {others === en.outcomes.length
+                  ? L(lang, "การเปรียบเทียบอื่นทั้งหมด (ไม่นำไปสรุป)", "Other comparisons only (not used in the synthesis)")
+                  : L(lang, `มีการเปรียบเทียบอื่น ${others} ผล (ไม่นำไปสรุป)`, `${others} other ${plural(others, "comparison", "comparisons")} (not used in the synthesis)`)}
               </span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+            )}
+          </>
+        ) : (
+          <span className="text-err">{L(lang, "อ่านไม่สำเร็จ", "Could not be read")}{p.error ? ` · ${p.error}` : ""}</span>
+        )}
+        {p.verification?.uncertain && <ReadingFlag lang={lang} />}
+        {p.verification?.design_mismatch && <DesignMismatchFlag lang={lang} />}
+      </span>
+      {/* reports of the same trial (Plan 20 Task 10): one study, however many reports */}
+      {isRelatedReport(p) && (
+        <span className="text-[0.85rem]" data-related-to={p.related_to}>
+          <span className="font-display font-semibold">{relatedLabel(p.related_to!, lang)}</span>
+          {relatedReasonText(p.related_reason, lang) && <span className="text-muted"> · {relatedReasonText(p.related_reason, lang)}</span>}
+        </span>
+      )}
+      {!!p.related_reports?.length && (
+        <span className="text-[0.85rem] text-muted" data-related-reports>
+          {relatedReportsLabel(lang)}: {p.related_reports.join(", ")}
+        </span>
+      )}
+      <span className="font-display text-[0.85rem] font-semibold text-primary underline underline-offset-2">
+        {L(lang, "ดูประโยคต้นฉบับ", "Show the source sentences")}
+      </span>
+    </button>
   );
 }

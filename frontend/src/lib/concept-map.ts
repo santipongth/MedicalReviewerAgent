@@ -3,6 +3,7 @@
 // or computes a number from a paper, and no mediator or causal path is inferred. Counts are counts of papers.
 import { designKey, designLabel, NON_QUANTITATIVE_DESIGNS } from "./charts-data";
 import { DESIGN_LABEL, DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "./i18n";
+import { plural } from "./plural";
 import { showsDirection, type ReviewTypeOrLegacy } from "./review-type";
 import type { Direction, Paper, ReviewResult } from "./types";
 
@@ -151,7 +152,7 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
     const children: MapNode[] = keys.map((key) => {
       const refs = [...buckets.get(key)!].sort(byRef);
       if (key === THEMES) {
-        const name = t(lang, `พบใน ${refs.length} การศึกษา`, `Found in ${refs.length} ${refs.length === 1 ? "study" : "studies"}`);
+        const name = t(lang, `พบใน ${refs.length} การศึกษา`, `Found in ${refs.length} ${plural(refs.length, "study", "studies")}`);
         return { id: `o${ri}:${key}`, kind: "group", label: `${name} · ${refsLabel(refs)}`, text: name, count: refs.length, refs, theme: true, children: [] };
       }
       const name = byDirection ? DIRECTION_LABEL[lang][key as Direction] : designLabel(key, lang);

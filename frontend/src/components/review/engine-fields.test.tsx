@@ -18,7 +18,7 @@ import { Report } from "./report";
 
 const section = (name: RegExp) => screen.getByRole("heading", { level: 2, name }).closest("section")!;
 const findings = () => within(section(/ผลการศึกษาที่สำคัญ|Key findings/)).getAllByRole("listitem").filter((li) => li.hasAttribute("data-key-finding"));
-const paperItem = (ref: string) => within(section(/งานวิจัยที่อ่าน|Papers read/)).getByRole("button", { name: new RegExp(`^${ref} `) });
+const paperItem = (ref: string) => within(section(/เอกสารอ้างอิง|References/)).getByRole("button", { name: new RegExp(`^${ref} `) });
 const rail = () => screen.getByRole("complementary", { name: /ต้นฉบับ|Source/ });
 
 describe("per-finding certainty", () => {

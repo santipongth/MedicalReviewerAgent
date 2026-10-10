@@ -258,7 +258,7 @@ test("report: the table of contents jumps to the papers and stays in view", asyn
   await page.goto(`/r/${RID}`);
   const toc = page.getByRole("navigation", { name: "สารบัญ" });
   await expect(page.getByRole("navigation", { name: "ในรายงานนี้" })).toBeHidden(); // the top nav is below 1280px only
-  await toc.getByRole("link", { name: "งานวิจัยที่อ่าน" }).click();
+  await toc.getByRole("link", { name: "อ้างอิง", exact: true }).click();
   await expect(page).toHaveURL(/#h-papers$/);
   await expect(page.locator("#h-papers")).toBeInViewport();
   await expect(toc.getByRole("link", { name: "คำตอบ" })).toBeInViewport();
@@ -283,7 +283,7 @@ test("report on a phone: the section nav sticks below the wrapped site header an
   const header = await page.locator("header").first().boundingBox();
   const navBox = await nav.boundingBox();
   expect(navBox!.y).toBeGreaterThanOrEqual(header!.y + header!.height - 1);
-  await nav.getByRole("link", { name: "งานวิจัยที่อ่าน" }).click();
+  await nav.getByRole("link", { name: "อ้างอิง", exact: true }).click();
   await expect(page).toHaveURL(/#h-papers$/);
   await expect(page.locator("#h-papers")).toBeInViewport();
   await expect.poll(() => uncovered("#h-papers", "top")).toBe(true);

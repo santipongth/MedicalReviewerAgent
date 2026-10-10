@@ -7,6 +7,7 @@ import type { StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
 import { glyphSize, haloWidth } from "@/lib/glyphs";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import type { MetaPoolView } from "@/lib/meta-view";
 import { wrapLabel } from "@/lib/text-wrap";
 import { L } from "../review/text";
@@ -154,7 +155,7 @@ export function MetaForestFigure({ pool, tokens, lang, onSelect }: { pool: MetaP
       </>}
       chart={
         <EChart option={option} height={Math.max(160, (pool.studies.length + 1) * 34 + 56)}
-          label={L(lang, `Forest plot ค่ารวมของ ${pool.k} งานวิจัย (${pool.outcome})`, `Pooled forest plot of ${pool.k} studies (${pool.outcome})`)}
+          label={L(lang, `Forest plot ค่ารวมของ ${pool.k} งานวิจัย (${pool.outcome})`, `Pooled forest plot of ${pool.k} ${plural(pool.k, "study", "studies")} (${pool.outcome})`)}
           onItemClick={(d) => { const x = d as { ref?: string; outcome?: string }; if (x?.ref) onSelect(x.ref, x.outcome); }} />
       }
       table={
@@ -229,8 +230,8 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
   const title = L(lang, "แผนที่งานวิจัย: ปี × ขนาดตัวอย่าง × ทิศทางผล", "Study map: year × sample size × direction");
   return (
     <Figure lang={lang} title={title}
-      caption={missing ? L(lang, `ไม่ได้แสดง ${missing} ฉบับที่ไม่มีปีหรือจำนวนผู้เข้าร่วมที่ตรวจผ่าน`, `${missing} studies without a year or a verified sample size are not shown`) : undefined}
-      chart={<EChart option={option} height={300} label={L(lang, `แผนที่ ${points.length} งานวิจัย`, `Map of ${points.length} studies`)}
+      caption={missing ? L(lang, `ไม่ได้แสดง ${missing} ฉบับที่ไม่มีปีหรือจำนวนผู้เข้าร่วมที่ตรวจผ่าน`, `${missing} ${plural(missing, "study without a year or a verified sample size is", "studies without a year or a verified sample size are")} not shown`) : undefined}
+      chart={<EChart option={option} height={300} label={L(lang, `แผนที่ ${points.length} งานวิจัย`, `Map of ${points.length} ${plural(points.length, "study", "studies")}`)}
         onItemClick={(d) => { const x = d as { ref?: string }; if (x?.ref) onSelect(x.ref); }} />}
       table={
         <table className="w-full min-w-[420px] border-collapse text-[0.88rem]">
@@ -517,7 +518,7 @@ export function CitationNetworkFigure({ net, tokens, lang, onSelect }: {
   const hasHollow = net.nodes.some((n) => !n.coverage);
   const { minWidth, height } = layout;
   const label = L(lang, `เครือข่ายการอ้างอิง ${net.total} งานวิจัย ${net.edges.length} เส้นเชื่อม`,
-    `Citation network of ${net.total} studies with ${net.edges.length} links`);
+    `Citation network of ${net.total} ${plural(net.total, "study", "studies")} with ${net.edges.length} ${plural(net.edges.length, "link", "links")}`);
   return (
     <Figure lang={lang}
       title={L(lang, "การอ้างอิงกันระหว่างงานในรีวิวนี้ ตามปีที่ตีพิมพ์", "Citations between the studies in this review, by year")}

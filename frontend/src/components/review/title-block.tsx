@@ -5,6 +5,7 @@ import { exportUrl } from "@/lib/api";
 import { META_POOL_COPY } from "@/lib/copy";
 import type { TermKey } from "@/lib/glossary";
 import type { Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import { reportDate, sourceNames } from "@/lib/report-view";
 import { REVIEW_TYPE_LABEL, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import { includedCounts } from "@/lib/trial-reports";
@@ -77,7 +78,7 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
         )}
         {date && <Meta label={L(lang, "ค้นเมื่อ", "Searched")}>{date}</Meta>}
         <Meta label={L(lang, "งานวิจัยที่รวม", "Studies included")}>
-          <span className="tabular-nums">{included}</span> {L(lang, "ฉบับ", included === 1 ? "study" : "studies")}
+          <span className="tabular-nums">{included}</span> {L(lang, "ฉบับ", plural(included, "study", "studies"))}
           {unread > 0 && (
             <span className="text-[0.82rem] text-muted" data-unread>
               {" "}{L(lang, `(อ่านไม่สำเร็จอีก ${unread})`, `(${unread} more could not be read)`)}
@@ -86,14 +87,14 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
           {related > 0 && (
             <span className="block text-[0.82rem] text-muted" data-related-count>
               {L(lang, `รวมรายงานเพิ่มเติมของการทดลองเดียวกันอีก ${related} ฉบับ (ไม่นับซ้ำ)`,
-                `plus ${related} further ${related === 1 ? "report" : "reports"} of the same trial (not counted again)`)}
+                `plus ${related} further ${plural(related, "report", "reports")} of the same trial (not counted again)`)}
             </span>
           )}
         </Meta>
         {(sources.length > 0 || queries > 0) && (
           <Meta label={L(lang, "แหล่งข้อมูล", "Sources")}>
             {sources.length ? sources.join(", ") : (
-              <><span className="tabular-nums">{queries}</span> {L(lang, "คำค้น (ไม่ได้บันทึกแหล่งข้อมูลแยก)", queries === 1 ? "search query (sources not recorded)" : "search queries (sources not recorded)")}</>
+              <><span className="tabular-nums">{queries}</span> {L(lang, "คำค้น (ไม่ได้บันทึกแหล่งข้อมูลแยก)", `${plural(queries, "search query", "search queries")} (sources not recorded)`)}</>
             )}
           </Meta>
         )}

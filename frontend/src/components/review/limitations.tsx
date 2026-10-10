@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import type { Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import { extractionReading, modelsUsed } from "@/lib/report-view";
 import { isGraded, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ReviewResult } from "@/lib/types";
@@ -35,12 +36,12 @@ function capText(result: ReviewResult, lang: Lang): ReactNode {
       {screened != null && s.selected != null && (th ? " · " : "; ")}
       {s.selected != null && !related && (th
         ? <>วิเคราะห์ <N>{s.selected}</N> ฉบับ{lim && <> (สูงสุด <N>{lim.max_papers}</N>)</>}</>
-        : <><N>{s.selected}</N> {s.selected === 1 ? "study was" : "studies were"} analysed{lim && <> (at most <N>{lim.max_papers}</N>)</>}</>)}
+        : <><N>{s.selected}</N> {plural(s.selected, "study was", "studies were")} analysed{lim && <> (at most <N>{lim.max_papers}</N>)</>}</>)}
       {/* `selected` counts reports; with further reports of a trial (Plan 20 Task 10) the studies are the difference,
           as in the PRISMA flow (subtracted once, from the stats) */}
       {s.selected != null && related > 0 && (th
         ? <>วิเคราะห์ <N>{s.selected}</N> ฉบับ (<N>{Math.max(0, s.selected - related)}</N> การศึกษา รายงานเพิ่มเติมของการทดลองเดียวกัน <N>{related}</N> ฉบับไม่นับซ้ำ){lim && <> (สูงสุด <N>{lim.max_papers}</N>)</>}</>
-        : <><N>{s.selected}</N> records were analysed (<N>{Math.max(0, s.selected - related)}</N> {s.selected - related === 1 ? "study" : "studies"}; <N>{related}</N> further {related === 1 ? "report" : "reports"} of the same trial not counted again){lim && <> (at most <N>{lim.max_papers}</N>)</>}</>)}
+        : <><N>{s.selected}</N> {plural(s.selected, "record was", "records were")} analysed (<N>{Math.max(0, s.selected - related)}</N> {plural(s.selected - related, "study", "studies")}; <N>{related}</N> further {plural(related, "report", "reports")} of the same trial not counted again){lim && <> (at most <N>{lim.max_papers}</N>)</>}</>)}
     </>
   );
 }
@@ -51,10 +52,10 @@ function readingText(result: ReviewResult, lang: Lang): ReactNode {
   switch (r.mode) {
     case "two_models":
       return <>{L(lang, "อ่านแต่ละงานสองครั้งด้วยสองโมเดล", "Each study was read twice by two models")} (<Code>{r.model ?? "?"}</Code>, <Code>{r.second ?? "?"}</Code>){" "}
-        {L(lang, "งานที่อ่านต่างกันมีธงกำกับ", "and studies read differently are flagged")}{uncertain > 0 && <> (<N>{uncertain}</N> {L(lang, "ฉบับ", uncertain === 1 ? "study" : "studies")})</>}</>;
+        {L(lang, "งานที่อ่านต่างกันมีธงกำกับ", "and studies read differently are flagged")}{uncertain > 0 && <> (<N>{uncertain}</N> {L(lang, "ฉบับ", plural(uncertain, "study", "studies"))})</>}</>;
     case "same_model":
       return <>{L(lang, "อ่านแต่ละงานสองครั้งด้วยโมเดลเดียวกัน", "Each study was read twice by the same model")} (<Code>{r.model ?? "?"}</Code>){" "}
-        {L(lang, "การอ่านที่ตรงกันจึงไม่ใช่การยืนยันโดยอิสระ", "so agreeing readings are not an independent check")}{uncertain > 0 && <>; {L(lang, "อ่านไม่ตรงกัน", "readings differed for")} <N>{uncertain}</N> {L(lang, "ฉบับ", uncertain === 1 ? "study" : "studies")}</>}</>;
+        {L(lang, "การอ่านที่ตรงกันจึงไม่ใช่การยืนยันโดยอิสระ", "so agreeing readings are not an independent check")}{uncertain > 0 && <>; {L(lang, "อ่านไม่ตรงกัน", "readings differed for")} <N>{uncertain}</N> {L(lang, "ฉบับ", plural(uncertain, "study", "studies"))}</>}</>;
     case "single":
       return L(lang, "แต่ละงานอ่านด้วยโมเดลเดียวครั้งเดียว ไม่มีการอ่านซ้ำ", "Each study was read once by one model; there was no second reading");
     default:

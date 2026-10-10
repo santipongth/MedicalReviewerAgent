@@ -57,7 +57,7 @@ describe("(a) qualitative and mixed-methods studies never show a direction", () 
 
   it("paper list, literature matrix and rail show no glyph or direction label for a theme paper", async () => {
     render(<Report review={qualitativeReviewFixture} />);
-    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     const p1 = within(papers).getByRole("button", { name: /^P1 / });
     expect(glyphsIn(p1)).toHaveLength(0);
     expect(p1).toHaveTextContent("สรุปเป็นประเด็น ไม่มีทิศทางผล");
@@ -98,7 +98,7 @@ describe("(c) the rail says a number was not extracted unless the paper was flag
 
   it("a quantitative outcome with no extracted number and no flag", async () => {
     render(<Report review={qualitativeReviewFixture} />);
-    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     await userEvent.click(within(papers).getByRole("button", { name: /^P4 / }));
     expect(rail().getByText("ไม่ได้สกัดตัวเลข (ดูประโยคต้นฉบับ)")).toBeInTheDocument();
     expect(rail().queryByText(/ไม่ได้รายงานตัวเลข/)).toBeNull();
@@ -198,7 +198,7 @@ describe("(e) a meta-analysis that pooled nothing says so", () => {
 describe("(g) other comparisons and design mismatch are labelled where readers look", () => {
   it("paper list, literature matrix and rail", async () => {
     render(<Report review={qualitativeReviewFixture} />);
-    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     const p3 = within(papers).getByRole("button", { name: /^P3 / });
     expect(p3).toHaveTextContent("มีการเปรียบเทียบอื่น 1 ผล (ไม่นำไปสรุป)");
     expect(p3).toHaveTextContent("ชนิดงานวิจัยไม่ตรงเกณฑ์ที่เลือก");
@@ -217,7 +217,7 @@ describe("(g) other comparisons and design mismatch are labelled where readers l
     const allOther = { ...p.card!, outcomes: p.card!.outcomes.map((o) => ({ ...o, matches_question: false })) };
     const review = { ...qualitativeReviewFixture, result: { ...qualitativeReviewFixture.result!, papers: [{ ...p, card: allOther, card_en: allOther }] } };
     render(<Report review={review} />);
-    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     const item = within(papers).getByRole("button", { name: /^P3 / });
     expect(item).toHaveTextContent("การเปรียบเทียบอื่นทั้งหมด (ไม่นำไปสรุป)");
     expect(within(item).getByRole("img", { name: "ไม่ชัด" })).toBeInTheDocument();

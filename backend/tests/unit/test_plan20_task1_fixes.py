@@ -287,7 +287,7 @@ def test_markdown_has_a_methods_block():  # Task 1 review finding 9, exported no
     r["methods"] = {**(r.get("methods") or {}), "searched_at": "2026-10-10T11:00:00+00:00",
                     "sources": {"pubmed": 80, "europe pmc": 200}}
     md = render_markdown(_review(r))
-    block = md[md.index("## Methods"):md.index("## Papers")]
+    block = md[md.index("## Methods"):md.index("## References")]
     assert "- **Searched:** 2026-10-10T11:00:00+00:00" in block
     assert "- **Sources (records before deduplication):** europe pmc 200, pubmed 80" in block
     assert "`metformin colorectal cancer`" in block and "screener openrouter:qwen" in block

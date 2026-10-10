@@ -1,6 +1,7 @@
 "use client";
 
 import type { Lang } from "@/lib/i18n";
+import { plural } from "@/lib/plural";
 import type { EffectState, FindingView, PooledText } from "@/lib/report-view";
 import { ComputedNumber, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
@@ -14,7 +15,7 @@ export function StudyCount({ k, lang, themes = false }: { k: number; lang: Lang;
   if (themes) return <span className="font-display">{themeFoundText(k, lang)}</span>;
   return (
     <span className="font-display whitespace-nowrap">
-      <span className="tabular-nums">{k}</span> {L(lang, "การศึกษา", k === 1 ? "study" : "studies")}
+      <span className="tabular-nums">{k}</span> {L(lang, "การศึกษา", plural(k, "study", "studies"))}
     </span>
   );
 }
