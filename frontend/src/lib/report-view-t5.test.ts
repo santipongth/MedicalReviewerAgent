@@ -59,6 +59,11 @@ describe("forestPanels", () => {
       group: "งานเชิงสังเกต", k: 3, estText: "0.96", ciText: "0.78–1.17", i2Text: "81%", tau2Text: "0.025", qText: "10.61", df: 2, pText: "0.005",
     })]);
     expect(primary.pools[0].est).toBeCloseTo(0.9566, 3);
+    // fix round 1: each pool lists exactly the studies it pooled, and the primary rows are grouped by it
+    expect(primary.pools[0].refs).toEqual(["P3", "P4", "P7"]);
+    expect(primary.groups.map((g) => [g.pool?.group ?? null, g.rows.map((r) => r.ref)])).toEqual([
+      ["งานเชิงสังเกต", ["P3", "P4", "P7"]], [null, ["P1", "P2"]],
+    ]);
     const safety = panels.find((p) => p.outcomeKey === "Safety outcome")!;
     expect(safety.primary).toEqual([]);
     expect(safety.reviews.map((r) => r.ref)).toEqual(["P5"]);
@@ -79,6 +84,20 @@ describe("forestPanels", () => {
     const bad = [paper("P1", { effect_measure: "HR", effect_value: 0, ci_lower: 0, ci_upper: 1 }),
       paper("P2", { effect_measure: "HR", effect_value: 0.9, matches_question: false })];
     expect(forestPanels(ctxFor([rowOf("Weight", ["P1", "P2"])], bad)).panels).toEqual([]);
+  });
+
+  it("without pools the primary rows are one ungrouped block", () => {
+    const [p] = forestPanels(ctxOf(slrP20ReviewFixture)).panels;
+    expect(p.groups).toEqual([{ pool: null, rows: p.primary }]);
+  });
+
+  it("a blanked effect of another named measure never sits under this panel's header (fix round 1)", () => {
+    const hr = paper("P1", { effect_measure: "HR", effect_value: 0.8, ci_lower: 0.7, ci_upper: 0.9 });
+    const or = paper("P2", { effect_measure: "OR", effect_value: null });
+    or.verification = { ...or.verification!, unverified: [{ field: "effect", outcome: "Weight" }] };
+    const { panels, unplaced } = forestPanels(ctxFor([rowOf("Weight", ["P1", "P2"])], [hr, or]));
+    expect(panels[0].blanked).toEqual([]);
+    expect(unplaced).toEqual([{ ref: "P2", outcome: "Weight" }]);
   });
 
   it("a blanked effect whose outcome has no panel is listed as left out", () => {

@@ -1,8 +1,9 @@
 // Chart data built only from verified values. Nothing here estimates, converts or recomputes a number from a paper.
 import { surnameOf } from "./author";
-import { asReported, ciLabel, effectLabel, isBlankedEffect, isBlankedSampleSize, isVerifiedEffect } from "./evidence";
+import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, isVerifiedEffect } from "./evidence";
 import { DESIGN_LABEL, type Lang } from "./i18n";
-import type { DesignCategory, Direction, ExclusionReason, Paper, PaperCard, RiskOfBias } from "./types";
+import { clampLabel } from "./text-wrap";
+import type { DesignCategory, Direction, ExclusionReason, OutcomeResult, Paper, PaperCard, RiskOfBias } from "./types";
 
 /** The design a paper is filtered by: its fixed category, or (results stored before categories) its free text. */
 export function designKey(card: PaperCard): string {
@@ -135,7 +136,8 @@ function niceStep(raw: number): number {
  * its edge. Proportions: a fixed 0–100% axis.
  */
 export function niceAxis(values: number[], kind: AxisKind): Axis {
-  if (kind === "proportion") return { kind, min: 0, max: 100, ticks: [0, 25, 50, 75, 100], nullValue: null };
+  // inset by 2 points so a marker at 0% or 100% stays inside the frame
+  if (kind === "proportion") return { kind, min: -2, max: 102, ticks: [0, 25, 50, 75, 100], nullValue: null };
   const nullValue = kind === "ratio" ? 1 : 0;
   const vs = values.filter((v) => Number.isFinite(v) && (kind !== "ratio" || v > 0)).concat(nullValue);
   const lo = Math.min(...vs);
@@ -178,22 +180,22 @@ export function tickText(v: number): string {
 }
 
 /**
- * Which side of the null line favours the intervention, read from the results' own directions: "left" when every
- * supporting result sits left of the null and every harmful one right (or the mirror for "right"); null when they
- * disagree or none has a direction (the chart then says only lower / higher).
+ * The axis's two sides in measure terms only (Plan 20 Task 5 fix round 1): "< 1 · lower with <I>" and "> 1 · higher
+ * with <I>" for ratios (0 for differences). Never "favours": the result does not say whether lower is better (a harm or
+ * exposure question reads the other way), so the label claims nothing about benefit. Correlations have no arms: null.
  */
-export function favoursSide(points: { value: number; direction: Direction }[], nullValue: number): "left" | "right" | null {
-  let left = 0;
-  let right = 0;
-  for (const p of points) {
-    if (p.value === nullValue) continue;
-    const below = p.value < nullValue;
-    if (p.direction === "positive") { if (below) left += 1; else right += 1; }
-    else if (p.direction === "negative") { if (below) right += 1; else left += 1; }
+export function armLabels(family: Family, intervention: string | null | undefined, lang: Lang): [string, string] | null {
+  if (family === "correlation") return null;
+  const at = family === "ratio" ? "1" : "0";
+  const raw = (intervention ?? "").trim();
+  const name = raw ? clampLabel(raw, 28, 1).text : null;
+  if (lang === "en") {
+    const arm = name ? `with ${name}` : "in the treated/exposed group";
+    return [`< ${at} · lower ${arm}`, `> ${at} · higher ${arm}`];
   }
-  if (left && !right) return "left";
-  if (right && !left) return "right";
-  return null;
+  // Thai sets a space before a Latin word; a Thai name joins the word before it
+  const arm = name ? `กลุ่ม${/^[฀-๿]/.test(name) ? "" : " "}${name}` : "กลุ่มที่ได้รับการรักษา/สัมผัส";
+  return [`< ${at} · ต่ำกว่าใน${arm}`, `> ${at} · สูงกว่าใน${arm}`];
 }
 
 /** A review about themes: qualitative or mixed-methods studies are at least half of the papers read. */
@@ -216,16 +218,46 @@ export function themesReview(papers: Paper[]): boolean {
 export type DtaMetric = "sens" | "spec" | "auc";
 
 const DTA_PATTERNS: Record<DtaMetric, RegExp> = {
-  sens: /\bsensitivity\b|\brecall\b|\btrue[- ]positive rate\b/i,
+  sens: /\bsensitivity\b|\btrue[- ]positive rate\b/i,
   spec: /\bspecificity\b|\btrue[- ]negative rate\b/i,
   auc: /\bAUC\b|\bAUROC\b|\barea under\b|\bc-statistic\b/i,
 };
+/** A sensitivity of something else (insulin, contrast, salt …) is a physiological measure, not test accuracy. */
+const QUALIFIED = /\b(insulin|contrast|salt|baroreflex|leptin|glucose|chemo|radio|drug|antibiotic|antimicrobial|heat|cold|light|pain|noise|reward|anxiety|interoceptive|visceral|skin|tissue|cultural|gluten|food|pressure)[- ]sensitivity/i;
 
-/** The diagnostic-accuracy metric an outcome name reports, or null (none, a combined name, a sensitivity analysis). */
+/** The diagnostic-accuracy metric an outcome name names, or null (none, a combined name, a sensitivity analysis, a qualified sensitivity). */
 export function dtaMetric(outcome: string): DtaMetric | null {
-  if (/sensitivity analys/i.test(outcome)) return null;
+  if (/sensitivity analys/i.test(outcome) || QUALIFIED.test(outcome)) return null;
   const hits = (Object.keys(DTA_PATTERNS) as DtaMetric[]).filter((m) => DTA_PATTERNS[m].test(outcome));
   return hits.length === 1 ? hits[0] : null;
+}
+
+/** The DTA word the paper writes last before `at` in its quote (its own label for the number), or null. */
+function quoteLabel(quote: string, at: number): DtaMetric | null {
+  const before = quote.slice(Math.max(0, at - 60), at);
+  let best: { m: DtaMetric; i: number } | null = null;
+  for (const m of Object.keys(DTA_PATTERNS) as DtaMetric[]) {
+    const re = new RegExp(DTA_PATTERNS[m].source, "gi");
+    for (const hit of before.matchAll(re)) if (!best || (hit.index ?? 0) > best.i) best = { m, i: hit.index ?? 0 };
+  }
+  if (!best) return null;
+  const tail = before.slice(Math.max(0, best.i - 20));
+  return QUALIFIED.test(tail) || /sensitivity analys/i.test(before.slice(best.i)) ? null : best.m;
+}
+
+/**
+ * The DTA metric of one outcome (Plan 20 Task 5 fix round 1). The result has no metric field: the engine stores test
+ * accuracy as `effect_measure: "other"` (docs/api.md), so that measure is required (an HR, MD … or "none" never is);
+ * the metric must then be named by the outcome and, for a number, by the paper's own label right before the number in
+ * its quote, and the two must agree.
+ */
+export function dtaMetricOf(o: OutcomeResult): DtaMetric | null {
+  if ((o.effect_measure ?? "").trim().toLowerCase() !== "other") return null;
+  const named = dtaMetric(o.outcome);
+  if (!named || o.effect_value == null) return named && o.effect_value == null ? named : null;
+  const hit = findReported(o.effect_value, o.evidence_quote, { lo: o.ci_lower, hi: o.ci_upper });
+  if (!hit || !o.evidence_quote) return null;
+  return quoteLabel(o.evidence_quote, hit.index) === named ? named : null;
 }
 
 export type DtaValue =
@@ -263,10 +295,12 @@ export function dtaData(papers: Paper[], lang: Lang): DtaData | null {
     if (!en || !shown || isNonQuantitative(en)) continue;
     const values: Record<DtaMetric, DtaValue[]> = { sens: [], spec: [], auc: [] };
     en.outcomes.forEach((o, i) => {
-      const metric = dtaMetric(o.outcome);
+      // a blanked value has no trusted number to locate in its quote: the measure and the name decide (it shows as a gap)
+      const blanked = isBlankedEffect(p, o.outcome);
+      const metric = blanked ? dtaMetricOf({ ...o, effect_value: null }) : dtaMetricOf(o);
       if (!metric || o.matches_question === false) return;
       const outcome = shown.outcomes[i]?.outcome ?? o.outcome;
-      if (isBlankedEffect(p, o.outcome)) {
+      if (blanked) {
         values[metric].push({ kind: "blanked", outcomeKey: o.outcome, outcome });
         return;
       }

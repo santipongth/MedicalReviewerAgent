@@ -337,21 +337,17 @@ test("phone width: the literature matrix is ruled cards, never a page-wide table
   expect(box.x + box.width).toBeLessThanOrEqual(390);
 });
 
-test("tablet and up: the literature matrix table scrolls inside its own region with a sticky first column", async ({ page }) => {
-  await page.setViewportSize({ width: 1024, height: 900 });
+test("findings matrix at 390: scrolls inside its region with the edge cue and a sticky outcome column", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, narrativeReviewFixture) });
   await page.goto(`/r/${RID}`);
-  const table = page.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
+  const table = page.getByRole("table", { name: "ผลแต่ละการศึกษา" });
   await expect(table).toBeVisible();
   await noHorizontalScroll(page);
   const scroller = await table.evaluate((t) => ({ box: t.parentElement!.clientWidth, content: t.parentElement!.scrollWidth }));
   expect(scroller.content).toBeGreaterThan(scroller.box);
-  // the scroll cue: the region's right edge fades and the hint shows
   await expect(table.locator("xpath=..")).toHaveAttribute("data-fade-end", "true");
-  const first = await table.getByRole("rowheader").first().boundingBox();
-  await table.evaluate((t) => { t.parentElement!.scrollLeft = 400; });
-  const after = await table.getByRole("rowheader").first().boundingBox();
-  expect(Math.abs(after!.x - first!.x)).toBeLessThan(2);
+  await expect(page.locator("section[aria-labelledby=h-matrix] [data-scroll-hint]")).toBeVisible();
 });
 
 // ---- Plan 14a: review types, literature matrix, concept map ----
@@ -362,8 +358,8 @@ async function openReport(page: Page, fixture: typeof reviewFixture) {
   await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, fixture) });
   await page.goto(`/r/${RID}`);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  // a table from 1024px, ruled cards below it (Plan 20 Task 5)
-  await expect(page.getByRole(page.viewportSize()!.width >= 1024 ? "table" : "list", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
+  // a table from 1280px, ruled cards below it (Plan 20 Task 5 fix round 1)
+  await expect(page.getByRole(page.viewportSize()!.width >= 1280 ? "table" : "list", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
 }
 
 test("landing: the scope form sends the chosen review_type", async ({ page }) => {

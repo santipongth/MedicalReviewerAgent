@@ -255,13 +255,16 @@ export function ComparisonMatrix({ rows, refs: allRefs, lang, onSelect, selected
                 const outcome = outcomeOf(row, ref);
                 const isSel = selected?.ref === ref && selected.outcome === outcome;
                 const theme = isThemeCell(cell);
+                const charted = isCharted(cell.finding);
+                // a charted (scoping "✓") cell says only that the study covers the aspect: no direction word or glyph
+                const label = charted ? `${ref}: ${row.outcome} — ${findingText(cell.finding, lang)}`
+                  : `${ref}: ${row.outcome} — ${theme ? THEME_CELL_LABEL[lang] : DIRECTION_LABEL[lang][cell.direction]}. ${findingText(cell.finding, lang)}`;
                 return (
                   <td key={ref} className="h-9 text-center">
                     <button type="button" onClick={() => onSelect(ref, outcome)} aria-pressed={isSel}
-                      aria-label={`${ref}: ${row.outcome} — ${theme ? THEME_CELL_LABEL[lang] : DIRECTION_LABEL[lang][cell.direction]}. ${findingText(cell.finding, lang)}`}
-                      title={findingText(cell.finding, lang)}
+                      aria-label={label} title={findingText(cell.finding, lang)}
                       className={`inline-grid min-h-11 min-w-11 place-items-center rounded-sm border md:h-7 md:min-h-0 md:min-w-8 ${theme ? "md:px-0.5" : "md:w-8"} ${isSel ? "border-ink bg-rail" : "border-transparent hover:border-ink"}`}>
-                      {theme ? <ThemeMark lang={lang} /> : <Glyph direction={cell.direction} lang={lang} />}
+                      {charted ? <CheckMark /> : theme ? <ThemeMark lang={lang} /> : <Glyph direction={cell.direction} lang={lang} />}
                     </button>
                   </td>
                 );
@@ -280,6 +283,15 @@ export function ComparisonMatrix({ rows, refs: allRefs, lang, onSelect, selected
 /** Scoping cells say only that the paper covers the aspect ("✓", Plan 20 Task 10): read as words, never a bare mark. */
 export function isCharted(finding: string | null | undefined): boolean {
   return (finding ?? "").trim() === "✓";
+}
+
+/** A neutral check mark in `ink` (no direction colour or shape); the button's label carries the words. */
+function CheckMark() {
+  return (
+    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" data-charted-mark>
+      <path d="M2.5 7.5l3 3 6-7" fill="none" stroke="var(--ink)" strokeWidth="2" strokeLinecap="square" />
+    </svg>
+  );
 }
 
 function findingText(finding: string, lang: Lang): string {

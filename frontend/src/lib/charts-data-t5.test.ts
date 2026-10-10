@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { narrativeP20ReviewFixture, resultFixture } from "@/test/fixtures";
 import {
-  axisFraction, dtaData, dtaMetric, favoursSide, measureFamily, niceAxis, studyLabel, themesReview, tickText,
+  armLabels, axisFraction, dtaData, dtaMetric, dtaMetricOf, measureFamily, niceAxis, studyLabel, themesReview, tickText,
 } from "./charts-data";
 import type { OutcomeResult, Paper } from "./types";
 
@@ -43,7 +43,8 @@ describe("niceAxis", () => {
   });
 
   it("proportion: a fixed 0–100% axis without a null line", () => {
-    expect(niceAxis([79, 87], "proportion")).toMatchObject({ min: 0, max: 100, ticks: [0, 25, 50, 75, 100], nullValue: null });
+    // a 2-point inset on each side keeps a marker at 0% or 100% inside the frame
+    expect(niceAxis([79, 87], "proportion")).toMatchObject({ min: -2, max: 102, ticks: [0, 25, 50, 75, 100], nullValue: null });
   });
 });
 
@@ -62,16 +63,31 @@ describe("axisFraction and tickText", () => {
   });
 });
 
-describe("favoursSide", () => {
-  it("left favours the intervention when supporting results sit left of the null and harms right", () => {
-    expect(favoursSide([{ value: 0.8, direction: "positive" }, { value: 1.3, direction: "negative" }, { value: 1, direction: "positive" }], 1)).toBe("left");
-    expect(favoursSide([{ value: 1.4, direction: "positive" }, { value: 0.7, direction: "negative" }], 1)).toBe("right");
+describe("armLabels (fix round 1: measure semantics only, never 'favours')", () => {
+  it("ratios: < 1 lower and > 1 higher in the intervention group, with a space before a Latin name", () => {
+    expect(armLabels("ratio", "metformin", "th")).toEqual(["< 1 · ต่ำกว่าในกลุ่ม metformin", "> 1 · สูงกว่าในกลุ่ม metformin"]);
+    expect(armLabels("ratio", "เมตฟอร์มิน", "th")).toEqual(["< 1 · ต่ำกว่าในกลุ่มเมตฟอร์มิน", "> 1 · สูงกว่าในกลุ่มเมตฟอร์มิน"]);
+    expect(armLabels("ratio", "metformin", "en")).toEqual(["< 1 · lower with metformin", "> 1 · higher with metformin"]);
   });
 
-  it("unknown when the results disagree or none has a direction", () => {
-    expect(favoursSide([{ value: 0.8, direction: "positive" }, { value: 1.2, direction: "positive" }], 1)).toBeNull();
-    expect(favoursSide([{ value: 0.8, direction: "null" }, { value: 1.2, direction: "unclear" }], 1)).toBeNull();
-    expect(favoursSide([], 0)).toBeNull();
+  it("differences use 0; without an intervention name the treated/exposed group; correlations get none", () => {
+    expect(armLabels("difference", null, "th")).toEqual(["< 0 · ต่ำกว่าในกลุ่มที่ได้รับการรักษา/สัมผัส", "> 0 · สูงกว่าในกลุ่มที่ได้รับการรักษา/สัมผัส"]);
+    expect(armLabels("difference", "  ", "en")).toEqual(["< 0 · lower in the treated/exposed group", "> 0 · higher in the treated/exposed group"]);
+    expect(armLabels("correlation", "x", "en")).toBeNull();
+  });
+
+  it("a harm/exposure question reads the same: the label never claims which side is better", () => {
+    // "do PPIs increase fracture risk?": supporting studies have OR > 1; the axis still only says higher/lower with PPI
+    const [left, right] = armLabels("ratio", "proton pump inhibitors", "en")!;
+    expect(right).toBe("> 1 · higher with proton pump inhibitors");
+    expect(`${left} ${right}`).not.toMatch(/favou?rs?|better|worse|benefit/i);
+    expect(armLabels("ratio", "ยาลดกรด", "th")!.join(" ")).not.toMatch(/เอื้อต่อ|ดีกว่า|แย่กว่า/);
+  });
+
+  it("long names are cut on a word boundary", () => {
+    const [left] = armLabels("ratio", "metformin extended release once daily with lifestyle advice", "en")!;
+    expect(left.endsWith("…")).toBe(true);
+    expect(left.length).toBeLessThan(50);
   });
 });
 
@@ -98,6 +114,44 @@ describe("dtaMetric", () => {
     expect(dtaMetric("Sensitivity and specificity")).toBeNull();
     expect(dtaMetric("Sensitivity analysis of mortality")).toBeNull();
     expect(dtaMetric("Positive predictive value (PPV)")).toBeNull();
+    // fix round 1: no bare "recall", no qualified sensitivity
+    expect(dtaMetric("Symptom recall")).toBeNull();
+    expect(dtaMetric("Recall bias")).toBeNull();
+    expect(dtaMetric("Insulin sensitivity (HOMA)")).toBeNull();
+    expect(dtaMetric("Contrast sensitivity")).toBeNull();
+  });
+});
+
+describe("dtaMetricOf (fix round 1: the card's measure field and the paper's own label decide, not the name alone)", () => {
+  it("a DTA value is stored with measure 'other' and labelled so in its quote, right before the number", () => {
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 97.4 }))).toBe("sens");
+    expect(dtaMetricOf(out({ outcome: "Specificity", effect_value: 86.5 }))).toBe("spec");
+    expect(dtaMetricOf(out({ outcome: "AUC", effect_value: 0.93 }))).toBe("auc");
+  });
+
+  it("an effect measure (MD, HR …) or 'none' is never a DTA value, whatever the name", () => {
+    expect(dtaMetricOf(out({ outcome: "Insulin sensitivity", effect_measure: "MD", effect_value: 0.45,
+      evidence_quote: "Insulin sensitivity improved (MD 0.45, 95% CI 0.2-0.7)." }))).toBeNull();
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_measure: "MD", effect_value: 97.4 }))).toBeNull();
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_measure: "none", effect_value: 97.4 }))).toBeNull();
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_measure: null, effect_value: 97.4 }))).toBeNull();
+  });
+
+  it("'recall' and qualified sensitivities are not DTA even with measure 'other'", () => {
+    expect(dtaMetricOf(out({ outcome: "Recall", effect_value: 62, evidence_quote: "Recall was 62% at one year." }))).toBeNull();
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 0.45,
+      evidence_quote: "Insulin sensitivity rose to 0.45 after training." }))).toBeNull();
+  });
+
+  it("the quote's label must agree with the name (a 'sensitivity' whose number the paper calls specificity is not trusted)", () => {
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 86.5 }))).toBeNull();
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 97.4, evidence_quote: "The test was positive in 97.4% of cases." }))).toBeNull();
+  });
+
+  it("dtaData leaves a non-DTA 'insulin sensitivity' MD out entirely", () => {
+    const p = dtaPaper("P9", [out({ outcome: "Insulin sensitivity", effect_measure: "MD", effect_value: 0.45, ci_lower: 0.2, ci_upper: 0.7,
+      evidence_quote: "Insulin sensitivity improved (MD 0.45, 95% CI 0.2-0.7)." })]);
+    expect(dtaData([p], "en")).toBeNull();
   });
 });
 

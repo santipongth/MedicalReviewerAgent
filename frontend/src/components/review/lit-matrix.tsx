@@ -6,20 +6,22 @@ import { isNonQuantitative } from "@/lib/charts-data";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import { SOURCE_ABBR, SOURCE_LABEL } from "@/lib/citation-network";
 import {
-  litColumnLabel, litColumns, litFramework, litRows, outcomesClamped, paginate, type LitColumn, type LitFramework, type LitRow,
+  litColumnLabel, litColumns, litFramework, litRows, outcomesClamped, paginate, showsCitedBy, type LitColumn, type LitFramework, type LitRow,
 } from "@/lib/lit-matrix";
-import type { ReviewTypeOrLegacy } from "@/lib/review-type";
+import { showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { Citations, Paper, QuestionBlock } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { SectionHeading } from "./report-nav";
 import { ReadingFlag } from "./report-parts";
 import { ScrollRegion } from "./scroll-region";
-import { useWide } from "./stage/use-wide";
+import { useMinWidth } from "./use-min-width";
 import { L } from "./text";
 
 /** Rows per page (Plan 20 Task 5): a long matrix is paged, never a 10,000px wall. */
 export const LIT_PAGE_SIZE = 15;
+/** The table needs the reading column of the 1280px layout; narrower screens get ruled cards. */
+export const LIT_TABLE_MIN_WIDTH = 1280;
 
 const CLAMP = "line-clamp-3 break-words";
 const TD = "px-2.5 py-2 align-top";
@@ -99,9 +101,8 @@ function Outcomes({ row, lang, onSelect }: { row: LitRow; lang: Lang; onSelect: 
   );
 }
 
-function Cell({ col, row, lang, onSelect }: { col: LitColumn; row: LitRow; lang: Lang; onSelect: (ref: string) => void }) {
+function Cell({ col, row, lang, onSelect, risk }: { col: LitColumn; row: LitRow; lang: Lang; onSelect: (ref: string) => void; risk: boolean }) {
   switch (col) {
-    case "year": return <span className="font-display tabular-nums">{row.year ?? "–"}</span>;
     case "design":
       return (
         <span className="grid gap-1">
@@ -125,60 +126,57 @@ function Cell({ col, row, lang, onSelect }: { col: LitColumn; row: LitRow; lang:
       );
     case "outcomes": return <Outcomes row={row} lang={lang} onSelect={onSelect} />;
     case "direction":
-      return row.direction ? (
+      return (
         <span className="grid gap-1">
-          <span className="inline-flex items-center gap-1.5"><Glyph direction={row.direction} lang={lang} />{DIRECTION_LABEL[lang][row.direction]}</span>
+          {row.direction ? (
+            <span className="inline-flex items-center gap-1.5"><Glyph direction={row.direction} lang={lang} />{DIRECTION_LABEL[lang][row.direction]}</span>
+          ) : row.theme ? <span className="text-muted" data-theme-paper>{L(lang, "ประเด็น ไม่มีทิศทางผล", "Themes, no direction")}</span> : null}
           {row.uncertain && <ReadingFlag lang={lang} />}
+          {/* risk of bias sits under the direction (fix round 1: six columns fit the reading column) */}
+          {risk && <span className="text-[0.8rem] text-muted" data-risk>{L(lang, "ความเสี่ยงอคติ: ", "Risk of bias: ")}{row.risk ? ROB_LABEL[lang][row.risk] : "–"}</span>}
         </span>
-      ) : row.theme ? (
-        <span className="grid gap-1">
-          <span className="text-muted" data-theme-paper>{L(lang, "ประเด็น ไม่มีทิศทางผล", "Themes, no direction")}</span>
-          {row.uncertain && <ReadingFlag lang={lang} />}
-        </span>
-      ) : row.uncertain ? <ReadingFlag lang={lang} /> : null;
+      );
     case "risk": return <>{row.risk ? ROB_LABEL[lang][row.risk] : "–"}</>;
-    case "citedBy": return <CitedBy row={row} lang={lang} />;
     default: return null;
   }
 }
 
-/** A failed extraction spans the card columns; year and the cited-by count do not depend on the card. */
-function FailedCells({ others, row, lang }: { others: LitColumn[]; row: LitRow; lang: Lang }) {
-  const at = others.indexOf("citedBy");
-  const failed = (span: number) => <td colSpan={span} className={`${TD} text-err`}>{L(lang, "สกัดข้อมูลไม่สำเร็จ", "Extraction failed")}</td>;
-  if (at < 0) return failed(others.length);
-  const after = others.length - at - 1;
+/** The study cell: ref and byline (author and year, the year shown once), then the cited-by count when the review has counts. */
+function StudyCell({ row, onSelect, lang, citedBy, flag }: { row: LitRow; onSelect: (ref: string) => void; lang: Lang; citedBy: boolean; flag: boolean }) {
   return (
-    <>
-      {at > 0 && failed(at)}
-      <td className={TD}><CitedBy row={row} lang={lang} /></td>
-      {after > 0 && <td colSpan={after} className={TD} />}
-    </>
+    <span className="grid justify-items-start gap-0.5">
+      <button type="button" onClick={() => onSelect(row.ref)} title={row.title} aria-label={`${row.ref} ${row.title}`}
+        className="inline-flex min-h-11 min-w-11 flex-col items-start justify-center text-left text-primary underline underline-offset-2">
+        <span className="font-display font-semibold">{row.ref}</span>
+        {row.byline && <span className="text-[0.75rem] font-normal text-muted no-underline">{row.byline}</span>}
+      </button>
+      {citedBy && (
+        <span className="text-[0.75rem] text-muted" data-cited-by>{L(lang, "ถูกอ้างอิง ", "Cited by ")}<CitedBy row={row} lang={lang} /></span>
+      )}
+      {/* without a direction column (scoping, themes), the uncertain flag lives next to the ref */}
+      {flag && row.uncertain && <ReadingFlag lang={lang} />}
+    </span>
   );
 }
 
-function RefButton({ row, onSelect }: { row: LitRow; onSelect: (ref: string) => void }) {
-  return (
-    <button type="button" onClick={() => onSelect(row.ref)} title={row.title} aria-label={`${row.ref} ${row.title}`}
-      className="inline-flex min-h-11 min-w-11 flex-col items-start justify-center text-left text-primary underline underline-offset-2">
-      <span className="font-display font-semibold">{row.ref}</span>
-      {row.byline && <span className="text-[0.75rem] font-normal text-muted no-underline">{row.byline}</span>}
-    </button>
-  );
-}
-
-function MatrixTable({ rows, cols, framework, lang, onSelect, caption }: {
+/**
+ * From 1280px: a fixed-layout table whose six columns fit the reading column (no sideways scroll), cells clamped and
+ * wrapped; it stays in a scroll region so an unexpectedly long word still scrolls inside it, never the page.
+ */
+function MatrixTable({ rows, cols, framework, lang, onSelect, caption, citedBy, risk }: {
   rows: LitRow[]; cols: LitColumn[]; framework: LitFramework; lang: Lang; onSelect: (ref: string) => void; caption: string;
+  citedBy: boolean; risk: boolean;
 }) {
   const others = cols.slice(1);
   return (
     <ScrollRegion lang={lang} label={L(lang, `${caption} (เลื่อนดูได้)`, `${caption} (scrollable)`)}>
-      <table aria-label={caption} className="w-full min-w-[880px] border-collapse text-[0.85rem]">
+      <table aria-label={caption} className="w-full table-fixed border-collapse text-[0.82rem]">
         <caption className="sr-only">{caption}</caption>
+        <colgroup>{cols.map((c) => <col key={c} style={{ width: COL_WIDTH[c] }} />)}</colgroup>
         <thead>
           <tr className="bg-ground">
             {cols.map((c) => (
-              <th key={c} scope="col" className={`label px-2.5 py-2 text-left ${COL_WIDTH[c]} ${c === "ref" ? "sticky left-0 z-10 bg-ground" : c === "citedBy" ? "whitespace-nowrap" : ""}`}>
+              <th key={c} scope="col" className={`label px-2 py-2 text-left break-words ${c === "ref" ? "sticky left-0 z-10 bg-ground" : ""}`}>
                 {litColumnLabel(c, framework, lang)}
               </th>
             ))}
@@ -187,14 +185,12 @@ function MatrixTable({ rows, cols, framework, lang, onSelect, caption }: {
         <tbody>
           {rows.map((row) => (
             <tr key={row.ref} className="border-t border-rule">
-              <th scope="row" className="sticky left-0 z-10 bg-surface px-2.5 py-2 text-left align-top font-body font-medium">
-                <RefButton row={row} onSelect={onSelect} />
-                {/* the direction column is dropped (scoping, themes), so the uncertain flag lives next to the ref */}
-                {!cols.includes("direction") && row.uncertain && <ReadingFlag lang={lang} />}
+              <th scope="row" className="sticky left-0 z-10 bg-surface px-2 py-2 text-left align-top font-body font-medium">
+                <StudyCell row={row} onSelect={onSelect} lang={lang} citedBy={citedBy} flag={!cols.includes("direction")} />
               </th>
               {row.failed ? (
-                <FailedCells others={others} row={row} lang={lang} />
-              ) : others.map((c) => <td key={c} className={TD}><Cell col={c} row={row} lang={lang} onSelect={onSelect} /></td>)}
+                <td colSpan={others.length} className={`${TD} text-err`}>{L(lang, "สกัดข้อมูลไม่สำเร็จ", "Extraction failed")}</td>
+              ) : others.map((c) => <td key={c} className={TD}><Cell col={c} row={row} lang={lang} onSelect={onSelect} risk={risk} /></td>)}
             </tr>
           ))}
         </tbody>
@@ -203,32 +199,28 @@ function MatrixTable({ rows, cols, framework, lang, onSelect, caption }: {
   );
 }
 
-/** Minimum column widths: the text columns get room to read, short columns stay narrow. */
+/** Column shares of the fixed layout (they sum to 100%): outcomes get the most room. */
 const COL_WIDTH: Record<LitColumn, string> = {
-  ref: "min-w-[8rem]", year: "", design: "min-w-[7.5rem]", population: "min-w-[11rem]", exposure: "min-w-[10rem]",
-  outcomes: "min-w-[15rem]", direction: "min-w-[8rem]", risk: "min-w-[6rem]", citedBy: "",
+  ref: "14%", design: "12%", population: "16%", exposure: "14%", outcomes: "26%", direction: "18%", risk: "18%",
 };
 
-/** Below 1024px: one ruled card per study (no nested card chrome), the same cells as the table. */
-function MatrixCards({ rows, cols, framework, lang, onSelect, caption }: {
+/** Below 1280px (phones and 1024–1279 alike): one ruled card per study (no nested card chrome), the same cells. */
+function MatrixCards({ rows, cols, framework, lang, onSelect, caption, citedBy, risk }: {
   rows: LitRow[]; cols: LitColumn[]; framework: LitFramework; lang: Lang; onSelect: (ref: string) => void; caption: string;
+  citedBy: boolean; risk: boolean;
 }) {
-  const fields = cols.filter((c) => c !== "ref" && c !== "year");
+  const fields = cols.filter((c) => c !== "ref");
   return (
     <ul aria-label={caption} className="grid border-t border-rule" data-lit-cards>
       {rows.map((row) => (
         <li key={row.ref} className="grid gap-2 border-b border-rule py-3" data-lit-card={row.ref}>
-          <div className="flex flex-wrap items-center gap-x-3">
-            <RefButton row={row} onSelect={onSelect} />
-            {row.year != null && !row.byline.includes(String(row.year)) && <span className="font-display tabular-nums text-muted">{row.year}</span>}
-            {!cols.includes("direction") && row.uncertain && <ReadingFlag lang={lang} />}
-          </div>
+          <StudyCell row={row} onSelect={onSelect} lang={lang} citedBy={citedBy} flag={!cols.includes("direction")} />
           {row.failed ? (
             <p className="text-err">{L(lang, "สกัดข้อมูลไม่สำเร็จ", "Extraction failed")}</p>
           ) : (
             <dl className="grid grid-cols-[minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[0.88rem] sm:grid-cols-[9rem_minmax(0,1fr)]">
               {fields.map((c) => (
-                <CardField key={c} label={litColumnLabel(c, framework, lang)}><Cell col={c} row={row} lang={lang} onSelect={onSelect} /></CardField>
+                <CardField key={c} label={litColumnLabel(c, framework, lang)}><Cell col={c} row={row} lang={lang} onSelect={onSelect} risk={risk} /></CardField>
               ))}
             </dl>
           )}
@@ -272,12 +264,16 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
   papers: Paper[]; allPapers?: Paper[]; lang: Lang; type: ReviewTypeOrLegacy; onSelect: (ref: string) => void; reviewId: string; offline?: boolean;
   citations?: Citations | null; question?: QuestionBlock | null;
 }) {
-  const wide = useWide();
+  // A table only where all six columns fit (>= 1280px); cards below, 1024–1279 included (fix round 1)
+  const wide = useMinWidth(LIT_TABLE_MIN_WIDTH);
   const rows = useMemo(() => litRows(papers, lang, citations), [papers, lang, citations]);
   const allRows = useMemo(() => (allPapers === papers ? rows : litRows(allPapers, lang, citations)), [allPapers, papers, rows, lang, citations]);
   // The columns and framework follow the whole review, so they do not change while the reader filters.
   const framework = litFramework(type, allPapers, question);
   const cols = litColumns(type, allRows, framework);
+  const citedBy = showsCitedBy(allRows);
+  // risk of bias under the direction; a review without a direction column has its own risk column instead
+  const riskUnder = showsRiskOfBias(type) && cols.includes("direction");
   const [page, setPage] = useState(0);
   const pg = paginate(rows, page, LIT_PAGE_SIZE);
   const caption = L(lang, "ตารางสรุปงานวิจัย", "Study summary table");
@@ -304,12 +300,12 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
       {rows.length === 0 ? (
         <p className="text-[0.9rem] text-muted">{L(lang, "ไม่มีงานวิจัยที่ตรงกับตัวกรอง", "No studies match the filters")}</p>
       ) : wide ? (
-        <MatrixTable rows={pg.items} cols={cols} framework={framework} lang={lang} onSelect={onSelect} caption={caption} />
+        <MatrixTable rows={pg.items} cols={cols} framework={framework} lang={lang} onSelect={onSelect} caption={caption} citedBy={citedBy} risk={riskUnder} />
       ) : (
-        <MatrixCards rows={pg.items} cols={cols} framework={framework} lang={lang} onSelect={onSelect} caption={caption} />
+        <MatrixCards rows={pg.items} cols={cols} framework={framework} lang={lang} onSelect={onSelect} caption={caption} citedBy={citedBy} risk={riskUnder} />
       )}
       <Pager page={pg.page} pages={pg.pages} start={pg.start} end={pg.end} total={rows.length} lang={lang} onPage={setPage} />
-      {rows.length > 0 && cols.includes("citedBy") && <CitedByNote lang={lang} />}
+      {rows.length > 0 && citedBy && <CitedByNote lang={lang} />}
       {allPapers.some((p) => isNonQuantitative(p.card_en ?? p.card)) && (
         <p className="text-[0.82rem] text-muted" data-note="qualitative">
           {L(lang, "งานเชิงคุณภาพและแบบผสมผสานสรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข และไม่นับในทิศทางผล แผนภาพ หรือค่ารวม",

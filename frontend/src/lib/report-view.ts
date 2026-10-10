@@ -376,6 +376,8 @@ export interface ForestPoolView {
   qText: string;
   df: number;
   pText: string;
+  /** exactly the studies this pool combined (pool.studies), in their order */
+  refs: string[];
 }
 
 export interface ForestPanelView {
@@ -390,6 +392,11 @@ export interface ForestPanelView {
   /** effects the verifier blanked: a row with a not-verified gap, no marker */
   blanked: ForestBlankView[];
   pools: ForestPoolView[];
+  /**
+   * The primary rows as drawn (fix round 1): one block per pool holding exactly its studies, its lozenge under them,
+   * then the rows no pool used (`pool: null`). Without pools: one block, `pool: null`, every primary row.
+   */
+  groups: { pool: ForestPoolView | null; rows: ForestRowView[] }[];
 }
 
 export interface ForestView {
@@ -434,7 +441,7 @@ export function forestPanels(ctx: OutcomeContext, opts: { minEffects?: number } 
       const hi = o.ci_upper ?? null;
       if (family === "ratio" && (o.effect_value <= 0 || (lo != null && lo <= 0) || (hi != null && hi <= 0))) continue;
       const panel = own.get(measure) ?? {
-        key: `${ri}|${measure}`, outcome: row.outcome, outcomeKey: en, measure, family, primary: [], reviews: [], blanked: [], pools: [],
+        key: `${ri}|${measure}`, outcome: row.outcome, outcomeKey: en, measure, family, primary: [], reviews: [], blanked: [], pools: [], groups: [],
       };
       own.set(measure, panel);
       const direction = row.cells.find((c) => c.ref === ref)?.direction ?? o.direction;
@@ -447,7 +454,8 @@ export function forestPanels(ctx: OutcomeContext, opts: { minEffects?: number } 
       .reduce((n, p) => n + p.primary.length + p.reviews.length, 0);
     if (opts.minEffects && effects < opts.minEffects) return;
     for (const b of blanks) {
-      const home = own.get(b.measure) ?? (list.length === 1 ? list[0] : undefined);
+      // an unnamed measure ("none", "other", missing) may join the outcome's only panel; a named one only its own
+      const home = own.get(b.measure) ?? (list.length === 1 && !measureFamily(b.measure) ? list[0] : undefined);
       if (home) home.blanked.push(b.view);
       else unplaced.push({ ref: b.view.ref, outcome: row.outcome });
     }
@@ -458,8 +466,16 @@ export function forestPanels(ctx: OutcomeContext, opts: { minEffects?: number } 
           key: `${p.outcome}|${p.design_group}|${p.measure}|${i}`, group: DESIGN_GROUP_LABEL[p.design_group]?.[ctx.lang] ?? p.design_group,
           k: p.k, est: p.pooled.est, lo: p.pooled.ci_lower, hi: p.pooled.ci_upper, estText: fixed(p.pooled.est, 2),
           ciText: `${fixed(p.pooled.ci_lower, 2)}–${fixed(p.pooled.ci_upper, 2)}`, i2Text: `${Math.round(p.i2)}%`,
-          tau2Text: fixed(p.tau2, 3), qText: fixed(p.q, 2), df: p.df, pText: pText(p.p_het),
+          tau2Text: fixed(p.tau2, 3), qText: fixed(p.q, 2), df: p.df, pText: pText(p.p_het), refs: p.studies.map((s) => s.ref),
         }));
+      const used = new Set<string>();
+      panel.groups = panel.pools.map((pool) => {
+        const rows = panel.primary.filter((r) => pool.refs.includes(r.ref) && !used.has(r.ref));
+        rows.forEach((r) => used.add(r.ref));
+        return { pool, rows };
+      });
+      const rest = panel.primary.filter((r) => !used.has(r.ref));
+      if (rest.length || !panel.groups.length) panel.groups.push({ pool: null, rows: rest });
       panels.push(panel);
     }
   });

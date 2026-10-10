@@ -21,7 +21,7 @@ export function Charts({ content, result, lang, onSelect }: {
   const theme = useTheme();
   const tokens = useMemo(() => (theme ? readTokens() : null), [theme]);
   const pico = result.question?.pico;
-  const arms: Arms = { intervention: pico?.intervention_or_exposure?.trim() || null, comparator: pico?.comparator?.trim() || null };
+  const arms: Arms = { intervention: pico?.intervention_or_exposure?.trim() || null };
   if (content.empty) return null;
   const { forest, dta, map } = content;
   const unverified = forest.unplaced.length ? (

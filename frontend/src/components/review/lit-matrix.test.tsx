@@ -20,14 +20,19 @@ describe("LitMatrixSection", () => {
     const table = screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
     expect(table.parentElement).toHaveClass("overflow-x-auto");
     expect(table.parentElement).toHaveAttribute("role", "region");
-    expect(table).toHaveClass("min-w-[880px]");
+    // fix round 1: a fixed layout that fits the reading column at >= 1280px (no minimum wider than it)
+    expect(table).toHaveClass("table-fixed", "w-full");
+    expect(table.className).not.toMatch(/min-w-\[/);
     expect(within(table).getAllByRole("columnheader").every((h) => h.getAttribute("scope") === "col")).toBe(true);
     expect(within(table).getAllByRole("rowheader")[0]).toHaveClass("sticky", "left-0");
   });
 
-  it("SLR and narrative show direction and risk of bias; scoping drops both", () => {
+  it("SLR and narrative show direction with risk of bias under it; scoping drops both; the year sits once, in the study cell", () => {
     const { unmount } = show(narrativeReviewFixture.result!.papers!, "narrative");
-    expect(headers()).toEqual(["งานวิจัย", "ปี", "รูปแบบการศึกษา", "ประชากร / ขนาดตัวอย่าง", "การรักษาหรือปัจจัย (เทียบกับ)", "ผลลัพธ์", "ทิศทาง", "ความเสี่ยงอคติ"]);
+    expect(headers()).toEqual(["งานวิจัย", "รูปแบบการศึกษา", "ประชากร / ขนาดตัวอย่าง", "การรักษาหรือปัจจัย (เทียบกับ)", "ผลลัพธ์", "ทิศทาง"]);
+    const p1 = screen.getByRole("row", { name: /P1/ });
+    expect(within(p1).getAllByText("2019")).toHaveLength(1);
+    expect(p1.querySelector("[data-risk]")).toHaveTextContent("ความเสี่ยงอคติ: ปานกลาง");
     unmount();
     show(scopingReviewFixture.result!.papers!, "scoping");
     expect(headers()).not.toContain("ทิศทาง");
@@ -81,16 +86,16 @@ describe("LitMatrixSection", () => {
     expect(screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" }).closest("section")).toHaveAttribute("data-lit-framework", "pico");
   });
 
-  it("without citation data there is no cited-by column", () => {
+  it("without citation data there is no cited-by count", () => {
     show(papers);
-    expect(headers()).not.toContain("ถูกอ้างอิง");
+    expect(document.querySelector("[data-cited-by]")).toBeNull();
   });
 
-  it("the cited-by column shows counts in the display face with the source; null is a dash titled no data", () => {
+  it("the cited-by count sits in the study cell, in the display face with the source; null is a dash titled no data", () => {
     render(<LitMatrixSection papers={papers} lang="th" type="slr" reviewId="r1" onSelect={() => {}} citations={citationsFixture} />);
-    const h = headers();
-    expect(h.at(-1)).toBe("ถูกอ้างอิง");
+    expect(headers()).not.toContain("ถูกอ้างอิง");
     const p2row = screen.getByRole("row", { name: /P2/ });
+    expect(within(p2row).getByRole("rowheader")).toHaveTextContent("ถูกอ้างอิง 1,187");
     const p2 = within(p2row).getByText("1,187");
     expect(p2).toHaveClass("font-display", "tabular-nums");
     expect(p2).not.toHaveClass("num-verified");
@@ -102,12 +107,12 @@ describe("LitMatrixSection", () => {
     expect(p3).toHaveTextContent("EPMC");
     expect(p3).toHaveTextContent("(Europe PMC)");
     expect(screen.getByText(/OA = OpenAlex · EPMC = Europe PMC/)).toBeInTheDocument();
-    // P5 failed extraction: the spanning cell stops before the cited-by cell, which says "no data"
+    // P5 failed extraction: one spanning cell; its study cell still says "no data" for the count
     const p5 = screen.getByRole("row", { name: /P5/ });
     const cells = within(p5).getAllByRole("cell");
+    expect(cells).toHaveLength(1);
     expect(cells[0]).toHaveTextContent("สกัดข้อมูลไม่สำเร็จ");
-    expect(cells[1]).toHaveTextContent("–");
-    expect(within(cells[1]).getByTitle("ไม่มีข้อมูล")).toBeInTheDocument();
+    expect(within(within(p5).getByRole("rowheader")).getByTitle("ไม่มีข้อมูล")).toBeInTheDocument();
     const width = (r: HTMLElement) => within(r).getAllByRole("cell").reduce((s, c) => s + Number(c.getAttribute("colspan") ?? 1), 0);
     expect(width(p5)).toBe(width(screen.getByRole("row", { name: /P1/ })));
   });
@@ -153,14 +158,18 @@ describe("LitMatrixSection (Plan 20 Task 5): pages, clamped outcomes, cards, fra
     expect(onSelect).toHaveBeenCalledWith("P3");
   });
 
-  it("below 1024px: one ruled card per study with the same fields, no table", () => {
-    stubViewport(false);
-    show(papers);
-    expect(screen.queryByRole("table", { name: "ตารางสรุปงานวิจัย" })).toBeNull();
-    const cards = screen.getByRole("list", { name: "ตารางสรุปงานวิจัย" });
-    const p3 = cards.querySelector("[data-lit-card=P3]")!;
-    expect(p3).toHaveTextContent("ประชากร / ขนาดตัวอย่าง");
-    expect([...p3.querySelectorAll(".num-verified")].map((e) => e.textContent)).toEqual(expect.arrayContaining(["1,234", "HR 0.80"]));
+  it("below 1280px (phones and 1024–1279 alike): one ruled card per study with the same fields, no table", () => {
+    for (const width of [390, 1100]) {
+      stubViewport(width);
+      const { unmount } = show(papers);
+      expect(screen.queryByRole("table", { name: "ตารางสรุปงานวิจัย" })).toBeNull();
+      const cards = screen.getByRole("list", { name: "ตารางสรุปงานวิจัย" });
+      const p3 = cards.querySelector("[data-lit-card=P3]")!;
+      expect(p3).toHaveTextContent("ประชากร / ขนาดตัวอย่าง");
+      expect(within(p3 as HTMLElement).getAllByText(/2021/)).toHaveLength(1); // the year once
+      expect([...p3.querySelectorAll(".num-verified")].map((e) => e.textContent)).toEqual(expect.arrayContaining(["1,234", "HR 0.80"]));
+      unmount();
+    }
   });
 
   it("a qualitative review uses PICo columns, no direction, and names the context", () => {
@@ -168,7 +177,7 @@ describe("LitMatrixSection (Plan 20 Task 5): pages, clamped outcomes, cards, fra
     render(<LitMatrixSection papers={qual} lang="en" type="narrative" reviewId="r1" onSelect={() => {}}
       question={{ context: "primary care in Thailand" }} />);
     const h = within(screen.getByRole("table", { name: "Study summary table" })).getAllByRole("columnheader").map((x) => x.textContent);
-    expect(h).toEqual(["Study", "Year", "Study design", "Population (P)", "Phenomenon of interest (I)", "Themes", "Risk of bias"]);
+    expect(h).toEqual(["Study", "Study design", "Population (P)", "Phenomenon of interest (I)", "Themes", "Risk of bias"]);
     expect(screen.getByText(/Context \(Co\): primary care in Thailand/)).toBeInTheDocument();
   });
 });

@@ -64,7 +64,7 @@ export interface LitRow {
  * Compact columns (Plan 20 Task 5): the sample size sits with the population, the comparator with the intervention;
  * key findings and limitations stay in the source rail and the CSV.
  */
-export type LitColumn = "ref" | "year" | "design" | "population" | "exposure" | "outcomes" | "direction" | "risk" | "citedBy";
+export type LitColumn = "ref" | "design" | "population" | "exposure" | "outcomes" | "direction" | "risk";
 
 /**
  * Column wording for the question's framework: PICO, PCC (scoping), PICo (qualitative: Population, phenomenon of
@@ -116,16 +116,21 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
 }
 
 /**
- * Columns for this review type, in reading order: study, year, design, population/sample, intervention, outcomes, then
- * direction (not for scoping or a themes review), risk of bias (not for scoping) and "cited by" (needs a count).
+ * Columns for this review type, in reading order: study (with its year and cited-by count), design, population/sample,
+ * intervention, outcomes, then direction with risk of bias under it (not for scoping or a themes review).
  */
-export function litColumns(type: ReviewTypeOrLegacy, rows: LitRow[], framework: LitFramework = "pico"): LitColumn[] {
-  const cols: LitColumn[] = ["ref", "year", "design", "population", "exposure", "outcomes"];
+export function litColumns(type: ReviewTypeOrLegacy, _rows: LitRow[], framework: LitFramework = "pico"): LitColumn[] {
+  const cols: LitColumn[] = ["ref", "design", "population", "exposure", "outcomes"];
+  // Fix round 1: six columns fit the reading column. The year and the cited-by count sit in the study cell, risk of
+  // bias under the direction; a review without a direction column keeps risk of bias as its own (not for scoping).
   if (showsDirection(type) && (framework === "pico" || framework === "pcc")) cols.push("direction");
-  if (showsRiskOfBias(type)) cols.push("risk");
-  // A column of dashes says nothing: it needs at least one count.
-  if (rows.some((r) => r.citedBy?.count != null)) cols.push("citedBy");
+  else if (showsRiskOfBias(type)) cols.push("risk");
   return cols;
+}
+
+/** Whether the study cell carries a cited-by count (a line of dashes says nothing: it needs at least one count). */
+export function showsCitedBy(rows: LitRow[]): boolean {
+  return rows.some((r) => r.citedBy?.count != null);
 }
 
 /** The framework of the matrix: PCC for scoping, PICo / SPIDER-like when every read study reports themes, else PICO. */
@@ -160,9 +165,9 @@ const LABELS: Record<LitFramework, Partial<Record<LitColumn, [string, string]>>>
 };
 
 const BASE_LABEL: Record<LitColumn, [string, string]> = {
-  ref: ["งานวิจัย", "Study"], year: ["ปี", "Year"], design: ["รูปแบบการศึกษา", "Study design"],
+  ref: ["งานวิจัย", "Study"], design: ["รูปแบบการศึกษา", "Study design"],
   population: ["ประชากร", "Population"], exposure: ["สิ่งที่ศึกษา", "Intervention"], outcomes: ["ผลลัพธ์", "Outcomes"],
-  direction: ["ทิศทาง", "Direction"], risk: ["ความเสี่ยงอคติ", "Risk of bias"], citedBy: ["ถูกอ้างอิง", "Cited by"],
+  direction: ["ทิศทาง", "Direction"], risk: ["ความเสี่ยงอคติ", "Risk of bias"],
 };
 
 export function litColumnLabel(col: LitColumn, framework: LitFramework, lang: Lang): string {

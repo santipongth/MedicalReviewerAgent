@@ -1,7 +1,7 @@
 // Plan 20 Task 5: evidence map order and ramp, concept-map top outcomes, literature matrix columns, frameworks, pages.
 import { describe, expect, it } from "vitest";
 import {
-  narrativeP20ReviewFixture, qualitativeReviewFixture, resultFixture, scopingReviewFixture, slrP20ReviewFixture,
+  citationsFixture, narrativeP20ReviewFixture, qualitativeReviewFixture, resultFixture, scopingReviewFixture, slrP20ReviewFixture,
 } from "@/test/fixtures";
 import { conceptTree, topOutcomes } from "./concept-map";
 import { evidenceMap, rampLevel } from "./evidence-map";
@@ -61,16 +61,17 @@ describe("topOutcomes (concept map)", () => {
 });
 
 describe("literature matrix: compact columns and frameworks", () => {
-  it("study, year, design, population/sample, intervention, outcomes, then direction and risk of bias", () => {
+  it("fix round 1: six columns that fit the reading column (year in the study cell, risk of bias under the direction)", () => {
     const rows = litRows(papers, "th");
-    expect(litColumns("slr", rows, "pico")).toEqual(["ref", "year", "design", "population", "exposure", "outcomes", "direction", "risk"]);
+    expect(litColumns("slr", rows, "pico")).toEqual(["ref", "design", "population", "exposure", "outcomes", "direction"]);
+    expect(litColumns("slr", litRows(papers, "th", citationsFixture), "pico")).not.toContain("citedBy" as never);
     expect(rows.find((r) => r.ref === "P3")!.year).toBe(2021);
   });
 
-  it("scoping and qualitative reviews hide the direction; scoping hides risk of bias", () => {
+  it("scoping and qualitative reviews hide the direction; a themes review keeps risk of bias as its own column", () => {
     const s = litRows(scopingReviewFixture.result!.papers!, "th");
-    expect(litColumns("scoping", s, "pcc")).toEqual(["ref", "year", "design", "population", "exposure", "outcomes"]);
-    expect(litColumns("narrative", s, "pico_qual")).not.toContain("direction");
+    expect(litColumns("scoping", s, "pcc")).toEqual(["ref", "design", "population", "exposure", "outcomes"]);
+    expect(litColumns("narrative", s, "pico_qual")).toEqual(["ref", "design", "population", "exposure", "outcomes", "risk"]);
     expect(litColumns("narrative", s, "spider")).not.toContain("direction");
   });
 

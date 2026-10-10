@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Lang } from "@/lib/i18n";
 import type { Paper, Review, ReviewResult } from "@/lib/types";
 import {
-  dtaReviewFixture, metaP20ReviewFixture, narrativeP20ReviewFixture, resultFixture, scopingReviewFixture, slrP20ReviewFixture,
+  dtaReviewFixture, legacyReviewFixture, metaP20ReviewFixture, narrativeP20ReviewFixture, resultFixture, scopingReviewFixture, slrP20ReviewFixture,
 } from "@/test/fixtures";
 
 const options: unknown[] = [];
@@ -45,12 +45,28 @@ describe("Charts (Plan 20 Task 5)", () => {
     expect(panel.querySelector("[data-forest-row=P4] [data-marker=negative]")).not.toBeNull();
   });
 
-  it("favours labels name the arms when the studies' directions agree with a side", () => {
+  it("fix round 1: the axis sides say lower/higher with the intervention, never 'favours'", () => {
     show(r(slrP20ReviewFixture));
-    const fav = document.querySelector("[data-favours]")!;
-    // P1/P3 support (left of 1), P4 harm (right of 1): left favours metformin
-    expect(fav).toHaveTextContent("← Favours metformin");
-    expect(fav).toHaveTextContent("Favours no metformin →");
+    const sides = document.querySelector("[data-arms]")!;
+    expect(sides).toHaveTextContent("← < 1 · lower with metformin");
+    expect(sides).toHaveTextContent("> 1 · higher with metformin →");
+    expect(document.body).not.toHaveTextContent(/favou?rs/i);
+  });
+
+  it("a harm/exposure question gets the same neutral sides (the system cannot know whether lower is better)", () => {
+    const base = r(slrP20ReviewFixture);
+    const harm = { ...base, question: { ...base.question!, pico: { ...base.question!.pico!, intervention_or_exposure: "proton pump inhibitors" } } };
+    show(harm, "th");
+    const sides = document.querySelector("[data-arms]")!;
+    expect(sides).toHaveTextContent("< 1 · ต่ำกว่าในกลุ่ม proton pump inhibitors");
+    expect(sides).toHaveTextContent("> 1 · สูงกว่าในกลุ่ม proton pump inhibitors");
+    expect(document.body).not.toHaveTextContent(/เอื้อต่อ/);
+  });
+
+  it("without an intervention name the sides name the treated/exposed group", () => {
+    const base = r(slrP20ReviewFixture);
+    show({ ...base, question: { ...base.question!, pico: null } }, "th");
+    expect(document.querySelector("[data-arms]")).toHaveTextContent("ต่ำกว่าในกลุ่มที่ได้รับการรักษา/สัมผัส");
   });
 
   it("ticks are the display face, never the verified face, and stay nice (0.5 · 1 · 2)", () => {
@@ -85,10 +101,38 @@ describe("Charts (Plan 20 Task 5)", () => {
     expect(pooled.querySelector("[data-lozenge] polygon")).toHaveAttribute("fill", "none");
     expect([...pooled.querySelectorAll("[data-computed=true]")].map((e) => e.textContent)).toEqual(["0.96", "0.78–1.17"]);
     expect(pooled.querySelector(".num-verified")).toBeNull();
+    // fix round 1: the pool is its own block — exactly its studies above its lozenge — and the rest are marked not pooled
+    const block = panel.querySelector("[data-pool-block]")!;
+    expect(block.querySelector("[data-pool-heading]")).toHaveTextContent("Pooled: observational studies · P3, P4, P7");
+    expect([...block.querySelectorAll("[data-forest-row]")].map((e) => e.getAttribute("data-forest-row"))).toEqual(["P3", "P4", "P7"]);
+    expect(block.lastElementChild).toBe(pooled);
+    const rest = panel.querySelector("[data-not-pooled]")!;
+    expect(rest).toHaveTextContent("Not pooled");
+    expect([...rest.querySelectorAll("[data-forest-row]")].map((e) => e.getAttribute("data-forest-row"))).toEqual(["P1", "P2"]);
     const stats = panel.closest("figure")!.querySelector("[data-pool-stats]")!;
     expect(stats).toHaveTextContent("k = 3");
     expect(stats).toHaveTextContent("I² 81%");
     expect(stats).toHaveTextContent("Q 10.61");
+  });
+
+  it("the pooled table twin mirrors the grouping with colgroup headings", async () => {
+    show(r(metaP20ReviewFixture));
+    const fig = screen.getByRole("group", { name: /^Forest plot: ผลลัพธ์หลัก, HR/ }).closest("figure")!;
+    await userEvent.click(within(fig).getByRole("button", { name: "Show table" }));
+    const groups = [...within(fig).getByRole("table").querySelectorAll("th[scope=colgroup]")].map((h) => h.textContent);
+    expect(groups).toEqual(["Pooled: observational studies · P3, P4, P7", "Not pooled"]);
+  });
+
+  it("a correlation panel says 0 = no association and names no arms", () => {
+    const base = r(slrP20ReviewFixture);
+    const papers = base.papers!.map((p) => (p.ref === "P1" || p.ref === "P3")
+      ? { ...p, card_en: { ...p.card_en!, outcomes: p.card_en!.outcomes.map((o, i) => i === 0 ? { ...o, effect_measure: "r" } : o) },
+        card: { ...p.card!, outcomes: p.card!.outcomes.map((o, i) => i === 0 ? { ...o, effect_measure: "r" } : o) } } : p);
+    show({ ...base, papers });
+    const fig = screen.getByRole("group", { name: /^Forest plot: .*, R,|, r,/ }).closest("figure")!;
+    expect(fig).toHaveTextContent("Line at 0 = no association");
+    expect(fig.querySelector("[data-arms]")).toBeNull();
+    expect(fig).not.toHaveTextContent(/comparator/);
   });
 
   it("narrative: no forest unless an outcome has at least 3 effects; nothing to draw leaves the block out", () => {
@@ -102,6 +146,14 @@ describe("Charts (Plan 20 Task 5)", () => {
     const { content } = show(r(scopingReviewFixture), "th");
     expect(content.empty).toBe(true);
     expect(screen.queryByRole("group", { name: /Forest plot/ })).toBeNull();
+  });
+
+  it("legacy results with English rows (as real stored results carry) still plot a forest", () => {
+    const base = legacyReviewFixture.result!;
+    const enRows = base.synthesis!.comparison!.map((row, i) => ({ ...row, outcome: ["CRC incidence", "CRC mortality"][i] }));
+    const { content } = show({ ...base, synthesis_en: { ...base.synthesis_en!, comparison: enRows } }, "th");
+    expect(content.forest.panels.map((p) => [p.outcomeKey, p.measure, p.primary.map((r) => r.ref)])).toEqual([["CRC incidence", "HR", ["P1", "P3"]]]);
+    expect(screen.getByRole("group", { name: /^Forest plot: อุบัติการณ์มะเร็งลำไส้ใหญ่, HR/ })).toBeInTheDocument();
   });
 
   it("SLR with nothing to plot says so", () => {

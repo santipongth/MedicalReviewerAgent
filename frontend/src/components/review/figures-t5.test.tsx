@@ -50,6 +50,10 @@ describe("findings matrix", () => {
     expect(cell.getAttribute("aria-label")).toContain("งานนี้ครอบคลุมประเด็นนี้");
     expect(cell.getAttribute("aria-label")).not.toMatch(/✓/);
     expect(cell).toHaveAttribute("title", "งานนี้ครอบคลุมประเด็นนี้");
+    // fix round 1: a neutral check mark, never a direction glyph or a direction word
+    expect(cell).toHaveAttribute("aria-label", "P1: การคัดกรอง — งานนี้ครอบคลุมประเด็นนี้");
+    expect(cell.querySelector("[data-charted-mark]")).not.toBeNull();
+    expect(cell.querySelector(".g")).toBeNull();
   });
 });
 

@@ -10,7 +10,7 @@ import { json, mockApi } from "./mock-api";
 // 390, axe clean, no page-level horizontal scroll. P20_SHOTS=1 also saves screenshots to ../.superpowers/p20-t5/.
 
 const SHOTS = process.env.P20_SHOTS === "1";
-const shot = (name: string) => `../.superpowers/p20-t5/${name}.png`;
+const shot = (name: string) => `../.superpowers/p20-t5/${process.env.P20_SHOT_PREFIX ?? ""}${name}.png`;
 
 /** A narrative review with five HRs on one outcome: its forest shows (narrative needs >= 3 effects per outcome). */
 const NARRATIVE_FOREST: Review = {
@@ -45,9 +45,16 @@ test("SLR forest at 1440: numbers sit on their row, SR/MA apart, favours labels 
     expect(num.x).toBeGreaterThan(marker.x);
   }
   await expect(panel.locator("[data-block=reviews]")).toContainText("การทบทวนอย่างเป็นระบบ");
-  await expect(panel.locator("[data-favours]")).toContainText("เอื้อต่อmetformin");
+  // fix round 1: the sides in measure terms only, never "favours"
+  await expect(panel.locator("[data-arms]")).toContainText("< 1 · ต่ำกว่าในกลุ่ม metformin");
+  await expect(panel.locator("[data-arms]")).toContainText("> 1 · สูงกว่าในกลุ่ม metformin");
+  await expect(page.getByText(/เอื้อต่อ/)).toHaveCount(0);
   const ticks = await panel.locator(".forest-row .tabular-nums").allTextContents();
   expect(ticks).toEqual(["0.5", "1", "2"]);
+  // the null line sits exactly on the "1" tick
+  const one = (await panel.locator(".forest-row .tabular-nums", { hasText: /^1$/ }).locator("span").boundingBox())!;
+  const nullLine = (await panel.locator("[data-null-line]").first().boundingBox())!;
+  expect(Math.abs(nullLine.x - one.x)).toBeLessThanOrEqual(1);
   // tick labels never overlap
   const boxes = await panel.locator(".forest-row .tabular-nums").evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((b) => [b.left, b.right]));
   for (let i = 1; i < boxes.length; i++) expect(boxes[i][0]).toBeGreaterThan(boxes[i - 1][1]);
@@ -58,6 +65,12 @@ test("meta forest: the pooled lozenge row and its computed block", async ({ page
   const panel = page.getByRole("group", { name: /^Forest plot: ผลลัพธ์หลัก, HR/ });
   const pooled = panel.locator("[data-pooled-row]");
   await expect(pooled.locator("[data-computed=true]").first()).toHaveText("0.96");
+  // the pool is its own block: exactly P3, P4, P7 above its lozenge; the RCTs sit apart, not pooled
+  const block = panel.locator("[data-pool-block]");
+  await expect(block.locator("[data-forest-row]")).toHaveCount(3);
+  await expect(block.locator("[data-pool-heading]")).toContainText("P3, P4, P7");
+  await expect(panel.locator("[data-not-pooled] [data-forest-row]")).toHaveCount(2);
+  await expect(panel.locator("[data-not-pooled]")).toContainText("ไม่ได้รวมผล");
   await expect(pooled.locator("[data-lozenge] polygon")).toHaveAttribute("fill", "none");
   await expect(page.locator("[data-pool-stats]").first()).toContainText("k = 3");
 });
@@ -78,6 +91,32 @@ test("findings matrix: k >= 2 by default with show all; literature matrix pages 
   await page.getByRole("button", { name: "แสดงทั้งหมด (2)" }).click();
   await expect(matrix.getByRole("rowheader")).toHaveCount(2);
   await expect(page.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
+});
+
+for (const width of [1280, 1440]) {
+  test(`literature matrix at ${width}: every column, outcomes and direction included, fits without sideways scroll`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await open(page, REVIEWS.meta);
+    const table = page.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
+    await expect(table).toBeVisible();
+    const fit = await table.evaluate((t) => ({ box: t.parentElement!.clientWidth, content: t.parentElement!.scrollWidth }));
+    expect(fit.content).toBeLessThanOrEqual(fit.box);
+    await expect(table.getByRole("columnheader")).toHaveText(["งานวิจัย", "รูปแบบการศึกษา", "ประชากร / ขนาดตัวอย่าง",
+      "การรักษาหรือปัจจัย (เทียบกับ)", "ผลลัพธ์", "ทิศทาง"]);
+    const region = (await table.locator("xpath=..").boundingBox())!;
+    for (const h of await table.getByRole("columnheader").all()) {
+      const b = (await h.boundingBox())!;
+      expect(b.x + b.width).toBeLessThanOrEqual(region.x + region.width + 1);
+    }
+    await expect(page.locator("section[aria-labelledby=h-litmatrix] [data-scroll-hint]")).toHaveCount(0);
+  });
+}
+
+test("literature matrix between 1024 and 1279: ruled cards, no table", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 1000 });
+  await open(page, REVIEWS.meta);
+  await expect(page.locator("[data-lit-cards]")).toBeVisible();
+  await expect(page.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).toHaveCount(0);
 });
 
 test("390: literature matrix cards, concept map outline, no page-level scroll", async ({ page }) => {

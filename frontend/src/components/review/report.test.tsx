@@ -656,12 +656,12 @@ describe("mobile source drawer", () => {
     await userEvent.click(within(section).getByRole("button", { name: "ดูเป็นตาราง" }));
     await userEvent.click(within(section).getByRole("button", { name: /^P4 / }));
     expect(rail().getByText(/Short-term metformin initiation/)).toBeInTheDocument();
-    // the lit matrix gains the cited-by column
-    expect(within(screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).getByRole("columnheader", { name: "ถูกอ้างอิง" })).toBeInTheDocument();
+    // the lit matrix's study cells gain the cited-by count (Task 5 fix round 1: no column of its own)
+    expect(screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" }).querySelectorAll("[data-cited-by]").length).toBeGreaterThan(0);
     a.unmount();
     const none = render(<Report review={{ ...slrReviewFixture, result: { ...slrReviewFixture.result!, citations: null } }} />);
     expect(none.container.querySelector("#h-citations")).toBeNull();
-    expect(screen.queryByRole("columnheader", { name: "ถูกอ้างอิง" })).toBeNull();
+    expect(none.container.querySelector("[data-cited-by]")).toBeNull();
     none.unmount();
     const legacy = render(<Report review={{ ...legacyReviewFixture, result: { ...legacyReviewFixture.result!, citations: slrReviewFixture.result!.citations } }} />);
     expect(legacy.container.querySelector("#h-citations")).toBeNull();

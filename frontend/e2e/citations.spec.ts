@@ -57,6 +57,7 @@ test("the citation table twin opens a paper in the rail; the lit matrix shows ci
   await table.getByRole("button", { name: /^P4 / }).click();
   await expect(page.getByRole("complementary", { name: "ต้นฉบับ" })).toContainText("Short-term metformin initiation");
   const matrix = page.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
-  await expect(matrix.getByRole("columnheader", { name: "ถูกอ้างอิง" })).toBeVisible();
+  // the count sits in the study cell (Plan 20 Task 5 fix round 1)
+  await expect(matrix.locator("[data-cited-by]").first()).toContainText("ถูกอ้างอิง");
   await expect(matrix.getByTitle(/OpenAlex/).first()).toBeVisible();
 });
