@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections import Counter
+from datetime import UTC, datetime
 
 from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate
@@ -103,8 +105,18 @@ def make_search(deps):
             found.extend(v[rank] for v in per_query.values() if rank < len(v))
         progress_writer()({"type": "searching", "found": len(found), "queries": len(queries),
                              "failed": len(errors)})
+        # Plan 20 Methods: records identified per source, before deduplication. A SearXNG hit merged from several
+        # engines counts once for each, so the per-source counts can sum to more than `found`.
+        per_source: Counter[str] = Counter()
+        for q, hits in per_query.items():
+            for c in hits:
+                if q.startswith("trials:"):
+                    per_source["europe pmc (rct search)"] += 1
+                else:
+                    per_source.update(set(c.engines) or {"unknown"})
+        searched_at = datetime.now(UTC).isoformat(timespec="seconds")
         return {"candidates": [c.model_dump() for c in found], "errors": errors,
-                "search_stats": {"found": len(found)},
+                "search_stats": {"found": len(found), "per_source": dict(per_source), "searched_at": searched_at},
                 "quality": [{"stage": "search", "queries": len(queries), "failed": len(errors), "pages": pages,
                              "trial_queries": len(trial_queries), "trial_hits": trial_hits,
                              "seconds": round(time.perf_counter() - started, 3)}]}

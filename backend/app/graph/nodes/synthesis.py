@@ -10,16 +10,21 @@ import logging
 import re
 import time
 from collections import Counter
+from datetime import UTC, datetime
 from typing import Any
 
 from langgraph.types import Send
 
 from app.graph import prompts
 from app.graph.nodes.intake import harness_runner, harness_spec, review_question
+from app.graph.nodes.retrieval import MIN_ABSTRACT_CHARS
+from app.graph.nodes.screening import MIN_INCLUDE_RELEVANCE
 from app.graph.progress import progress_writer
 from app.graph.schemas import (
     ConflictNote,
     EvidenceCluster,
+    KeyFinding,
+    NarrativeFinding,
     NarrativeNoGrade,
     OutcomeClusters,
     Synthesis,
@@ -56,7 +61,14 @@ from app.harness.meta import (
     strip_pooled_numbers,
     with_display,
 )
-from app.harness.prose import ProseContext, fix_prose, prose_context, prose_problems
+from app.harness.prose import (
+    ProseContext,
+    fix_prose,
+    fix_statement,
+    prose_context,
+    prose_problems,
+    statement_problems,
+)
 from app.harness.quality import summarize_quality
 from app.harness.study_types import allowed_designs, design_allowed
 from app.harness.verify import check_citations, strip_unknown_citations
@@ -253,7 +265,7 @@ def _empty_synthesis(summary: str, review_type: str = "slr") -> dict[str, Any]:
     graded = review_type in SLR_LIKE
     return Synthesis(executive_summary=summary, comparison=[], consensus=[], conflicts=[],
                      evidence_strength="very_low" if graded else None, evidence_rationale=summary, research_gaps=[],
-                     grade_baseline="very_low" if graded else None).model_dump()
+                     grade_baseline="very_low" if graded else None, answer=summary, key_findings=[]).model_dump()
 
 
 def _not_graded_rationale(review_type: str) -> str:
@@ -685,6 +697,74 @@ def _check_prose(narrative: SynthesisNarrative | NarrativeNoGrade, prose: ProseC
     return narrative.model_copy(update=update), counts
 
 
+# ---- Plan 20: the direct answer and the key findings ------------------------------------------
+MAX_KEY_FINDINGS = 5
+NO_POOL_ANSWER = ("Pooling was not possible: no outcome had enough comparable studies with verified estimates, so no "
+                  "pooled estimate was computed.")
+# "could not be pooled", "no outcome could be pooled", "pooling was not possible" (a short word window, so "does not
+# reduce mortality in the pooled analysis" is no statement that pooling failed)
+_SAYS_NO_POOL = re.compile(r"(?i)\b(?:not|no|cannot|unable|insufficient)\b(?:\W+\w+){0,4}?\W+pool|"
+                           r"\bpool\w*\W+(?:\w+\W+){0,2}?(?:not |im)(?:possible|feasible)")
+_POOLED_CLAIM = re.compile(r"(?i)\b(?:pooled|pooling|overall effect|combined estimate)\b")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[])")
+_CITE_GROUP = re.compile(r"\s*\[\s*P\d+[^\]]*\]")
+ANSWER_CERTAINTY = {"moderate": "The certainty of the evidence is moderate.",
+                    "low": "The certainty of the evidence is low.",
+                    "very_low": "The certainty of the evidence is very low."}
+
+
+def _no_pool(review_type: str, meta: dict[str, Any] | None) -> bool:
+    """A meta-analysis whose pooling produced no pool (too few comparable studies, skipped or failed)."""
+    return review_type == "meta_analysis" and not (meta and meta.get("pools"))
+
+
+def _bottom_line(answer: str, prose: ProseContext, allowed: set[str], *, no_pool: bool,
+                 strength: str | None) -> tuple[str, int]:
+    """The checked direct answer: unknown citations stripped, then every sentence with a number (other than a
+    context number), a wrong population or measure removed (fix_statement). A meta-analysis without pools states so
+    in a fixed sentence, and loses any sentence that claims a pooled effect. A graded answer without the GRADE
+    wording for its certainty gets a fixed certainty sentence. Returns (answer, sentences removed)."""
+    text, counts = fix_statement(strip_unknown_citations(answer or "", allowed), prose)
+    removed = sum(counts[k] for k in ("numbers_removed", "population_removed", "measures_removed"))
+    if no_pool:
+        kept = []
+        for sentence in _SENTENCE_END.split(text) if text else []:
+            if _POOLED_CLAIM.search(sentence) and not _SAYS_NO_POOL.search(sentence):
+                removed += 1
+                continue
+            kept.append(sentence)
+        text = " ".join(kept)
+        if not _SAYS_NO_POOL.search(text):
+            text = f"{NO_POOL_ANSWER} {text}".strip()
+    wording = CERTAINTY_WORDING.get(strength or "")
+    if text and wording and not wording.search(text) and not re.search(r"(?i)\bcertainty\b", text):
+        text = f"{text} {ANSWER_CERTAINTY[strength]}"
+    return text, removed
+
+
+def _key_findings(drafts: list[NarrativeFinding], prose: ProseContext, allowed: set[str],
+                  rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """The checked key findings: refs limited to the analysed papers (inline [Pn] citations are moved into refs),
+    the statement made numberless (fix_statement, scoped to the refs), an outcome that names a comparison row
+    written exactly as that row, and k = the number of refs. A finding left without a statement, a ref or an outcome
+    is dropped; at most MAX_KEY_FINDINGS are kept. Returns (findings, dropped)."""
+    names = {r["outcome"].strip().casefold(): r["outcome"] for r in rows}
+    out: list[dict[str, Any]] = []
+    dropped = 0
+    for f in drafts:
+        if len(out) == MAX_KEY_FINDINGS:
+            break
+        statement = strip_unknown_citations(f.statement or "", allowed)
+        refs = sorted(({r.strip() for r in f.refs} | cited_refs(statement)) & allowed, key=_ref_num)
+        text, _counts = fix_statement(_CITE_GROUP.sub("", statement).strip(), prose, refs)
+        outcome = names.get((f.outcome or "").strip().casefold(), (f.outcome or "").strip())
+        if not text.strip() or not refs or not outcome or is_placeholder(text) or is_placeholder(outcome):
+            dropped += 1
+            continue
+        out.append(KeyFinding(outcome=outcome, statement=text, refs=refs, k=len(refs)).model_dump())
+    return out, dropped
+
+
 def make_write_synthesis(deps):
     async def write_synthesis(state: ReviewState) -> dict:
         started = time.perf_counter()
@@ -731,10 +811,22 @@ def make_write_synthesis(deps):
             # Only what code could fix by deleting goes back to the model (final review finding 4): a rationale
             # that disagrees with the GRADE-lite factors is reconciled in code (reconcile_rationale), and a wrong
             # measure name before a number is rewritten in code (fix_prose); neither costs a narrative round.
+            # Plan 20: refs of the key findings must be analysed papers; the answer and the statements carry no
+            # numbers (deleting them could empty the bottom line, so they go back to the model). An empty answer or
+            # no key findings costs no round: the report then leads with the summary.
+            for i, f in enumerate(n.key_findings):
+                unknown = sorted({r for r in f.refs if r not in allowed}, key=_ref_num)
+                if unknown:
+                    problems.append(f"key_findings[{i}].refs: unknown {', '.join(unknown)}; cite only refs that "
+                                    "appear in the evidence")
             try:
                 grounded = prose_problems(n.executive_summary, prose, "executive_summary", fixable=False)
                 if graded:
                     grounded += prose_problems(rationale, prose, "evidence_rationale", fixable=False)
+                grounded += statement_problems(n.answer, prose, "answer")
+                for i, f in enumerate(n.key_findings):
+                    grounded += statement_problems(f.statement, prose, f"key_findings[{i}].statement",
+                                                   [r for r in f.refs if r in allowed])
             except Exception:
                 log.exception("grounded-prose validation failed")
                 grounded = []
@@ -826,6 +918,17 @@ def make_write_synthesis(deps):
         wording = CERTAINTY_WORDING.get(strength or "")
         if wording and not entry["fallback"] and summary != PROSE_REMOVED and not wording.search(summary):
             summary, certainty_added = f"{summary} {CERTAINTY_SENTENCE[strength]}", 1
+        no_pool = _no_pool(review_type, meta)
+        try:  # Plan 20; a crash fails closed: no model-written answer or findings (the no-pool sentence stays)
+            answer, answer_removed = _bottom_line(narrative.answer, prose, allowed, no_pool=no_pool, strength=strength)
+            key_findings, findings_dropped = _key_findings(narrative.key_findings, prose, allowed,
+                                                           matrix.get("rows") or [])
+        except Exception as exc:
+            log.exception("answer/key-findings check failed")
+            errors.append(f"answer check failed: {type(exc).__name__}")
+            answer, answer_removed = (NO_POOL_ANSWER if no_pool else ""), 0
+            key_findings, findings_dropped = [], len(narrative.key_findings)
+            prose_counts["check_failed"] += 1
         # coverage telemetry (audit I-22): analysed papers the summary never cites
         # (None when there is no model-written summary to judge: withheld or failed)
         entry["uncited"] = (None if entry["fallback"] or summary in (PROSE_REMOVED, "")
@@ -835,6 +938,8 @@ def make_write_synthesis(deps):
                         "measures_removed": prose_counts["measures_removed"],
                         "population_removed": prose_counts["population_removed"],
                         "certainty_added": certainty_added,
+                        # Plan 20: answer sentences and key findings removed by the numberless check
+                        "answer_removed": answer_removed, "key_findings_removed": findings_dropped,
                         **({"check_failed": True} if prose_counts["check_failed"] else {}),
                         "rationale_fixed": rationale_fix,  # "replaced" | "appended" | None (audit I-13e)
                         # narrative rounds the grounded-prose check sent back to the model (false positives show here)
@@ -845,7 +950,8 @@ def make_write_synthesis(deps):
             consensus=consensus, conflicts=conflicts, evidence_strength=strength,
             evidence_rationale=(narrative.evidence_rationale if graded else
                                 NO_QUANTITATIVE_RATIONALE if no_quantitative else _not_graded_rationale(review_type)),
-            research_gaps=gaps, grade_baseline=baseline if graded else None)
+            research_gaps=gaps, grade_baseline=baseline if graded else None,
+            answer=answer, key_findings=key_findings)
         entry["seconds"] = round(time.perf_counter() - started, 3)
         quality.append(entry)
         return {"synthesis": synthesis.model_dump(), "localized_cards": localized_cards, "cost_usd": cost,
@@ -859,6 +965,14 @@ def _synthesis_strings(s: dict[str, Any]) -> dict[str, str]:
     out = {"executive_summary": s.get("executive_summary", ""), "evidence_rationale": s.get("evidence_rationale", "")}
     out |= {f"research_gaps.{i}": g for i, g in enumerate(s.get("research_gaps") or [])}
     out |= {f"comparison.{i}.outcome": r["outcome"] for i, r in enumerate(s.get("comparison") or [])}
+    # Plan 20: the answer and the key findings; a finding's outcome that is a comparison row takes the row's
+    # localized name (applied in _apply_synthesis_strings), so the same outcome reads the same everywhere
+    out["answer"] = s.get("answer") or ""
+    rows = {r["outcome"] for r in s.get("comparison") or []}
+    for i, f in enumerate(s.get("key_findings") or []):
+        out[f"key_findings.{i}.statement"] = f["statement"]
+        if f["outcome"] not in rows:
+            out[f"key_findings.{i}.outcome"] = f["outcome"]
     for kind in ("consensus", "conflicts"):
         for i, c in enumerate(s.get(kind) or []):
             out[f"{kind}.{i}.statement"] = c["statement"]
@@ -872,6 +986,13 @@ def _apply_synthesis_strings(s: dict[str, Any], strings: dict[str, str], finding
     for key in ("executive_summary", "evidence_rationale"):
         out[key] = strings.get(key, out.get(key))
     out["research_gaps"] = [strings.get(f"research_gaps.{i}", g) for i, g in enumerate(out.get("research_gaps") or [])]
+    if "answer" in out:  # absent only in hand-built or pre-Plan 20 syntheses
+        out["answer"] = strings.get("answer", out["answer"])
+    row_names = {r["outcome"]: strings.get(f"comparison.{i}.outcome", r["outcome"])
+                 for i, r in enumerate(s.get("comparison") or [])}
+    for i, f in enumerate(out.get("key_findings") or []):
+        f["statement"] = strings.get(f"key_findings.{i}.statement", f["statement"])
+        f["outcome"] = strings.get(f"key_findings.{i}.outcome", row_names.get(f["outcome"], f["outcome"]))
     for i, row in enumerate(out.get("comparison") or []):
         row["outcome"] = strings.get(f"comparison.{i}.outcome", row["outcome"])
         for cell in row["cells"]:
@@ -1003,6 +1124,49 @@ def _meta_result(state: ReviewState, synthesis_en: dict[str, Any], display: dict
     return with_display(meta, names)
 
 
+def _iso(epoch: Any) -> str | None:
+    if not isinstance(epoch, int | float):
+        return None
+    return datetime.fromtimestamp(epoch, UTC).isoformat(timespec="seconds")
+
+
+def _methods(state: ReviewState, deps, models: dict[str, str]) -> dict[str, Any]:
+    """result.methods (Plan 20): what the Methods section reports and the rest of the result does not already hold.
+    The queries stay in result.queries, the full role → model map in result.models, the counts in result.stats."""
+    options = ReviewOptions.clamped(state.get("options"))
+    stats = state.get("search_stats") or {}
+    plan = state.get("plan") or {}
+    spec = harness_spec(deps)
+    llms = deps.llms
+    secondary = getattr(getattr(llms, "screener_secondary", None), "model", None)
+    second_vote = ("off" if secondary is None
+                   else "same_model" if secondary == getattr(getattr(llms, "screener", None), "model", 0)
+                   else "two_models")
+    per_source = stats.get("per_source")
+    floor = min(spec.screen_borderline or (MIN_INCLUDE_RELEVANCE,))
+    return {
+        "searched_at": stats.get("searched_at") or _iso(state.get("started_at")),
+        "sources": dict(per_source) if isinstance(per_source, dict) else None,  # null: not recorded
+        "eligibility": {"year_from": options.year_from, "study_types": list(options.study_types or []),
+                        "inclusion_criteria": list(plan.get("inclusion_criteria") or []),
+                        "exclusion_criteria": list(plan.get("exclusion_criteria") or [])},
+        "limits": {"candidate_limit": options.candidate_limit, "max_papers": options.max_papers,
+                   "min_abstract_chars": MIN_ABSTRACT_CHARS},
+        "screening": {"model": models.get("screener") or None,
+                      "second_model": models.get("screener_secondary") if second_vote == "two_models" else None,
+                      "second_vote": second_vote, "borderline": list(spec.screen_borderline),
+                      "relevance_floor": floor},
+        "extraction": {"model": models.get("extractor") or None,
+                       "second_model": (models.get("extractor_secondary") or None) if spec.dual_extraction else None,
+                       "verify_quotes": spec.verify_quotes, "quote_match_threshold": spec.quote_match_threshold,
+                       "text": "abstract"},
+        "synthesis": {"model": models.get("synthesizer") or None,
+                      "pooling": ("DerSimonian-Laird random effects"
+                                  if options.review_type == "meta_analysis" else None),
+                      "grading": "GRADE-lite" if options.review_type in SLR_LIKE else None},
+    }
+
+
 def make_finalize(deps):
     async def finalize(state: ReviewState) -> dict:
         papers = unique_papers(state)
@@ -1057,6 +1221,7 @@ def make_finalize(deps):
                                  for e in state.get("external_context") or []],
             "citations": state.get("citations"),
             "meta_analysis": _meta_result(state, synthesis_en, synthesis),
+            "methods": _methods(state, deps, models),
         }
         progress_writer()({"type": "finalizing"})
         return {"result": result}

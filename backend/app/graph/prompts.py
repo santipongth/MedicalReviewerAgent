@@ -114,14 +114,17 @@ Review type: narrative review. Write a thematic synthesis: group the papers by t
 differ, and cite the papers inline. Cover every paper: cite each one at least once, under the theme it informs (a
 short sentence per theme may cite several papers together). This review is not graded: do not describe the evidence as strong or weak in the
 summary. Certainty of evidence is not graded: ignore any GRADE-lite baseline and the certainty wording rule, and
-output only executive_summary and research_gaps."""
+output only executive_summary, research_gaps, answer (the main themes in 1-2 sentences) and key_findings (one per
+main theme or outcome)."""
 
 _NARRATIVE_SCOPING_BLOCK = OVERRIDE_LEAD + """
 Review type: scoping review. Write an evidence-map narrative: describe what kinds of studies exist (designs, years,
 populations, settings), which aspects of the concept are covered and where the gaps are. Cover every paper: cite
 each one at least once, under the aspect or cluster it maps to (one sentence may cite several papers). Do not judge whether the
 intervention works and do not grade the evidence. Certainty of evidence is not graded: ignore any GRADE-lite
-baseline and the certainty wording rule, and output only executive_summary and research_gaps."""
+baseline and the certainty wording rule, and output only executive_summary, research_gaps, answer (what kinds of
+evidence exist and the main gap, in 1-2 sentences) and key_findings (one per mapped aspect; a statement describes
+what the studies cover, never whether the intervention works)."""
 
 # Meta-analysis = SLR plus pooled effects: only extraction and the narrative get an appended block.
 _EXTRACT_META_BLOCK = OVERRIDE_LEAD + """
@@ -157,7 +160,9 @@ the verified numbers of the primary studies (not results of any single study). U
 consistency (I2) and precision, but do not state the numbers of pooled_analysis (its estimates, confidence limits, I2
 or tau2) anywhere in your text; refer to the pooled analysis section instead (e.g. "the pooled analysis suggests a
 lower risk"). This applies only to the system's pooled_analysis: the pooled estimates that a systematic-review card
-reports from its own abstract may still be stated as that card shows them, cited to that card."""
+reports from its own abstract may still be stated as that card shows them, cited to that card.
+When pooled_analysis is empty, no outcome could be pooled: the answer must say that pooling was not possible and
+must not describe a pooled or overall effect."""
 
 
 def refine_system(review_type: str = "slr") -> str:
@@ -384,6 +389,13 @@ paper cards; build on them and do not contradict them.
 - evidence_strength: start from the GRADE-lite baseline; you may move at most one level, and only with a reason.
 - evidence_rationale: 1-3 sentences explaining the rating (design, risk of bias, consistency, precision).
 - research_gaps: 2-5 concrete open questions.
+- answer: the bottom line, 1-2 English sentences that answer the review question directly, worded with the certainty
+  wording below. No numbers and no [Pn] citations: the report shows the verified numbers beside it.
+- key_findings: 3-5 findings, most important first (fewer only when fewer outcomes have evidence), each about one
+  outcome. outcome: the comparison row's outcome name copied exactly when the finding is about a row, else a short
+  English outcome name. statement: one plain English sentence with no numbers and no [Pn] citations (the report shows
+  the numbers of the cited cards and of any pooled analysis beside it), worded with the certainty wording below.
+  refs: the papers that support it, e.g. ["P1", "P4"].
 - Other comparisons: card outcomes with matches_question false compare something other than the review question's
   intervention and comparator (e.g. another drug vs the comparator). They are not in the comparison table and are
   never evidence for or against the question; mention them only as context, naming their comparison.
@@ -420,13 +432,16 @@ def narrative_user(*, question: str, sub_questions: list[str], papers: list[dict
                 f"Review question: {question}\nSub-questions:\n{subs}\n\n"
                 "Checklist before answering:\n- cite only refs that appear in the evidence (P1, P2, ...)\n"
                 "- every paper in the evidence is cited at least once\n"
-                "- the summary answers the question and every sub-question\n- all text is in English")
+                "- the summary answers the question and every sub-question\n"
+                "- answer is 1-2 sentences; answer and key_findings statements contain no numbers\n"
+                "- all text is in English")
     return (f"{DATA_NOTICE}\n<evidence>\n{json.dumps(evidence, ensure_ascii=False)}\n</evidence>\n\n{external}"
             f"Review question: {question}\nSub-questions:\n{subs}\n"
             f"GRADE-lite baseline: {baseline.get('level', 'very_low')} "
             f"({'; '.join(baseline.get('factors', []))})\n\n"
             "Checklist before answering:\n- cite only refs that appear in the evidence (P1, P2, ...)\n"
             "- the summary answers the question and every sub-question\n"
+            "- answer is 1-2 sentences; answer and key_findings statements contain no numbers\n"
             "- evidence_strength is within one level of the baseline; all text is in English"
             + ("\n- no pooled_analysis estimate, confidence limit, I2 or tau2 appears in the text"
                if review_type == "meta_analysis" else ""))

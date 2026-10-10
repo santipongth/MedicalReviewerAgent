@@ -32,7 +32,10 @@ SYSTEM_HASHES = {
     # (audit I-2a); the narrative gets the other-comparison, number/measure, population and GRADE certainty-wording
     # rules (audit I-2b/c, I-14).
     "extract_system": (prompts.extract_system, "be79abbcebcf454162d8f7d58245103387e748d2c33e52e066bae146ac5841fa"),
-    "narrative_system": (prompts.narrative_system, "c7e562f733bf0f9c21e1ce74f887d6369374500602858d4685964547834615ed"),
+    # Plan 20 (prompt_version 2026-10-10.7, report audit issues 1-3): the narrative also writes `answer` (a 1-2
+    # sentence bottom line with the GRADE certainty wording) and 3-5 numberless `key_findings` (outcome, statement,
+    # refs); the report renders their numbers from the verified cards and the computed pools.
+    "narrative_system": (prompts.narrative_system, "16278465ee36d386eede4011a039ce7adf15588592669958c92883bcc06b3b7d"),
 }
 
 
@@ -55,10 +58,10 @@ def test_slr_later_stage_user_prompts_are_unchanged():
                                      papers=[{"ref": "P1"}])) ==         "3db817d97a68c42a77255b9dfb6a3919f7cf838e75a874241b6b9ef303f533c2"
     assert sha(prompts.narrative_user(question="Q?", sub_questions=["a"], papers=[{"ref": "P1"}],
                                       matrix={"rows": [], "consensus": []}, conflict_notes=[],
-                                      baseline={"level": "low", "factors": ["f"]})) ==         "7d988f5384a6f9f9fae734c669ebf5ceaf14711ce575746f0910579a32dc6e68"
+                                      baseline={"level": "low", "factors": ["f"]})) ==         "d5b909e35096435c3529ef70f3f03ce6e2fab864eaaddd8a2217370d078fc345"  # Plan 20: answer/key_findings checklist item
     ext = [{"tool": "t", "arguments": {}, "text": "x", "ok": True}]
     assert sha(prompts.narrative_user(question="Q?", sub_questions=[], papers=[], matrix={}, conflict_notes=[],
-                                      baseline={}, external_context=ext)) ==         "25a5e11553e087fcb9bbbc57424e8b5478c98c3e7a80809bb0bdbd03b839f8ef"
+                                      baseline={}, external_context=ext)) ==         "cc8e09279b3c3e4ccb2822b3e1f16e2909890353e6ab4dddfb44c558f126353f"  # Plan 20
 
 
 def test_slr_user_prompts_are_unchanged():

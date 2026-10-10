@@ -16,7 +16,9 @@ class ReviewState(TypedDict, total=False):
     rejected: str | None
     plan: dict[str, Any] | None  # QueryPlan
     candidates: list[dict[str, Any]]  # Candidate
-    search_stats: dict[str, int]  # {"found": raw hits, "unique": after dedupe} for the PRISMA diagram
+    # {"found": raw hits, "unique": after dedupe, ...} for the PRISMA diagram; Plan 20 adds "per_source"
+    # ({engine: records}) and "searched_at" (ISO 8601 UTC) for the Methods section
+    search_stats: dict[str, Any]
     # Send fan-out branches append to these; reducers merge them.
     screened: Annotated[list[dict[str, Any]], operator.add]  # {key, relevance, include, reason}
     selected: list[dict[str, Any]]  # {ref, relevance, reason, candidate}

@@ -119,6 +119,18 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
         if graded else f"Certainty of evidence is not graded in a {'scoping' if scoping else 'narrative'} review.",
         "research_gaps": ["No long-term follow-up in the stub data."],
         "grade_baseline": grade["level"] if graded else None,
+        # Plan 20: numberless; the report renders the numbers from the cited cards and the matching pool
+        "answer": (f"Simulated studies map the evidence on {topic}." if scoping else
+                   f"The simulated evidence suggests {topic} may improve the primary outcome."
+                   + (f" The certainty of the evidence is {grade['level'].replace('_', ' ')}." if graded else "")),
+        "key_findings": [
+            {"outcome": row["outcome"], "statement": statement, "refs": refs, "k": len(refs)}
+            for row, statement in zip(comparison, (
+                "Simulated studies of several designs cover the primary outcome." if scoping else
+                "Most simulated studies report a benefit on the primary outcome; one cohort reports harm.",
+                "Fewer simulated studies cover safety." if scoping else
+                "Simulated studies report no safety concern."), strict=True)
+            for refs in [[c["ref"] for c in row["cells"]]]],
     }
     return {
         "topic": topic, "english_topic": topic, "language": language, "review_type": review_type,
@@ -147,6 +159,20 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
         "external_context": [],
         "citations": _citations(len(papers)),
         "meta_analysis": meta_analysis,
+        "methods": {
+            "searched_at": "2026-10-10T00:00:00+00:00",
+            "sources": {"pubmed": 41, "europe pmc": 30, "semantic scholar": 22, "arxiv": 3},
+            "eligibility": {"year_from": None, "study_types": [],
+                            "inclusion_criteria": ["Studies reporting the primary outcome"],
+                            "exclusion_criteria": ["Editorials and protocols without results"]},
+            "limits": {"candidate_limit": 60, "max_papers": 30, "min_abstract_chars": 150},
+            "screening": {"model": "stub", "second_model": None, "second_vote": "off", "borderline": [35, 70],
+                          "relevance_floor": 35},
+            "extraction": {"model": "stub", "second_model": None, "verify_quotes": True, "quote_match_threshold": 90,
+                           "text": "abstract"},
+            "synthesis": {"model": "stub", "pooling": "DerSimonian-Laird random effects" if meta else None,
+                          "grading": "GRADE-lite" if graded else None},
+        },
     }
 
 

@@ -114,6 +114,46 @@ export interface Synthesis {
   evidence_rationale?: string;
   research_gaps?: string[];
   grade_baseline?: EvidenceStrength | null;
+  /** Plan 20: 1–2 sentence direct answer (numberless; GRADE wording for graded types). "" or absent in older results. */
+  answer?: string;
+  /** Plan 20: at most 5 numberless findings; render numbers from the cards in `refs` or the matching pool. */
+  key_findings?: KeyFinding[];
+}
+
+/** Plan 20: `outcome` is a comparison row name when it is about a row (localized like the row in `synthesis`). */
+export interface KeyFinding {
+  outcome: string;
+  statement: string; // no numbers, no [Pn]
+  refs: string[];
+  k: number; // refs.length
+}
+
+/** Plan 20: result.methods (absent in results stored before Plan 20). Models are "provider:model" strings. */
+export interface ReviewMethods {
+  searched_at: string | null; // ISO 8601 UTC
+  sources: Record<string, number> | null; // records per source before deduplication (can sum to more than found)
+  eligibility: {
+    year_from: number | null;
+    study_types: string[];
+    inclusion_criteria: string[];
+    exclusion_criteria: string[];
+  };
+  limits: { candidate_limit: number; max_papers: number; min_abstract_chars: number };
+  screening: {
+    model: string | null;
+    second_model: string | null;
+    second_vote: "two_models" | "same_model" | "off";
+    borderline: [number, number];
+    relevance_floor: number;
+  };
+  extraction: {
+    model: string | null;
+    second_model: string | null;
+    verify_quotes: boolean;
+    quote_match_threshold: number;
+    text: "abstract";
+  };
+  synthesis: { model: string | null; pooling: string | null; grading: string | null };
 }
 
 export interface QuestionText {
@@ -297,6 +337,7 @@ export interface ReviewResult {
   external_context?: ExternalNote[];
   meta_analysis?: MetaAnalysis | null; // Plan 14b
   citations?: Citations | null; // Plan 14b
+  methods?: ReviewMethods; // Plan 20
 }
 
 export interface ServiceStatus {

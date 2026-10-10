@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-10.6`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-10.7`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.
@@ -118,7 +118,59 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `progress` is reserved and always `null`. Live progress comes from the event stream.
 - `status` is one of `queued`, `running`, `done`, `error`, `rejected` or `cancelled`.
 
-`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis`.
+`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`.
+
+**Answer and key findings (Plan 20).** `synthesis` (and `synthesis_en`) also has:
+- `answer`: the bottom line, 1–2 sentences that answer the question directly. Graded types (`slr`, `meta_analysis`)
+  carry GRADE certainty wording; when the model's answer lacks the wording for the final `evidence_strength`
+  (moderate "probably"/"likely", low "may"/"might", very low "very uncertain") and does not name the certainty, a fixed
+  sentence is appended ("The certainty of the evidence is low."). A `meta_analysis` whose `meta_analysis` has no pools
+  (null, or `pools: []`) always says so: a fixed sentence ("Pooling was not possible: ...") leads the answer unless it
+  already states that pooling was not possible, and any answer sentence that claims a pooled or overall effect is
+  removed. `""` when the narrative step failed (or for results stored before Plan 20); a review with no papers repeats
+  its notice.
+- `key_findings[]`: at most 5 items `{outcome, statement, refs[], k}`, most important first.
+  - `outcome` is a `synthesis.comparison` row name when the finding is about a row (matched case-insensitively and
+    written exactly as the row), else a short outcome name. In `synthesis` it is localized like the row, so it
+    equals the localized row name; `synthesis_en.key_findings[i]` is the same finding in English (same order).
+  - `statement` is one plain sentence with **no numbers** (and no `[Pn]`; inline citations are moved into `refs`).
+    Clients render numbers from the cards in `refs` (verified) or from the matching `meta_analysis` pool
+    (`pools[].outcome` = the English row name; computed), never from this text.
+  - `refs` are the analysed papers that support it (unknown refs dropped), sorted; `k` is `len(refs)`, set in code.
+  - A finding left without a statement, a known ref or an outcome is dropped.
+- `executive_summary` stays as the discussion text (`result.summary` is unchanged).
+
+Both fields go through the grounded-prose check below in its numberless variant: a sentence is removed when it states
+any number other than a context number (question and PICO text, the scoped papers' titles, years, population,
+intervention, comparator and outcome names, e.g. "type 2 diabetes"), so a card estimate, sample size, pooled value or
+count never appears in them; the population and measure-name checks are scoped to the finding's `refs` (the answer:
+its citations, else every paper). Numbers in either field, and unknown refs, are sent back to the model once as
+repair problems; an empty answer or no key findings costs no round. Both fields are localized with the rest of the
+synthesis (numbers and citations must survive unchanged). `result.quality.prose_check` adds `answer_removed`
+(answer sentences removed) and `key_findings_removed` (findings dropped); both are absent from results stored before
+Plan 20.
+
+**Methods (Plan 20).** `result.methods` holds what the Methods section reports and the rest of the result does not
+(the queries stay in `result.queries`, the full role-to-model map in `result.models`, the counts in `result.stats`).
+It is absent from results stored before Plan 20.
+- `searched_at`: ISO 8601 UTC time of the search (the review start time when the search did not record it; null when
+  neither is known).
+- `sources`: records identified per source before deduplication, `{engine: count}` (SearXNG engine names such as
+  `pubmed`, `europe pmc`, `semantic scholar`, `arxiv`, `crossref`; `europe pmc (rct search)` for the meta-analysis
+  RCT search; `unknown` for a hit that names no engine). A hit that several engines returned counts once for each, so
+  the counts can sum to more than `stats.found`. null when not recorded.
+- `eligibility`: `{year_from, study_types[], inclusion_criteria[], exclusion_criteria[]}` (the criteria are the
+  planner's, in English).
+- `limits`: `{candidate_limit, max_papers, min_abstract_chars}`.
+- `screening`: `{model, second_model, second_vote, borderline: [low, high], relevance_floor}`. `second_vote` is
+  `two_models`, `same_model` (skipped: the secondary screener is the screener's model) or `off`; `second_model` is
+  null unless it is `two_models`.
+- `extraction`: `{model, second_model, verify_quotes, quote_match_threshold, text: "abstract"}` (`second_model` null
+  when dual extraction is off).
+- `synthesis`: `{model, pooling, grading}`: `pooling` is `"DerSimonian-Laird random effects"` for `meta_analysis`,
+  else null; `grading` is `"GRADE-lite"` for `slr`/`meta_analysis`, else null.
+
+Models are `provider:model` strings as in `result.models` (null when not configured).
 
 **Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`.
 - `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, qualitative, mixed_methods, other`.
