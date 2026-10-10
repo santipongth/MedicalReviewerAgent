@@ -2,16 +2,33 @@
 the paper (hallucinations), impossible statistics, unknown citations and numbers altered in translation.
 
 Number verification (Plan 19, audit I-1/I-5):
-- A numeric field is verified only when its exact value occurs in the paper text (the abstract) inside the window that
-  the evidence quote aligns to, and in the quote itself. The model's quote alone never verifies a number.
-- Both sides are parsed by one tokenizer that folds the formats abstracts use: the unicode minus, a hyphen or en dash
-  used as a minus (one that follows a number is a range), "·" decimals, decimal commas ("0,85"), comma or space
-  thousands ("1,234", "111 725" with a normal, thin or no-break space), leading-dot decimals ("P = .003") and
-  percentages ("12.5%" is the number 12.5; it never stands for 0.125).
+- The evidence quote is located in the paper text (the abstract) with rapidfuzz partial_ratio_alignment. The quote must
+  then be numerically verbatim: its ordered numbers must equal the ordered numbers of that source window (only a
+  number cut at the window edge may differ). A quote that changes, adds or drops a number verifies nothing.
+- A numeric field is verified only when its exact value is one of those matched window numbers. The model's quote
+  alone never verifies a number.
+- Binding to the outcome: an effect with a CI must appear as an ordered run, effect then lower then upper bound;
+  between the effect and the lower bound only the CI level ("95" of "95% CI") and integer counts ("779 of 1118",
+  "per 1000") may stand. When the window holds several estimates, an estimate whose phrase since the previous
+  estimate names another outcome of the same card, and not this one, is rejected
+  ("... mortality (HR 0.86, 0.75-0.99) and stroke (HR 0.80 ..." cannot give 0.80 to mortality).
+  Known limit: binding is lexical and conservative. It does not judge the first estimate of the window (its lead-in
+  often names several outcomes), wordings that name the outcome after the number ("HR 0.86 for mortality and 0.80
+  for stroke"), or sibling outcomes the card does not list. In those cases an estimate can still be given to the
+  wrong outcome of the same passage; the number itself is still verbatim from the paper.
+- Both sides are parsed by one tokenizer that folds the formats abstracts use: the unicode minus (always a minus, also
+  when a space follows it), a hyphen or en dash used as a minus (one that follows a number is a range), "·" decimals,
+  comma or space thousands ("1,234", "111 725" with a normal, thin or no-break space), leading-dot decimals
+  ("P = .003") and percentages ("12.5%" is the number 12.5; it never stands for 0.125). Decimal commas ("0,85") are
+  read only when the paper text has no decimal point, so lists such as "1,2,5" or "weeks 2,4" stay separate numbers in
+  an abstract that writes decimals with a point.
 - Equality is exact on the decimal value: 0.8 equals 0.80 (the model's JSON float cannot keep a trailing zero, and the
   value is the same), but 0.80 never equals 0.86 or 0.804, and a number never matches inside a longer one
   ("0.80" is not in "10.80" or "0.805").
-- Fields are nulled one at a time (`null_unverified_numbers`).
+- Fields are nulled one at a time (`null_unverified_numbers`). A CI is kept only whole and only with its effect.
+- Free text: an outcome's `result` may only use numbers of its quote's source window (the whole abstract when the
+  quote is not found), and never a value that was nulled from that outcome. `key_findings` have no quote, so their
+  numbers are checked against the whole abstract.
 """
 from __future__ import annotations
 
@@ -19,6 +36,7 @@ import re
 from collections import Counter
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
+from typing import NamedTuple
 
 from rapidfuzz import fuzz
 
@@ -41,30 +59,53 @@ _CITE_GROUP = re.compile(r"\s?\[([^\]]*\bP\d+[^\]]*)\]")
 _REF = re.compile(r"\bP\d+\b")
 
 # Verification tokenizer. `_FOLD` maps one character to one character, so match offsets are offsets in the original:
-# em dash -> en dash, middle dot -> decimal point, special spaces -> space. The unicode minus is kept: it is always
-# a minus, while "-" and an en dash are a minus only when they do not follow a number.
+# em dash -> en dash, middle dot -> decimal point, special spaces -> space.
 _FOLD = str.maketrans({_EM_DASH: _EN_DASH, _MIDDOT: ".", **{c: " " for c in _SPACES}})
-_TOKEN = re.compile(r"""
+_TOKEN_HEAD = r"""
     (?<![A-Za-z0-9_.])                                  # not glued to a word ("T2D") or inside a decimal
-    (?P<sign>[-–−])?
+    (?:(?P<sign>[-SIGNS])\ ?)?                          # a sign may be followed by one space ("MD - 0.5")
     (?:
+"""
+_TOKEN_TAIL = r"""
         (?P<comma_k>\d{1,3}(?:,\d{3})+(?:\.\d+)?)(?!\d|,\d)        # 1,234  1,234.5
       | (?P<space_k>\d{1,3}(?:\ \d{3})+(?:\.\d+)?)(?!\d|\ \d)      # 111 725
-      | (?P<dec_comma>0,\d+|[1-9]\d{0,2},\d{1,2})(?!\d|,\d)        # 0,85  12,5 (three digits = thousands)
       | (?P<plain>\d+(?:\.\d+)?)
       | (?P<lead_dot>\.\d+)                                         # P = .003
     )
-""", re.VERBOSE)
+"""
+# comma-decimal papers only: 0,85 / 12,5 (three digits after the comma = thousands), never inside a list "1,2,5"
+_DEC_COMMA = r"(?<!\d,)(?P<dec_comma>0,\d+|[1-9]\d{0,2},\d{1,2})(?!\d|,\d) |"
+_HEAD = _TOKEN_HEAD.replace("SIGNS", _EN_DASH + _MINUS)
+_TOKEN_POINT = re.compile(_HEAD + _TOKEN_TAIL, re.VERBOSE)
+_TOKEN_COMMA = re.compile(_HEAD + _DEC_COMMA + _TOKEN_TAIL, re.VERBOSE)
+_DECIMAL_POINT = re.compile(r"\d\.\d")
+_CI_LEVELS = {Decimal(90), Decimal(95), Decimal(99)}
 
 
-@lru_cache(maxsize=512)
-def _tokens(text: str) -> tuple[tuple[int, int, Decimal], ...]:
-    """(start, end, value) of every number in `text`; offsets refer to the original string."""
+class Tok(NamedTuple):
+    start: int
+    end: int
+    value: Decimal
+    integer: bool  # written without a decimal part ("779", "1,118"): a count, never an estimate
+
+
+def _comma_decimals(text: str) -> bool:
+    """True when the text writes decimals with a comma: it has no decimal point at all."""
+    return not _DECIMAL_POINT.search(text.translate(_FOLD))
+
+
+@lru_cache(maxsize=1024)
+def _tokens(text: str, comma_decimals: bool | None = None) -> tuple[Tok, ...]:
+    """Every number in `text` with its offsets in the original string. `comma_decimals` defaults to the text's own
+    convention; pass the source's convention when parsing a quote of it."""
     folded = text.translate(_FOLD)
-    out: list[tuple[int, int, Decimal]] = []
-    for m in _TOKEN.finditer(folded):
+    if comma_decimals is None:
+        comma_decimals = not _DECIMAL_POINT.search(folded)
+    out: list[Tok] = []
+    for m in (_TOKEN_COMMA if comma_decimals else _TOKEN_POINT).finditer(folded):
         kind = m.lastgroup
         raw = m.group(kind)
+        integer = kind in ("comma_k", "space_k", "plain") and "." not in raw
         if kind in ("comma_k", "space_k"):
             raw = raw.replace(",", "").replace(" ", "")
         elif kind == "dec_comma":
@@ -74,16 +115,17 @@ def _tokens(text: str) -> tuple[tuple[int, int, Decimal], ...]:
         value = Decimal(raw)
         start = m.start(kind)
         if sign := m.group("sign"):
-            # a hyphen or en dash right after a number ("0.71 - 0.90", "12% – 15%") is a range, not a minus
+            # a hyphen or en dash right after a number ("0.71 - 0.90", "12% – 15%") is a range, not a minus;
+            # the unicode minus is always a minus
             before = folded[: m.start("sign")].rstrip(" ")
             if sign == _MINUS or not (before and (before[-1].isdigit() or before[-1] == "%")):
                 value, start = -value, m.start("sign")
-        out.append((start, m.end(), value))
+        out.append(Tok(start, m.end(), value, integer))
     return tuple(out)
 
 
-def _values(text: str | None) -> set[Decimal]:
-    return {v for _, _, v in _tokens(text)} if text else set()
+def _values(text: str | None, comma_decimals: bool | None = None) -> set[Decimal]:
+    return {t.value for t in _tokens(text, comma_decimals)} if text else set()
 
 
 def _dec(value: float) -> Decimal | None:
@@ -94,7 +136,7 @@ def _dec(value: float) -> Decimal | None:
 
 
 def numbers_in(text: str | None) -> list[float]:
-    return [float(v) for _, _, v in _tokens(text)] if text else []
+    return [float(t.value) for t in _tokens(text)] if text else []
 
 
 _KEEP = re.compile(r"[\w.%\-]")
@@ -141,35 +183,158 @@ def quote_found(quote: str | None, source: str, threshold: int) -> bool:
     return quote_window(quote, source, threshold) is not None
 
 
-def _window_values(source: str, window: tuple[int, int]) -> set[Decimal]:
-    """Numbers overlapping the window: a number cut by the window edge counts whole, never as a fragment."""
-    start, end = window
-    return {v for s, e, v in _tokens(source) if s < end and e > start}
+_EDGE = 2  # characters: a window-edge number the alignment only grazed may be left out of the quote
 
 
-def _supported(value: float, quote: str | None, source: str, window: tuple[int, int]) -> str | None:
-    """None when the exact value is in the quote and in the aligned source window, else the reason it is not."""
-    d = _dec(value)
-    if d is None or d not in _values(quote):
-        return "does not appear in evidence_quote"
-    if d not in _window_values(source, window):
-        return "does not appear in the paper text where evidence_quote is found; copy numbers exactly as reported"
+class _Match(NamedTuple):
+    window: tuple[int, int]
+    toks: tuple[Tok, ...]  # every number of the source
+    in_window: tuple[int, ...]  # indices into toks that overlap the window
+    exact: frozenset[int] | None  # indices whose value the quote repeats exactly; None = the quote alters a number
+
+
+def _pair(quote_values: list[Decimal], toks: tuple[Tok, ...], w: tuple[int, ...],
+          window: tuple[int, int]) -> frozenset[int] | None:
+    """Pair the quote's ordered numbers with the window's. Only a number cut by (or grazing) the window edge may be
+    left out of the quote or appear truncated in it; any other difference means the quote altered the paper."""
+    ws, we = window
+    first_edge = bool(w) and toks[w[0]].start < ws + _EDGE
+    last_edge = bool(w) and toks[w[-1]].end > we - _EDGE
+    for drop_first in (False, True):
+        for drop_last in (False, True):
+            if (drop_first and not first_edge) or (drop_last and not last_edge):
+                continue
+            cand = w[(1 if drop_first else 0): len(w) - (1 if drop_last else 0)]
+            if len(cand) != len(quote_values):
+                continue
+            exact: set[int] = set()
+            for k, (qv, wi) in enumerate(zip(quote_values, cand, strict=True)):
+                if toks[wi].value == qv:
+                    exact.add(wi)
+                    continue
+                cut = (k == 0 and toks[wi].start < ws) or (k == len(cand) - 1 and toks[wi].end > we)
+                if not cut:
+                    break
+            else:
+                return frozenset(exact)
     return None
 
 
-def outcome_failures(o: OutcomeResult, source: str, threshold: int) -> list[tuple[tuple[str, ...], str]]:
-    """Every problem with the numeric fields it condemns, so callers can null exactly those fields."""
+def _match(quote: str | None, source: str, threshold: int) -> _Match | None:
+    window = quote_window(quote, source, threshold)
+    if window is None:
+        return None
+    comma = _comma_decimals(source)
+    toks = _tokens(source, comma)
+    w = tuple(i for i, t in enumerate(toks) if t.start < window[1] and t.end > window[0])
+    quote_values = [t.value for t in _tokens(quote or "", comma)]
+    return _Match(window, toks, w, _pair(quote_values, toks, w, window))
+
+
+_ALTERED = ("changes, adds or leaves out a number of the paper text at the quoted passage; quote the passage exactly, "
+            "with every number as printed")
+_STOP = {"with", "from", "that", "were", "than", "this", "those", "these", "group", "groups", "ratio", "ratios",
+         "patients", "participants", "risk", "rate", "rates", "versus", "compared", "between", "among", "after",
+         "during", "total", "overall", "significant", "significantly", "higher", "lower", "there", "which",
+         "while", "both", "each", "other", "results", "outcome", "outcomes", "associated", "association", "difference",
+         "differences", "mean", "median", "change", "changes", "reduction", "increase", "increased", "reduced"}
+
+
+def _words(text: str) -> set[str]:
+    return {w[:5] for w in re.findall(r"[a-z]+", text.lower()) if len(w) >= 4 and w not in _STOP}
+
+
+def _gap_ok(tok: Tok, source: str) -> bool:
+    """Numbers allowed between an estimate and its CI: the CI level ("95%") and integer counts ("779 of 1118")."""
+    return (tok.value in _CI_LEVELS and source[tok.end:tok.end + 1] == "%") or (tok.integer and tok.value >= 0)
+
+
+def _runs(m: _Match, source: str, effect: Decimal, lo: Decimal | None, hi: Decimal | None) -> list[int]:
+    """Positions (indices into m.toks) where the effect starts a valid run: effect, [CI level / counts], lo, hi."""
+    starts = []
+    for p in sorted(m.exact):
+        if m.toks[p].value != effect:
+            continue
+        if lo is None:
+            starts.append(p)
+            continue
+        j, gap = p + 1, 0
+        while j in m.exact:
+            if m.toks[j].value == lo and j + 1 in m.exact and m.toks[j + 1].value == hi:
+                starts.append(p)
+                break
+            if gap >= 4 or not _gap_ok(m.toks[j], source):
+                break
+            gap, j = gap + 1, j + 1
+    return starts
+
+
+def _phrase_before(m: _Match, source: str, p: int) -> str | None:
+    """The source text between the previous estimate in the window and the token at p; None when the estimate is
+    the first one of the window (its lead-in often names several outcomes, so it cannot tell them apart)."""
+    k = p - 1
+    while k >= 0 and k in m.in_window and _gap_ok(m.toks[k], source):
+        k -= 1
+    if k < 0 or k not in m.in_window:
+        return None
+    return source[m.toks[k].end:m.toks[p].start]
+
+
+def _bound_elsewhere(name: str, others: tuple[str, ...], phrase: str | None) -> str | None:
+    """Another outcome of the card that the phrase between two estimates names, while it never names this outcome
+    ("... (HR 0.86, 0.75-0.99) and stroke (HR 0.80 ..." belongs to stroke, not to mortality)."""
+    if phrase is None:
+        return None
+    words = _words(phrase)
+    if _words(name) & words:
+        return None
+    best = max(((len(_words(n) & words), n) for n in others if n != name), default=(0, ""))
+    return best[1] if best[0] > 0 else None
+
+
+def outcome_failures(o: OutcomeResult, source: str, threshold: int,
+                     others: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], str]]:
+    """Every problem with the numeric fields it condemns, so callers can null exactly those fields. `others` are the
+    names of the card's other outcomes (used to bind an estimate to its outcome)."""
     name = o.outcome
     out: list[tuple[tuple[str, ...], str]] = []
     present = {k: getattr(o, k) for k in NUMERIC_FIELDS if getattr(o, k) is not None}
     if present:
-        window = quote_window(o.evidence_quote, source, threshold)
-        if window is None:
+        m = _match(o.evidence_quote, source, threshold)
+        if m is None:
             out.append((tuple(present), f"{name}: evidence_quote is not found verbatim in the paper text"))
+        elif m.exact is None:
+            out.append((tuple(present), f"{name}: evidence_quote {_ALTERED}"))
         else:
+            quoted = _values(o.evidence_quote, _comma_decimals(source))
+            matched = {m.toks[i].value for i in m.exact}
+            bad: set[str] = set()
             for key, value in present.items():
-                if reason := _supported(value, o.evidence_quote, source, window):
-                    out.append(((key,), f"{name}: {key} {value:g} {reason}"))
+                d = _dec(value)
+                if d is None or d not in quoted:
+                    out.append(((key,), f"{name}: {key} {value:g} does not appear in evidence_quote"))
+                    bad.add(key)
+                elif d not in matched:
+                    out.append(((key,), (f"{name}: {key} {value:g} does not appear in the paper text where "
+                                         "evidence_quote is found; copy numbers exactly as reported")))
+                    bad.add(key)
+            if "effect_value" in present and "effect_value" not in bad:
+                with_ci = {"ci_lower", "ci_upper"} <= present.keys() and not bad & {"ci_lower", "ci_upper"}
+                lo, hi = (_dec(o.ci_lower), _dec(o.ci_upper)) if with_ci else (None, None)
+                starts = _runs(m, source, _dec(o.effect_value), lo, hi)
+                estimate = ("effect_value", "ci_lower", "ci_upper")
+                if not starts:  # only possible with a CI: a lone effect already matched a window number
+                    out.append((estimate, (f"{name}: effect_value {o.effect_value:g} and its CI {lo} to {hi} are not "
+                                           "reported together (estimate, then its interval) in the paper text")))
+                else:
+                    owners = [_bound_elsewhere(name, others, _phrase_before(m, source, p)) for p in starts]
+                    if all(owners):
+                        out.append((estimate, (f"{name}: effect_value {o.effect_value:g} is reported for "
+                                               f"'{owners[0]}', not for this outcome")))
+    if (o.ci_lower is None) != (o.ci_upper is None):
+        out.append((("ci_lower", "ci_upper"), f"{name}: give both CI bounds or neither"))
+    elif o.ci_lower is not None and o.effect_value is None:
+        out.append((("ci_lower", "ci_upper"), f"{name}: a CI needs its effect_value"))
     if o.effect_measure == "none" and o.effect_value is not None:
         out.append((("effect_value",), f"{name}: effect_measure is 'none' but effect_value is set"))
     if o.ci_lower is not None and o.ci_upper is not None and o.ci_lower > o.ci_upper:
@@ -190,8 +355,8 @@ def outcome_failures(o: OutcomeResult, source: str, threshold: int) -> list[tupl
     return out
 
 
-def outcome_problems(o: OutcomeResult, source: str, threshold: int) -> list[str]:
-    return [message for _, message in outcome_failures(o, source, threshold)]
+def outcome_problems(o: OutcomeResult, source: str, threshold: int, others: tuple[str, ...] = ()) -> list[str]:
+    return [message for _, message in outcome_failures(o, source, threshold, others)]
 
 
 def _sample_size_problems(card: PaperCard, source: str, threshold: int) -> list[str]:
@@ -199,50 +364,69 @@ def _sample_size_problems(card: PaperCard, source: str, threshold: int) -> list[
         return []
     if not card.sample_size_quote:
         return ["sample_size is set but sample_size_quote is empty"]
-    window = quote_window(card.sample_size_quote, source, threshold)
-    if window is None:
+    m = _match(card.sample_size_quote, source, threshold)
+    if m is None:
         return ["sample_size_quote is not found verbatim in the paper text"]
-    if reason := _supported(card.sample_size, card.sample_size_quote, source, window):
-        return [f"sample_size {card.sample_size} {reason.replace('evidence_quote', 'sample_size_quote')}"]
+    if m.exact is None:
+        return [f"sample_size_quote {_ALTERED}"]
+    d = _dec(card.sample_size)
+    if d not in _values(card.sample_size_quote, _comma_decimals(source)):
+        return [f"sample_size {card.sample_size} does not appear in sample_size_quote"]
+    if d not in {m.toks[i].value for i in m.exact}:
+        return [f"sample_size {card.sample_size} does not appear in the paper text where sample_size_quote is found"]
     return []
 
 
-def _unverified(text: str | None, source_numbers: set[Decimal]) -> list[float]:
-    return [float(v) for _, _, v in _tokens(text or "") if v not in source_numbers]
+def _prose_allowed(quote: str | None, source: str, threshold: int | None) -> set[Decimal]:
+    """Numbers an outcome's `result` may use: those of its quote's source window, else of the whole abstract."""
+    m = _match(quote, source, threshold) if threshold is not None else None
+    if m is None:
+        return _values(source)
+    return {m.toks[i].value for i in m.in_window}
 
 
-def free_text_problems(card: PaperCard, source: str) -> list[str]:
-    """Numbers in user-facing free text (result, key_findings) must appear somewhere in the paper text."""
-    src = _values(source)
+def _unverified(text: str | None, allowed: set[Decimal], comma_decimals: bool | None = None) -> list[float]:
+    return [float(t.value) for t in _tokens(text or "", comma_decimals) if t.value not in allowed]
+
+
+def free_text_problems(card: PaperCard, source: str, threshold: int | None = None) -> list[str]:
+    """Numbers in user-facing free text must appear in the paper text: an outcome's `result` in its quote's source
+    window (when `threshold` is given and the quote is found), `key_findings` anywhere in the abstract."""
+    comma = _comma_decimals(source)
     problems = [f"{o.outcome}: result mentions {', '.join(f'{n:g}' for n in bad)} which does not appear in the "
-                "paper text; copy numbers exactly as reported" for o in card.outcomes
-                if (bad := _unverified(o.result, src))]
+                "paper text where evidence_quote is found; copy numbers exactly as reported" for o in card.outcomes
+                if (bad := _unverified(o.result, _prose_allowed(o.evidence_quote, source, threshold), comma))]
+    src = _values(source, comma)
     problems += [f"key_findings item {i + 1} mentions {', '.join(f'{n:g}' for n in bad)} which does not appear in "
-                 "the paper text" for i, f in enumerate(card.key_findings) if (bad := _unverified(f, src))]
+                 "the paper text" for i, f in enumerate(card.key_findings) if (bad := _unverified(f, src, comma))]
     return problems
+
+
+def _others(card: PaperCard, o: OutcomeResult) -> tuple[str, ...]:
+    return tuple(x.outcome for x in card.outcomes if x is not o)
 
 
 def card_problems(card: PaperCard, source: str, threshold: int) -> list[str]:
     problems = _sample_size_problems(card, source, threshold)
     for o in card.outcomes:
-        problems += outcome_problems(o, source, threshold)
-    return problems + free_text_problems(card, source)
+        problems += outcome_problems(o, source, threshold, _others(card, o))
+    return problems + free_text_problems(card, source, threshold)
 
 
-def _mask_unverified(text: str, source_numbers: set[Decimal]) -> str:
-    """Replace each number that is not in the paper text by "[unverified]"; everything else stays as written."""
+def _mask_unverified(text: str, allowed: set[Decimal], comma_decimals: bool | None = None) -> str:
+    """Replace each number that is not allowed by "[unverified]"; everything else stays as written."""
     out, last = [], 0
-    for start, end, value in _tokens(text):
-        if value not in source_numbers:
-            out += [text[last:start], "[unverified]"]
-            last = end
+    for t in _tokens(text, comma_decimals):
+        if t.value not in allowed:
+            out += [text[last:t.start], "[unverified]"]
+            last = t.end
     return "".join(out) + text[last:]
 
 
 def _quote_is_faithful(quote: str | None, source: str, threshold: int) -> bool:
-    """The quote is found and every number in it is in its aligned source window (no altered digit)."""
-    window = quote_window(quote, source, threshold)
-    return window is not None and _values(quote) <= _window_values(source, window)
+    """The quote is found and numerically verbatim: its ordered numbers are the window's (no altered digit)."""
+    m = _match(quote, source, threshold)
+    return m is not None and m.exact is not None
 
 
 def _null_fields(o: OutcomeResult, failed: set[str]) -> OutcomeResult:
@@ -258,6 +442,20 @@ def _null_fields(o: OutcomeResult, failed: set[str]) -> OutcomeResult:
     return o.model_copy(update=update)
 
 
+def _fix_result(before: OutcomeResult, o: OutcomeResult, source: str, threshold: int) -> OutcomeResult:
+    """`result` may only use numbers of the quote's source window, never a value nulled from this outcome."""
+    comma = _comma_decimals(source)
+    nulled = {_dec(getattr(before, k)) for k in NUMERIC_FIELDS
+              if getattr(before, k) is not None and getattr(o, k) is None}
+    allowed = _prose_allowed(o.evidence_quote, source, threshold) - nulled
+    if not _unverified(o.result, allowed, comma):
+        return o
+    use_quote = (_quote_is_faithful(o.evidence_quote, source, threshold)
+                 and not _values(o.evidence_quote, comma) & nulled)
+    return o.model_copy(update={"result": o.evidence_quote if use_quote else _mask_unverified(o.result, allowed,
+                                                                                               comma)})
+
+
 def null_unverified_numbers(card: PaperCard, source: str, threshold: int) -> tuple[PaperCard, int, int]:
     """Blank every number that failed verification so it can never reach a forest plot or the table.
 
@@ -268,23 +466,22 @@ def null_unverified_numbers(card: PaperCard, source: str, threshold: int) -> tup
     reading.py derives, so numbers_total - numbers_verified == len(unverified)."""
     verified = total = 0
     outcomes = []
-    src = _values(source)
-    for o in card.outcomes:
-        if _unverified(o.result, src):  # free text: use the faithful verbatim quote, else mask the numbers
-            faithful = _quote_is_faithful(o.evidence_quote, source, threshold)
-            o = o.model_copy(update={"result": o.evidence_quote if faithful else _mask_unverified(o.result, src)})
+    comma = _comma_decimals(source)
+    for before in card.outcomes:
+        o = before
         had_effect = o.effect_value is not None
-        if not any(getattr(o, k) is not None for k in NUMERIC_FIELDS):
-            outcomes.append(o)
-            continue
-        total += 1
-        failed = {k for fields, _ in outcome_failures(o, source, threshold) for k in fields}
-        if failed:
-            o = _null_fields(o, failed)
-        verified += (o.effect_value is not None) if had_effect else any(getattr(o, k) is not None
-                                                                         for k in NUMERIC_FIELDS)
-        outcomes.append(o)
-    update: dict = {"outcomes": outcomes, "key_findings": [f for f in card.key_findings if not _unverified(f, src)]}
+        if any(getattr(o, k) is not None for k in NUMERIC_FIELDS):
+            total += 1
+            failed = {k for fields, _ in outcome_failures(o, source, threshold, _others(card, before))
+                      for k in fields}
+            if failed:
+                o = _null_fields(o, failed)
+            verified += (o.effect_value is not None) if had_effect else any(getattr(o, k) is not None
+                                                                             for k in NUMERIC_FIELDS)
+        outcomes.append(_fix_result(before, o, source, threshold))
+    src = _values(source, comma)
+    update: dict = {"outcomes": outcomes,
+                    "key_findings": [f for f in card.key_findings if not _unverified(f, src, comma)]}
     if card.sample_size is not None:
         total += 1
         if _sample_size_problems(card, source, threshold):

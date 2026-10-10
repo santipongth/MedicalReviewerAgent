@@ -7,6 +7,7 @@ import pytest
 from app.graph.nodes.reading import make_read_paper
 from app.graph.schemas import OutcomeResult, PaperCard
 from app.harness.verify import (
+    _quote_is_faithful,
     card_problems,
     null_unverified_numbers,
     numbers_in,
@@ -42,11 +43,12 @@ def test_audit_case_altered_digit_in_quote_and_field_fails():
     o = outcome("lower risk of colorectal cancer (HR 0.80, 95% CI 0.77-0.96; p = 0.008)", 0.80, 0.77, 0.96, 0.008)
     assert quote_window(o.evidence_quote, AUDIT_SOURCE, 90) is not None  # the fuzzy locate still succeeds
     problems = outcome_problems(o, AUDIT_SOURCE, 90)
-    assert problems == [("CRC incidence: effect_value 0.8 does not appear in the paper text where evidence_quote is "
-                         "found; copy numbers exactly as reported")]
+    assert problems == [("CRC incidence: evidence_quote changes, adds or leaves out a number of the paper text at the "
+                         "quoted passage; quote the passage exactly, with every number as printed")]
     fixed, verified, total = null_unverified_numbers(card([o]), AUDIT_SOURCE, 90)
-    assert fixed.outcomes[0].effect_value is None and fixed.outcomes[0].effect_measure == "none"
-    assert fixed.outcomes[0].p_value == 0.008  # the verified p-value stays
+    f = fixed.outcomes[0]
+    # an altered quote verifies nothing, not even its unaltered p-value
+    assert (f.effect_value, f.ci_lower, f.ci_upper, f.p_value, f.effect_measure) == (None, None, None, None, "none")
     assert (verified, total) == (0, 1)
 
 
@@ -54,7 +56,169 @@ def test_number_elsewhere_in_the_abstract_does_not_verify_the_window():
     source = ("Overall mortality was lower (HR 0.80, 95% CI 0.70-0.91). "
               "Metformin use was associated with a lower risk of colorectal cancer (HR 0.86, 95% CI 0.77-0.96).")
     o = outcome("associated with a lower risk of colorectal cancer (HR 0.80, 95% CI 0.77-0.96)", 0.80, 0.77, 0.96)
-    assert any("effect_value 0.8 does not appear in the paper text" in p for p in outcome_problems(o, source, 90))
+    assert any("evidence_quote changes, adds or leaves out a number" in p for p in outcome_problems(o, source, 90))
+
+
+# ---- fix round 1, finding 1: an altered digit equal to another number of the same window -------------------------
+TWO = ("Compared with placebo, the drug lowered mortality (HR 0.86, 95% CI 0.75-0.99) and stroke "
+       "(HR 0.80, 95% CI 0.70-0.91) over three years.")
+
+
+def test_altered_digit_equal_to_a_sibling_number_in_the_window_fails():
+    quote = ("the drug lowered mortality (HR 0.80, 95% CI 0.75-0.99) and stroke (HR 0.80, 95% CI 0.70-0.91)")
+    o = outcome(quote, 0.80, 0.75, 0.99, name="Mortality")
+    assert quote_window(quote, TWO, 90) is not None and not _quote_is_faithful(quote, TWO, 90)
+    assert any("changes, adds or leaves out a number" in p for p in outcome_problems(o, TWO, 90))
+    fixed, verified, _ = null_unverified_numbers(card([o]), TWO, 90)
+    assert fixed.outcomes[0].effect_value is None and verified == 0
+
+
+def test_quote_that_drops_a_number_verifies_nothing():
+    o = outcome("the drug lowered mortality (HR 0.86, 95% CI 0.75) and stroke (HR 0.80, 95% CI 0.70-0.91)",
+                0.86, name="Mortality")
+    assert any("changes, adds or leaves out a number" in p for p in outcome_problems(o, TWO, 90))
+
+
+# ---- finding 3: an estimate is bound to its outcome ---------------------------------------------------------------
+TWO_QUOTE = "the drug lowered mortality (HR 0.86, 95% CI 0.75-0.99) and stroke (HR 0.80, 95% CI 0.70-0.91)"
+
+
+def test_each_outcome_verifies_its_own_estimate_in_a_two_outcome_sentence():
+    mortality = outcome(TWO_QUOTE, 0.86, 0.75, 0.99, name="Mortality")
+    stroke = outcome(TWO_QUOTE, 0.80, 0.70, 0.91, name="Stroke")
+    assert card_problems(card([mortality, stroke]), TWO, 90) == []
+
+
+def test_an_outcome_cannot_take_the_estimate_of_another_outcome():
+    mortality = outcome(TWO_QUOTE, 0.80, 0.70, 0.91, name="Mortality")
+    stroke = outcome(TWO_QUOTE, 0.80, 0.70, 0.91, name="Stroke")
+    problems = card_problems(card([mortality, stroke]), TWO, 90)
+    assert problems == ["Mortality: effect_value 0.8 is reported for 'Stroke', not for this outcome"]
+    fixed, verified, total = null_unverified_numbers(card([mortality, stroke]), TWO, 90)
+    assert fixed.outcomes[0].effect_value is None and fixed.outcomes[1].effect_value == 0.8
+    assert (verified, total) == (1, 2)
+
+
+def test_binding_does_not_judge_the_first_estimate_of_the_window():
+    # documented limit: stroke taking mortality's (first) estimate is not caught; the number is still verbatim
+    stroke = outcome(TWO_QUOTE, 0.86, 0.75, 0.99, name="Stroke")
+    mortality = outcome(TWO_QUOTE, 0.86, 0.75, 0.99, name="Mortality")
+    assert card_problems(card([mortality, stroke]), TWO, 90) == []
+
+
+# 84edcb5d P5 and f78b2184 P7 (audit runs): correct bindings in multi-outcome sentences must keep verifying.
+RESPECTIVELY = ("A T2DM diagnosis was not associated with increased recurrence rate or CRC-specific mortality; HRadj "
+                "0.97 (95% CI 0.89-1.06) and HRadj 0.95 (95% CI 0.87-1.05), respectively, compared with non-diabetic "
+                "patients.")
+MASAI = (f"The recall and false-positive rate were not significantly higher in the intervention group (a ratio of "
+         f"1{MIDDOT}08 [95% CI 0{MIDDOT}99-1{MIDDOT}17; p=0{MIDDOT}084] and 1{MIDDOT}01 [0{MIDDOT}91-1{MIDDOT}11; "
+         f"p=0{MIDDOT}92], respectively).")
+
+
+def test_real_multi_outcome_sentences_keep_their_correct_bindings():
+    recurrence = outcome(RESPECTIVELY, 0.97, 0.89, 1.06, name="Recurrence of colorectal cancer")
+    mortality = outcome(RESPECTIVELY, 0.95, 0.87, 1.05, name="Colorectal cancer-specific mortality")
+    assert card_problems(card([mortality, recurrence]), RESPECTIVELY, 90) == []
+    recall = outcome(MASAI, 1.08, 0.99, 1.17, 0.084, measure="other", name="Recall rate")
+    fpr = outcome(MASAI, 1.01, 0.91, 1.11, 0.92, measure="other", name="False-positive rate")
+    ppv = outcome(MASAI, 1.08, 0.99, 1.17, 0.084, measure="other", name="Positive predictive value of recall")
+    assert card_problems(card([recall, fpr]), MASAI, 90) == []
+    assert outcome_problems(ppv, MASAI, 90, ("Recall rate", "False-positive rate")) == []  # first estimate: limit
+
+
+def test_effect_and_ci_must_be_one_ordered_run():
+    mixed = outcome(TWO_QUOTE, 0.86, 0.70, 0.91, name="Mortality")  # mortality's HR with stroke's CI
+    assert any("are not reported together" in p for p in outcome_problems(mixed, TWO, 90))
+    swapped = outcome(TWO_QUOTE, 0.86, 0.99, 0.75, name="Mortality")
+    assert outcome_problems(swapped, TWO, 90)  # wrong order is not a run (and lower > upper)
+
+
+def test_ci_level_and_counts_may_stand_between_effect_and_ci():
+    source = ("The AI-based screening sensitivity was 69.7% (779 of 1118; 95% CI: 66.9, 72.4) and was noninferior.")
+    o = outcome("The AI-based screening sensitivity was 69.7% (779 of 1118; 95% CI: 66.9, 72.4)", 69.7, 66.9, 72.4,
+                measure="other", name="Sensitivity")
+    assert outcome_problems(o, source, 90) == []
+
+
+# ---- finding 2: result prose uses only the quote's window and never a nulled value --------------------------------
+def test_result_cannot_restate_a_nulled_value_found_elsewhere_in_the_abstract():
+    source = ("Overall mortality was lower (HR 0.80, 95% CI 0.70-0.91). "
+              "Metformin use was associated with a lower risk of colorectal cancer (HR 0.86, 95% CI 0.77-0.96).")
+    quote = "associated with a lower risk of colorectal cancer (HR 0.86, 95% CI 0.77-0.96)"
+    o = outcome(quote, 0.80, 0.77, 0.96, result="HR 0.80 for colorectal cancer")
+    assert any("result mentions 0.8" in p for p in card_problems(card([o]), source, 90))
+    fixed, _, _ = null_unverified_numbers(card([o]), source, 90)
+    assert fixed.outcomes[0].effect_value is None
+    assert "0.80" not in fixed.outcomes[0].result
+
+
+def test_result_masks_a_nulled_value_even_inside_the_window():
+    o = outcome(TWO_QUOTE, 0.80, 0.70, 0.91, name="Mortality", result="mortality HR 0.80")
+    stroke = outcome(TWO_QUOTE, 0.80, 0.70, 0.91, name="Stroke", result="stroke HR 0.80")
+    fixed, _, _ = null_unverified_numbers(card([o, stroke]), TWO, 90)
+    assert fixed.outcomes[0].result == "mortality HR [unverified]"
+    assert fixed.outcomes[1].result == "stroke HR 0.80"
+
+
+# ---- finding 4: a minus followed by a space keeps its sign ---------------------------------------------------------
+@pytest.mark.parametrize(("text", "expected"), [
+    (f"MD {MINUS} 0.5 mmHg", [-0.5]),
+    (f"MD {MINUS}{THIN}0.5 mmHg", [-0.5]),
+    (f"difference {EN_DASH} 0.5 kg", [-0.5]),
+    ("difference - 0.5 kg", [-0.5]),
+    (f"MD {MINUS} 0.5 ({MINUS} 0.9 to {MINUS} 0.1)", [-0.5, -0.9, -0.1]),
+    ("CI 0.71 - 0.90", [0.71, 0.90]),
+])
+def test_spaced_minus_keeps_its_sign(text, expected):
+    assert numbers_in(text) == [float(x) for x in expected]
+
+
+def test_sign_flip_fails_against_a_spaced_minus():
+    source = f"Weight changed by MD {MINUS} 0.5 kg (95% CI {MINUS} 0.9 to {MINUS} 0.1) with the drug."
+    quote = f"Weight changed by MD {MINUS} 0.5 kg (95% CI {MINUS} 0.9 to {MINUS} 0.1)"
+    good = outcome(quote, -0.5, -0.9, -0.1, measure="MD")
+    flipped = outcome(quote, 0.5, 0.1, 0.9, measure="MD")
+    assert outcome_problems(good, source, 90) == []
+    assert any("effect_value 0.5 does not appear" in p for p in outcome_problems(flipped, source, 90))
+
+
+def test_negative_value_fails_against_a_range_dash():
+    source = "Lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90) in users."
+    o = outcome("Lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90)", -0.90, measure="MD")
+    assert any("effect_value -0.9 does not appear" in p for p in outcome_problems(o, source, 90))
+
+
+# ---- finding 5: decimal commas only in comma-decimal text ----------------------------------------------------------
+@pytest.mark.parametrize(("text", "expected"), [
+    ("studies 1,2,5 and 7 (HR 0.85)", [1, 2, 5, 7, 0.85]),
+    ("studies 1,2,5 were pooled", [1, 2, 5]),  # a list never turns into 2.5, even in comma-decimal text
+    ("at weeks 2,4 the HR was 0.85", [2, 4, 0.85]),
+    ("HR 0,85 (0,71-0,90) at weeks 2 and 4", [0.85, 0.71, 0.90, 2, 4]),
+])
+def test_decimal_comma_is_scoped_to_comma_decimal_text(text, expected):
+    assert numbers_in(text) == [float(x) for x in expected]
+
+
+def test_list_comma_does_not_verify_a_decimal():
+    source = "Pain fell at weeks 2,4 and 8 (MD 0.5, 95% CI 0.2-0.8) with the drug."
+    o = outcome("Pain fell at weeks 2,4 and 8 (MD 0.5, 95% CI 0.2-0.8)", 2.4, measure="MD")
+    assert any("effect_value 2.4 does not appear" in p for p in outcome_problems(o, source, 90))
+
+
+# ---- finding 6: a CI is kept only whole and only with its effect ---------------------------------------------------
+def test_half_ci_is_nulled():
+    o = outcome(TWO_QUOTE, 0.86, 0.75, None, name="Mortality")
+    fixed, verified, total = null_unverified_numbers(card([o]), TWO, 90)
+    f = fixed.outcomes[0]
+    assert (f.effect_value, f.ci_lower, f.ci_upper) == (0.86, None, None) and (verified, total) == (1, 1)
+
+
+def test_ci_without_effect_is_nulled():
+    o = outcome(TWO_QUOTE, None, 0.75, 0.99, name="Mortality")
+    assert any("a CI needs its effect_value" in p for p in outcome_problems(o, TWO, 90))
+    fixed, verified, total = null_unverified_numbers(card([o]), TWO, 90)
+    f = fixed.outcomes[0]
+    assert (f.ci_lower, f.ci_upper) == (None, None) and (verified, total) == (0, 1)
 
 
 def test_the_faithful_quote_verifies():
@@ -151,8 +315,8 @@ QUOTE = "lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90; p = 0.003)"
 
 
 def test_bad_p_value_blanks_only_the_p_value():
-    quote = "lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90; p = 0.03)"  # model typo in p only
-    fixed, verified, total = null_unverified_numbers(card([outcome(quote, 0.8, 0.71, 0.9, 0.03)]), SOURCE, 90)
+    # verbatim quote, model typo in the p_value field only
+    fixed, verified, total = null_unverified_numbers(card([outcome(QUOTE, 0.8, 0.71, 0.9, 0.03)]), SOURCE, 90)
     o = fixed.outcomes[0]
     assert (o.effect_value, o.ci_lower, o.ci_upper, o.p_value, o.effect_measure) == (0.8, 0.71, 0.9, None, "HR")
     assert (verified, total) == (1, 1)
@@ -191,8 +355,7 @@ def test_result_text_with_an_altered_number_is_masked_not_replaced_by_an_altered
 
 
 async def test_reading_keeps_a_verified_effect_when_only_the_p_value_fails():
-    quote = "lower risk of colorectal cancer (HR 0.80, 95% CI 0.71-0.90; p = 0.03)"
-    bad_p = reading.card(quote=quote).model_copy(deep=True)
+    bad_p = reading.card().model_copy(deep=True)  # verbatim quote, p_value field typo
     bad_p.outcomes[0].p_value = 0.03
     llm = FakeStructuredLLM("ds", lambda s, u: bad_p)
     out = await make_read_paper(reading.deps(llm, harness=HarnessSpec(dual_extraction=False, max_repairs=1,
