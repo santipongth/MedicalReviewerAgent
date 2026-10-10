@@ -61,6 +61,13 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
             "conflict_measures_fixed": sum(e.get("prose_measures_fixed", 0) for e in conflicts),
             "conflict_repairs": sum(e.get("prose_repairs", 0) for e in conflicts),
         }
+    # Plan 19 localisation completeness (non-English reviews only; absent when nothing was localized): translatable
+    # strings still not in the user's language after the retry pass, how many were retried, and how many had their
+    # [Pn] citations restored. Counted over the cards and the synthesis.
+    localized = by_stage.get("localize", []) + by_stage.get("localize_cards", [])
+    if localized:
+        extra["localize"] = {k: sum(int(e.get(k, 0)) for e in localized)
+                             for k in ("untranslated", "retried", "citations_restored")}
     return {
         **extra,
         "numbers_verified": verified,

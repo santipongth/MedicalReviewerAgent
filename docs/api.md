@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-10.3`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-10.4`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.
@@ -247,6 +247,15 @@ certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, c
 stored before Plan 19); `repairs` and `conflict_repairs` count the model rounds the check sent back for repair.
 `result.quality.other_comparisons` counts the outcomes flagged as other comparisons and
 `result.quality.comparison_backstop` how many of them the deterministic backstop flagged.
+
+Thai reviews are translated last, in 15-item chunks, with a medical glossary and a formal academic register. An item
+is accepted only when its numbers match exactly and its `[Pn]` citations match as a multiset; a citation whose spelling
+broke is put back by order, otherwise the item stays in English. A completeness check then finds translatable items that
+are still English (fewer than 40% Thai letters once citations, English-only parentheticals, abbreviations and
+identifiers are ignored; one-word names may stay English) and retries them once, in chunks of 5.
+`result.quality.localize` is `{untranslated, retried, citations_restored}` over the cards and the synthesis (Thai
+reviews only; absent for English reviews and for results stored before Plan 19); `untranslated` counts the items still
+English after the retry. `result.quality.localization_kept_english` still counts the items that fell back to English.
 
 ### Exports
 

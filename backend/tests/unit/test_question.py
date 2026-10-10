@@ -57,10 +57,15 @@ def deps_with(refiner=None, critic=None, localizer=None, planner=None, harness=N
     return GraphDeps(settings=Settings(_env_file=None), llms=llms)
 
 
+def to_thai(text):
+    """A fake translation that the completeness check accepts: every English word becomes Thai."""
+    return "TH " + re.sub(r"\b(?!P\d+\b)[A-Za-z]+\b", "ไทย", text)
+
+
 def thai_localizer():
     def respond(system, user):
         items = re.findall(r'"id": "([^"]+)", "text": "([^"]*)"', user)
-        return TranslationBatch(items=[TranslationItem(id=i, text="TH " + t) for i, t in items])
+        return TranslationBatch(items=[TranslationItem(id=i, text=to_thai(t)) for i, t in items])
     return FakeStructuredLLM("qwen", respond)
 
 
@@ -119,8 +124,8 @@ async def test_refine_draft_critique_and_localized_display():
     node = make_refine_question(deps_with(refiner, critic, thai_localizer()))
     out = await node(STATE)
     assert out["question"] == revised.model_dump()
-    assert out["question_display"]["refined_question"] == "TH " + revised.refined_question
-    assert out["question_display"]["sub_questions"] == ["TH " + s for s in revised.sub_questions]
+    assert out["question_display"]["refined_question"] == to_thai(revised.refined_question)
+    assert out["question_display"]["sub_questions"] == [to_thai(s) for s in revised.sub_questions]
     entry = out["quality"][0]
     assert entry["stage"] == "refine" and entry["critique_applied"] is True and entry["fallback"] is False
     assert entry["critique_issues"] == ["safety was not covered"] and entry["seconds"] >= 0

@@ -232,6 +232,21 @@ async def test_localize_translates_synthesis_and_maps_cells_from_localized_cards
     assert d["comparison"][0]["outcome"] == "TH CRC incidence"
     assert d["comparison"][0]["cells"][0]["finding"] == "ความเสี่ยงต่ำลง 0.80"
     assert out["quality"][0]["stage"] == "localize" and out["quality"][0]["kept_english"] == 0
+    assert {"untranslated", "retried", "citations_restored"} <= set(out["quality"][0])
+
+
+async def test_card_localization_reports_untranslated_items_after_one_retry():
+    papers = [paper("P1", card())]
+    def echo_english(system, user):  # the localizer echoes its input, as Qwen did in the audit runs
+        batch = thai(system, user)
+        return TranslationBatch(items=[TranslationItem(id=i.id, text=i.text.removeprefix("TH ")) for i in batch.items])
+
+    echo = FakeStructuredLLM("qwen", echo_english)
+    out = await make_write_synthesis(deps(synthesizer=FakeStructuredLLM("ds", lambda s, u: narrative("A [P1].")),
+                                          localizer=echo))(
+        state(papers, matrix=matrix_for(papers), conflict_notes=[]))
+    entry = next(e for e in out["quality"] if e["stage"] == "localize_cards")
+    assert entry["retried"] == entry["untranslated"] > 0 and entry["kept_english"] == 0
 
 
 async def test_localize_is_skipped_for_english_and_when_already_localized():
@@ -254,7 +269,10 @@ QUALITY = [
      "escalated": True, "repaired": False, "uncertain": True},
     {"stage": "normalize", "seconds": 1.0, "fallback": False},
     {"stage": "narrative", "seconds": 6.0, "citation_fixes": 1},
-    {"stage": "localize", "seconds": 2.0, "kept_english": 1},
+    {"stage": "localize", "seconds": 2.0, "kept_english": 1, "untranslated": 1, "retried": 2,
+     "citations_restored": 0},
+    {"stage": "localize_cards", "seconds": 3.0, "kept_english": 0, "untranslated": 2, "retried": 5,
+     "citations_restored": 1},
 ]
 
 
@@ -293,6 +311,7 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
     assert qa["papers_uncertain"] == 1 and qa["extraction_escalations"] == 1 and qa["agreement_mean"] == 0.75
     assert qa["screen_disagreements"] == 1 and "fulltext_timeouts" not in qa and qa["citation_fixes"] == 1
     assert qa["localization_kept_english"] == 1 and qa["question_critique_applied"] is True
+    assert qa["localize"] == {"untranslated": 3, "retried": 7, "citations_restored": 1}
     t = qa["timings"]
     assert t["refine"] == 2.0 and t["screen"] == 5.0 and t["read_max"] == 20.0 and t["read_mean"] == 15.0
     assert t["narrative"] == 6.0 and 29 <= t["total"] <= 60

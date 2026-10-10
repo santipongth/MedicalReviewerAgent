@@ -176,6 +176,9 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
                   "conflict", "narrative", "localize_cards", "localize", "total"):
         assert t[stage] is not None and t[stage] >= 0, stage
     assert r["quality"]["verification_rate"] == 1.0 and r["quality"]["question_refined"] is True
+    # the fake prefixes "TH " to English text, so the completeness check sees it as untranslated and retries it once
+    assert set(r["quality"]["localize"]) == {"untranslated", "retried", "citations_restored"}
+    assert r["quality"]["localize"]["retried"] >= r["quality"]["localize"]["untranslated"] > 0
     assert values["cost_usd"] == pytest.approx(0.01 * all_calls(deps))
     types = [e["type"] for e in events]
     assert types.index("question_refined") < types.index("planning")
@@ -198,6 +201,11 @@ async def test_english_review_skips_localization():
     r = values["result"]
     assert r["summary"].startswith("Metformin") and r["papers"][0]["card"] == r["papers"][0]["card_en"]
     assert deps.llms.localizer.calls == []
+    # Plan 19: nothing is localized and no Thai leaks into the generated output; no localize telemetry
+    generated = json.dumps([r["synthesis"], r["papers"], r["summary"], r["question"]["refined_question"]],
+                           ensure_ascii=False)
+    assert not re.search(r"[\u0E00-\u0E7F]", generated)
+    assert "localize" not in r["quality"] and r["quality"]["localization_kept_english"] == 0
 
 
 async def test_rejected_topic_stops_before_search():

@@ -73,8 +73,8 @@ async def _localized_display(deps, runner: HarnessRunner, q: ReviewQuestion, lan
     cost = 0.0
     if harness_spec(deps).localize:
         try:
-            strings, _, cost = await localize_strings(getattr(deps.llms, "localizer", None), runner, strings,
-                                                      language)
+            res = await localize_strings(getattr(deps.llms, "localizer", None), runner, strings, language)
+            strings, cost = res.strings, res.cost
         except LLMError:  # display stays in English; the review itself is unaffected
             cost = 0.0
     display: dict[str, Any] = {

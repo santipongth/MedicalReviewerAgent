@@ -33,7 +33,7 @@ from app.harness.grade import (
     clamp_to_baseline,
     grade_baseline,
 )
-from app.harness.localize import localize_strings
+from app.harness.localize import Localized, localize_strings, untranslated
 from app.harness.matrix import (
     build_matrix,
     fallback_clusters,
@@ -372,11 +372,11 @@ async def _localize_cards(deps, papers: list[dict[str, Any]], language: str) -> 
     strings: dict[str, str] = {}
     for p in papers:
         strings |= _card_strings(p["ref"], p["card"])
-    translated, kept, cost = await localize_strings(llm, harness_runner(deps), strings, language)
-    cards = {p["ref"]: _apply_card_strings(p["ref"], p["card"], translated) for p in papers}
-    entry = {"stage": "localize_cards", "items": len(strings), "kept_english": kept,
+    res = await localize_strings(llm, harness_runner(deps), strings, language)
+    cards = {p["ref"]: _apply_card_strings(p["ref"], p["card"], res.strings) for p in papers}
+    entry = {"stage": "localize_cards", "items": len(strings), **res.telemetry(),
              "seconds": round(time.perf_counter() - started, 3)}
-    return cards, entry, cost
+    return cards, entry, res.cost
 
 
 def _consensus_explanation(c: dict[str, Any]) -> str:
@@ -674,13 +674,14 @@ def make_localize(deps):
         strings = _synthesis_strings(synthesis)
         errors: list[str] = []
         try:
-            translated, kept, cost = await localize_strings(llm, harness_runner(deps), strings, language)
+            res = await localize_strings(llm, harness_runner(deps), strings, language)
         except LLMError as exc:
-            translated, kept, cost = strings, len(strings), 0.0
+            res = Localized(strings, kept_english=len(strings),
+                            untranslated=sum(1 for v in strings.values() if untranslated(v, v, language)))
             errors.append(f"localization failed: {type(exc).__name__}")
-        display = _apply_synthesis_strings(synthesis, translated, _finding_map(state))
-        return {"synthesis_display": display, "cost_usd": cost, "errors": errors,
-                "quality": [{"stage": "localize", "items": len(strings), "kept_english": kept,
+        display = _apply_synthesis_strings(synthesis, res.strings, _finding_map(state))
+        return {"synthesis_display": display, "cost_usd": res.cost, "errors": errors,
+                "quality": [{"stage": "localize", "items": len(strings), **res.telemetry(),
                              "seconds": round(time.perf_counter() - started, 3)}]}
 
     return localize
