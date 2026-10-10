@@ -34,6 +34,7 @@ for (const width of [1440, 390]) {
       const findings = section(page, "h-key-findings").locator("[data-key-finding]");
       await expect(findings).toHaveCount(2);
       for (const f of await findings.all()) {
+        await expect(f.locator("[data-finding-certainty]")).toContainText("ความแข็งแรงของหลักฐาน (ทั้งรีวิว)");
         await expect(f.locator("[data-finding-certainty]")).toContainText("ต่ำ");
         await expect(f.locator("[data-finding-certainty] [data-certainty=low] svg")).toBeVisible();
       }
@@ -41,8 +42,9 @@ for (const width of [1440, 390]) {
       const lead = findings.first().locator("[data-prose]");
       await expect(lead).toHaveText(/^หลักฐานที่มีความเชื่อมั่นต่ำชี้ว่า: /);
       expect(await lead.evaluate((el) => getComputedStyle(el).fontFamily)).not.toMatch(/Source Serif/i);
-      // the SoF table drops the review-level label: every row carries the finding's own value
-      await expect(section(page, "h-sof").locator("[data-review-level]")).toHaveCount(0);
+      // the per-finding value is the review's grade copied onto each finding: the SoF says so, note and row tags
+      await expect(section(page, "h-sof").locator("[data-review-level]")).toContainText("ระดับของทั้งรีวิว ไม่ได้ประเมินแยกตามผลลัพธ์");
+      await expect(section(page, "h-sof").locator("[data-row-review-level]")).toHaveCount(2);
       if (SHOTS) {
         await section(page, "h-answer").screenshot({ path: shot(`bottomline_${tag}`) });
         await section(page, "h-key-findings").screenshot({ path: shot(`keyfindings_${tag}`) });
@@ -57,7 +59,7 @@ for (const width of [1440, 390]) {
       const ordinary = claims.locator("[data-conflict]:not([data-review-discordant])");
       const bg = (l: typeof ordinary) => l.evaluate((el) => getComputedStyle(el).backgroundColor);
       expect(await bg(discordant)).not.toBe(await bg(ordinary));
-      await expect(claims.locator("[data-discordant-note]")).toContainText("ไม่ลดระดับความแข็งแรงของหลักฐาน");
+      await expect(claims.locator("[data-discordant-note]")).toContainText("การแยกทางบนผลลัพธ์หลักถูกบันทึกเป็นความไม่สอดคล้องเล็กน้อย");
       if (SHOTS) await claims.screenshot({ path: shot(`claims_${tag}`) });
 
       // the title block counts studies, the related report aside
@@ -66,7 +68,7 @@ for (const width of [1440, 390]) {
       const papers = section(page, "h-papers");
       const p6 = papers.getByRole("button", { name: /^P6 / });
       await expect(p6).toContainText("รายงานเพิ่มเติมของ [P1] (การทดลองเดียวกัน)");
-      await expect(p6).toContainText("การทดลองเดียวกัน (NCT01234567)");
+      await expect(p6).toContainText("ทะเบียน/ชื่อการทดลอง: NCT01234567");
       await expect(papers.getByRole("button", { name: /^P1 / })).toContainText("รายงานเพิ่มเติมของการทดลองนี้: P6");
       if (SHOTS) await papers.screenshot({ path: shot(`papers_${tag}`) });
       await p6.click();
@@ -117,4 +119,20 @@ test("English: the related-report and discordant labels follow the report langua
     await section(page, "h-claims").screenshot({ path: shot("claims_en_1440_light") });
     await section(page, "h-key-findings").screenshot({ path: shot("keyfindings_en_1440_light") });
   }
+});
+
+test("no answer and no summary at all: a short note, never an empty paragraph, never blamed on the checks", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const r = emptyAnswerP20ReviewFixture.result!;
+  const review: Review = { ...emptyAnswerP20ReviewFixture, id: "20200000-0000-4000-8000-000000000013",
+    result: { ...r, summary: "", synthesis: { ...r.synthesis!, executive_summary: "" } } };
+  await open(page, review);
+  const answer = section(page, "h-answer");
+  await expect(answer.locator("[data-prose]")).toHaveCount(0);
+  await expect(answer.locator("[data-no-answer]")).toHaveText("ไม่มีคำตอบสั้นสำหรับรีวิวนี้ ดูผลการศึกษาที่สำคัญด้านล่าง");
+  await expect(answer.locator("[data-certainty=low]")).toBeVisible();
+  const empty = await answer.locator("p").evaluateAll((ps) => ps.filter((p) => !p.textContent?.trim()).length);
+  expect(empty).toBe(0);
+  await expect(section(page, "h-key-findings").locator("[data-key-finding]")).toHaveCount(2);
+  if (SHOTS) await answer.screenshot({ path: shot("notext_390_light") });
 });

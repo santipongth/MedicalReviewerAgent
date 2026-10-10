@@ -22,15 +22,18 @@ const paperItem = (ref: string) => within(section(/งานวิจัยท�
 const rail = () => screen.getByRole("complementary", { name: /ต้นฉบับ|Source/ });
 
 describe("per-finding certainty", () => {
-  it("each key finding shows its own ⊕ marks and level word, labelled", () => {
+  it("each key finding shows the ⊕ marks and level word, labelled as the whole review's level", async () => {
     render(<Report review={engineP20ReviewFixture} />);
     for (const f of findings()) {
       const c = f.querySelector("[data-finding-certainty]")!;
       expect(c).not.toBeNull();
       expect(c.querySelector("[data-certainty='low'] svg")).toHaveAttribute("aria-hidden", "true");
-      expect(c).toHaveTextContent("ความแข็งแรงของหลักฐาน");
+      // the engine copies the review's single grade onto each finding: never read as a per-outcome grade
+      expect(c).toHaveTextContent("ความแข็งแรงของหลักฐาน (ทั้งรีวิว)");
       expect(c).toHaveTextContent("ต่ำ");
     }
+    await userEvent.click(screen.getByRole("button", { name: "English" }));
+    expect(findings()[0].querySelector("[data-finding-certainty]")).toHaveTextContent("Certainty (whole review)");
   });
 
   it("a fixed lead clause renders as plain prose: no quote face, no quote marks or elements", () => {
@@ -43,12 +46,16 @@ describe("per-finding certainty", () => {
     expect(first.querySelector("q, blockquote, .font-quote")).toBeNull();
   });
 
-  it("the summary of findings drops the review-level label where every row has the finding's own value", () => {
+  it("the summary of findings keeps the review-level label and row tags: the per-finding value is the review's grade", () => {
     render(<Report review={engineP20ReviewFixture} />);
     const sof = section(/ตารางสรุปผลการศึกษา/);
-    expect(sof.querySelector("[data-review-level]")).toBeNull();
-    expect(sof).not.toHaveTextContent("ระดับของทั้งรีวิว");
-    expect(sof.querySelectorAll("[data-certainty='low']").length).toBe(2);
+    expect(sof.querySelector("[data-review-level]")).toHaveTextContent("ระดับเดียวกันทุกผลลัพธ์ (ระดับของทั้งรีวิว ไม่ได้ประเมินแยกตามผลลัพธ์)");
+    const rows = sof.querySelectorAll("[data-sof-row]");
+    expect(rows).toHaveLength(2);
+    for (const r of rows) {
+      expect(r.querySelector("[data-certainty='low']")).not.toBeNull();
+      expect(r.querySelector("[data-row-review-level]")).toHaveTextContent("ระดับของทั้งรีวิว");
+    }
   });
 
   it("legacy key findings (no certainty key) keep the Task 3 behaviour: the review-level grade, labelled, in the SoF only", () => {
@@ -77,7 +84,9 @@ describe("empty answer", () => {
     expect(answer.querySelector("[data-prose]")).toBeNull();
     for (const p of answer.querySelectorAll("p")) expect(p.textContent?.trim()).not.toBe("");
     expect(answer).toHaveTextContent("ความแข็งแรงของหลักฐาน");
-    expect(answer.querySelector("[data-no-answer]")).toHaveTextContent("ไม่มีคำตอบสั้นที่ผ่านการตรวจ");
+    // the empty answer can also mean the model wrote none or the narrative step failed: never blamed on the checks
+    expect(answer.querySelector("[data-no-answer]")).toHaveTextContent("ไม่มีคำตอบสั้นสำหรับรีวิวนี้ ดูผลการศึกษาที่สำคัญด้านล่าง");
+    expect(answer.querySelector("[data-no-answer]")).not.toHaveTextContent("ตรวจ");
     expect(findings()).toHaveLength(2);
   });
 });
@@ -94,8 +103,9 @@ describe("reports of the same trial", () => {
   it("the paper list labels the further report with its reason; the primary lists its further reports", () => {
     render(<Report review={engineP20ReviewFixture} />);
     const p6 = paperItem("P6");
-    expect(p6).toHaveTextContent("รายงานเพิ่มเติมของ [P1] (การทดลองเดียวกัน)");
-    expect(p6).toHaveTextContent("การทดลองเดียวกัน (NCT01234567)");
+    expect(p6).toHaveTextContent("รายงานเพิ่มเติมของ [P1] (การทดลองเดียวกัน) · ทะเบียน/ชื่อการทดลอง: NCT01234567");
+    // "same trial" is said once, by the label
+    expect(p6.textContent!.split("การทดลองเดียวกัน").length - 1).toBe(1);
     expect(p6.querySelector("[data-related-to='P1']")).not.toBeNull();
     expect(paperItem("P1")).toHaveTextContent("รายงานเพิ่มเติมของการทดลองนี้: P6");
     expect(paperItem("P3")).not.toHaveTextContent("รายงานเพิ่มเติม");
@@ -106,7 +116,8 @@ describe("reports of the same trial", () => {
     await userEvent.click(paperItem("P6"));
     const note = rail().querySelector("[data-related-to='P1']")!;
     expect(note).toHaveTextContent("รายงานเพิ่มเติมของ [P1] (การทดลองเดียวกัน)");
-    expect(note).toHaveTextContent("การทดลองเดียวกัน (NCT01234567)");
+    expect(note).toHaveTextContent("ทะเบียน/ชื่อการทดลอง: NCT01234567");
+    expect(note.textContent!.split("การทดลองเดียวกัน").length - 1).toBe(1);
     await userEvent.click(within(note as HTMLElement).getByRole("button", { name: "เปิด P1" }));
     expect(rail()).toHaveTextContent("ต้นฉบับ · P1");
     const reports = rail().querySelector("[data-related-reports]")!;
@@ -118,7 +129,7 @@ describe("reports of the same trial", () => {
     render(<Report review={engineP20ReviewFixture} />);
     await userEvent.click(screen.getByRole("button", { name: "English" }));
     expect(paperItem("P6")).toHaveTextContent("Related report of [P1] (same trial)");
-    expect(paperItem("P6")).toHaveTextContent("same trial (NCT01234567)");
+    expect(paperItem("P6")).toHaveTextContent("Related report of [P1] (same trial) · trial: NCT01234567");
     expect(paperItem("P1")).toHaveTextContent("Further reports of this trial: P6");
     expect(screen.getByText("Studies included").closest("div")).toHaveTextContent("plus 1 further report of the same trial");
   });
@@ -141,7 +152,9 @@ describe("review-discordant conflicts", () => {
     const ordinary = items.find((li) => li.hasAttribute("data-conflict") && !li.hasAttribute("data-review-discordant"))!;
     expect(ordinary).not.toHaveTextContent("การทบทวนอย่างเป็นระบบกับการศึกษาปฐมภูมิให้ผลต่างกัน");
     expect(discordant[0].className).not.toBe(ordinary.className);
-    expect(claims.querySelector("[data-discordant-note]")).toHaveTextContent("ไม่ลดระดับความแข็งแรงของหลักฐาน");
+    // only a split on the primary outcome is recorded as inconsistency; none lowers the grade (api.md GRADE-lite)
+    expect(claims.querySelector("[data-discordant-note]")).toHaveTextContent(
+      "การแยกทางบนผลลัพธ์หลักถูกบันทึกเป็นความไม่สอดคล้องเล็กน้อย และไม่มีกรณีใดลดระดับความแข็งแรงของหลักฐาน");
   });
 
   it("English label", async () => {
@@ -149,7 +162,8 @@ describe("review-discordant conflicts", () => {
     await userEvent.click(screen.getByRole("button", { name: "English" }));
     const claims = section(/Where studies agree and conflict/);
     expect(claims.querySelector("[data-review-discordant]")).toHaveTextContent("Systematic reviews and primary studies disagree");
-    expect(claims.querySelector("[data-discordant-note]")).toHaveTextContent("does not lower the certainty");
+    expect(claims.querySelector("[data-discordant-note]")).toHaveTextContent(
+      "a split on the primary outcome is recorded as minor inconsistency, and none lowers the certainty of the evidence.");
   });
 
   it("no note without a discordant split", () => {

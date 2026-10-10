@@ -75,7 +75,8 @@ export function KeyFindings({ findings, lang, onSelect }: { findings: FindingVie
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[0.9rem]">
               {f.certainty && (
                 <span className="inline-flex flex-wrap items-center gap-x-1.5 font-display" data-finding-certainty>
-                  <Term k="evidenceStrength" lang={lang}><span className="text-muted">{L(lang, "ความแข็งแรงของหลักฐาน", "Certainty")}</span></Term>
+                  {/* the review's single grade, copied onto each finding by the engine: never a per-outcome grade */}
+                  <Term k="evidenceStrength" lang={lang}><span className="text-muted">{L(lang, "ความแข็งแรงของหลักฐาน (ทั้งรีวิว)", "Certainty (whole review)")}</span></Term>
                   <CertaintyMark level={f.certainty} lang={lang} />
                 </span>
               )}

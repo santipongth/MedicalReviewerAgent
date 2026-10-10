@@ -3,6 +3,8 @@ the client reads (not only on the internal matrix), and the timed stub carries a
 conflict and per-finding certainty so manual QA shows them."""
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from app.graph.nodes.stub_result import stub_result
@@ -71,6 +73,18 @@ def test_stub_has_a_review_discordant_conflict(review_type):
     flagged = [c for c in s["conflicts"] if c.get("review_discordant")]
     assert len(flagged) == 1 and flagged[0]["statement"].endswith("systematic reviews and primary studies disagree")
     assert all(c.get("review_discordant") is False for c in s["conflicts"] if c is not flagged[0])
+
+
+@pytest.mark.parametrize("review_type", ["slr", "meta_analysis", "narrative"])
+def test_stub_safety_finding_agrees_with_its_discordant_conflict(review_type):  # fix round 1, finding 6
+    r = stub_result("t", "en", review_type)
+    s = r["synthesis"]
+    safety = next(f for f in s["key_findings"] if f["outcome"] == "Safety outcome")
+    assert "systematic review" in safety["statement"] and not re.search(r"\d", safety["statement"])
+    if review_type in ("slr", "meta_analysis"):  # the stub's quality matches the lead clause it shows
+        assert r["quality"]["prose_check"]["key_findings_certainty_lead"] == 1
+    else:
+        assert "prose_check" not in r["quality"]
 
 
 @pytest.mark.parametrize("review_type", ["slr", "meta_analysis", "narrative", "scoping"])

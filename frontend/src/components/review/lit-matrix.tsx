@@ -250,7 +250,8 @@ function Pager({ page, pages, start, end, total, lang, onPage }: {
     <nav aria-label={L(lang, "หน้าของตารางงานวิจัย", "Literature matrix pages")} className="flex flex-wrap items-center gap-x-3 gap-y-1" data-lit-pager>
       <button type="button" className={btn} disabled={page === 0} onClick={() => onPage(page - 1)}>{L(lang, "← ก่อนหน้า", "← Previous")}</button>
       <span className="font-display text-[0.85rem] tabular-nums text-muted" aria-live="polite">
-        {L(lang, `${start + 1}–${end} จาก ${total} งาน · หน้า ${page + 1}/${pages}`, `${start + 1}–${end} of ${total} studies · page ${page + 1}/${pages}`)}
+        {/* rows are records: a further report of a trial is a row too, so the pager never calls them studies */}
+        {L(lang, `${start + 1}–${end} จาก ${total} รายการ · หน้า ${page + 1}/${pages}`, `${start + 1}–${end} of ${total} records · page ${page + 1}/${pages}`)}
       </span>
       <button type="button" className={btn} disabled={page >= pages - 1} onClick={() => onPage(page + 1)}>{L(lang, "ถัดไป →", "Next →")}</button>
     </nav>

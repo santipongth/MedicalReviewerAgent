@@ -78,7 +78,8 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
         </p>
       ) : hasPapers && (
         <p className="max-w-[65ch] text-[0.92rem] text-muted" data-no-answer>
-          {L(lang, "ไม่มีคำตอบสั้นที่ผ่านการตรวจ ดูผลการศึกษาด้านล่าง", "No short answer passed the checks; see the findings below.")}
+          {/* "" also when the model wrote none or the narrative step failed (api.md): never blamed on the checks */}
+          {L(lang, "ไม่มีคำตอบสั้นสำหรับรีวิวนี้ ดูผลการศึกษาที่สำคัญด้านล่าง", "No short answer for this review; see the key findings below.")}
         </p>
       )}
       {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} bar={!poolGap} />}

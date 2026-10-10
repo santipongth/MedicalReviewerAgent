@@ -158,7 +158,9 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
                 "studies; one cohort reports harm." if graded else
                 "Most simulated studies report a benefit on the primary outcome; one cohort reports harm.",
                 "Fewer simulated studies cover safety." if scoping else
-                "Simulated studies report no safety concern."), strict=True)
+                # consistent with the review-discordant Safety conflict above (Task 11 fix round 1)
+                "Simulated primary studies report no safety concern; a systematic review points elsewhere."),
+                strict=True)
             for refs in [[c["ref"] for c in row["cells"]]]],
     }
     return {
@@ -185,7 +187,10 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
                   "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
                                          "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
                   "related_reports": sum(p["related_to"] is not None for p in papers)},
-        "quality": {}, "errors": [], "prompt_version": "stub", "llm_preset": "stub", "models": {},
+        # the lead clause the first graded finding shows is counted like the real check counts it
+        "quality": ({"prose_check": {"key_findings_certainty_lead": 1}} if graded and _LEAD.get(certainty or "")
+                    else {}),
+        "errors": [], "prompt_version": "stub", "llm_preset": "stub", "models": {},
         "external_context": [],
         "citations": _citations(len(papers)),
         "meta_analysis": meta_analysis,

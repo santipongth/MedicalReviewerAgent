@@ -10,8 +10,9 @@ import { LitMatrixSection } from "./lit-matrix";
 desktopViewport();
 
 const papers = resultFixture.papers!;
-const show = (ps: Paper[], type: "narrative" | "slr" | "scoping" | "legacy" = "slr", extra: { offline?: boolean; onSelect?: (r: string) => void } = {}) =>
-  render(<LitMatrixSection papers={ps} lang="th" type={type} reviewId="r1" onSelect={extra.onSelect ?? (() => {})} offline={extra.offline} />);
+const show = (ps: Paper[], type: "narrative" | "slr" | "scoping" | "legacy" = "slr",
+  extra: { offline?: boolean; onSelect?: (r: string) => void; lang?: "th" | "en" } = {}) =>
+  render(<LitMatrixSection papers={ps} lang={extra.lang ?? "th"} type={type} reviewId="r1" onSelect={extra.onSelect ?? (() => {})} offline={extra.offline} />);
 const headers = () => within(screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).getAllByRole("columnheader").map((h) => h.textContent);
 
 describe("LitMatrixSection", () => {
@@ -141,11 +142,19 @@ describe("LitMatrixSection (Plan 20 Task 5): pages, clamped outcomes, cards, fra
     const table = screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
     expect(within(table).getAllByRole("rowheader")).toHaveLength(15);
     const pager = screen.getByRole("navigation", { name: "หน้าของตารางงานวิจัย" });
-    expect(pager).toHaveTextContent("1–15 จาก 32 งาน · หน้า 1/3");
+    // rows are records (a further report of a trial is a row too), never counted as studies (Task 11 fix round 1)
+    expect(pager).toHaveTextContent("1–15 จาก 32 รายการ · หน้า 1/3");
     await userEvent.click(within(pager).getByRole("button", { name: /ถัดไป/ }));
     await userEvent.click(within(pager).getByRole("button", { name: /ถัดไป/ }));
     expect(within(table).getAllByRole("rowheader").map((h) => h.textContent)).toEqual([expect.stringMatching(/^P31/), expect.stringMatching(/^P32/)]);
     expect(within(pager).getByRole("button", { name: /ถัดไป/ })).toBeDisabled();
+  });
+
+  it("the English pager counts records, not studies", () => {
+    show(many, "slr", { lang: "en" });
+    const pager = screen.getByRole("navigation", { name: "Literature matrix pages" });
+    expect(pager).toHaveTextContent("1–15 of 32 records · page 1/3");
+    expect(pager).not.toHaveTextContent("studies");
   });
 
   it("a long outcomes cell is clamped to two lines; 'show all' opens the paper in the rail", async () => {

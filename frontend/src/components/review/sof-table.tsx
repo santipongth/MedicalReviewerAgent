@@ -119,7 +119,9 @@ function Statement({ row, lang }: { row: SofRow; lang: Lang }) {
 export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lang: Lang; onSelect: Select; graded: boolean }) {
   if (!rows.length) return null;
   const caption = L(lang, "ตารางสรุปผลการศึกษาตามผลลัพธ์", "Summary of findings by outcome");
-  const reviewLevel = graded && rows.some((r) => r.certaintySource === "review");
+  // Every certainty here is the review's single grade: the engine's per-finding value is that grade copied onto each
+  // finding (docs/api.md), so finding rows are labelled review-level too (Task 11 fix round 1).
+  const reviewLevel = graded && rows.some((r) => r.certainty != null);
   const col = {
     studies: L(lang, "การศึกษาและผู้เข้าร่วม", "Studies and participants"),
     effect: L(lang, "ขนาดผล", "Effect"),
@@ -173,7 +175,7 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
                   {graded && r.certainty ? (
                     <span className="grid gap-0.5">
                       <CertaintyMark level={r.certainty} lang={lang} />
-                      {r.certaintySource === "review" && <span className={NOTE}>{L(lang, "ระดับของทั้งรีวิว", "review-level")}</span>}
+                      <span className={NOTE} data-row-review-level>{L(lang, "ระดับของทั้งรีวิว", "review-level")}</span>
                     </span>
                   ) : <span className="text-[0.88rem] text-muted">{L(lang, "ไม่ได้ประเมิน", "Not assessed")}</span>}
                 </td>

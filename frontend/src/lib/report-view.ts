@@ -156,8 +156,9 @@ export interface FindingView {
   /** a single study's number (k = 1 and no pool), verified or blanked; null otherwise */
   effect: EffectState;
   /**
-   * The finding's own certainty (set in code by the engine since Plan 20 Task 10); null when it is not graded or the
-   * result predates it (key findings then show none: the review's grade stays in the bottom line and the SoF table).
+   * The finding's certainty as the engine set it in code (since Plan 20 Task 10): the review's single final grade copied
+   * onto each finding, so it is shown as the whole review's level, never as a per-outcome grade. Null when it is not
+   * graded or the result predates it (key findings then show none: the grade stays in the bottom line and the SoF).
    */
   certainty: EvidenceStrength | null;
 }
@@ -215,7 +216,10 @@ export interface SofRow {
   participants: SofParticipants;
   effect: SofEffect;
   certainty: EvidenceStrength | null;
-  /** "finding": set for this outcome; "review": the review-level grade repeated on every row */
+  /**
+   * "finding": the engine's per-finding value, currently equal to the review's grade (docs/api.md), so it is labelled
+   * review-level like "review": the review-level grade repeated on a row without a finding. Only null vs graded differs.
+   */
   certaintySource: "finding" | "review" | null;
   statement: string | null;
   tally: { direction: Direction; count: number }[];
@@ -310,7 +314,8 @@ function tallyOf(row: ComparisonRow | undefined, byRef: Map<string, Paper>) {
 
 /**
  * Summary-of-findings rows: the key findings' outcomes first (in their order), then every other matrix row that two or
- * more studies report, most studies first. Certainty is the finding's own (code-set) value, else the review's grade.
+ * more studies report, most studies first. Certainty is the finding's code-set value (the review's grade copied onto
+ * it), else the review's grade; both are shown as review-level.
  */
 export function sofRows(findings: KeyFinding[], enFindings: KeyFinding[] | undefined, ctx: OutcomeContext,
   strength: EvidenceStrength | null | undefined): SofRow[] {

@@ -328,6 +328,7 @@ export interface DtaData {
 export function dtaData(papers: Paper[], lang: Lang): DtaData | null {
   const studies: DtaStudy[] = [];
   for (const p of papers) {
+    if (isRelatedReport(p)) continue; // a further report of a trial is not a second study
     const en = p.card_en ?? p.card;
     const shown = (lang === "en" ? p.card_en : p.card) ?? en;
     if (!en || !shown || isNonQuantitative(en)) continue;
@@ -463,6 +464,7 @@ export function studyPoints(papers: Paper[]): { points: StudyPoint[]; missing: n
   const points: StudyPoint[] = [];
   let missing = 0;
   for (const p of papers) {
+    if (isRelatedReport(p)) continue; // one study, one point: a further report of a trial is not plotted again
     const card = p.card_en ?? p.card;
     if (isNonQuantitative(card)) continue;
     if (!card || p.year == null || card.sample_size == null || card.sample_size <= 0) {

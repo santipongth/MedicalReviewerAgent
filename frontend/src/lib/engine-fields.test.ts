@@ -1,8 +1,8 @@
 // Plan 20 Task 11: the merged engine fields in the report's view model (docs/api.md "Answer and key findings",
 // "Reports of the same trial", "Splits between reviews and primary studies").
 import { describe, expect, it } from "vitest";
-import { engineP20ReviewFixture, slrP20ReviewFixture } from "@/test/fixtures";
-import { directionTally } from "./charts-data";
+import { dtaReviewFixture, engineP20ReviewFixture, slrP20ReviewFixture } from "@/test/fixtures";
+import { directionTally, dtaData, studyPoints } from "./charts-data";
 import { litRows } from "./lit-matrix";
 import { isReviewDiscordant, keyFindingViews, sofRows, type OutcomeContext } from "./report-view";
 import { includedCounts, isRelatedReport, relatedLabel, relatedReasonText, studyRefs } from "./trial-reports";
@@ -35,13 +35,18 @@ describe("reports of the same trial", () => {
   it("the label and the reason follow the report language", () => {
     expect(relatedLabel("P1", "th")).toBe("รายงานเพิ่มเติมของ [P1] (การทดลองเดียวกัน)");
     expect(relatedLabel("P1", "en")).toBe("Related report of [P1] (same trial)");
-    expect(relatedReasonText("same trial (EMPEROR-Preserved)", "th")).toBe("การทดลองเดียวกัน (EMPEROR-Preserved)");
-    expect(relatedReasonText("same trial (NCT03057951)", "en")).toBe("same trial (NCT03057951)");
+    // "same trial" is already in the label: the reason shows only the trial's registry number or name
+    expect(relatedReasonText("same trial (EMPEROR-Preserved)", "th")).toBe("ทะเบียน/ชื่อการทดลอง: EMPEROR-Preserved");
+    expect(relatedReasonText("same trial (NCT03057951)", "en")).toBe("trial: NCT03057951");
     expect(relatedReasonText("near-identical title, same first author, same sample size", "th"))
       .toBe("ชื่อเรื่องเกือบเหมือนกัน ผู้แต่งคนแรกคนเดียวกัน และขนาดตัวอย่างเท่ากัน");
     expect(relatedReasonText("near-identical title, same first author, same registry number", "th"))
       .toBe("ชื่อเรื่องเกือบเหมือนกัน ผู้แต่งคนแรกคนเดียวกัน และเลขทะเบียนการทดลองเดียวกัน");
-    expect(relatedReasonText("something new", "th")).toBe("something new");
+    // wording the UI does not know: Thai words first, the engine's English kept in brackets
+    expect(relatedReasonText("something new", "th")).toBe("การทดลองเดียวกัน (something new)");
+    expect(relatedReasonText("something new", "en")).toBe("something new");
+    expect(relatedReasonText("near-identical title, same first author, same sample size", "en"))
+      .toBe("near-identical title, same first author, same sample size");
     expect(relatedReasonText(null, "th")).toBeNull();
   });
 
@@ -54,6 +59,19 @@ describe("reports of the same trial", () => {
     const rows = litRows(papers, "th");
     expect(rows.find((r) => r.ref === "P6")?.relatedTo).toBe("P1");
     expect(rows.filter((r) => r.relatedTo)).toHaveLength(1);
+  });
+
+  it("the study map never plots a further report as a study of its own", () => {
+    const { points, missing } = studyPoints(papers);
+    expect(points.map((p) => p.ref)).not.toContain("P6");
+    expect(studyPoints(papers.filter((p) => p.ref !== "P6"))).toEqual({ points, missing });
+  });
+
+  it("the diagnostic-accuracy charts never plot a further report as a study of its own", () => {
+    const dta = dtaReviewFixture.result!.papers!;
+    const further: Paper = { ...dta[0], ref: "P9", title: "Follow-up of study 1", related_to: "P1", related_reason: "same trial (NCT0001)" };
+    const d = dtaData([...dta, further], "en")!;
+    expect(d.studies.map((s) => s.ref)).toEqual(dtaData(dta, "en")!.studies.map((s) => s.ref));
   });
 
   it("the direction tally counts studies: a further report adds nothing", () => {

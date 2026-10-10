@@ -60,15 +60,17 @@ const NEAR_TITLE_TH: Record<string, string> = {
 };
 
 /**
- * The engine's `related_reason` (English, fixed wording: docs/api.md) in the report language: "same trial (X)" →
- * "การทดลองเดียวกัน (X)", the near-identical-title reasons in Thai; anything else as written.
+ * The engine's `related_reason` (English, fixed wording: docs/api.md) in the report language, shown after
+ * `relatedLabel`, which already says "same trial": "same trial (X)" → only the trial's registry number or name
+ * ("ทะเบียน/ชื่อการทดลอง: X" / "trial: X"); the near-identical-title reasons in Thai (as written in English). Wording
+ * the UI does not know: in Thai "การทดลองเดียวกัน" with the engine's English in brackets; in English as written.
  */
 export function relatedReasonText(reason: string | null | undefined, lang: Lang): string | null {
   const r = reason?.trim();
   if (!r) return null;
-  if (lang === "en") return r;
   const trial = /^same trial \((.+)\)$/.exec(r);
-  if (trial) return `การทดลองเดียวกัน (${trial[1]})`;
-  if (r.startsWith(NEAR_TITLE)) return NEAR_TITLE_TH[r.slice(NEAR_TITLE.length)] ?? r;
-  return r;
+  if (trial) return lang === "th" ? `ทะเบียน/ชื่อการทดลอง: ${trial[1]}` : `trial: ${trial[1]}`;
+  if (lang === "en") return r;
+  if (r.startsWith(NEAR_TITLE) && NEAR_TITLE_TH[r.slice(NEAR_TITLE.length)]) return NEAR_TITLE_TH[r.slice(NEAR_TITLE.length)];
+  return `การทดลองเดียวกัน (${r})`;
 }

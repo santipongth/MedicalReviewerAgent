@@ -419,8 +419,10 @@ export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs, graded
       <p className="max-w-[65ch] text-[0.88rem] text-muted" data-discordant-note>
         {L(lang, "เมื่อการทบทวนอย่างเป็นระบบกับการศึกษาปฐมภูมิให้ผลต่างกัน การทบทวนมักรวมการศึกษาเหล่านั้นไว้แล้ว จึงไม่นับเป็นหลักฐานซ้ำ",
           "When systematic reviews and primary studies disagree, the reviews likely include those studies, so they are not counted twice")}
+        {/* GRADE-lite records only a split on the primary outcome, as minor inconsistency; none downgrades (api.md) */}
         {graded
-          ? L(lang, " ระบบบันทึกเป็นความไม่สอดคล้องเล็กน้อย และไม่ลดระดับความแข็งแรงของหลักฐาน", "; it is recorded as minor inconsistency and does not lower the certainty of the evidence.")
+          ? L(lang, " การแยกทางบนผลลัพธ์หลักถูกบันทึกเป็นความไม่สอดคล้องเล็กน้อย และไม่มีกรณีใดลดระดับความแข็งแรงของหลักฐาน",
+            "; a split on the primary outcome is recorded as minor inconsistency, and none lowers the certainty of the evidence.")
           : L(lang, "", ".")}
       </p>
     )}
