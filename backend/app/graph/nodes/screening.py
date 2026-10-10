@@ -163,7 +163,7 @@ def make_select_top(deps):
     return select_top
 
 
-def route_to_reading(state: ReviewState, external_enabled=None) -> list[Send] | str:
+def route_to_reading(state: ReviewState, external_enabled=None, citations_enabled=None) -> list[Send] | str:
     """One read_paper per selected paper, plus one external_enrich when external MCP tools are configured
     (same superstep, so it adds no latency)."""
     selected = state.get("selected") or []
@@ -175,5 +175,8 @@ def route_to_reading(state: ReviewState, external_enabled=None) -> list[Send] | 
     sends = [Send("read_paper", {"paper": s, **common}) for s in selected]
     if external_enabled is not None and external_enabled():
         sends.append(Send("external_enrich", {"question": common["question"], "plan": common["plan"]}))
+    if citations_enabled is not None and citations_enabled():
+        sends.append(Send("fetch_citations", {"papers": [{"ref": s["ref"], "candidate": s.get("candidate") or {}}
+                                                          for s in selected]}))
     return sends
 

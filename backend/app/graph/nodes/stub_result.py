@@ -47,6 +47,21 @@ def _verification(card: dict[str, Any]) -> dict[str, Any]:
             "repaired": False, "uncertain": False, "unverified": []}
 
 
+_STUB_EDGES = (("P3", "P1"), ("P3", "P2"), ("P5", "P1"), ("P5", "P2"), ("P5", "P3"), ("P6", "P4"))
+
+
+def _citations(n: int) -> dict[str, Any]:
+    """Small illustrative citation block (P6 has no data, to exercise the coverage-gap display)."""
+    refs = [f"P{i + 1}" for i in range(n)]
+    return {
+        "edges": [{"from": a, "to": b} for a, b in _STUB_EDGES if a in refs and b in refs],
+        "cited_by": {r: (None if r == "P6" else 40 - 5 * i) for i, r in enumerate(refs)},
+        "coverage": {r: (None if r == "P6" else "openalex" if i % 2 == 0 else "europepmc")
+                     for i, r in enumerate(refs)},
+        "source_note": "Illustrative stub data",
+    }
+
+
 def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str, Any]:
     papers = []
     for i, (_d, _s, year, *_rest) in enumerate(_PAPERS):
@@ -109,4 +124,5 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
                   "non_research": 4, "excluded_selection": {"narrative_excluded": 0, "over_limit": 2}},
         "quality": {}, "errors": [], "prompt_version": "stub", "llm_preset": "stub", "models": {},
         "external_context": [],
+        "citations": _citations(len(papers)),
     }

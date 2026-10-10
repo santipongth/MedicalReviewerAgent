@@ -525,6 +525,7 @@ def make_finalize(deps):
             "external_context": [{"tool": e["tool"], "arguments": e["arguments"], "ok": e["ok"],
                                   "preview": (e.get("text") or e.get("error") or "")[:500]}
                                  for e in state.get("external_context") or []],
+            "citations": state.get("citations"),
         }
         progress_writer()({"type": "finalizing"})
         return {"result": result}

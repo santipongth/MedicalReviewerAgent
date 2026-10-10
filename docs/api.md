@@ -103,11 +103,13 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `progress` is reserved and always `null`. Live progress comes from the event stream.
 - `status` is one of `queued`, `running`, `done`, `error`, `rejected` or `cancelled`.
 
-`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context`.
+`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations`.
 
 **Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`.
 - `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, other`.
 - Narrative reviews are listed, but they never count as evidence, except in scoping reviews, which count them. A narrative-type review also gives them to the synthesis and can cite them, but keeps them out of the comparison table.
+
+**Citations.** `citations` is `{edges[], cited_by{}, coverage{}, source_note}` (null for results stored before Plan 14b and for reviews where the step did not run). `edges[]` is `{from, to}` (citing paper -> cited paper), only between papers of the same review, no self-loops, deduplicated. `cited_by[ref]` is OpenAlex's cited-by count over all literature (not just this review), or null. `coverage[ref]` is `"openalex"`, `"europepmc"` (reference list fallback) or null; null means no data, so a missing edge for such a paper does not mean it cites nothing. Metadata only (no full text); a failure or timeout (about 20 s) gives null coverage everywhere and never fails the review. Optional `OPENALEX_API_KEY` / `OPENALEX_MAILTO`.
 
 **Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). `excluded_selection` is `{narrative_excluded, over_limit}`. Results stored before Plan 14a have none of these keys.
 
@@ -166,6 +168,7 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 | `screening` | `{batch}` | once per batch of 10 |
 | `screened` | `{kept, total}` | marks the end of screening |
 | `external_lookup` | `{}` | only when external MCP servers are configured |
+| `citations_fetched` | `{edges, covered, total}` | once, in parallel with reading; `covered` = papers with reference data. Always sent when the citation step runs, also when it soft-fails (`covered: 0`) |
 | `reading` | `{ref, title}` | once per paper; sent when the paper's read starts, and all arrive together at fan-out start (papers then wait for the LLM concurrency limit) |
 | `extracted` | `{ref, ok, verified, uncertain, direction, design}` | once per paper. `direction` is the reading model's overall direction (`positive\|negative\|null\|mixed\|unclear`; the string `"null"` means "no association"), a model judgement, not a pooled result. `design` is the design category (same enum as `card.design_category`). Both are JSON `null` when `ok` is false; events stored before this change lack both keys |
 | `synthesizing` | `{papers}` | skipped when no paper was extracted |
