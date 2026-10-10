@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
+import { GLOSS, glossText } from "@/lib/glossary";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -164,6 +165,34 @@ describe("RequestSlip", () => {
     expect(screen.getByText(/ไม่เลือก = ไม่จำกัดชนิดงานวิจัย/)).toBeInTheDocument();
   });
 
+  it("shows each study design as a tile: Thai name first, then the English term and its plain gloss", () => {
+    render(<RequestSlip />);
+    const group = screen.getByRole("group", { name: /หลักฐานและเกณฑ์คัดเลือก/ });
+    // the name is short (Thai name + term); the plain words are the description, so tabbing stays quick
+    const rct = within(group).getByRole("checkbox", { name: /RCT/ });
+    expect(rct).toHaveAccessibleName("การทดลองแบบสุ่มและมีกลุ่มควบคุม RCT");
+    expect(rct).toHaveAccessibleDescription(GLOSS.rct.plain?.th ?? "");
+    expect(within(group).getByRole("checkbox", { name: "การศึกษาติดตามกลุ่มคน Cohort" })).toBeInTheDocument();
+    expect(within(group).getByRole("checkbox", { name: "การสำรวจภาคตัดขวาง Cross-sectional" }))
+      .toHaveAccessibleDescription("สำรวจ ณ จุดเวลาเดียว");
+    expect(within(group).getByRole("checkbox", { name: "อื่น ๆ — ระบุ" })).toBeInTheDocument();
+    expect(within(group).getAllByRole("checkbox")).toHaveLength(8); // seven designs plus "other"
+  });
+
+  it("marks the folded options as something that opens", () => {
+    render(<RequestSlip />);
+    const summary = screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary") as HTMLElement;
+    expect(summary.querySelector("[data-chevron][aria-hidden=true]")).not.toBeNull();
+    expect(summary).toHaveTextContent("แก้ไข");
+  });
+
+  it("glosses PICO in the question hint and keeps the free, no-sign-up note in the submit row", () => {
+    render(<RequestSlip />);
+    expect(screen.getByText(/ลองคิดตาม/).textContent).toContain(glossText("pico"));
+    const submit = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ });
+    expect(submit.closest("[data-testid=submit-row]")).toHaveTextContent("ฟรี · ไม่ต้องสมัคร");
+  });
+
   it("sends the chosen review type", async () => {
     createReview.mockResolvedValue({ review_id: "r-4", status: "queued", cached: false });
     render(<RequestSlip />);
@@ -203,7 +232,7 @@ describe("RequestSlip", () => {
     render(<RequestSlip />);
     await typeTopic();
     await userEvent.click(screen.getByLabelText(/Cohort/));
-    await userEvent.click(screen.getByLabelText(/ทดลองไม่สุ่ม/));
+    await userEvent.click(screen.getByLabelText(/การทดลองแบบไม่สุ่ม/));
     await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({
       options: { max_papers: 30, review_type: "slr", study_types: ["Cohort", "Non-randomized trial"] },

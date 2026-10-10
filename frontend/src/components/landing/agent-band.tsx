@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { CodeBlock } from "../code-block";
+import { Gloss } from "../ui/gloss";
 
 const TOOLS: [string, string][] = [
-  ["search_papers", "ค้นงานวิจัยจาก 8 แหล่งในครั้งเดียว ได้ชื่อเรื่อง บทคัดย่อ และตัวระบุ"],
-  ["start_review", "เริ่มรีวิว 4 รูปแบบ (systematic, meta-analysis, scoping, narrative) เลือกชนิดงานวิจัยและปีได้ ไทยหรืออังกฤษ"],
-  ["get_review_status", "สถานะ queued, running, done, error, rejected หรือ cancelled"],
-  ["get_review_result", "คำถามวิจัย ตารางเทียบ ข้อขัดแย้ง ระดับหลักฐาน เครือข่ายการอ้างอิง ค่ารวม meta-analysis พร้อมประโยคต้นฉบับของทุกตัวเลข"],
+  ["search_papers", "ค้นงานวิจัยจาก 8 แหล่งในครั้งเดียว ได้ชื่อเรื่อง บทคัดย่อ และรหัสประจำบทความ"],
+  ["start_review", "เริ่มรีวิวได้ 4 รูปแบบเหมือนหน้าเว็บ เลือกชนิดงานวิจัยและปีได้ รายงานเป็นภาษาไทยหรืออังกฤษ"],
+  ["get_review_status", "ดูสถานะ: รอคิว (queued) กำลังทำ (running) เสร็จ (done) ผิดพลาด (error) ไม่รับหัวข้อ (rejected) หรือยกเลิก (cancelled)"],
+  ["get_review_result", "คำถามวิจัย ตารางเทียบ ข้อขัดแย้ง ระดับหลักฐาน เครือข่ายการอ้างอิง และค่ารวมจากการวิเคราะห์อภิมาน พร้อมประโยคต้นฉบับของทุกตัวเลข"],
 ];
 
 /** MCP and REST give agents the same receipts as the web page. `api` is the public API origin. */
@@ -16,7 +17,8 @@ export function AgentBand({ api }: { api: string }) {
       <div className="grid content-start gap-4">
         <h2 id="h-agents" className="text-[1.75rem] font-bold">เอเจนต์ AI ก็ได้ใบเสร็จเหมือนกัน</h2>
         <p className="max-w-[60ch] text-muted">
-          เซิร์ฟเวอร์ MCP และ REST API ส่งผลลัพธ์ชุดเดียวกับหน้าเว็บ รวมประโยคต้นฉบับของทุกตัวเลข ใช้ได้โดยไม่ต้องมี API key
+          สำหรับนักพัฒนา: <Gloss k="mcp" /> และ <Gloss k="api">REST API</Gloss> ส่งผลลัพธ์ชุดเดียวกับหน้าเว็บ
+          รวมประโยคต้นฉบับของทุกตัวเลข ใช้ได้โดยไม่ต้องมี <Gloss k="apiKey" />
         </p>
         <ul className="grid border-t border-rule">
           {TOOLS.map(([name, body]) => (
@@ -28,7 +30,7 @@ export function AgentBand({ api }: { api: string }) {
         </ul>
       </div>
       <div className="grid min-w-0 content-start gap-4">
-        <CodeBlock label="ตั้งค่า MCP client (JSON)" code={config} />
+        <CodeBlock label="ตั้งค่าในโปรแกรมที่รองรับ MCP (ไฟล์ JSON)" code={config} />
         <p>
           <Link href="/about"
             className="inline-block rounded-sm bg-primary px-4 py-2 font-display font-semibold text-on-primary hover:brightness-110">

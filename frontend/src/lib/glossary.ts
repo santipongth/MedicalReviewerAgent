@@ -236,3 +236,218 @@ export const GLOSSARY: Record<TermKey, { label: Bi; body: Bi }> = {
     },
   },
 };
+
+/**
+ * Inline glosses for readers who are not researchers (home and About pages, Plan 20 Task 12): a term is shown as
+ * "term (name)" at its first use in a section, or "term (name — plain)" when the plain words are wanted too.
+ * `term` is the word as the page writes it, `name` its short meaning (the Thai name, or plain Thai when the term is
+ * already Thai), `plain` an optional one-phrase explanation. No brackets inside `name` or `plain`: they sit in brackets.
+ * The report's tap-to-open explanations stay in GLOSSARY above.
+ */
+export type GlossEntry = { term: Bi; name: Bi; plain?: Bi };
+
+export const GLOSS = {
+  // Review types
+  slr: {
+    term: { th: "Systematic review", en: "Systematic review" },
+    name: { th: "การทบทวนวรรณกรรมอย่างเป็นระบบ", en: "systematic review" },
+    plain: {
+      th: "รวบรวมงานวิจัยทุกชิ้นที่ตอบคำถามเดียวกัน ด้วยขั้นตอนที่ตรวจสอบได้",
+      en: "gathers every study that answers the same question, by steps anyone can check",
+    },
+  },
+  metaAnalysis: {
+    term: { th: "Meta-analysis", en: "Meta-analysis" },
+    name: { th: "การวิเคราะห์อภิมาน", en: "meta-analysis" },
+    plain: { th: "นำตัวเลขจากหลายงานวิจัยมารวมเป็นผลเดียว", en: "combines the numbers from several studies into one result" },
+  },
+  scopingReview: {
+    term: { th: "Scoping review", en: "Scoping review" },
+    name: { th: "การทบทวนขอบเขต", en: "scoping review" },
+    plain: { th: "สำรวจว่ามีงานวิจัยเรื่องนี้มากน้อยแค่ไหน ในแง่มุมใด", en: "maps how much research exists on a topic, and on which aspects" },
+  },
+  narrativeReview: {
+    term: { th: "Narrative review", en: "Narrative review" },
+    name: { th: "การทบทวนแบบบรรยาย", en: "narrative review" },
+    plain: { th: "สรุปภาพรวมแบบเล่าเรื่อง", en: "sums up the field as a story" },
+  },
+  // Study designs (the scope form's tiles: name first, then term · plain)
+  rct: {
+    term: { th: "RCT", en: "RCT" },
+    name: { th: "การทดลองแบบสุ่มและมีกลุ่มควบคุม", en: "randomised controlled trial" },
+    plain: {
+      th: "สุ่มแบ่งคนเป็นกลุ่มที่ได้รับสิ่งที่ทดสอบ กับกลุ่มเปรียบเทียบ เช่น ยาหลอกหรือการรักษาเดิม",
+      en: "people are split at random into a group that gets what is tested and a comparison group, e.g. placebo or usual care",
+    },
+  },
+  nonRandomized: {
+    term: { th: "Non-randomized trial", en: "Non-randomized trial" },
+    name: { th: "การทดลองแบบไม่สุ่ม", en: "non-randomised trial" },
+    plain: { th: "มีกลุ่มเปรียบเทียบ แต่ไม่ได้สุ่มแบ่งกลุ่ม", en: "has a comparison group, but the groups are not assigned at random" },
+  },
+  cohort: {
+    term: { th: "Cohort", en: "Cohort" },
+    name: { th: "การศึกษาติดตามกลุ่มคน", en: "cohort study" },
+    plain: { th: "ติดตามคนกลุ่มหนึ่งไปตามเวลา ดูว่าใครเกิดผลที่สนใจ", en: "follows a group of people over time to see who develops the outcome" },
+  },
+  caseControl: {
+    term: { th: "Case-control", en: "Case-control" },
+    name: { th: "การศึกษาเทียบผู้ป่วยกับผู้ไม่ป่วย", en: "case-control study" },
+    plain: { th: "ย้อนดูว่าสองกลุ่มเคยได้รับหรือสัมผัสอะไรต่างกัน", en: "looks back at what people with and without the disease were exposed to" },
+  },
+  crossSectional: {
+    term: { th: "Cross-sectional", en: "Cross-sectional" },
+    name: { th: "การสำรวจภาคตัดขวาง", en: "cross-sectional study" },
+    plain: { th: "สำรวจ ณ จุดเวลาเดียว", en: "a survey at a single point in time" },
+  },
+  qualitative: {
+    term: { th: "Qualitative", en: "Qualitative" },
+    name: { th: "การวิจัยเชิงคุณภาพ", en: "qualitative research" },
+    plain: { th: "สัมภาษณ์หรือสังเกต เพื่อเข้าใจประสบการณ์และมุมมอง", en: "interviews or observation, to understand experiences and views" },
+  },
+  mixedMethods: {
+    term: { th: "Mixed methods", en: "Mixed methods" },
+    name: { th: "การวิจัยแบบผสมผสาน", en: "mixed-methods research" },
+    plain: { th: "ใช้ทั้งตัวเลขและการสัมภาษณ์ในงานเดียว", en: "uses both numbers and interviews in one study" },
+  },
+  primaryStudy: {
+    term: { th: "งานปฐมภูมิ", en: "primary study" },
+    name: { th: "งานที่เก็บข้อมูลจากผู้เข้าร่วมเอง", en: "a study that collected its own data from participants" },
+  },
+  // Question frames, methods and reporting
+  pico: {
+    term: { th: "PICO", en: "PICO" },
+    name: { th: "กรอบตั้งคำถาม: ผู้ป่วย · สิ่งที่ให้ · สิ่งเปรียบเทียบ · ผลลัพธ์", en: "Population · Intervention · Comparison · Outcome" },
+  },
+  pcc: {
+    term: { th: "PCC", en: "PCC" },
+    name: { th: "กรอบตั้งคำถาม: ใคร · เรื่องอะไร · ในบริบทไหน", en: "Population · Concept · Context" },
+  },
+  prisma: {
+    term: { th: "PRISMA", en: "PRISMA" },
+    name: { th: "มาตรฐานการรายงานขั้นตอนคัดเลือกงานวิจัย", en: "the standard way to report how studies were selected" },
+  },
+  grade: {
+    term: { th: "GRADE", en: "GRADE" },
+    name: { th: "ระบบให้ระดับความน่าเชื่อถือของหลักฐาน", en: "a system for rating how far the evidence can be trusted" },
+  },
+  riskOfBias: {
+    term: { th: "ความเสี่ยงอคติ", en: "risk of bias" },
+    name: { th: "โอกาสที่วิธีทำวิจัยทำให้ผลคลาดจากความจริง", en: "the chance that how a study was run skewed its result" },
+  },
+  forestPlot: {
+    term: { th: "Forest plot", en: "Forest plot" },
+    name: { th: "แผนภาพเทียบผลของแต่ละงานบนเส้นเดียวกัน", en: "a chart that lines up each study's result on one axis" },
+  },
+  randomEffects: {
+    term: { th: "random effects", en: "random effects" },
+    name: { th: "วิธีรวมผลที่เผื่อไว้ว่าแต่ละงานอาจได้ผลต่างกันจริง", en: "a way of pooling that allows studies to differ for real" },
+  },
+  litMatrix: {
+    term: { th: "Literature review matrix", en: "Literature review matrix" },
+    name: { th: "ตารางสรุปงานวิจัย งานละหนึ่งแถว", en: "a summary table with one row per study" },
+  },
+  // Numbers in a report
+  ratios: {
+    term: { th: "HR / RR / OR", en: "HR / RR / OR" },
+    name: { th: "ตัววัดความเสี่ยงเปรียบเทียบระหว่างสองกลุ่ม", en: "ratios that compare risk between two groups" },
+    plain: {
+      th: "ค่า 1 แปลว่าสองกลุ่มไม่ต่างกัน ต่ำกว่า 1 แปลว่ากลุ่มที่ได้รับการรักษาหรือสัมผัสเกิดเหตุการณ์น้อยกว่า",
+      en: "1 means no difference; below 1 means fewer events in the treated or exposed group",
+    },
+  },
+  ci95: {
+    term: { th: "95% CI", en: "95% CI" },
+    name: { th: "ช่วงที่ค่าจริงน่าจะอยู่", en: "the range the true value likely lies in" },
+    plain: { th: "ช่วงยิ่งแคบ ยิ่งประมาณได้แม่น", en: "the narrower it is, the more precise the estimate" },
+  },
+  i2: {
+    term: { th: "I²", en: "I²" },
+    name: { th: "ความต่างกันของผลระหว่างงานวิจัย", en: "how much results differ between studies" },
+    plain: {
+      th: "ยิ่งสูง ผลของแต่ละงานยิ่งต่างกันมากเกินกว่าที่เกิดจากความบังเอิญ",
+      en: "the higher it is, the more the results differ beyond what chance would explain",
+    },
+  },
+  sampleSize: {
+    term: { th: "n", en: "n" },
+    name: { th: "จำนวนผู้เข้าร่วมวิจัย", en: "number of participants" },
+  },
+  mace: {
+    term: { th: "MACE", en: "MACE" },
+    name: { th: "เหตุการณ์ร้ายแรงของหัวใจและหลอดเลือด", en: "major adverse cardiovascular events" },
+  },
+  logScale: {
+    term: { th: "log scale", en: "log scale" },
+    name: { th: "แกนที่ค่า 0.5 กับ 2 อยู่ห่างจาก 1 เท่ากัน", en: "an axis where 0.5 and 2 sit equally far from 1" },
+  },
+  // Sources and the engine
+  abstract: {
+    term: { th: "บทคัดย่อ", en: "abstract" },
+    name: { th: "ย่อหน้าสรุปสั้น ๆ ที่อยู่ต้นงานวิจัยแต่ละเรื่อง", en: "the short summary at the top of a paper" },
+  },
+  aiAgent: {
+    term: { th: "เอเจนต์", en: "agent" },
+    name: { th: "AI ที่ทำงานหลายขั้นตอนต่อกันได้เอง", en: "an AI that carries out several steps on its own" },
+  },
+  llm: {
+    term: { th: "โมเดลภาษา", en: "language model" },
+    name: { th: "AI ที่อ่านและเขียนข้อความ แบบเดียวกับแชตบอต", en: "the kind of AI behind chatbots, which reads and writes text" },
+  },
+  preprint: {
+    term: { th: "preprint", en: "preprint" },
+    name: { th: "งานที่เผยแพร่ก่อนผ่านการตรวจจากผู้ทรงคุณวุฒิ", en: "a paper shared before peer review" },
+  },
+  doiPmid: {
+    term: { th: "DOI และ PMID", en: "DOI and PMID" },
+    name: { th: "รหัสประจำตัวของบทความ", en: "a paper's ID numbers" },
+  },
+  searxng: {
+    term: { th: "SearXNG", en: "SearXNG" },
+    name: { th: "เครื่องมือค้นหาแบบเปิดที่ระบบติดตั้งไว้เอง", en: "an open search engine the service runs itself" },
+  },
+  exportFormats: {
+    term: { th: "MD, CSV, JSON", en: "MD, CSV, JSON" },
+    name: { th: "ไฟล์ข้อความ ตาราง และข้อมูลสำหรับโปรแกรม", en: "text, spreadsheet and data files" },
+  },
+  api: {
+    term: { th: "API", en: "API" },
+    name: { th: "ช่องทางให้โปรแกรมอื่นเรียกใช้ระบบ", en: "a way for other programs to use the service" },
+  },
+  mcp: {
+    term: { th: "MCP", en: "MCP" },
+    name: { th: "ช่องทางให้ผู้ช่วย AI ตัวอื่นเรียกใช้ระบบนี้", en: "a way for other AI assistants to use this service" },
+  },
+  apiKey: {
+    term: { th: "API key", en: "API key" },
+    name: { th: "รหัสประจำตัวสำหรับเรียกใช้ API", en: "a personal code for calling the API" },
+  },
+} satisfies Record<string, GlossEntry>;
+
+export type GlossKey = keyof typeof GLOSS;
+
+export type GlossOptions = {
+  /** add the plain-words explanation after the name: "term (name — plain)" */
+  full?: boolean;
+  /** the Thai (or English) name is the shown word, and the plain words go in brackets: "name (plain)" */
+  named?: boolean;
+  /** the word as this page writes it, e.g. "REST API" or "GRADE-lite" */
+  term?: string;
+  /** a qualifier this page adds after the meaning, e.g. "แบบย่อ" for GRADE-lite */
+  suffix?: string;
+};
+
+/** Split a gloss into the shown word and the bracket text (shared by glossText and the Gloss component). */
+export function glossParts(k: GlossKey, lang: "th" | "en" = "th", opts: GlossOptions = {}): { term: string; meaning: string } {
+  const g: GlossEntry = GLOSS[k];
+  const tail = opts.suffix ? ` ${opts.suffix}` : "";
+  if (opts.named && g.plain) return { term: opts.term ?? g.name[lang], meaning: g.plain[lang] + tail };
+  const meaning = opts.full && g.plain ? `${g.name[lang]} — ${g.plain[lang]}` : g.name[lang];
+  return { term: opts.term ?? g.term[lang], meaning: meaning + tail };
+}
+
+/** "term (meaning)" as plain text, for places that take only a string (option labels, aria text, tests). */
+export function glossText(k: GlossKey, lang: "th" | "en" = "th", opts: GlossOptions = {}): string {
+  const { term, meaning } = glossParts(k, lang, opts);
+  return `${term} (${meaning})`;
+}

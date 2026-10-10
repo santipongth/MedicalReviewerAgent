@@ -1,11 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, createReview, getStatus } from "@/lib/api";
 import { TYPICAL_DURATION_TH } from "@/lib/copy";
+import { GLOSS } from "@/lib/glossary";
 import type { ReviewType, ServiceStatus } from "@/lib/types";
-import { Term } from "../ui/term";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
+import { Gloss } from "../ui/gloss";
 import { ReviewTypePicker } from "./review-type-picker";
 
 type Turnstile = { render: (el: HTMLElement, opts: Record<string, unknown>) => string; reset: (id?: string) => void };
@@ -30,16 +32,16 @@ export function capacityText(reason: string | null | undefined, retryAfter?: num
   return "ระบบไม่ว่างชั่วคราว ลองส่งใหม่อีกครั้งในไม่กี่วินาที";
 }
 
-// [value sent to the API (backend canonical names), label shown]
-export const STUDY_TYPES: [string, string][] = [
-  ["RCT", "RCT"],
-  ["Cohort", "Cohort"],
-  ["Case-control", "Case-control"],
-  ["Cross-sectional", "Cross-sectional"],
-  ["Non-randomized trial", "ทดลองไม่สุ่ม"],
-  ["Qualitative", "เชิงคุณภาพ (Qualitative)"],
-  ["Mixed methods", "ผสมผสาน (Mixed methods)"],
-];
+// [value sent to the API (backend canonical names), glossary entry for the tile: Thai name, then term · plain words]
+export const STUDY_TYPES = [
+  ["RCT", "rct"],
+  ["Cohort", "cohort"],
+  ["Case-control", "caseControl"],
+  ["Cross-sectional", "crossSectional"],
+  ["Non-randomized trial", "nonRandomized"],
+  ["Qualitative", "qualitative"],
+  ["Mixed methods", "mixedMethods"],
+] as const;
 const NON_QUANTITATIVE = ["Qualitative", "Mixed methods"];
 const OTHER_MAX = 60;
 const TOPIC_MAX = 600;
@@ -63,12 +65,41 @@ function errorMessage(e: unknown): string {
   return "ส่งไม่สำเร็จ ลองใหม่อีกครั้ง";
 }
 
+/** The step number of a heading: a small square in the display face, the same for steps 1, 2 and 3. */
 function StepNo({ n }: { n: number }) {
-  return <span className="mr-2 font-display tabular-nums text-muted">{n}</span>;
+  return (
+    <span className="mr-2.5 inline-flex size-7 flex-none items-center justify-center rounded-sm border border-ink font-display text-[0.9rem] font-semibold tabular-nums">
+      {n}
+    </span>
+  );
 }
 
-/** The review request: "กำหนดขอบเขตการทบทวน", three numbered steps (question, review type, study designs) plus folded
- * extras (report language, number of papers, start year). */
+const STEP_HEADING = "flex items-center font-display text-[1.05rem] font-semibold";
+const TILE =
+  "flex h-full min-h-11 cursor-pointer items-start gap-2.5 rounded-sm border border-rule bg-ground px-3 py-2.5 hover:border-ink lg:py-2 has-[:checked]:border-primary has-[:checked]:bg-rail";
+
+/** One study-design checkbox tile: the Thai name first, then the English term and its plain words, smaller. The
+ * checkbox's name is the Thai name + term; the plain words are its description, so tabbing through stays quick. */
+function Tile({ id, checked, onChange, name, term, plain }: {
+  id: string; checked: boolean; onChange: () => void; name: ReactNode; term?: ReactNode; plain: ReactNode;
+}) {
+  return (
+    <label className={TILE}>
+      <input type="checkbox" checked={checked} onChange={onChange} className="mt-1 size-4 flex-none accent-primary"
+        aria-labelledby={term ? `${id}-n ${id}-t` : `${id}-n`} aria-describedby={`${id}-p`} />
+      <span className="grid min-w-0 gap-0.5">
+        <span id={`${id}-n`} className="font-display font-medium leading-snug">{name}</span>{" "}
+        <span className="text-[0.85rem] leading-snug text-muted">
+          {term && <><span id={`${id}-t`}>{term}</span> · </>}<span id={`${id}-p`}>{plain}</span>
+        </span>
+      </span>
+    </label>
+  );
+}
+
+/** The review request "กำหนดขอบเขตการทบทวน", full page width: steps 1 (question) and 2 (review type) on the left, step 3
+ * (study designs as tiles) on the right from 1024px, then the folded extras (report language, number of papers, start
+ * year) and a full-width submit row. One column below 1024px; the DOM order (and so the keyboard order) is unchanged. */
 export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
   const router = useRouter();
   const id = useId();
@@ -153,110 +184,127 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
 
   return (
     <div>
-      <form id="request" onSubmit={submit} aria-label="กำหนดขอบเขตการทบทวน" className="rounded-sm border border-rule bg-surface">
-        <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-rule px-4 py-3">
-          <h2 className="font-display text-[1.15rem] font-semibold">กำหนดขอบเขตการทบทวน</h2>
-          <span className="label">ฟรี · ไม่ต้องสมัคร</span>
+      <form id="request" onSubmit={submit} aria-label="กำหนดขอบเขตการทบทวน" className="scroll-mt-24 rounded-sm border border-rule bg-surface">
+        <div className="grid gap-1 border-b border-rule px-4 py-4 sm:px-6">
+          <h2 className="font-display text-[1.35rem] font-semibold">กำหนดขอบเขตการทบทวน</h2>
+          <p className="text-[0.95rem] text-muted">
+            ตอบ 3 ข้อแล้วกดส่ง <Gloss k="aiAgent" /> จะเริ่มค้นและอ่านให้ ข้อ 2 และ 3 ใช้ค่าเริ่มต้นได้เลยถ้ายังไม่แน่ใจ
+          </p>
         </div>
-        <div className="grid gap-5 p-4">
-          <div className="grid gap-1.5">
-            <label className="font-display font-medium" htmlFor={`${id}-topic`}>
-              <StepNo n={1} />คำถามหรือวัตถุประสงค์ <span aria-hidden className="text-err">*</span>
-            </label>
-            <textarea
-              id={`${id}-topic`} name="topic" value={topic} onChange={(e) => setTopic(e.target.value)} required minLength={3}
-              maxLength={TOPIC_MAX} rows={3} autoComplete="off" aria-describedby={`${id}-topic-hint`}
-              placeholder="ต้องการทบทวนเรื่องใด เพื่อหาคำตอบอะไร? เช่น เมตฟอร์มินกับมะเร็งลำไส้ใหญ่"
-              className="w-full resize-y rounded-sm border border-rule bg-ground px-3 py-2.5 text-[1.05rem] text-ink outline-none focus:border-primary"
-            />
-            <p id={`${id}-topic-hint`} className="flex flex-wrap justify-between gap-x-3 text-sm text-muted">
-              <span>ใส่ได้ทั้งหัวข้อสั้น ๆ หรือคำถามเต็ม · ใช้ <Term k="pico">PICO</Term> ช่วยได้เมื่อถามถึงผลของการรักษาหรือสิ่งที่สัมผัส</span>
-              {topic.length > TOPIC_MAX - 100 && <span className="font-display tabular-nums">{topic.length}/{TOPIC_MAX}</span>}
-            </p>
-          </div>
-          <div className="grid gap-1.5">
-            <label className="font-display font-medium" htmlFor={`${id}-type`}><StepNo n={2} />รูปแบบการทบทวน</label>
-            <ReviewTypePicker id={`${id}-type`} value={reviewType} onChange={setReviewType} available={status?.limits?.review_types} />
-          </div>
-          <fieldset className="grid gap-2">
-            <legend className="mb-1.5 font-display font-medium"><StepNo n={3} />หลักฐานและเกณฑ์คัดเลือก</legend>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[0.95rem] sm:grid-cols-3">
-              {STUDY_TYPES.map(([value, label]) => (
-                <label key={value} className="flex min-h-11 items-center gap-2">
-                  <input type="checkbox" checked={types.includes(value)} onChange={() => toggleType(value)} className="size-4 flex-none accent-primary" />
-                  {label}
-                </label>
-              ))}
-              <label className="flex min-h-11 items-center gap-2">
-                <input type="checkbox" checked={otherOn} onChange={() => setOtherOn((v) => !v)} className="size-4 flex-none accent-primary" />
-                อื่น ๆ — ระบุ
+        <div className="grid gap-8 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-0 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          {/* From 1024px the question box grows to fill the column, so steps 1-2 end level with step 3's tiles. */}
+          <div className="flex min-w-0 flex-col gap-7 lg:pr-8">
+            <div className="flex flex-col gap-2 lg:flex-1">
+              <label className={STEP_HEADING} htmlFor={`${id}-topic`}>
+                <StepNo n={1} />คำถามหรือวัตถุประสงค์ <span aria-hidden className="ml-1 text-err">*</span>
               </label>
+              <textarea
+                id={`${id}-topic`} name="topic" value={topic} onChange={(e) => setTopic(e.target.value)} required minLength={3}
+                maxLength={TOPIC_MAX} rows={5} autoComplete="off" aria-describedby={`${id}-topic-hint`}
+                placeholder={"ต้องการทบทวนเรื่องใด เพื่อหาคำตอบอะไร?\nเช่น เมตฟอร์มินกับมะเร็งลำไส้ใหญ่"}
+                className="w-full resize-y rounded-sm lg:flex-1 border border-rule bg-ground px-3 py-2.5 text-[1.0625rem] text-ink outline-none focus:border-primary"
+              />
+              <p id={`${id}-topic-hint`} className="flex flex-wrap justify-between gap-x-3 text-[0.95rem] leading-[1.7] text-muted">
+                <span>พิมพ์หัวข้อสั้น ๆ หรือคำถามเต็มก็ได้ ถ้าถามถึงผลของการรักษา ลองคิดตาม <Gloss k="pico" /></span>
+                {topic.length > TOPIC_MAX - 100 && <span className="font-display tabular-nums">{topic.length}/{TOPIC_MAX}</span>}
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <label className={STEP_HEADING} htmlFor={`${id}-type`}><StepNo n={2} />รูปแบบการทบทวน</label>
+              <ReviewTypePicker id={`${id}-type`} value={reviewType} onChange={setReviewType} available={status?.limits?.review_types} />
+            </div>
+          </div>
+          <fieldset className="grid min-w-0 content-start gap-3 lg:border-l lg:border-rule lg:pl-8">
+            <legend className={`${STEP_HEADING} mb-2`}><StepNo n={3} />หลักฐานและเกณฑ์คัดเลือก</legend>
+            <p className="text-[0.95rem] leading-[1.7] text-muted">ชนิดงานวิจัยที่ต้องการ เลือกได้หลายแบบ · <span className="nw">ไม่เลือก = ไม่จำกัดชนิดงานวิจัย</span></p>
+            {/* Equal-height rows only where the tiles form a grid (640–1023px); a one-column list keeps natural heights. */}
+            <div className="grid gap-2 sm:auto-rows-fr sm:grid-cols-2 lg:auto-rows-auto lg:grid-cols-1">
+              {STUDY_TYPES.map(([value, k]) => (
+                <Tile key={value} id={`${id}-st-${k}`} checked={types.includes(value)} onChange={() => toggleType(value)}
+                  name={GLOSS[k].name.th} term={GLOSS[k].term.th} plain={GLOSS[k].plain.th} />
+              ))}
+              <Tile id={`${id}-st-other`} checked={otherOn} onChange={() => setOtherOn((v) => !v)} name="อื่น ๆ — ระบุ"
+                plain="พิมพ์ชนิดงานวิจัยที่ต้องการเอง" />
             </div>
             {otherOn && (
               <input
                 aria-label="ระบุชนิดงานวิจัยอื่น" value={other} maxLength={OTHER_MAX} onChange={(e) => setOther(e.target.value)}
                 placeholder="เช่น Delphi study"
-                className="min-h-11 w-full max-w-sm rounded-sm border border-rule bg-ground px-3 py-2 text-ink outline-none focus:border-primary"
+                className="min-h-11 w-full rounded-sm border border-rule bg-ground px-3 py-2 text-ink outline-none focus:border-primary"
               />
             )}
-            <p className="text-sm text-muted">เลือกได้หลายแบบ · ไม่เลือก = ไม่จำกัดชนิดงานวิจัย</p>
             {qualitativeNote && (
-              <p className="text-sm text-ink">งานเชิงคุณภาพและแบบผสมผสานจะสรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข และไม่นับในทิศทางผล</p>
+              <p className="text-[0.95rem] leading-[1.7] text-ink">งานเชิงคุณภาพและแบบผสมผสานจะสรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข และไม่นับในทิศทางผล</p>
             )}
           </fieldset>
-          <details className="grid gap-4 border-t border-rule pt-3">
-            <summary className="cursor-pointer text-[0.92rem]"><span className="font-display font-medium">ตัวเลือกเพิ่มเติม</span> <span className="text-muted">{summary}</span></summary>
-            <div className="mt-4 grid gap-4">
-            <fieldset className="flex flex-wrap gap-x-5 gap-y-2 text-[0.92rem]">
-              <legend className="label mb-1.5">ภาษาของรายงาน</legend>
-              <label className="flex items-center gap-1.5"><input type="radio" name="lang" checked={language === "th"}
-                onChange={() => setLanguage("th")} className="size-4 accent-primary" />ภาษาไทย</label>
-              <label className="flex items-center gap-1.5"><input type="radio" name="lang" checked={language === "en"}
-                onChange={() => setLanguage("en")} className="size-4 accent-primary" />English</label>
-            </fieldset>
-            <div className="flex flex-wrap gap-6">
-              <div className="grid gap-1.5">
-                <label className="label" htmlFor={`${id}-papers`}>จำนวนงานวิจัยที่วิเคราะห์: <span className="text-ink">{maxPapers}</span></label>
-                <input id={`${id}-papers`} type="range" min={5} max={30} value={maxPapers}
-                  onChange={(e) => setMaxPapers(Number(e.target.value))} className="w-48 accent-primary" />
-              </div>
-              <div className="grid gap-1.5">
-                <label className="label" htmlFor={`${id}-year`}>ตั้งแต่ปี (ไม่บังคับ)</label>
-                <input id={`${id}-year`} inputMode="numeric" pattern="(19[5-9][0-9]|20[0-9][0-9])" placeholder="เช่น 2015"
-                  value={yearFrom} onChange={(e) => setYearFrom(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  className="w-32 rounded-sm border border-rule bg-ground px-3 py-1.5 text-ink outline-none focus:border-primary" />
-              </div>
-            </div>
-            </div>
-          </details>
         </div>
-        <div className="flex flex-wrap items-center gap-3 border-t border-rule px-4 py-3">
+        <details className="group border-t border-rule px-4 sm:px-6">
+          <summary className="flex min-h-12 cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 py-2 text-[0.95rem]">
+            <span className="flex items-center gap-2">
+              <DisclosureChevron />
+              <span className="font-display font-semibold">ตัวเลือกเพิ่มเติม</span>
+            </span>
+            <span className="rounded-sm border border-rule px-2 py-0.5 font-display text-[0.88rem] tabular-nums text-muted">{summary}</span>
+            <span className="text-[0.88rem] text-primary underline underline-offset-2 group-open:hidden">แก้ไข</span>
+          </summary>
+          <div className="grid gap-6 pb-5 pt-2 lg:grid-cols-[auto_minmax(0,22rem)_auto] lg:items-start lg:gap-12">
+            <fieldset className="grid gap-1">
+              <legend className="label p-0">ภาษาของรายงาน</legend>
+              <div className="flex flex-wrap gap-x-6">
+                <label className="flex min-h-11 items-center gap-2"><input type="radio" name="lang" checked={language === "th"}
+                  onChange={() => setLanguage("th")} className="size-4 accent-primary" />ภาษาไทย</label>
+                <label className="flex min-h-11 items-center gap-2"><input type="radio" name="lang" checked={language === "en"}
+                  onChange={() => setLanguage("en")} className="size-4 accent-primary" />English</label>
+              </div>
+            </fieldset>
+            <div className="grid gap-1">
+              <label className="label" htmlFor={`${id}-papers`}>จำนวนงานวิจัยที่วิเคราะห์ (สูงสุด)</label>
+              <div className="flex min-h-11 items-center gap-4">
+                <input id={`${id}-papers`} type="range" min={5} max={30} value={maxPapers} aria-valuetext={`${maxPapers} ฉบับ`}
+                  onChange={(e) => setMaxPapers(Number(e.target.value))} className="min-w-0 flex-1 accent-primary" />
+                <span aria-hidden="true" className="nw w-[5.5rem] flex-none rounded-sm border border-rule bg-ground px-2 py-1 text-center font-display font-semibold tabular-nums">
+                  {maxPapers} ฉบับ
+                </span>
+              </div>
+            </div>
+            <div className="grid gap-1">
+              <label className="label" htmlFor={`${id}-year`}>ตั้งแต่ปี (ไม่บังคับ)</label>
+              <input id={`${id}-year`} inputMode="numeric" pattern="(19[5-9][0-9]|20[0-9][0-9])" placeholder="เช่น 2015"
+                value={yearFrom} onChange={(e) => setYearFrom(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                className="min-h-11 w-36 rounded-sm border border-rule bg-ground px-3 py-1.5 text-ink outline-none focus:border-primary" />
+            </div>
+          </div>
+        </details>
+        <div data-testid="submit-row" className="flex flex-col gap-3 border-t border-rule px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <p className="grid gap-0.5 text-[0.92rem] text-muted">
+            <span className="font-display font-semibold text-ink">ฟรี · ไม่ต้องสมัคร</span>
+            <span>{TYPICAL_DURATION_TH} และจะเห็นว่าระบบตีความคำถามอย่างไรก่อนเริ่มค้น</span>
+          </p>
           <button type="submit" disabled={busy || closed || (!!siteKey && !token)}
             aria-describedby={tokenPending ? `${id}-wait` : undefined}
-            className="rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45">
+            className="min-h-12 w-full flex-none rounded-sm border border-primary bg-primary px-8 font-display text-[1.05rem] font-semibold text-on-primary hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto">
             {busy ? "กำลังส่ง…" : "ส่งให้เอเจนต์ทบทวน"}
           </button>
-          <span className="text-[0.85rem] text-muted">{TYPICAL_DURATION_TH} จะเห็นว่าเอเจนต์ตีความคำถามอย่างไรก่อนเริ่มค้น</span>
         </div>
         {tokenPending && (
-          <p id={`${id}-wait`} className="border-t border-rule px-4 py-3 text-[0.85rem] text-muted">
+          <p id={`${id}-wait`} className="border-t border-rule px-4 py-3 text-[0.85rem] text-muted sm:px-6">
             กำลังยืนยันว่าเป็นผู้ใช้จริง ปุ่มส่งจะใช้ได้ในไม่กี่วินาที
           </p>
         )}
-        {siteKey && <div ref={widget} data-testid="turnstile" className="border-t border-rule px-4 py-3" />}
+        {siteKey && <div ref={widget} data-testid="turnstile" className="border-t border-rule px-4 py-3 sm:px-6" />}
         {siteKey && widgetFailed && (
-          <p role="status" className="border-t border-rule bg-warn-bg px-4 py-3 text-[0.92rem] text-ink">
+          <p role="status" className="border-t border-rule bg-warn-bg px-4 py-3 text-[0.92rem] text-ink sm:px-6">
             โหลดระบบยืนยันว่าเป็นผู้ใช้จริงไม่ได้ (อาจถูกตัวบล็อกโฆษณาหรือเครือข่ายปิดกั้น challenges.cloudflare.com)
             ลองปิดตัวบล็อกแล้วโหลดหน้าใหม่ หรือใช้ API หรือ MCP ด้วย API key แทน
           </p>
         )}
         {closed && (
-          <p role="status" className="border-t border-rule bg-warn-bg px-4 py-3 text-[0.92rem] text-ink">
+          <p role="status" className="border-t border-rule bg-warn-bg px-4 py-3 text-[0.92rem] text-ink sm:px-6">
             {capacityText(status?.reason, status?.retry_after)}
           </p>
         )}
         {error && (
-          <p role="alert" className="border-t border-rule bg-err-bg px-4 py-3 text-[0.92rem] text-ink">{error}</p>
+          <p role="alert" className="border-t border-rule bg-err-bg px-4 py-3 text-[0.92rem] text-ink sm:px-6">{error}</p>
         )}
       </form>
       <div className="mt-4 flex flex-wrap items-baseline gap-x-5 gap-y-1.5 text-[0.92rem]">
