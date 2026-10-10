@@ -148,6 +148,30 @@ describe("dtaMetricOf (fix round 1: the card's measure field and the paper's own
     expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 97.4, evidence_quote: "The test was positive in 97.4% of cases." }))).toBeNull();
   });
 
+  it("fix round 2: a paired 'sensitivity and specificity were X and Y' gives each number its own label, in order", () => {
+    const pair = "Sensitivity and specificity were 0.87 (95% CI 0.80-0.92) and 0.92 (95% CI 0.88-0.95), respectively.";
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 0.87, evidence_quote: pair }))).toBe("sens");
+    expect(dtaMetricOf(out({ outcome: "Specificity", effect_value: 0.92, evidence_quote: pair }))).toBe("spec");
+    // the other way round
+    const rev = "Specificity and sensitivity were 91% and 78%.";
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 78, evidence_quote: rev }))).toBe("sens");
+    expect(dtaMetricOf(out({ outcome: "Specificity", effect_value: 91, evidence_quote: rev }))).toBe("spec");
+    // a name that disagrees with the pairing is still left out
+    expect(dtaMetricOf(out({ outcome: "Specificity", effect_value: 0.87, evidence_quote: pair }))).toBeNull();
+  });
+
+  it("three or more pairs, or an ambiguous order, stay out", () => {
+    const three = "Accuracy, sensitivity and specificity were 0.81, 0.87 and 0.92.";
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 0.87, evidence_quote: three }))).toBeNull();
+    const same = "Sensitivity and specificity were 0.90 and 0.90.";
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 0.9, evidence_quote: same }))).toBeNull();
+    const list = "Sensitivity and specificity were 0.87, 0.92 and 0.95 across sites.";
+    expect(dtaMetricOf(out({ outcome: "Sensitivity", effect_value: 0.87, evidence_quote: list }))).toBeNull();
+    // an unresolved pair also blocks the plain "label before the number" reading
+    expect(dtaMetricOf(out({ outcome: "Specificity", effect_value: 0.92, evidence_quote: list }))).toBeNull();
+    expect(dtaMetricOf(out({ outcome: "Specificity", effect_value: 0.92, evidence_quote: three }))).toBeNull();
+  });
+
   it("dtaData leaves a non-DTA 'insulin sensitivity' MD out entirely", () => {
     const p = dtaPaper("P9", [out({ outcome: "Insulin sensitivity", effect_measure: "MD", effect_value: 0.45, ci_lower: 0.2, ci_upper: 0.7,
       evidence_quote: "Insulin sensitivity improved (MD 0.45, 95% CI 0.2-0.7)." })]);

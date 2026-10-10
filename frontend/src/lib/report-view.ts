@@ -475,7 +475,9 @@ export function forestPanels(ctx: OutcomeContext, opts: { minEffects?: number } 
         return { pool, rows };
       });
       const rest = panel.primary.filter((r) => !used.has(r.ref));
-      if (rest.length || !panel.groups.length) panel.groups.push({ pool: null, rows: rest });
+      // the not-pooled group also holds the blanked (not-verified) rows: it exists whenever there is one, even when a
+      // pool covers every verified primary row (a gap is never dropped)
+      if (rest.length || panel.blanked.some((b) => !b.review) || !panel.groups.length) panel.groups.push({ pool: null, rows: rest });
       panels.push(panel);
     }
   });

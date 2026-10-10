@@ -256,9 +256,10 @@ function Pager({ page, pages, start, end, total, lang, onPage }: {
 }
 
 /**
- * Literature review matrix (Plan 20 Task 5): compact columns (study, year, design, population/sample, intervention,
- * outcomes, direction), framework-aware labels (PICO, PCC, PICo, SPIDER-like), 15 rows a page, a table with a sticky
- * first column from 1024px and ruled cards below it.
+ * Literature review matrix (Plan 20 Task 5): six compact columns (study with its year and cited-by count, design,
+ * population/sample, intervention, outcomes, direction with risk of bias under it), framework-aware labels (PICO, PCC,
+ * PICo, SPIDER-like), 15 rows a page. From 1280px a fixed-layout table that fits the reading column (no sideways
+ * scroll, sticky first column); below 1280px (1024–1279 included) ruled cards.
  */
 export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSelect, reviewId, offline = false, citations = null, question = null }: {
   papers: Paper[]; allPapers?: Paper[]; lang: Lang; type: ReviewTypeOrLegacy; onSelect: (ref: string) => void; reviewId: string; offline?: boolean;

@@ -232,6 +232,38 @@ export function dtaMetric(outcome: string): DtaMetric | null {
   return hits.length === 1 ? hits[0] : null;
 }
 
+const PAIR = /\b(sensitivity|specificity)\s+and\s+(sensitivity|specificity)\b\s*(?:were|was|of|=|:)?\s*/gi;
+const NUM = String.raw`(\d+(?:\.\d+)?)\s*%?`;
+const TWO = new RegExp(String.raw`^${NUM}\s*,?\s*and\s+${NUM}(?!\s*,?\s*(?:and\s+)?\d)`, "i");
+
+/**
+ * Fix round 2: "Sensitivity and specificity were X and Y" (two labels, then two numbers in the same order, intervals in
+ * brackets skipped). Returns the label of `value` when it is exactly one of the two numbers; "ambiguous" when such a
+ * phrase is there but cannot be resolved (part of a longer list of three or more, more than two numbers, both numbers
+ * equal), so no single label before the number is trusted either; null when the quote has no such phrase.
+ */
+function pairedLabel(quote: string, value: number): DtaMetric | "ambiguous" | null {
+  let found = false;
+  for (const m of quote.matchAll(PAIR)) {
+    const [whole, a, b] = m;
+    if (a.toLowerCase() === b.toLowerCase()) continue;
+    found = true;
+    // a list such as "accuracy, sensitivity and specificity" pairs three labels with three numbers: leave it out
+    if (/,\s*$/.test(quote.slice(0, m.index ?? 0))) continue;
+    const after = quote.slice((m.index ?? 0) + whole.length).replace(/\s*\([^)]*\)/g, "");
+    const two = TWO.exec(after);
+    if (!two) continue;
+    const x = Number(two[1]);
+    const y = Number(two[2]);
+    if (x === y) continue;
+    const same = (n: number) => Math.abs(n - value) <= Math.max(1e-9, Math.abs(value) * 0.005);
+    const label = (s: string): DtaMetric => (s.toLowerCase() === "sensitivity" ? "sens" : "spec");
+    if (same(x)) return label(a);
+    if (same(y)) return label(b);
+  }
+  return found ? "ambiguous" : null;
+}
+
 /** The DTA word the paper writes last before `at` in its quote (its own label for the number), or null. */
 function quoteLabel(quote: string, at: number): DtaMetric | null {
   const before = quote.slice(Math.max(0, at - 60), at);
@@ -257,7 +289,10 @@ export function dtaMetricOf(o: OutcomeResult): DtaMetric | null {
   if (!named || o.effect_value == null) return named && o.effect_value == null ? named : null;
   const hit = findReported(o.effect_value, o.evidence_quote, { lo: o.ci_lower, hi: o.ci_upper });
   if (!hit || !o.evidence_quote) return null;
-  return quoteLabel(o.evidence_quote, hit.index) === named ? named : null;
+  const paired = pairedLabel(o.evidence_quote, o.effect_value);
+  if (paired === "ambiguous") return null;
+  const label = paired ?? quoteLabel(o.evidence_quote, hit.index);
+  return label === named ? named : null;
 }
 
 export type DtaValue =

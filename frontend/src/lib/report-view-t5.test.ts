@@ -86,6 +86,17 @@ describe("forestPanels", () => {
     expect(forestPanels(ctxFor([rowOf("Weight", ["P1", "P2"])], bad)).panels).toEqual([]);
   });
 
+  it("fix round 2: a blanked row survives when a pool covers every primary row (its own not-pooled group)", () => {
+    const c = ctxOf(metaP20ReviewFixture);
+    const papers = c.papers.filter((p) => p.ref !== "P1" && p.ref !== "P2");
+    const p1 = c.papers.find((p) => p.ref === "P1")!;
+    const blanked = { ...p1, verification: { ...p1.verification!, unverified: [{ field: "effect" as const, outcome: "Primary outcome" }] } };
+    const primary = forestPanels({ ...c, papers: [...papers, blanked] }).panels.find((p) => p.outcomeKey === "Primary outcome")!;
+    expect(primary.primary.map((r) => r.ref)).toEqual(["P3", "P4", "P7"]);
+    expect(primary.blanked.map((b) => b.ref)).toEqual(["P1"]);
+    expect(primary.groups.map((g) => [g.pool ? "pool" : null, g.rows.map((r) => r.ref)])).toEqual([["pool", ["P3", "P4", "P7"]], [null, []]]);
+  });
+
   it("without pools the primary rows are one ungrouped block", () => {
     const [p] = forestPanels(ctxOf(slrP20ReviewFixture)).panels;
     expect(p.groups).toEqual([{ pool: null, rows: p.primary }]);

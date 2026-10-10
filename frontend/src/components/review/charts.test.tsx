@@ -115,6 +115,23 @@ describe("Charts (Plan 20 Task 5)", () => {
     expect(stats).toHaveTextContent("Q 10.61");
   });
 
+  it("fix round 2: a not-verified row still shows (chart and twin) when the pool covers every primary row", async () => {
+    const base = r(metaP20ReviewFixture);
+    const p1 = base.papers!.find((p) => p.ref === "P1")!;
+    const blanked = { ...p1, verification: { ...p1.verification!, unverified: [{ field: "effect" as const, outcome: "Primary outcome" }] } };
+    const papers = [...base.papers!.filter((p) => p.ref !== "P1" && p.ref !== "P2"), blanked];
+    show({ ...base, papers }, "en", vi.fn(), papers);
+    const panel = screen.getByRole("group", { name: /^Forest plot: ผลลัพธ์หลัก, HR/ });
+    const rest = panel.querySelector("[data-not-pooled]")!;
+    expect(rest).toHaveTextContent("Not pooled");
+    expect(rest.querySelector("[data-forest-row=P1] .hole")).not.toBeNull();
+    const fig = panel.closest("figure")!;
+    await userEvent.click(within(fig).getByRole("button", { name: "Show table" }));
+    const twin = within(fig).getByRole("table");
+    expect(within(twin).getByRole("rowheader", { name: "P1 · Stub 2021" }).closest("tr")!.querySelector(".hole")).not.toBeNull();
+    expect([...twin.querySelectorAll("th[scope=colgroup]")].map((h) => h.textContent)).toContain("Not pooled");
+  });
+
   it("the pooled table twin mirrors the grouping with colgroup headings", async () => {
     show(r(metaP20ReviewFixture));
     const fig = screen.getByRole("group", { name: /^Forest plot: ผลลัพธ์หลัก, HR/ }).closest("figure")!;
