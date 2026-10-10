@@ -124,7 +124,8 @@ QUALITATIVE_LEAD = "\nThe user's criteria include qualitative or mixed-methods s
 
 _SCREEN_QUALITATIVE_BLOCK = QUALITATIVE_LEAD + """
 - Qualitative studies (interviews, focus groups, thematic analysis) and mixed-methods studies that address the
-  question are eligible even though they report no numeric outcome; set design_guess accordingly."""
+  question are eligible even though they report no numeric outcome; set design_guess to qualitative or
+  mixed_methods."""
 
 _EXTRACT_QUALITATIVE_BLOCK = QUALITATIVE_LEAD + """
 - design_category may also be qualitative (interviews, focus groups, thematic or phenomenological analysis) or
@@ -132,6 +133,13 @@ _EXTRACT_QUALITATIVE_BLOCK = QUALITATIVE_LEAD + """
 - For qualitative and mixed_methods papers, outcomes are the themes the abstract reports: put the theme in outcome,
   a one-sentence finding in result and the verbatim sentence in evidence_quote; effect_measure "none", numeric
   fields null and direction "unclear". Never turn a theme into a number."""
+
+# Appended whenever qualitative or mixed-methods cards reach the narrative (ticked or labelled by the extractor).
+_NARRATIVE_QUALITATIVE_BLOCK = """
+Some papers have design_category qualitative or mixed_methods: their outcomes are themes, not effects. Summarise those
+themes descriptively and cite those papers, but they are not in the comparison, consensus, conflicts or grade, and
+they never count as evidence for or against an effect. If no other paper reports an effect, say that the evidence is
+qualitative only and that no effect can be estimated from it."""
 
 _NARRATIVE_META_BLOCK = OVERRIDE_LEAD + """
 Review type: meta-analysis. The evidence includes pooled_analysis: random-effects pools computed by the system from
@@ -165,9 +173,10 @@ def screen_system(review_type: str = "slr", qualitative: bool = False) -> str:
             + (_SCREEN_QUALITATIVE_BLOCK if qualitative else ""))
 
 
-def narrative_system(review_type: str = "slr") -> str:
-    return NARRATIVE_SYSTEM + {"narrative": _NARRATIVE_NARRATIVE_BLOCK, "scoping": _NARRATIVE_SCOPING_BLOCK,
-                               "meta_analysis": _NARRATIVE_META_BLOCK}.get(review_type, "")
+def narrative_system(review_type: str = "slr", qualitative: bool = False) -> str:
+    return (NARRATIVE_SYSTEM + {"narrative": _NARRATIVE_NARRATIVE_BLOCK, "scoping": _NARRATIVE_SCOPING_BLOCK,
+                                "meta_analysis": _NARRATIVE_META_BLOCK}.get(review_type, "")
+            + (_NARRATIVE_QUALITATIVE_BLOCK if qualitative else ""))
 
 
 def _constraints(options: dict[str, Any]) -> str:

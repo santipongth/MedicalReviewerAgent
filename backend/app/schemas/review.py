@@ -35,24 +35,34 @@ def _clean_other(text: str) -> str:
     return cleaned.replace("<", "").replace(">", "")[:OTHER_MAX].strip()
 
 
+def _study_key(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
 def normalize_study_types(values: list[str]) -> list[str]:
-    """Canonical study-design names, deduplicated, at most one free-text "Other: ..." entry."""
+    """Canonical study-design names, deduplicated, at most one free-text "Other: ..." entry.
+
+    A bare "Other" is dropped, "Other: <canonical name>" becomes that name, and several unknown values are joined
+    into the one Other text (capped at OTHER_MAX)."""
     out: list[str] = []
-    other: str | None = None
+    others: list[str] = []
     for raw in values or []:
         text = str(raw).strip()
         if not text:
             continue
-        if text.lower().startswith(OTHER_PREFIX.lower().strip()):
-            text = text.split(":", 1)[1] if ":" in text else ""
-            other = other or (_clean_other(text) or None)
-            continue
-        canonical = _STUDY_KEY.get("".join(ch for ch in text.lower() if ch.isalnum()))
+        if _study_key(text) in ("other", "others"):
+            continue  # a ticked "Other" with nothing typed
+        if text.lower().startswith(OTHER_PREFIX.lower().strip()) and ":" in text:
+            text = text.split(":", 1)[1].strip()
+        canonical = _STUDY_KEY.get(_study_key(text))
         if canonical:
             if canonical not in out:
                 out.append(canonical)
-        else:
-            other = other or (_clean_other(text) or None)
+            continue
+        cleaned = _clean_other(text)
+        if cleaned and cleaned.lower() not in (o.lower() for o in others):
+            others.append(cleaned)
+    other = _clean_other(", ".join(others)).rstrip(", ")
     if other:
         out.append(OTHER_PREFIX + other)
     return out[:10]

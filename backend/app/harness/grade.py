@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.harness.design import POOLED_CATEGORIES
+from app.harness.design import NON_QUANTITATIVE_CATEGORIES, POOLED_CATEGORIES
 from app.harness.meta import DESIGN_GROUP_LABEL, HIGH_I2, pool_outcomes, primary_outcome
 
 LEVELS = ("very_low", "low", "moderate", "high")
@@ -22,7 +22,9 @@ def is_randomized(card: dict[str, Any]) -> bool:
 
 
 def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict[str, Any]:
-    cards = [p["card"] for p in papers if p.get("card")]
+    # qualitative/mixed-methods cards are themes, never graded evidence (callers pass _evidence; this is a guard)
+    cards = [p["card"] for p in papers
+             if p.get("card") and p["card"].get("design_category") not in NON_QUANTITATIVE_CATEGORIES]
     if not cards:
         return {"level": "very_low", "factors": ["no extracted studies"]}
     factors: list[str] = []

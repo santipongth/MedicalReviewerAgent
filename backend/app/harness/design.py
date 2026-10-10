@@ -26,8 +26,10 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
         r"^\s*(narrative |literature |scoping )?review(\s+article)?\s*$|narrative review|literature review|^\s*review of\b",
         re.IGNORECASE)),
     ("mixed_methods", re.compile(r"mixed[- ]methods?", re.IGNORECASE)),
-    ("qualitative", re.compile(r"qualitative|focus groups?|semi-?structured interviews?|in-depth interviews?|"
-                               r"thematic analysis|phenomenolog|grounded theory|ethnograph", re.IGNORECASE)),
+    # A design that *starts* as qualitative ("Qualitative interview study", "A longitudinal qualitative study") is
+    # qualitative even when it mentions a cohort or a secondary analysis; any other mention waits until no
+    # quantitative design matched (see the last rule).
+    ("qualitative", re.compile(r"^\W*(\w+\s+)?qualitative\b|longitudinal qualitative", re.IGNORECASE)),
     ("non_randomized_trial", re.compile(r"non-?randomi[sz]ed|single[- ]arm|quasi-?experimental", re.IGNORECASE)),
     ("case_control", re.compile(r"case-?control", re.IGNORECASE)),
     ("cohort", re.compile(r"cohort|observational analysis|secondary analysis|post[- ]hoc|target trial emulation|"
@@ -35,6 +37,10 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
     ("rct", re.compile(r"randomi[sz]ed|\brct\b|controlled trial", re.IGNORECASE)),
     ("cross_sectional", re.compile(r"cross-?sectional|survey", re.IGNORECASE)),
     ("case_series", re.compile(r"case series|case report", re.IGNORECASE)),
+    # Last: "cohort study with qualitative interviews" or "RCT with an embedded qualitative process evaluation" stay
+    # quantitative (their numbers are direction evidence); only a design with no quantitative match is qualitative.
+    ("qualitative", re.compile(r"qualitative|focus groups?|semi-?structured interviews?|in-depth interviews?|"
+                               r"thematic analysis|phenomenolog|grounded theory|ethnograph", re.IGNORECASE)),
 ]
 
 
@@ -56,6 +62,18 @@ def settle_design_category(card: PaperCard, pub_types: list[str] | None) -> Pape
     elif "randomized controlled trial" in types and category not in ("rct", "sr_ma_rct", "sr_ma_mixed"):
         category = "rct"
     return card.model_copy(update={"design_category": category or "other"})
+
+
+def strip_non_quantitative(card: PaperCard) -> PaperCard:
+    """Qualitative and mixed-methods cards are themes only, enforced in code (the prompt asks, models forget):
+    every outcome gets effect_measure "none", null numbers and direction "unclear", and so does the card's overall
+    direction. sample_size, quotes and the theme text are kept."""
+    if card.design_category not in NON_QUANTITATIVE_CATEGORIES:
+        return card
+    outcomes = [o.model_copy(update={"effect_measure": "none", "effect_size": None, "effect_value": None,
+                                     "ci_lower": None, "ci_upper": None, "p_value": None, "direction": "unclear"})
+                for o in card.outcomes]
+    return card.model_copy(update={"outcomes": outcomes, "overall_direction": "unclear"})
 
 
 def design_problems(card: PaperCard, pub_types: list[str] | None) -> list[str]:

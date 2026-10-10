@@ -24,7 +24,7 @@ from app.graph.schemas import (
     SynthesisNarrative,
 )
 from app.graph.state import ReviewState
-from app.harness.design import NO_DIRECTION_CATEGORIES
+from app.harness.design import NO_DIRECTION_CATEGORIES, NON_QUANTITATIVE_CATEGORIES
 from app.harness.grade import (
     LEVELS,
     analyse_meta,
@@ -72,6 +72,8 @@ DIRECTION_TEXT = {"positive": "findings support the hypothesised effect",
                   "negative": "findings show the opposite effect or harm",
                   "null": "findings show no significant association"}
 _CITED = re.compile(r"\[P\d+")
+QUALITATIVE_ONLY_FACTOR = ("no quantitative studies: the included qualitative/mixed-methods studies are summarised "
+                           "as themes, which are not graded")
 
 
 def _ref_num(ref: str) -> int:
@@ -98,6 +100,21 @@ def _evidence(state: ReviewState) -> list[dict[str, Any]]:
     if _review_type(state) == "scoping":
         return _with_cards(state)
     return [p for p in _with_cards(state) if p["card"].get("design_category") not in NO_DIRECTION_CATEGORIES]
+
+
+def _narrative_papers(state: ReviewState) -> list[dict[str, Any]]:
+    """Papers the narrative reads and may cite. Narrative and scoping reviews: every card. Graded reviews: the
+    direction evidence plus the qualitative/mixed-methods papers, whose themes are summarised (they stay out of the
+    matrix, conflicts, pools and grade, which are built from _evidence)."""
+    if _review_type(state) not in SLR_LIKE:
+        return _with_cards(state)
+    return [p for p in _with_cards(state)
+            if p["card"].get("design_category") not in NO_DIRECTION_CATEGORIES
+            or p["card"].get("design_category") in NON_QUANTITATIVE_CATEGORIES]
+
+
+def _themes_only(papers: list[dict[str, Any]]) -> bool:
+    return any(p["card"].get("design_category") in NON_QUANTITATIVE_CATEGORIES for p in papers)
 
 
 def _review_type(state: ReviewState) -> str:
@@ -155,6 +172,8 @@ def make_normalize_outcomes(deps):
             entry["fallback"] = clusters is None
         matrix = build_matrix(papers, clusters or fallback_clusters(papers))
         matrix["grade"] = grade_baseline(papers, matrix)
+        if not papers and _themes_only(_narrative_papers(state)):  # the level stays as the baseline gives it
+            matrix["grade"]["factors"] = [QUALITATIVE_ONLY_FACTOR]
         entry |= {"outcomes": len(matrix["rows"]), "conflicts": len(matrix["conflicts"]),
                   "seconds": round(time.perf_counter() - started, 3)}
         return {"matrix": matrix, "cost_usd": cost, "errors": errors, "quality": [entry]}
@@ -364,8 +383,9 @@ def make_write_synthesis(deps):
         review_type = _review_type(state)
         graded = review_type in SLR_LIKE
         meta = state.get("meta_analysis") if review_type == "meta_analysis" else None
-        # narrative reviews are cited and summarised in narrative/scoping reviews; only the matrix leaves them out
-        papers = _evidence(state) if graded else _with_cards(state)
+        # narrative reviews are cited and summarised in narrative/scoping reviews; only the matrix leaves them out.
+        # Qualitative/mixed-methods themes reach every narrative, graded or not (never the matrix or the grade).
+        papers = _narrative_papers(state)
         if not papers:
             if state.get("selected"):
                 messages = EXTRACTION_FAILED
@@ -407,7 +427,7 @@ def make_write_synthesis(deps):
                                       external_context=state.get("external_context") or [], review_type=review_type,
                                       pooled_analysis=pools_for_prompt(meta) if meta else None)
         narrative_call = harness_runner(deps).call(
-            deps.llms.synthesizer, prompts.narrative_system(review_type), user,
+            deps.llms.synthesizer, prompts.narrative_system(review_type, _themes_only(papers)), user,
             schema=SynthesisNarrative if graded else NarrativeNoGrade, validate=validate, trigger="narrative")
         res, cards = await asyncio.gather(narrative_call, _localize_cards(deps, papers, language),
                                           return_exceptions=True)
