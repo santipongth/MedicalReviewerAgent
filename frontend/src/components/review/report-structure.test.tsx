@@ -6,8 +6,7 @@ import {
 } from "@/test/fixtures";
 
 vi.mock("./charts", () => ({
-  Charts: ({ part }: { part?: string }) => part === "prisma" ? <div data-testid="prisma" />
-    : <section aria-labelledby="h-charts"><h3 id="h-charts">แผนภาพหลักฐาน</h3><div data-testid="charts" /></section>,
+  Charts: () => <section aria-labelledby="h-charts"><h3 id="h-charts">แผนภาพหลักฐาน</h3><div data-testid="charts" /></section>,
 }));
 vi.mock("../charts/echart", () => ({
   EChart: ({ label }: { label: string }) => <div role="img" aria-label={label} />,
@@ -25,7 +24,7 @@ const answerSection = () => screen.getByRole("heading", { level: 2, name: /ค�
 describe("Plan 20 answer-first report, per review type", () => {
   it("SLR: title, bottom line, key findings, summary of findings … limitations, discussion, methods, references", () => {
     render(<Report review={slrP20ReviewFixture} />);
-    expect(tocIds()).toEqual(["h-answer", "h-key-findings", "h-sof", "h-selection", "h-characteristics", "h-results", "h-claims",
+    expect(tocIds()).toEqual(["h-answer", "h-key-findings", "h-sof", "h-selection", "h-characteristics", "h-results", "h-rob", "h-claims",
       "h-landscape", "h-limitations", "h-gaps", "h-discussion", "h-method", "h-papers", "h-downloads"]);
     const answer = answerSection();
     expect(within(answer).getByText(/^เมตฟอร์มินอาจลดอุบัติการณ์/)).toHaveClass("text-[17px]", "leading-[1.75]");
@@ -43,7 +42,7 @@ describe("Plan 20 answer-first report, per review type", () => {
     const discussion = screen.getByRole("heading", { level: 2, name: "อภิปราย" }).closest("section")!;
     expect(discussion).toHaveTextContent("งานวิจัยส่วนใหญ่พบความเสี่ยงต่ำลงในผู้ใช้เมตฟอร์มิน");
     expect(screen.getByRole("table", { name: /ตารางสรุปผลการศึกษาตามผลลัพธ์/ })).toBeInTheDocument();
-    expect(screen.getByTestId("prisma").closest("section")).toHaveAccessibleName("การคัดเลือกงานวิจัย");
+    expect(document.querySelector("[data-prisma-flow]")!.closest("section")).toHaveAccessibleName("การคัดเลือกงานวิจัย");
   });
 
   it("SLR: one model read twice, so the flag says 'two readings disagree'", () => {

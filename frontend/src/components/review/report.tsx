@@ -7,9 +7,10 @@ import { conceptTree } from "@/lib/concept-map";
 import { emptyFilters, filterPapers, isFiltered, isPooled, themePapers, type Filters } from "@/lib/charts-data";
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
 import type { Lang } from "@/lib/i18n";
+import { robSummary } from "@/lib/rob-summary";
 import { cellOutcome, keyFindingViews, sameModelReadings, sofRows, type OutcomeContext } from "@/lib/report-view";
 import {
-  REVIEW_TYPE_LABEL, isGraded, metaPoolGap, reportLayout, reviewTypeOf, showsRiskOfBias, showsSection,
+  isGraded, metaPoolGap, reportLayout, reviewTypeOf, showsRiskOfBias, showsSection,
   type BlockId, type TopSectionId,
 } from "@/lib/review-type";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
@@ -23,7 +24,10 @@ import { Limitations } from "./limitations";
 import { LitMatrixSection } from "./lit-matrix";
 import { MetaAnalysisSection } from "./meta-analysis";
 import { FilterBar, FilterStatus } from "./filter-bar";
-import { CitedText, ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, QualityNote, READING, SameModelReadings } from "./report-parts";
+import { CitedText, ClaimsPanel, ComparisonMatrix, MatrixLegend, PaperList, READING, SameModelReadings } from "./report-parts";
+import { MethodsSection } from "./methods-section";
+import { PrismaFlow } from "./prisma-flow";
+import { RobSummarySection } from "./rob-summary";
 import { ReportNav, ReportToc, SECTION_H2 as H2, SectionHeading, Subsections, type NavItem } from "./report-nav";
 import { RailDrawer } from "./rail-drawer";
 import { SofTable } from "./sof-table";
@@ -121,6 +125,8 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     [type, synthesis.key_findings, result.synthesis_en?.key_findings, ctx, graded, synthesis.evidence_strength]);
 
   const hasPapers = papers.length > 0;
+  // The risk-of-bias summary (Plan 20 Task 4) uses every paper, like the summary of findings; none for scoping.
+  const hasRob = useMemo(() => showsSection(type, "rob") && showsRiskOfBias(type) && robSummary(papers, lang) != null, [type, papers, lang]);
   const answer = synthesis.answer?.trim() ?? "";
   const discussion = synthesis.executive_summary || result.summary || "";
   const hasClaims = showsSection(type, "claims") && !!(synthesis.consensus?.length || synthesis.conflicts?.length);
@@ -141,8 +147,9 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     ? <FilterBar papers={papers} filters={filters} onChange={setFilters} shown={visible.length} lang={lang} showRisk={showsRiskOfBias(type)} /> : null;
 
   const blocks: Record<BlockId, { show: boolean; node: ReactNode }> = {
-    prisma: { show: hasPapers && showsSection(type, "prisma"),
-      node: <Charts result={result} papers={visible} lang={lang} onSelect={select} part="prisma" /> },
+    // The flow counts every record of the search (result.stats), so the filters do not apply to it.
+    prisma: { show: hasPapers && showsSection(type, "prisma") && !!result.stats,
+      node: <PrismaFlow stats={result.stats} methods={result.methods} options={review.options} type={type} lang={lang} /> },
     evidence_map: { show: hasEvidenceMap, node: <EvidenceMapSection map={map} lang={lang} /> },
     lit_matrix: { show: hasLitMatrix, node: (
       <LitMatrixSection papers={visible} allPapers={papers} lang={lang} type={type} onSelect={select} reviewId={review.id} offline={offline}
@@ -224,29 +231,10 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
             <p className="text-[0.8rem] text-muted">{L(lang, "เขียนโดยโมเดลจากงานวิจัยที่อ่าน ข้อความนี้ไม่ใช่ตัวเลขที่ตรวจแล้ว", "Written by the model from the studies read; this text is not a verified number.")}</p>
           </section>
         ) : null;
+      case "rob":
+        return hasRob ? <RobSummarySection papers={papers} type={type} lang={lang} /> : null;
       case "methods":
-        return (
-          <section aria-labelledby="h-method" className="grid gap-4">
-            <h2 id="h-method" className={H2}>{L(lang, "วิธีการ", "Methods")}</h2>
-            <QualityNote quality={result.quality} stats={result.stats} lang={lang} preset={result.llm_preset} />
-            {!!result.external_context?.length && (
-              <div className="grid gap-2 text-[0.9rem]">
-                <h3 className="font-semibold">{L(lang, "ข้อมูลประกอบจากเครื่องมือภายนอก", "Background from external tools")}</h3>
-                <ul className="grid gap-2">
-                  {result.external_context.map((e, i) => (
-                    <li key={i} className="rounded-sm bg-ground p-3"><b className="font-display">{e.tool}</b> <span className="text-muted">{e.ok ? "" : L(lang, "(ล้มเหลว)", "(failed)")}</span><p className="break-words">{e.preview}</p></li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <p className="text-[0.8rem] text-muted" data-disclaimer>
-              {type === "legacy"
-                ? L(lang, "การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์", "Automated rapid literature review; not medical advice.")
-                : L(lang, `${REVIEW_TYPE_LABEL[type].th}แบบเร่งด่วนโดยอัตโนมัติ อ่านเฉพาะบทคัดย่อ ไม่ใช่คำแนะนำทางการแพทย์`,
-                  `Automated rapid ${REVIEW_TYPE_LABEL[type].en.toLowerCase()} from abstracts only; not medical advice.`)}
-            </p>
-          </section>
-        );
+        return <MethodsSection review={review} result={result} type={type} lang={lang} />;
       case "references":
         return hasPapers ? (
           <section aria-labelledby="h-papers" className="grid gap-2">
@@ -268,7 +256,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           </section>
         );
       default:
-        return null; // "rob": the risk-of-bias summary arrives with Plan 20 Task 4
+        return null;
     }
   }
 

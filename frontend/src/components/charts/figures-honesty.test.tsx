@@ -34,7 +34,6 @@ function collect(node: unknown, key: string, out: unknown[] = []): unknown[] {
 function renderAll() {
   options.length = 0;
   render(<Charts result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
-  render(<Charts result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} part="prisma" />);
   const meta = metaReviewFixture.result!;
   render(<MetaAnalysisSection meta={meta.meta_analysis} papers={meta.papers!} rows={meta.synthesis_en!.comparison!} lang="en" english
     filtered={false} onSelect={() => {}} />);
@@ -42,11 +41,11 @@ function renderAll() {
 }
 
 describe("chart text never uses the verified-number face", () => {
-  it("forest, pooled forest, PRISMA and study map: ticks, counts and labels are in the display face", () => {
+  it("forest, pooled forest and study map: ticks, counts and labels are in the display face", () => {
     const t = readTokens();
     expect("fontNum" in t).toBe(false); // charts have no verified-face token at all
     const all = renderAll();
-    expect(all.length).toBeGreaterThanOrEqual(4); // forest, study map, PRISMA, pooled forest
+    expect(all.length).toBeGreaterThanOrEqual(3); // forest, study map, pooled forest (PRISMA is a DOM flow since Plan 20 Task 4)
     const fonts = collect(all, "fontFamily");
     expect(fonts.length).toBeGreaterThan(0);
     expect(new Set(fonts)).toEqual(new Set([t.fontDisplay]));

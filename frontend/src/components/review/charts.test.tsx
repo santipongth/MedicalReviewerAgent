@@ -13,20 +13,14 @@ vi.mock("../charts/echart", () => ({
 }));
 vi.mock("../theme-toggle", () => ({ useTheme: () => "light" }));
 
-import type { ComponentProps } from "react";
 import { Charts } from "./charts";
 
-/** The report draws the forest part in the results and the PRISMA part in the study selection section. */
-function Both(props: ComponentProps<typeof Charts>) {
-  return <><Charts {...props} /><Charts {...props} part="prisma" /></>;
-}
-
 describe("Charts", () => {
-  it("renders the forest plot, study map and PRISMA flow with accessible labels", () => {
-    render(<Both result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
+  it("renders the forest plot and study map with accessible labels (the PRISMA flow is not a chart)", () => {
+    render(<Charts result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
     expect(screen.getByRole("img", { name: "Forest plot of 3 effects" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Map of 3 studies" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Records found 41, After de-duplication 26/ })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Records found/ })).toBeNull();
     expect(screen.getByText(/Left out because they failed verification/)).toHaveTextContent("P2 (CRC incidence)");
   });
 
@@ -42,49 +36,26 @@ describe("Charts", () => {
   });
 
   it("explains chart terms and does not repeat the matrix legend", () => {
-    render(<Both result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
+    render(<Charts result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
     expect(screen.getByRole("heading", { name: "Evidence charts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "what is a log scale" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "PRISMA" })).toBeInTheDocument();
     expect(screen.getByText("Abbreviations in the chart").closest("dl")).toHaveTextContent("HR");
     expect(screen.queryByText("Positive")).toBeNull();
   });
 
-  it("a legacy result has no exclusion-reasons table", () => {
-    render(<Both result={resultFixture} papers={resultFixture.papers!} lang="th" onSelect={() => {}} />);
-    expect(screen.queryByRole("table", { name: "เหตุผลที่คัดออก" })).toBeNull();
-  });
-
-  it("scoping: PRISMA-ScR with reason counts, no forest plot or study map", () => {
-    render(<Both result={scopingReviewFixture.result!} papers={resultFixture.papers!} lang="th" onSelect={() => {}} />);
-    expect(screen.getByRole("button", { name: "PRISMA-ScR" })).toBeInTheDocument();
+  it("scoping: no forest plot or study map", () => {
+    render(<Charts result={scopingReviewFixture.result!} papers={resultFixture.papers!} lang="th" onSelect={() => {}} />);
     expect(screen.queryByRole("img", { name: /Forest plot/ })).toBeNull();
     expect(screen.queryByRole("img", { name: /^แผนที่ \d+ งานวิจัย/ })).toBeNull();
-    const table = screen.getByRole("table", { name: "เหตุผลที่คัดออก" });
-    const rows = [...table.querySelectorAll("tbody tr")].map((r) => `${r.querySelector("th")!.textContent}|${r.querySelector("td")!.textContent}`);
-    expect(rows).toEqual([
-      "ไม่เกี่ยวกับหัวข้อ|7", "รูปแบบการศึกษาไม่ตรงเกณฑ์|2", "เหตุผลอื่น|1", "ไม่ใช่งานวิจัย|3", "เกินจำนวนที่วิเคราะห์|4",
-    ]);
-    expect(table.querySelector(".num-verified")).toBeNull();
-    expect(table.querySelectorAll("td.font-display.tabular-nums")).toHaveLength(5);
-    expect(screen.queryByText(/อื่น ๆ.*\d/)).toBeNull();
   });
 
-  it("narrative: forest plot and study map, no PRISMA", () => {
-    render(<Both result={narrativeReviewFixture.result!} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
+  it("narrative: forest plot and study map", () => {
+    render(<Charts result={narrativeReviewFixture.result!} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
     expect(screen.getByRole("img", { name: "Forest plot of 3 effects" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "PRISMA" })).toBeNull();
   });
 
   it("explains when nothing can be plotted", () => {
     render(<Charts result={{}} papers={[resultFixture.papers![1]]} lang="en" onSelect={() => {}} />);
     expect(screen.getByText("No verified effect sizes to plot")).toBeInTheDocument();
-  });
-
-  it("the PRISMA part has no heading of its own (the study selection section names it) and no forest plot", () => {
-    render(<Charts result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} part="prisma" />);
-    expect(screen.queryByRole("heading", { name: "Evidence charts" })).toBeNull();
-    expect(screen.queryByRole("img", { name: /Forest plot/ })).toBeNull();
-    expect(screen.getByRole("img", { name: /Records found 41/ })).toBeInTheDocument();
   });
 });

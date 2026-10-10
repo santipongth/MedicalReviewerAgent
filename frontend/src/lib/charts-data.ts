@@ -1,7 +1,7 @@
 // Chart data built only from verified values. Nothing here estimates, converts or recomputes a number from a paper.
 import { asReported, ciLabel, effectLabel, isBlankedEffect, isVerifiedEffect } from "./evidence";
 import { DESIGN_LABEL, type Lang } from "./i18n";
-import type { DesignCategory, Direction, ExclusionReason, Paper, PaperCard, RiskOfBias, Stats } from "./types";
+import type { DesignCategory, Direction, ExclusionReason, Paper, PaperCard, RiskOfBias } from "./types";
 
 /** The design a paper is filtered by: its fixed category, or (results stored before categories) its free text. */
 export function designKey(card: PaperCard): string {
@@ -158,30 +158,7 @@ export function forestAxis(g: ForestGroup): [number, number] {
   return [min - pad, max + pad];
 }
 
-export interface Stage {
-  key: keyof Stats;
-  label: string;
-  value: number;
-}
-
-const STAGE_LABEL: Record<string, [string, string]> = {
-  found: ["ค้นเจอ (ก่อนตัดซ้ำ)", "Records found"],
-  unique: ["หลังตัดซ้ำ", "After de-duplication"],
-  screened: ["คัดกรอง", "Screened"],
-  with_abstract: ["มีบทคัดย่อ", "With an abstract"],
-  selected: ["เลือกวิเคราะห์", "Selected for analysis"],
-  with_fulltext: ["ได้ฉบับเต็ม", "Full text obtained"], // legacy results only
-  extracted: ["สกัดข้อมูลได้", "Data extracted"],
-};
-
-export function prismaStages(stats: Stats | undefined, lang: Lang): Stage[] {
-  if (!stats) return [];
-  return (["found", "unique", "with_abstract", "screened", "selected", "with_fulltext", "extracted"] as const)
-    .filter((k) => typeof stats[k] === "number")
-    .map((k) => ({ key: k, label: STAGE_LABEL[k][lang === "th" ? 0 : 1], value: stats[k] as number }));
-}
-
-/** Thai/English labels for the screening exclusion reasons (ExclusionReason). */
+/** Thai/English labels for the screening exclusion reasons (ExclusionReason); the PRISMA flow (prisma-flow.ts) uses them. */
 export const EXCLUSION_REASON_LABEL: Record<ExclusionReason, { th: string; en: string }> = {
   off_topic: { th: "ไม่เกี่ยวกับหัวข้อ", en: "Off topic" },
   population: { th: "กลุ่มประชากรไม่ตรง", en: "Population does not match" },
@@ -191,37 +168,6 @@ export const EXCLUSION_REASON_LABEL: Record<ExclusionReason, { th: string; en: s
   publication_type: { th: "ชนิดสิ่งตีพิมพ์ไม่ตรง (เช่น บทบรรณาธิการ)", en: "Publication type does not match (e.g. editorial)" },
   other: { th: "เหตุผลอื่น", en: "Other reason" },
 };
-
-const REASON_ORDER = Object.keys(EXCLUSION_REASON_LABEL) as ExclusionReason[];
-
-export interface ExclusionRow {
-  key: string;
-  label: string;
-  value: number;
-}
-
-/**
- * The "why records were left out" rows for the PRISMA figure. Null when the result carries none of the data
- * (older results). Counts are exactly what the result recorded: technical screening failures are deliberately
- * not counted, so no remainder or "other" total is derived here.
- */
-export function exclusionRows(stats: Stats | undefined, lang: Lang): { reasons: ExclusionRow[]; extra: ExclusionRow[] } | null {
-  if (!stats) return null;
-  const reasons = REASON_ORDER
-    .filter((k) => (stats.excluded_screening?.[k] ?? 0) > 0)
-    .map((k) => ({ key: k, label: EXCLUSION_REASON_LABEL[k][lang], value: stats.excluded_screening![k] as number }));
-  const extra: ExclusionRow[] = [];
-  const add = (key: string, th: string, en: string, value: number | undefined) => {
-    if (typeof value === "number" && value > 0) extra.push({ key, label: lang === "th" ? th : en, value });
-  };
-  add("year_excluded", "ตีพิมพ์ก่อนปีที่กำหนด", "Published before the start year", stats.year_excluded);
-  add("non_research", "ไม่ใช่งานวิจัย", "Not research", stats.non_research);
-  add("no_abstract", "ไม่มีบทคัดย่อที่ใช้ได้", "No usable abstract", stats.no_abstract);
-  add("low_relevance", "คะแนนความเกี่ยวข้องต่ำ", "Low relevance score", stats.excluded_selection?.low_relevance);
-  add("over_limit", "เกินจำนวนที่วิเคราะห์", "Over the analysis limit", stats.excluded_selection?.over_limit);
-  add("narrative_excluded", "บทความทบทวนแบบไม่เป็นระบบ", "Narrative reviews", stats.excluded_selection?.narrative_excluded);
-  return reasons.length || extra.length ? { reasons, extra } : null;
-}
 
 export interface StudyPoint {
   ref: string;

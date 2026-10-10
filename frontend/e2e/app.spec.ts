@@ -399,7 +399,7 @@ test("report per review type: type in the title block, sections and table of con
   await expect(nav().getByRole("link", { name: "ลักษณะงานวิจัย" })).toBeVisible();
   await expect(nav().getByRole("link", { name: "ภาพรวมความรู้" })).toBeVisible();
   await expect(nav().getByRole("link", { name: "การคัดเลือก" })).toHaveCount(0);
-  await expect(page.getByRole("table", { name: "เหตุผลที่คัดออก" })).toHaveCount(0);
+  await expect(page.locator("[data-prisma-flow]")).toHaveCount(0);
 
   await openReport(page, slrReviewFixture);
   await expect(meta()).toContainText("การทบทวนวรรณกรรมอย่างเป็นระบบ");
@@ -408,10 +408,11 @@ test("report per review type: type in the title block, sections and table of con
   await expect(nav().getByRole("link", { name: "ตารางสรุปผล" })).toBeVisible();
 });
 
-test("scoping report: PRISMA lists the exclusion reasons; the concept map toggles to its outline", async ({ page }) => {
+test("scoping report: the PRISMA-ScR flow lists the exclusion reasons; the concept map toggles to its outline", async ({ page }) => {
   await openReport(page, scopingReviewFixture);
-  const reasons = page.getByRole("table", { name: "เหตุผลที่คัดออก" });
-  await expect(reasons).toBeAttached();
+  const reasons = page.locator("[data-flow-box=excluded_screening]");
+  await expect(reasons.locator("[data-flow-line]")).toHaveCount(3);
+  await expect(page.locator("[data-prisma-flow]")).toHaveAttribute("data-prisma-flow", "PRISMA-ScR");
   const section = page.locator("#h-map").locator("xpath=ancestor::section[1]");
   await section.scrollIntoViewIfNeeded();
   await expect(section.getByRole("img", { name: /^แผนที่ความรู้/ })).toBeVisible();

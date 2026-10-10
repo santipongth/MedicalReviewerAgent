@@ -29,6 +29,13 @@ describe("review-type", () => {
     expect(SECTIONS_BY_TYPE.narrative).toContain("claims");
     expect(SECTIONS_BY_TYPE.legacy).not.toContain("lit_matrix");
   });
+  it("shows the risk-of-bias summary after the results for every type but scoping (Plan 20 Task 4)", () => {
+    for (const t of ["narrative", "slr", "meta_analysis", "legacy"] as const) {
+      const top = reportLayout(t).map((s) => s.id);
+      expect(top.indexOf("rob"), t).toBe(top.indexOf("results") + 1);
+    }
+    expect(SECTIONS_BY_TYPE.scoping).not.toContain("rob");
+  });
   it("puts every type in the answer-first order (Plan 20)", () => {
     const ORDER: SectionId[] = ["title", "bottom_line", "key_findings", "sof", "selection", "characteristics", "results", "rob",
       "consistency", "landscape", "limitations", "gaps", "discussion", "methods", "references", "downloads"];

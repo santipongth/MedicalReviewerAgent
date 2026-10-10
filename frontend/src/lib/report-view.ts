@@ -344,7 +344,7 @@ export function reportDate(iso: string | null | undefined, lang: Lang): string |
   return `${th} (ค.ศ. ${d.getUTCFullYear()})`;
 }
 
-const SOURCE_NAME: Record<string, string> = {
+export const SOURCE_NAME: Record<string, string> = {
   pubmed: "PubMed", "europe pmc": "Europe PMC", europepmc: "Europe PMC", openalex: "OpenAlex", "semantic scholar": "Semantic Scholar",
   semanticscholar: "Semantic Scholar", crossref: "Crossref", arxiv: "arXiv", doaj: "DOAJ", openaire: "OpenAIRE",
 };

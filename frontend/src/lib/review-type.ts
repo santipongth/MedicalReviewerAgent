@@ -69,7 +69,7 @@ export const SECTION_BLOCKS: Partial<Record<TopSectionId, readonly BlockId[]>> =
  * Report sections per type, in display order (Plan 20: answer first, methods and references last). A group section
  * (selection, characteristics, results, consistency, landscape) is followed by the blocks it holds; report.tsx renders
  * and builds its table of contents from this list, and a section with nothing to show is left out.
- * "rob" is reserved for the risk-of-bias summary (Plan 20 Task 4); "citations" (Plan 14b) shows only when
+ * "rob" is the risk-of-bias summary (Plan 20 Task 4; never for scoping, which appraises nothing); "citations" (Plan 14b) shows only when
  * result.citations is present; "sof" (summary of findings) is for the graded types that pool or grade per outcome.
  */
 export const SECTIONS_BY_TYPE: Record<ReviewTypeOrLegacy, SectionId[]> = {
@@ -88,7 +88,7 @@ export const SECTIONS_BY_TYPE: Record<ReviewTypeOrLegacy, SectionId[]> = {
     "lit_matrix", "results", "findings", "forest", "meta", "rob", "consistency", "claims", "landscape",
     "concept_map", "citations", "limitations", "gaps", "discussion", "methods", "references", "downloads"],
   // Results stored before Plan 14a: the same blocks as before (claims, findings, forest, prisma), in the new order.
-  legacy: ["title", "bottom_line", "key_findings", "selection", "prisma", "results", "findings", "forest",
+  legacy: ["title", "bottom_line", "key_findings", "selection", "prisma", "results", "findings", "forest", "rob",
     "consistency", "claims", "limitations", "gaps", "discussion", "methods", "references", "downloads"],
 };
 

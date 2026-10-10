@@ -77,6 +77,12 @@ export interface Paper {
   card_en?: PaperCard | null;
   verification?: Verification | null;
   error?: string | null;
+  /** Plan 20 Task 10 (engine): a further report of a trial already analysed: the primary report's ref. Absent before it. */
+  related_to?: string | null;
+  /** e.g. "same trial (EMPEROR-Preserved)", "same trial (NCT03057951)", "near-identical title, same first author and year" */
+  related_reason?: string | null;
+  /** On the primary report: the refs of the other reports of the same trial. */
+  related_reports?: string[];
 }
 
 export interface ComparisonCell {
@@ -309,7 +315,10 @@ export interface Stats {
     narrative_excluded: number; over_limit: number; low_relevance?: number;
     study_design_relaxed?: number; // design mismatches kept because fewer than 3 papers matched the ticked types
     study_design_corrected?: number; // Plan 19: read as a design outside the ticked types; listed, not evidence
+    off_focus?: number; // Plan 20 Task 10: themes reviews only, included papers that never name the question's focus
   };
+  /** Plan 20 Task 10: analysed papers that are further reports of a trial already analysed (not counted again). */
+  related_reports?: number;
 }
 
 export interface ExternalNote {

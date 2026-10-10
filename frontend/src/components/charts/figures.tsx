@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { edgeCurves, SOURCE_LABEL, type CitationNetwork, type DesignGroup, type EdgeCurve, type NetNode } from "@/lib/citation-network";
 import type { ConceptTree, MapNode } from "@/lib/concept-map";
-import { forestAxis, type exclusionRows, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
+import { forestAxis, type ForestData, type ForestGroup, type StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
 import { glyphSize, haloWidth } from "@/lib/glyphs";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
@@ -333,77 +333,6 @@ export function MetaForestFigure({ pool, tokens, lang, onSelect }: { pool: MetaP
       }
     />
   );
-}
-
-/** Why records were left out: reason labels with plain counts (not paper numbers). */
-function ExclusionTable({ data, lang }: { data: NonNullable<ReturnType<typeof exclusionRows>>; lang: Lang }) {
-  const rows = [...data.reasons, ...data.extra];
-  return (
-    <div className="grid gap-1.5">
-      <div className="overflow-x-auto">
-        <table aria-label={L(lang, "เหตุผลที่คัดออก", "Reasons for exclusion")} className="w-full border-collapse text-[0.88rem]">
-          <caption className="pb-1 text-left label">{L(lang, "เหตุผลที่คัดออก", "Reasons for exclusion")}</caption>
-          <thead><tr>
-            <th scope="col"><span className="sr-only">{L(lang, "เหตุผล", "Reason")}</span></th>
-            <th scope="col"><span className="sr-only">{L(lang, "จำนวน", "Count")}</span></th>
-          </tr></thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.key} className="border-b border-rule">
-                <th scope="row" className="py-1.5 pr-3 text-left font-normal break-words">{r.label}</th>
-                <td className="py-1.5 font-display tabular-nums">{r.value}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {data.reasons.length > 0 && (
-        <p className="text-[0.82rem] text-muted">
-          {L(lang, "นับเฉพาะบทความที่ระบบบันทึกเหตุผลไว้ ผลรวมอาจน้อยกว่าจำนวนที่ไม่ได้เลือก", "Counts only records with a recorded reason; the sum may be below the number not selected")}
-        </p>
-      )}
-    </div>
-  );
-}
-
-export function PrismaFigure({ stages, tokens, lang, exclusions = null, scoping = false }: {
-  stages: Stage[]; tokens: ChartTokens; lang: Lang; exclusions?: ReturnType<typeof exclusionRows>; scoping?: boolean;
-}) {
-  const option = useMemo<EChartsOption>(() => ({
-    animation: !tokens.reducedMotion,
-    animationDuration: 600,
-    animationDelay: (i: number) => i * 120,
-    aria: { enabled: false },
-    grid: { left: 8, right: 48, top: 8, bottom: 8, containLabel: true },
-    xAxis: { type: "value", show: false, max: Math.max(...stages.map((s) => s.value), 1) },
-    yAxis: { type: "category", inverse: true, data: stages.map((s) => s.label), axisLine: { show: false }, axisTick: { show: false },
-      axisLabel: { color: tokens.ink, fontFamily: tokens.fontDisplay, fontSize: 12 } },
-    series: [{
-      type: "bar", barWidth: 18, data: stages.map((s) => s.value), itemStyle: { color: tokens.muted, borderRadius: [0, 4, 4, 0] },
-      // Record counts, not paper numbers: display face with tabular figures, never the verified face.
-      label: { show: true, position: "right", color: tokens.ink, fontFamily: tokens.fontDisplay, fontSize: 12 },
-    }],
-  }), [stages, tokens]);
-  if (!stages.length) return null;
-  const figure = (
-    <Figure lang={lang} title={<>{L(lang, "ขั้นตอนการคัดเลือก", "Selection flow")} (<Term k="prisma" lang={lang}>{scoping ? "PRISMA-ScR" : "PRISMA"}</Term>)</>}
-      caption={L(lang, "จำนวนงานวิจัยในแต่ละขั้นของรีวิวนี้", "Number of records at each step of this review")}
-      chart={<EChart option={option} height={stages.length * 34 + 16} label={stages.map((s) => `${s.label} ${s.value}`).join(", ")} />}
-      table={
-        <table aria-label={L(lang, "ขั้นตอนการคัดเลือก", "Selection flow")} className="w-full border-collapse text-[0.88rem]">
-          <thead><tr>
-            <th scope="col"><span className="sr-only">{L(lang, "ขั้นตอน", "Step")}</span></th>
-            <th scope="col"><span className="sr-only">{L(lang, "จำนวน", "Count")}</span></th>
-          </tr></thead>
-          <tbody>
-            {stages.map((s) => <tr key={s.key} className="border-b border-rule"><th scope="row" className="py-1.5 pr-3 text-left font-normal">{s.label}</th><td className="py-1.5 font-display tabular-nums">{s.value}</td></tr>)}
-          </tbody>
-        </table>
-      }
-    />
-  );
-  if (!exclusions) return figure;
-  return <div className="grid min-w-0 gap-4">{figure}<ExclusionTable data={exclusions} lang={lang} /></div>;
 }
 
 export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
