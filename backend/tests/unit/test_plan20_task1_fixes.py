@@ -121,41 +121,41 @@ def test_key_finding_certainty_is_optional_and_set_in_code():
 def test_answer_loses_its_citations():
     text, _ = _bottom_line("Metformin may lower CRC incidence [P1, P2].", CTX, ALLOWED, no_pool=False,
                            strength="low")
-    assert text == "Metformin may lower CRC incidence."
+    assert text == f"Metformin may lower CRC incidence. {ANSWER_CERTAINTY['low']}"  # always appended (round 4)
 
 
-def test_a_wrong_certainty_level_is_rewritten_in_place():
+def test_a_wrong_certainty_self_claim_is_removed_never_rewritten():
+    # fix round 4 (N10 ruling): no level is rewritten; a sentence that claims another level for this review goes,
+    # and the fixed certainty sentence ends the answer
     text, removed = _bottom_line("Metformin lowers CRC incidence. The certainty of the evidence is high.", CTX,
                                  ALLOWED, no_pool=False, strength="low")
-    assert text == "Metformin lowers CRC incidence. The certainty of the evidence is low." and removed == 0
+    assert text == f"Metformin lowers CRC incidence. {ANSWER_CERTAINTY['low']}" and removed == 1
     right, _ = _bottom_line("Metformin lowers CRC incidence (low-certainty evidence).", CTX, ALLOWED, no_pool=False,
                             strength="low")
-    assert right == "Metformin lowers CRC incidence (low-certainty evidence)."
+    assert right == f"Metformin lowers CRC incidence (low-certainty evidence). {ANSWER_CERTAINTY['low']}"
 
 
 @pytest.mark.parametrize(("answer", "strength", "expected"), [
-    # the re-review's N1 probes: the answer is never emptied
+    # the re-review's N1 probes: the answer is never emptied; since fix round 4 nothing is rewritten
     ("Metformin probably lowers colorectal cancer risk, with high-certainty evidence [P1].", "moderate",
-     "Metformin probably lowers colorectal cancer risk, with moderate-certainty evidence."),
+     "Metformin probably lowers colorectal cancer risk, with high-certainty evidence. "
+     + ANSWER_CERTAINTY["moderate"]),
     ("Metformin may lower colorectal cancer risk; the certainty of the evidence is moderate.", "low",
-     "Metformin may lower colorectal cancer risk; the certainty of the evidence is low."),
+     ANSWER_CERTAINTY["low"]),  # an explicit self-claim of another level: removed, the certainty sentence stays
     ("Very-low certainty evidence suggests metformin may lower colorectal cancer risk.", "very_low",
      "Very-low certainty evidence suggests metformin may lower colorectal cancer risk."),
     ("Very low certainty evidence suggests metformin may lower risk.", "very_low",
      "Very low certainty evidence suggests metformin may lower risk."),
 ])
-def test_level_claims_are_rewritten_never_removed(answer, strength, expected):
-    text, removed = _bottom_line(answer, CTX, ALLOWED, no_pool=False, strength=strength)
-    assert text.startswith(expected) and removed == 0
+def test_level_claims_are_never_rewritten_and_the_answer_never_emptied(answer, strength, expected):
+    text, _ = _bottom_line(answer, CTX, ALLOWED, no_pool=False, strength=strength)
+    assert text.startswith(expected)
 
 
 def test_a_level_word_away_from_certainty_is_no_claim():
     text, _ = _bottom_line("Metformin may lower risk in patients at high risk.", CTX, ALLOWED, no_pool=False,
                            strength="low")
-    assert text == "Metformin may lower risk in patients at high risk."  # "may" is the low wording; nothing rewritten
-    from app.graph.nodes.synthesis import _named_levels
-    assert _named_levels("the certainty of the evidence is low for patients at high risk") == {"low"}
-    assert _named_levels("patients at high risk") == set()
+    assert text == f"Metformin may lower risk in patients at high risk. {ANSWER_CERTAINTY['low']}"
 
 
 @pytest.mark.parametrize(("answer", "strength"), [  # fix round 3, N10: never rewritten
@@ -170,12 +170,14 @@ def test_quality_phrases_and_negated_claims_are_not_rewritten(answer, strength):
     assert text.startswith(answer)
 
 
-def test_grade_label_and_certainty_of_evidence_are_rewritten():
+def test_grade_label_stays_and_a_certainty_of_evidence_self_claim_is_removed():
+    # fix round 4 (N10 ruling): "GRADE: high" is not one of the narrow self-claim forms, so it stays as written; the
+    # certainty sentence carries the final level
     text, _ = _bottom_line("Metformin may lower CRC risk (GRADE: high).", CTX, ALLOWED, no_pool=False, strength="low")
-    assert text == "Metformin may lower CRC risk (GRADE: low)."
-    text, _ = _bottom_line("Metformin may lower CRC risk; the certainty of evidence was high.", CTX, ALLOWED,
+    assert text == f"Metformin may lower CRC risk (GRADE: high). {ANSWER_CERTAINTY['low']}"
+    text, _ = _bottom_line("Metformin may lower CRC risk. The certainty of evidence was high.", CTX, ALLOWED,
                            no_pool=False, strength="low")
-    assert text == "Metformin may lower CRC risk; the certainty of evidence was low."
+    assert text == f"Metformin may lower CRC risk. {ANSWER_CERTAINTY['low']}"
 
 
 def test_a_high_certainty_answer_is_never_left_empty(monkeypatch):
@@ -257,8 +259,10 @@ async def test_a_crash_of_the_answer_check_fails_closed(monkeypatch):
                                                          "20%.", [
         NarrativeFinding(outcome="CRC incidence", statement="Metformin may lower it.", refs=["P1"])]))
     out = await make_write_synthesis(deps(synthesizer=llm))(two_papers())
-    # fix round 3 (N11): the model's answer without citations and without the numbered sentence, never ""
-    assert out["synthesis"]["answer"] == "Metformin may lower CRC incidence." and out["synthesis"]["key_findings"] == []
+    # fix round 3 (N11): the model's answer without citations and without the numbered sentence, never ""; fix
+    # round 4 (N16): the certainty sentence ends it
+    assert out["synthesis"]["answer"] == f"Metformin may lower CRC incidence. {ANSWER_CERTAINTY['low']}"
+    assert out["synthesis"]["key_findings"] == []
     assert "answer check failed: RuntimeError" in out["errors"]
     assert next(q for q in out["quality"] if q["stage"] == "prose_check")["check_failed"] is True
 

@@ -164,23 +164,30 @@ _METHODS = re.compile(r"(?:^|(?<=[.!?])\s+)(?:Methods?|METHODS?|Materials and [M
 _SENTENCES = re.compile(r"(?<=[.!?])\s+")
 # A sentence that says the trial is the paper's own subject (fix round 2: an explicit self pattern; a bare we/our
 # sentence such as "our findings agree with the DAPA-HF trial" is not one)
-_SELF = re.compile(
+# The paper's own voice: "we ...", "this (secondary) analysis of", "the aims of this", "this commentary discusses",
+# "in the X trial, we". A trial an owner names this way (or in its title or registration) is explicitly its own (fix
+# round 4, N15); "patients enrolled in the X trial" (_SELF_PATIENTS) describes patients, so it names the paper's own
+# trial for linking but is not enough to make the paper the owner a secondary report joins.
+_SELF_EXPLICIT = re.compile(
     r"(?i)\bwe (conducted|performed|analy[sz]ed|randomi[sz]ed|randomly assigned|enrolled|report|present|examined|"
     r"assessed|evaluated|studied|used data from|followed)\b|"
     r"\b(this|the present|the current) ((secondary|post[- ]?hoc|pre-?specified|exploratory|ancillary) )?"
     r"(analysis|substudy|sub-study|study|report|trial) (of|from|in|using|was)\b|"
-    r"\bthe (aims?|objectives?|purpose) of this\b|\b(enrolled|randomi[sz]ed|participating) in the\b|"
+    r"\bthe (aims?|objectives?|purpose) of this\b|"
     r"\bthis (commentary|editorial|review|perspective|viewpoint) (of|on|about|discusses|summari[sz]es|reviews)\b|"
     r"\bin the [A-Z][\w-]+(?: [\w-]+){0,4} (trial|study)\s*,\s*we\b")
+_SELF_PATIENTS = re.compile(r"(?i)\b(enrolled|randomi[sz]ed|participating) in the\b")
 
 
-def own_trial_names(title: str | None, abstract: str | None = None) -> list[str]:
+def own_trial_names(title: str | None, abstract: str | None = None, *, explicit: bool = False) -> list[str]:
     """The trial names a paper reports on itself (Task 10 review finding 2, fix round 2): named in its title (citing
     cues never apply there: "...: the DAPA-MI trial" is the paper's own), or, in the abstract, in its first sentence,
     its structured Methods section, its registration ("X ClinicalTrials.gov number") or a sentence with an explicit
     self pattern ("we analysed ... the X trial", "this secondary analysis of X", "patients enrolled in the X trial"),
     and there never right after a citing cue ("consistent with", "agrees with", "supports", "unlike", "as in", ...).
-    A trial an abstract only cites outside these places, or after a cue, is not the paper's own."""
+    A trial an abstract only cites outside these places, or after a cue, is not the paper's own. `explicit` (fix
+    round 4, N15): only the title, the registration and the paper's own voice (_SELF_EXPLICIT) count, not the
+    Methods section or "patients enrolled in the X trial"."""
     title = "" if _mostly_caps(title or "") else (title or "")
     lead = _TITLE_LEAD.match(title)
     names = [_clean(lead.group(1))] if lead and _distinctive(lead.group(1)) and _is_name(_clean(lead.group(1))) else []
@@ -189,9 +196,9 @@ def own_trial_names(title: str | None, abstract: str | None = None) -> list[str]
     sentences = _SENTENCES.split(text.strip()) if text.strip() else []
     # fix round 3 (N9): the first sentence (or a Background section) is the paper's own only with a self pattern
     # ("The DAPA-HF trial showed ..." opens many follow-up trials); the self sentences below include it then
-    places = [m.group(1) for m in _METHODS.finditer(text.strip())]
+    places = [] if explicit else [m.group(1) for m in _METHODS.finditer(text.strip())]
     places += [s for s in sentences if re.search(r"ClinicalTrials|\bNCT\d{8}|ISRCTN|registered", s)]
-    places += [s for s in sentences if _SELF.search(s)]
+    places += [s for s in sentences if _SELF_EXPLICIT.search(s) or (not explicit and _SELF_PATIENTS.search(s))]
     for place in places:
         for start, name in _name_matches(place, own=True):
             if not _CITING_CUE.search(place[:start]) and _is_name(name):
@@ -290,29 +297,46 @@ def _primary_score(paper: dict[str, Any]) -> tuple:
             estimates, n, -year, -(int(ref[1:]) if ref[1:].isdigit() else 10**6))
 
 
-# A report that is not a trial's primary results by its title or design text (fix round 3)
-_NOT_PRIMARY = re.compile(r"(?i)\b(post[- ]?hoc|secondary|sub-?group|sub-?stud(y|ies)|follow[- ]?up|extension|"
-                          r"long[- ]term|pre-?specified|exploratory|ancillary|according to|insights? from|"
-                          r"analys[ie]s (of|from)|results from|data from|participants (of|in|from)|"
-                          r"patients (of|in|from) the)\b")
+# A report that is not a trial's primary results (fix round 4, N14 ruling): report-type phrases only, in the title or
+# the design text. Bare words that primary RCTs use ("secondary prevention", "long-term", "12-month follow-up",
+# "extension", "results from", "data from", "patients in the ICU") are no cue.
+_REPORT_TYPE = re.compile(
+    r"(?i)\b((secondary|post[- ]?hoc|pre-?specified|exploratory|ancillary) analys[ie]s|sub-?stud(y|ies)|"
+    r"sub-?group analys[ie]s|follow[- ]?up (of|from) the|extension (study )?of the|insights? from|"
+    r"according to\b[^.:;]{0,100}?\bin (the )?(?-i:[A-Z][A-Za-z0-9]*[A-Z])|an? report from the|an analysis from the|"
+    r"rationale and design|design and rationale|baseline characteristics)\b")
 
 
 def is_secondary_report(paper: dict[str, Any]) -> bool:
-    """A secondary report, sub-study, follow-up or commentary (fix round 3 ruling): only these link to a trial by
-    its name alone."""
+    """A secondary report, sub-study, follow-up or commentary (fix round 3 ruling; report-type phrases only since fix
+    round 4): only these link to a trial by its name alone."""
     c = paper.get("candidate") or {}
     card = paper.get("card") or {}
-    text = f"{c.get('title') or ''} || {card.get('study_design') or ''}"
-    return is_commentary(paper) or bool(SECONDARY_REPORT.search(c.get("title") or "")) or bool(
-        _NOT_PRIMARY.search(text))
+    return is_commentary(paper) or bool(_REPORT_TYPE.search(c.get("title") or "")) or bool(
+        _REPORT_TYPE.search(card.get("study_design") or ""))
 
 
-def _may_join(p: dict[str, Any], group: list[dict[str, Any]], regs: dict[str, set[str]]) -> bool:
-    """Whether `p` may join `group` by a shared trial name: when `p` or every primary-looking member is a secondary
-    report, or every primary-looking pair agrees on the reported n or a registry number."""
+def _n_fits(p: dict[str, Any], q: dict[str, Any], regs: dict[str, set[str]]) -> bool:
+    """A secondary report `p` is no larger than the trial `q` it would join (fix round 4, N15): its n is at most q's
+    n; with an n unknown, only a shared registry number fits. A commentary reports no sample, so it always fits."""
+    np_, nq = _sample(p), _sample(q)
+    if np_ is not None and nq is not None:
+        return np_ <= nq
+    return is_commentary(p) or bool(regs[p["ref"]] & regs[q["ref"]])
+
+
+def _may_join(p: dict[str, Any], group: list[dict[str, Any]], regs: dict[str, set[str]], ident: str,
+              explicit: dict[str, set[str]]) -> bool:
+    """Whether `p` may join `group` by the shared trial name `ident`. A group with no primary-looking member takes
+    any report. A secondary report joins primary-looking members only when it is no larger than each of them
+    (_n_fits) and one of them names the trial explicitly (title, registration or its own voice; fix round 4, N15).
+    Two primary-looking reports also need the same reported n or a registry number (fix round 3)."""
     primaries = [q for q in group if not is_secondary_report(q)]
-    if is_secondary_report(p) or not primaries:
+    if not primaries:
         return True
+    if is_secondary_report(p):
+        return (all(_n_fits(p, q, regs) for q in primaries)
+                and any(ident in explicit[q["ref"]] for q in primaries))
     return all((_sample(p) is not None and _sample(p) == _sample(q)) or bool(regs[p["ref"]] & regs[q["ref"]])
                for q in primaries)
 
@@ -359,12 +383,16 @@ def related_reports(papers: list[dict[str, Any]],
 
     reason: dict[frozenset[str], str] = {}
     owner: dict[str, str] = {}
+    secondary_owner: dict[str, str] = {}  # a name's group of secondary reports that no primary-looking owner took
     spelled: dict[str, str] = {}
     ids_of: dict[str, set[str]] = {}
+    explicit: dict[str, set[str]] = {}
     for p in eligible:
         c = p.get("candidate") or {}
         for n in own_trial_names(c.get("title"), c.get("abstract")):
             spelled.setdefault(trial_key(n), n)
+        explicit[p["ref"]] = {f"name:{trial_key(n)}"
+                              for n in own_trial_names(c.get("title"), c.get("abstract"), explicit=True)}
         ids, n_names = _ids(p)
         registries = {i for i in ids if i.startswith("reg:")}
         if n_names > 1 or not is_trial(p):
@@ -382,14 +410,22 @@ def related_reports(papers: list[dict[str, Any]],
             if ident not in owner:
                 owner[ident] = p["ref"]
                 continue
-            # structural backstop (fix round 3, N8/N9): a name alone links only a secondary report, sub-study,
-            # follow-up or commentary of the named trial; two primary-looking reports also need the same reported n
-            # or a shared registry number (a registry ID always links)
-            if ident.startswith("name:") and not _may_join(p, [q for q in eligible if find(q["ref"])
-                                                                   == find(owner[ident])], regs):
-                continue
-            if union(owner[ident], p["ref"]):
-                reason.setdefault(frozenset({owner[ident], p["ref"]}), f"same trial ({_label(ident, spelled)})")
+            # structural backstop (fix round 3, N8/N9; round 4, N15): a name alone links only a secondary report,
+            # sub-study, follow-up or commentary of the named trial, and only to an owner at least as large that
+            # names the trial explicitly; two primary-looking reports also need the same reported n or a shared
+            # registry number (a registry ID always links). A secondary report no owner takes groups with the other
+            # secondary reports of that name.
+            if not ident.startswith("name:"):
+                target = owner[ident]
+            else:
+                target = next((t for t in (owner[ident], secondary_owner.get(ident)) if t is not None and _may_join(
+                    p, [q for q in eligible if find(q["ref"]) == find(t)], regs, ident, explicit)), None)
+                if target is None:
+                    if is_secondary_report(p) and ident not in secondary_owner:
+                        secondary_owner[ident] = p["ref"]
+                    continue
+            if union(target, p["ref"]):
+                reason.setdefault(frozenset({target, p["ref"]}), f"same trial ({_label(ident, spelled)})")
     for i, a in enumerate(eligible):
         for b in eligible[i + 1:]:
             ca, cb = a.get("candidate") or {}, b.get("candidate") or {}

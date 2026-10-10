@@ -121,25 +121,29 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 `result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`.
 
 **Answer and key findings (Plan 20).** `synthesis` (and `synthesis_en`) also has:
-- `answer`: the bottom line, 1–2 sentences that answer the question directly. Graded types (`slr`, `meta_analysis`)
-  carry GRADE certainty wording; when the model's answer lacks the wording for the final `evidence_strength`
-  (moderate "probably"/"likely", low "may"/"might", very low "very uncertain") and does not name its final level
-  ("low certainty", "the certainty of the evidence is low"), a fixed sentence is appended ("The certainty of the
-  evidence is low."). A level word is a certainty claim of this review only in an explicit pattern:
-  "<level>-certainty (evidence)", "<level> certainty evidence", "certainty of (the) evidence is/was <level>" or
-  "GRADE: <level>" ("very-low" and "very low" are one level). It is never a claim in a "quality" phrase about studies
-  ("high-quality trials are needed", "study quality was high", "low-quality studies"), never when "no", "not", "lack
-  of", "lacking" or "without" comes before it in its clause, and never elsewhere ("patients at high risk"). A claim
-  that names another level than the final one is rewritten in place to the final level ("high-certainty" becomes
-  "moderate-certainty"); nothing is removed for it, and nothing else is rewritten (the appended certainty sentence
-  carries the final level). The answer carries no `[Pn]` citations: its numbers, populations and measures are checked
+- `answer`: the bottom line, 1–2 sentences that answer the question directly. A graded answer (`slr`,
+  `meta_analysis`) always ends with the fixed certainty sentence of its final `evidence_strength` ("The certainty of
+  the evidence is low."; also "... is high."), unless it already holds that exact sentence. No certainty level in the
+  model's text is ever rewritten. The only sentences removed for a level are explicit self-claims of this review's
+  overall certainty that name a level other than the final one, in two forms: "the certainty/quality of (the)
+  evidence (overall / for this review / in this review) is/was <level>", opening the sentence or a clause (after a
+  comma, semicolon, colon, "and", "but" or "so") with the level ending the clause; and a sentence that opens
+  "<Level>-certainty evidence" or "<Level> certainty evidence" followed by shows/suggests/indicates/supports ("very-low"
+  and "very low" are one level). The whole sentence goes; these removals count in `prose_check.answer_removed`.
+  Everything else stays as written: negations and needs ("is not high", "high-certainty evidence is lacking/needed",
+  "no high-certainty evidence", "in the absence of", "neither ... nor", "whether"), per-outcome levels ("was high for
+  incidence but low for mortality"), another source's claim (a sentence with "earlier", "previous", "prior", "other",
+  "published", "existing", "reported" or "according to" before the level), labels such as "(high-certainty evidence)"
+  or "GRADE: high", "quality" phrases about studies and level words elsewhere ("patients at high risk"); the appended
+  sentence carries the final level. Ungraded answers lose nothing for a level and get no certainty sentence. The
+  answer carries no `[Pn]` citations: its numbers, populations and measures are checked
   against the papers it cites, then the citations are stripped in code. When the checks would remove every sentence,
-  the model's answer stays (with its level corrected) unless it carries a number, which could be unverified; it then
-  bypassed the population and measure checks, and it is not counted in `prose_check.answer_removed`. A graded answer
-  left empty becomes the fixed certainty sentence of its final level ("The certainty of the evidence is high." too).
+  the model's answer stays, minus any self-claim of another level, unless it carries a number, which could be
+  unverified; it then bypassed the population and measure checks, and it is not counted in
+  `prose_check.answer_removed`. A graded answer left empty becomes the fixed certainty sentence alone.
   When the check itself crashes, the answer is the model's answer without citations, without sentences that carry a
-  number and (no pools) without pooled claims, led by the no-pool sentence when needed and else the certainty
-  sentence. A `meta_analysis` whose `meta_analysis` has no pools
+  number, (no pools) without pooled claims and without self-claims of another level, led by the no-pool sentence when
+  needed and, graded, ended by the certainty sentence. A `meta_analysis` whose `meta_analysis` has no pools
   (null, or `pools: []`) always says so: a fixed sentence ("Pooling was not possible: ...") leads the answer unless it
   already states that pooling was not possible, and any answer sentence that claims a pooled or overall effect is
   removed. "States that pooling was not possible" means a negation attached to pooling ("pooling was not possible",
@@ -156,8 +160,10 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   - Statements are never rewritten. At low or very low certainty a statement that makes a strong causal claim
     (reduce(s), increase(s), improve(s), prevent(s), cause(s), lower(s), raise(s) or decrease(s) used as a verb after
     its subject, also when the subject comes before a comma, in a clause with no hedge, negation, "whether" or
-    "neither" before it) is led by a fixed clause, unless the statement already says "uncertain", "may", "might" or
-    "possibly": "Low-certainty evidence suggests: "
+    "neither" before it, and no "uncertain", "may", "might" or "possibly" after it in the same clause) is led by a
+    fixed clause, unless the statement says the evidence as a whole is uncertain ("very uncertain", "the evidence is
+    uncertain"); a hedge in another clause does not count ("Patients with a higher BMI may benefit; metformin reduces
+    CRC incidence" is led): "Low-certainty evidence suggests: "
     or "Very low-certainty evidence: ", with the statement unchanged after the colon. The clause is part of
     `statement`, so it is localized with it. `result.quality.prose_check.key_findings_certainty_lead` counts them.
   - In a `meta_analysis` without pools, statement sentences that claim a pooled or overall effect are removed (a
@@ -381,12 +387,20 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   with an explicit self pattern ("we conducted/performed/analysed/enrolled ...", "this secondary/post hoc/prespecified
   analysis of", "the aims of this study", "patients enrolled in the X trial", "in the X trial, we", "this commentary
   discusses"). The abstract's first sentence or Background section counts only through such a self pattern ("The
-  DAPA-HF trial showed ..." opens many follow-up trials and is no claim). Structural backstop (fix round 3): a shared
-  name alone links a paper only when it, or every primary-looking member of the trial's group, is a secondary report,
-  sub-study, follow-up or commentary (a commentary, a title matching the secondary-report wording, or a post hoc,
-  secondary, subgroup, prespecified, follow-up, extension, "according to", "insights from", "analysis of" or "results
-  from" cue in the title or design). Two primary-looking reports with the same name also need the same reported n or a
-  shared registry number. Names are owned by primary-looking reports first, the largest first. In the abstract a
+  DAPA-HF trial showed ..." opens many follow-up trials and is no claim). Structural backstop (fix rounds 3 and 4): a
+  shared name alone links a paper only when it, or every primary-looking member of the trial's group, is a secondary
+  report, sub-study, follow-up or commentary. That means a commentary, or a report-type phrase in the title or design
+  text: "secondary/post hoc/prespecified/exploratory/ancillary analysis", "substudy", "subgroup analysis", "follow-up
+  of the X", "extension (study) of the X", "insights from", "according to ... in (the) X", "a report from the X", "an
+  analysis from the X", "rationale and design" or "baseline characteristics". Bare words that primary trials use
+  ("secondary prevention", "long-term", "12-month follow-up", "extension", "results from", "data from", "patients in
+  the") are no cue. A secondary report joins a primary-looking report only when its n is at most that report's n
+  (with an n unknown, only a shared registry number fits; a commentary reports no n and always fits) and that report
+  names the trial explicitly: in its title, its registration sentence or its own voice ("we ...", "this analysis
+  of", "the aims of this", "in the X trial, we"; not only its Methods section or "patients enrolled in the X trial").
+  A secondary report that no primary-looking report may take groups with the other secondary reports of that name.
+  Two primary-looking reports with the same name also need the same reported n or a shared registry number. Names
+  are owned by primary-looking reports first, the largest first. In the abstract a
   name right after a citing cue never counts ("consistent with", "agrees with", "supports", "in line with",
   "confirms", "comparable to", "extends", "unlike", "as in", "similar to", "compared with", "previous", "eligible
   for", ...). These rules keep a citing trial out of the trial it cites in the cases they cover; a name in another

@@ -770,8 +770,9 @@ def _bottom_line(answer: str, prose: ProseContext, allowed: set[str], *, no_pool
                  strength: str | None) -> tuple[str, int]:
     """The checked direct answer: unknown citations stripped, then every sentence with a number (other than a
     context number), a wrong population or measure removed (fix_statement). A meta-analysis without pools states so
-    in a fixed sentence, and loses any sentence that claims a pooled effect. A graded answer without the GRADE
-    wording for its certainty gets a fixed certainty sentence. Returns (answer, sentences removed)."""
+    in a fixed sentence, and loses any sentence that claims a pooled effect. A graded answer loses the sentences that
+    claim another certainty level for this review (_drop_wrong_self_claims) and always ends with the fixed certainty
+    sentence of its final level (fix round 4, N10). Returns (answer, sentences removed)."""
     # numbers and populations are checked against the cited papers first (fix round 2, N4), then the [Pn] go: the
     # answer carries none (the report shows the cited cards beside it; Task 1 review finding 5)
     original = _CITE_GROUP.sub("", strip_unknown_citations(answer or "", allowed)).strip()
@@ -781,88 +782,84 @@ def _bottom_line(answer: str, prose: ProseContext, allowed: set[str], *, no_pool
     if no_pool:
         text, n = _drop_pooled_claims(text)
         removed += n
-    if strength:  # a wrongly named certainty level is rewritten in place (fix round 2, N1), never removed
-        text = _rewrite_level(text, strength)
+    text, n = _drop_wrong_self_claims(text, strength)
+    removed += n
     if not text and original and not re.search(r"\d", original) and not (no_pool and _POOLED_CLAIM.search(original)):
-        # the checks would empty the answer: the model's sentence stays (it has no number that could be
-        # unverified), with its level corrected; the certainty sentence follows (fix round 2, N1). It bypassed the
-        # population and measure checks, and it is shown, so it is not counted as removed (fix round 3, N12).
-        text = _rewrite_level(original, strength) if strength else original
-        removed = 0
+        # the checks would empty the answer: the model's sentences stay (they have no number that could be
+        # unverified), except a self-claim of another certainty level; the certainty sentence follows (fix round 2,
+        # N1; round 4). They bypassed the population and measure checks, and they are shown, so they are not counted
+        # as removed (fix round 3, N12).
+        text, _n = _drop_wrong_self_claims(original, strength)
+        removed = 0 if text else removed
     if no_pool and not _SAYS_NO_POOL.search(text):
         text = f"{NO_POOL_ANSWER} {text}".strip()
-    wording = CERTAINTY_WORDING.get(strength or "")
-    if text and wording and not wording.search(text) and strength not in _named_levels(text):
-        text = f"{text} {ANSWER_CERTAINTY[strength]}"
-    elif not text and original and strength in ANSWER_CERTAINTY:
-        # a model answer whose every sentence carried an unverifiable number: the certainty sentence still stands
-        text = ANSWER_CERTAINTY[strength]
+    if original or text:  # a model answer whose every sentence went still gets the certainty sentence
+        text = _with_certainty(text, strength)
     return text, removed
 
 
 def _fallback_answer(answer: str, allowed: set[str], *, no_pool: bool, strength: str | None) -> str:
     """The answer when its check crashed (fix round 3, N11): the model's answer without citations and without any
-    sentence that carries a number (it could be unverified) or, with no pools, claims a pooled effect; the no-pool
-    sentence leads and, for a graded review, the fixed certainty sentence stands when nothing else is left."""
+    sentence that carries a number (it could be unverified) or, with no pools, claims a pooled effect; a self-claim of
+    another certainty level is removed as in _bottom_line; the no-pool sentence leads and, for a graded review, the
+    fixed certainty sentence always ends it (fix round 4, N16)."""
     text = _CITE_GROUP.sub("", strip_unknown_citations(answer or "", allowed)).strip()
     kept = [s for s in _SENTENCE_END.split(text) if s and not re.search(r"\d", s)
             and not (no_pool and _POOLED_CLAIM.search(s) and not _SAYS_NO_POOL.search(s))] if text else []
-    text = " ".join(kept)
+    text, _n = _drop_wrong_self_claims(" ".join(kept), strength)
     if no_pool and not _SAYS_NO_POOL.search(text):
         text = f"{NO_POOL_ANSWER} {text}".strip()
-    if not text and strength in ANSWER_CERTAINTY:
-        text = ANSWER_CERTAINTY[strength]
-    return text
+    return _with_certainty(text, strength)
 
 
-# A level word is this review's certainty claim only in an explicit pattern (fix round 3, N10): "<level>-certainty
-# (evidence)", "<level> certainty evidence", "certainty of (the) evidence is/was <level>" or "GRADE: <level>". "very
-# low" and "very-low" are one level. Never a "quality" phrase about studies ("high-quality trials are needed",
-# "study quality was high"), and never a claim negated earlier in its clause ("no high-certainty evidence shows").
+# Fix round 4 (N10, controller ruling): no certainty level is ever rewritten. The fixed certainty sentence is always
+# appended to a graded answer, and the only sentences removed for a level are explicit self-claims of this review's
+# overall certainty that name another level, in two narrow forms:
+# - "the certainty/quality of (the) evidence (overall / for this review / in this review) is/was <level>", opening the
+#   sentence or a clause (after ",", ";", ":" or "and"/"but"/"so"), with the level ending the clause;
+# - a sentence opening "<Level>-certainty evidence" or "<Level> certainty evidence" + shows/suggests/indicates/supports.
+# Everything else stays as written: negations ("is not high", "is lacking", "no high-certainty evidence"), needs,
+# per-outcome levels ("was high for incidence but low for mortality"), another source's claim ("Earlier reviews
+# reported ...", "In previous reviews, the certainty ...") and labels such as "(high-certainty evidence)".
 _LEVEL = r"(?P<lvl>very[- ]low|low|moderate|high)"
-_LEVEL_CLAIMS = (
-    re.compile(rf"(?i)\b{_LEVEL}(?=-certainty\b|[- ]certainty(?: of(?: the)?)? evidence\b)"),
-    re.compile(rf"(?i)\bcertainty of (?:the )?evidence (?:is|was) (?:only )?{_LEVEL}\b"),
-    re.compile(rf"(?i)\bGRADE:\s*{_LEVEL}\b"),
+_SELF_CLAIMS = (
+    re.compile(rf"(?i)(?:^|[,;:]\s*|\b(?:and|but|so)\s+)the (?:certainty|quality) of (?:the )?evidence"
+               rf"(?: overall| for this review| in this review)? (?:is|was) {_LEVEL}(?=\s*(?:[.;,:!)]|$))"),
+    re.compile(rf"(?i)^\s*{_LEVEL}[- ]certainty evidence (?:shows|suggests|indicates|supports)\b"),
 )
-_CLAIM_NEGATED = re.compile(r"(?i)\b(no|not|lack of|lacking|without)\b")
-
-
-def _claim_matches(text: str) -> list[re.Match[str]]:
-    """The explicit certainty claims of a text, without the negated ones."""
-    out = []
-    for pattern in _LEVEL_CLAIMS:
-        for m in pattern.finditer(text or ""):
-            clause = re.split(r"[.;:,]", text[: m.start()])[-1]
-            if not _CLAIM_NEGATED.search(clause):
-                out.append(m)
-    return out
-_LEVEL_TEXT = {"very_low": "very low", "low": "low", "moderate": "moderate", "high": "high"}
+_OTHER_SOURCE = re.compile(r"(?i)\b(earlier|previous|prior|other|published|existing|reported|according to)\b")
 
 
 def _level_key(word: str) -> str:
     return re.sub(r"[- ]", "_", word.lower())
 
 
-def _named_levels(text: str) -> set[str]:
-    """The GRADE levels a text claims for the certainty."""
-    return {_level_key(m.group("lvl")) for m in _claim_matches(text)}
+def _wrong_self_claim(sentence: str, strength: str) -> bool:
+    """An explicit self-claim of this review's certainty that names a level other than `strength`."""
+    for pattern in _SELF_CLAIMS:
+        for m in pattern.finditer(sentence):
+            if _OTHER_SOURCE.search(sentence[: m.start("lvl")]):
+                continue  # another source's certainty ("In earlier reviews, the certainty of the evidence was high")
+            if _level_key(m.group("lvl")) != strength:
+                return True
+    return False
 
 
-def _named_level(text: str) -> str | None:
-    levels = _named_levels(text)
-    return next(iter(levels)) if len(levels) == 1 else None
+def _drop_wrong_self_claims(text: str, strength: str | None) -> tuple[str, int]:
+    """Sentences that claim another certainty level for this review, removed (never rewritten). Ungraded: none."""
+    if not strength or not text:
+        return text, 0
+    kept = [s for s in _SENTENCE_END.split(text) if not _wrong_self_claim(s, strength)]
+    return " ".join(kept), len(_SENTENCE_END.split(text)) - len(kept)
 
 
-def _rewrite_level(text: str, strength: str) -> str:
-    """Every certainty claim rewritten in place to the final level ("high-certainty" -> "moderate-certainty"),
-    keeping the hyphen or space the text used and its capitalisation."""
-    for m in sorted(_claim_matches(text), key=lambda m: -m.start("lvl")):  # from the end: offsets stay valid
-        word = m.group("lvl")
-        new = _LEVEL_TEXT[strength].replace(" ", "-" if "-" in word else " ")
-        new = new[:1].upper() + new[1:] if word[:1].isupper() else new
-        text = text[: m.start("lvl")] + new + text[m.end("lvl"):]
-    return text
+def _with_certainty(text: str, strength: str | None) -> str:
+    """A graded answer ends with the fixed certainty sentence of its final level (once: not when it already holds
+    that exact sentence)."""
+    sentence = ANSWER_CERTAINTY.get(strength or "")
+    if not sentence or sentence.casefold() in text.casefold():
+        return text
+    return f"{text} {sentence}".strip()
 
 
 def _drop_pooled_claims(text: str) -> tuple[str, int]:
@@ -886,6 +883,10 @@ _NOT_A_SUBJECT = frozenset({"the", "these", "those", "this", "that", "a", "an", 
                             "and", "or", "for", "to", "on", "by", "from", "as", "is", "are", "was", "were", "be",
                             "been", "being", "has", "have", "had", "its", "their", "his", "her", "our", "much", "more",
                             "less", "than", "at", "slightly", "significantly", "substantially", "markedly"})
+# A statement that already says the whole body of evidence is uncertain needs no lead (fix round 3, N13); any other
+# hedge counts only in the clause of the causal verb (fix round 4, N17)
+_EVIDENCE_UNCERTAIN = re.compile(r"(?i)\bvery uncertain\b|\b(evidence|certainty|findings|results) (is|are|was|were|"
+                                 r"remains?) (very |highly )?uncertain\b")
 _ALREADY_UNCERTAIN = re.compile(r"(?i)\b(uncertain|may|might|possibly)\b")
 _CLAUSE_BLOCK = re.compile(r"(?i)\b(may|might|probably|likely|possibly|could|not|no|never|neither|nor|whether|"
                            r"unclear|uncertain|if)\b")
@@ -893,15 +894,17 @@ CERTAINTY_LEAD = {"low": "Low-certainty evidence suggests: ", "very_low": "Very 
 
 
 def strong_causal_claim(statement: str) -> bool:
-    if _ALREADY_UNCERTAIN.search(statement or ""):
-        return False  # the statement already says it is uncertain (fix round 3, N13)
+    if _EVIDENCE_UNCERTAIN.search(statement or ""):
+        return False  # the statement already says the evidence is uncertain (fix round 3, N13)
     for m in _STRONG_CAUSAL.finditer(statement or ""):
         sentence = re.split(r"[.;:]", statement[: m.start()])[-1]
         # the subject may sit before a comma ("Metformin, compared with sulfonylureas, reduces ...")
         words = sentence.replace(",", " ").split()
         clause = sentence.split(",")[-1]
-        if not words or words[-1].lower() in _NOT_A_SUBJECT or _CLAUSE_BLOCK.search(sentence if not clause.strip()
-                                                                                      else clause):
+        rest = re.split(r"[.;:,]", statement[m.end():])[0]  # the verb's own clause after it
+        if (not words or words[-1].lower() in _NOT_A_SUBJECT
+                or _CLAUSE_BLOCK.search(sentence if not clause.strip() else clause)
+                or _ALREADY_UNCERTAIN.search(rest)):
             continue
         return True
     return False
