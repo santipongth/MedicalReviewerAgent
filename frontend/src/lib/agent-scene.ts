@@ -19,7 +19,7 @@
 //   - idle -> done directly (a silent phase, e.g. plan on `planning`) -> start = end of the previous PIPELINE agent
 //     ("a step ends when the next begins"), end = elapsed_s
 //   - an event without elapsed_s leaves the field null (so no duration is shown for that step)
-import { asDesign, asDirection } from "./live-evidence";
+import { asDesign, asDirection, isThemeDesign } from "./live-evidence";
 import type { DesignCategory, Direction, ReviewEvent } from "./types";
 import type { Connection } from "./use-review"; // type only (erased): no runtime cycle
 
@@ -455,7 +455,8 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
         const sl = s.slots[i];
         const changed = sl.state !== next;
         const ok = next !== "failed";
-        const direction = ok ? asDirection(p.direction) : null;
+        // A qualitative / mixed-methods read reports themes: it never carries a direction anywhere on the stage.
+        const direction = ok && !isThemeDesign(asDesign(p.design)) ? asDirection(p.direction) : null;
         // Resume re-emits the same result: doneKey (which drives board/pile animation) moves only on a real change.
         if (changed || direction !== sl.direction) sl.doneKey = ev.seq;
         sl.ref = str(p.ref) ?? sl.ref;

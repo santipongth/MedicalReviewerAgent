@@ -65,5 +65,7 @@ export function EChart({
     chart.current?.setOption(option, { notMerge: true });
   }, [option]);
 
-  return <div ref={el} role="img" aria-label={label} style={{ height, width: "100%" }} />;
+  // Tabular figures for every tick, count and label. font-feature-settings (unlike font-variant-numeric) survives the
+  // `font` shorthand the SVG renderer writes on each text node, so it inherits into the chart's text.
+  return <div ref={el} role="img" aria-label={label} style={{ height, width: "100%", fontFeatureSettings: '"tnum"' }} />;
 }

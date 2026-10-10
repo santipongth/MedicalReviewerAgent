@@ -4,11 +4,11 @@ import Link from "next/link";
 import { Fragment, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { exportUrl } from "@/lib/api";
 import { conceptTree } from "@/lib/concept-map";
-import { emptyFilters, filterPapers, isFiltered, isPooled, type Filters } from "@/lib/charts-data";
+import { emptyFilters, filterPapers, isFiltered, isPooled, themePapers, type Filters } from "@/lib/charts-data";
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
 import type { TermKey } from "@/lib/glossary";
 import type { Lang } from "@/lib/i18n";
-import { REVIEW_TYPE_LABEL, SECTIONS_BY_TYPE, reviewTypeOf, showsRiskOfBias, showsSection } from "@/lib/review-type";
+import { REVIEW_TYPE_LABEL, SECTIONS_BY_TYPE, isMetaNotPooled, reviewTypeOf, showsRiskOfBias, showsSection } from "@/lib/review-type";
 import { Term } from "../ui/term";
 import type { ComparisonRow, Paper, Review, ReviewType } from "@/lib/types";
 import { BottomLine } from "./bottom-line";
@@ -64,7 +64,8 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const matrixRefs = useMemo(() => visible.filter((p) => rows.some((r) => r.cells.some((c) => c.ref === p.ref))).map((p) => p.ref), [visible, rows]);
   const visibleRows = useMemo(() => rows.filter((r) => r.cells.some((c) => matrixRefs.includes(c.ref))), [rows, matrixRefs]);
   const type = reviewTypeOf(result);
-  const map = useMemo(() => (showsSection(type, "evidence_map") ? evidenceMap(visible, rows, lang) : EMPTY_MAP), [type, visible, rows, lang]);
+  const notPooled = isMetaNotPooled(result);
+  const map =useMemo(() => (showsSection(type, "evidence_map") ? evidenceMap(visible, rows, lang) : EMPTY_MAP), [type, visible, rows, lang]);
   // Built from the filtered papers, like the lit matrix and the evidence map; null where the type has no concept map.
   const tree = useMemo(
     () => (showsSection(type, "concept_map") ? conceptTree({ ...result, papers: visible }, lang, type) : null),
@@ -117,7 +118,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const tail: Record<"evidence_map" | "lit_matrix" | "concept_map" | "citations" | "charts" | "meta", { nav: NavItem; show: boolean; node: ReactNode }> = {
     citations: { nav: { id: "h-citations", label: L(lang, "เครือข่ายการอ้างอิง", "Citation network") }, show: hasCitations,
       node: hasCitations && citations && <CitationNetworkSection citations={citations} papers={visible} lang={lang} onSelect={select} /> },
-    meta: { nav: { id: "h-meta", label: L(lang, "ค่ารวม", "Pooled") }, show: hasMeta,
+    meta: { nav: { id: "h-meta", label: notPooled ? L(lang, "รวมผลไม่ได้", "Not pooled") : L(lang, "ค่ารวม", "Pooled") }, show: hasMeta,
       node: hasMeta && (
         <MetaAnalysisSection meta={result.meta_analysis} papers={papers} rows={metaRows} lang={lang} english={lang === "en"}
           filtered={isFiltered(filters)} quality={result.quality} onSelect={select} />
@@ -158,6 +159,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           {type !== "legacy" && (
             <span className="label rounded-sm bg-rail px-2 py-1">
               <Term k={TYPE_TERM[type]} lang={lang}>{REVIEW_TYPE_LABEL[type][lang]}</Term>
+              {notPooled && <span data-not-pooled>{" "}{L(lang, "(รวมผลไม่ได้)", "(not pooled)")}</span>}
               {" · "}{L(lang, "อัตโนมัติ · อ่านเฉพาะบทคัดย่อ", "automated · abstracts only")}
             </span>
           )}
@@ -210,7 +212,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
               {visibleRows.length ? <ComparisonMatrix rows={visibleRows} refs={matrixRefs} papers={papers} lang={lang} onSelect={select} selected={active ?? undefined}
                 pooledRefs={pooledRefs}
                 outcomeOf={(row, ref) => outcomeFor(byRef.get(ref), row, ref)} /> : <p className="text-[0.9rem] text-muted">{L(lang, "ไม่มีงานวิจัยที่ตรงกับตัวกรอง", "No studies match the filters")}</p>}
-              <MatrixLegend lang={lang} />
+              <MatrixLegend lang={lang} themes={themePapers(papers).length > 0} />
             </section>
           )}
 

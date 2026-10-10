@@ -70,6 +70,11 @@ export function directionTally(papers: Paper[], skipReviews = false): Record<Dir
   return tally;
 }
 
+/** Papers with a qualitative or mixed-methods card: summarised as themes ("found in k studies"), never a direction. */
+export function themePapers(papers: Paper[]): Paper[] {
+  return papers.filter((p) => isNonQuantitative(p.card_en ?? p.card));
+}
+
 /** True when the paper is a systematic review / meta-analysis (it may already pool the primary studies). */
 export function isPooled(p: Paper): boolean {
   return !!(p.card_en ?? p.card)?.design_category?.startsWith("sr_ma");

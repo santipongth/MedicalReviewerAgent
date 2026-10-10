@@ -1,10 +1,10 @@
 "use client";
 
 import { exportUrl } from "@/lib/api";
-import { directionTally, hasPooledPapers } from "@/lib/charts-data";
+import { directionTally, hasPooledPapers, themePapers } from "@/lib/charts-data";
 import { POOLED_OVERLAP_TH } from "@/lib/copy";
 import { DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "@/lib/i18n";
-import { reviewTypeOf, showsDirection } from "@/lib/review-type";
+import { isMetaNotPooled, reviewTypeOf, showsDirection } from "@/lib/review-type";
 import type { Paper, QuestionBlock, ReviewResult, Synthesis } from "@/lib/types";
 import { CopyLinkButton } from "../ui/copy-link";
 import { Glyph } from "../ui/evidence";
@@ -25,21 +25,32 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
   const tally = directionTally(papers, type === "narrative");
   // Scoping maps what exists; it never tallies a direction of effect.
   const shown = showsDirection(type) ? DIRECTION_ORDER.filter((d) => tally[d] > 0) : [];
+  // Qualitative / mixed-methods studies are never tallied by direction; they are counted as themes instead.
+  const themes = type === "scoping" ? 0 : themePapers(papers).length;
+  const notPooled = isMetaNotPooled(result);
   return (
     <section aria-labelledby="h-summary" className="grid gap-4">
       <QuestionTitle question={question} topic={topic} lang={lang} />
       {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} />}
+      {notPooled && (
+        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.92rem]" data-not-pooled>
+          <span className="label rounded-sm bg-warn-bg px-2 py-1">{L(lang, "การวิเคราะห์อภิมาน (รวมผลไม่ได้)", "Meta-analysis (not pooled)")}</span>
+          <span className="text-muted">{L(lang, "ไม่มีผลลัพธ์ใดที่มีงานวิจัยหลักตั้งแต่ 3 ฉบับวัดผลแบบเดียวกัน จึงไม่มีค่ารวม",
+            "No outcome had at least 3 primary studies measured the same way, so there is no pooled estimate")}</span>
+        </p>
+      )}
       <div className="grid gap-2">
         <h2 id="h-summary" className={SECTION_H2}>{L(lang, "สรุป", "Summary")}</h2>
-        <p className="max-w-[65ch] text-[1.02rem] leading-[1.75]">
+        {/* Model prose: plain text only. A number in it is never styled as verified (no tape, no verified face). */}
+        <p className="max-w-[65ch] text-[1.02rem] leading-[1.75]" data-prose>
           <CitedText text={synthesis.executive_summary || result.summary || ""} onSelect={onSelect} refs={refs} />
         </p>
         {hasPapers && <p className="text-[0.8rem] text-muted">
           {type === "scoping"
-            ? L(lang, "สรุปเขียนโดยโมเดลจากข้อมูลที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะรหัสงานวิจัยในรายการ)",
-              "The summary is written by a model from verified data. Numbers checked against the papers carry a striped underline; see them in the source rail (select a paper in the list).")
-            : L(lang, "สรุปเขียนโดยโมเดลจากข้อมูลที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะช่องในตารางผลแต่ละการศึกษา) และในมุมมองตารางของแผนภาพ",
-              "The summary is written by a model from verified data. Numbers checked against the papers carry a striped underline; see them in the source rail (select a cell in the findings table) and in the table view of the charts.")}
+            ? L(lang, "สรุปเขียนโดยโมเดล ข้อความสรุปไม่ใช่ตัวเลขที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะรหัสงานวิจัยในรายการ)",
+              "The summary is written by a model and is not itself a verified number. Numbers checked against the papers carry a striped underline; see them in the source rail (select a paper in the list).")
+            : L(lang, "สรุปเขียนโดยโมเดล ข้อความสรุปไม่ใช่ตัวเลขที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะช่องในตารางผลแต่ละการศึกษา) และในมุมมองตารางของแผนภาพ",
+              "The summary is written by a model and is not itself a verified number. Numbers checked against the papers carry a striped underline; see them in the source rail (select a cell in the findings table) and in the table view of the charts.")}
         </p>}
       </div>
       {shown.length > 0 && (
@@ -61,6 +72,12 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
             </p>
           )}
         </div>
+      )}
+      {themes > 0 && (
+        <p className="text-[0.92rem] text-muted" data-theme-count>
+          {L(lang, `งานเชิงคุณภาพหรือแบบผสมผสาน ${themes} ฉบับ สรุปเป็นประเด็นที่พบ ไม่นับตามทิศทางผล`,
+            `${themes} qualitative or mixed-methods ${themes === 1 ? "study is" : "studies are"} summarised as the themes found, not counted by direction`)}
+        </p>
       )}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.9rem]">
         {!offline && (

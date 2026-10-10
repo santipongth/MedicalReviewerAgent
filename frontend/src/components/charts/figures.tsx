@@ -5,6 +5,7 @@ import { edgeCurves, SOURCE_LABEL, type CitationNetwork, type DesignGroup, type 
 import type { ConceptTree, MapNode } from "@/lib/concept-map";
 import { forestAxis, type exclusionRows, type ForestData, type ForestGroup, type Stage, type StudyPoint } from "@/lib/charts-data";
 import type { TermKey } from "@/lib/glossary";
+import { haloWidth } from "@/lib/glyphs";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
 import type { MetaPoolView } from "@/lib/meta-view";
 import { L } from "../review/text";
@@ -78,7 +79,8 @@ function forestOption(g: ForestGroup, t: ChartTokens, lang: Lang): EChartsOption
     xAxis: {
       type: g.family === "ratio" ? "log" : "value", min, max, logBase: 10,
       axisLine: { lineStyle: { color: t.rule } }, splitLine: { lineStyle: { color: t.rule, type: "solid", opacity: 0.6 } },
-      axisLabel: { color: t.muted, fontFamily: t.fontNum, fontSize: 11, formatter: (v: number) => String(Number(v.toPrecision(2))) },
+      // Ticks are axis positions, not paper numbers: display face (tabular figures), never the verified face.
+      axisLabel: { color: t.muted, fontFamily: t.fontDisplay, fontSize: 11, formatter: (v: number) => String(Number(v.toPrecision(2))) },
     },
     yAxis: {
       type: "category", inverse: true, data: rows.map((r) => r.label),
@@ -103,10 +105,11 @@ function forestOption(g: ForestGroup, t: ChartTokens, lang: Lang): EChartsOption
         type: "scatter",
         z: 2,
         symbolSize: 12,
+        symbolKeepAspect: true,
         cursor: "pointer",
         data: rows.map((r, i) => ({
           value: [r.value, i], ref: r.ref, outcome: r.outcomeKey, symbol: SYMBOL[r.direction],
-          itemStyle: { color: t.direction[r.direction], borderColor: t.surface, borderWidth: 2 },
+          itemStyle: { color: t.direction[r.direction], borderColor: t.surface, borderWidth: haloWidth(r.direction) },
         })),
         emphasis: { scale: 1.3 },
         markLine: {
@@ -210,7 +213,7 @@ function metaForestOption(pool: MetaPoolView, t: ChartTokens, lang: Lang): EChar
     xAxis: {
       type: pool.ratio ? "log" : "value", min, max, logBase: 10,
       axisLine: { lineStyle: { color: t.rule } }, splitLine: { lineStyle: { color: t.rule, type: "solid", opacity: 0.6 } },
-      axisLabel: { color: t.muted, fontFamily: t.fontNum, fontSize: 11, formatter: (v: number) => String(Number(v.toPrecision(2))) },
+      axisLabel: { color: t.muted, fontFamily: t.fontDisplay, fontSize: 11, formatter: (v: number) => String(Number(v.toPrecision(2))) },
     },
     yAxis: {
       type: "category", inverse: true, data: [...pool.studies.map((s) => s.label), pooledLabel],
@@ -241,10 +244,11 @@ function metaForestOption(pool: MetaPoolView, t: ChartTokens, lang: Lang): EChar
         type: "scatter",
         z: 2,
         cursor: "pointer",
+        symbolKeepAspect: true,
         data: pool.studies.map((s, i) => ({
           value: [s.effect, i], ref: s.ref, outcome: s.outcomeKey ?? undefined, symbol: SYMBOL[s.direction],
           symbolSize: Math.round(8 + 8 * Math.sqrt(s.weight / maxW)),
-          itemStyle: { color: t.direction[s.direction], borderColor: t.surface, borderWidth: 2 },
+          itemStyle: { color: t.direction[s.direction], borderColor: t.surface, borderWidth: haloWidth(s.direction) },
         })),
         emphasis: { scale: 1.2 },
         markLine: {
@@ -372,7 +376,8 @@ export function PrismaFigure({ stages, tokens, lang, exclusions = null, scoping 
       axisLabel: { color: tokens.ink, fontFamily: tokens.fontDisplay, fontSize: 12 } },
     series: [{
       type: "bar", barWidth: 18, data: stages.map((s) => s.value), itemStyle: { color: tokens.muted, borderRadius: [0, 4, 4, 0] },
-      label: { show: true, position: "right", color: tokens.ink, fontFamily: tokens.fontNum, fontSize: 12 },
+      // Record counts, not paper numbers: display face with tabular figures, never the verified face.
+      label: { show: true, position: "right", color: tokens.ink, fontFamily: tokens.fontDisplay, fontSize: 12 },
     }],
   }), [stages, tokens]);
   if (!stages.length) return null;
@@ -414,15 +419,15 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
         },
       },
       xAxis: { type: "value", min: Math.min(...years) - 1, max: Math.max(...years) + 1, minInterval: 1,
-        axisLabel: { color: tokens.muted, fontFamily: tokens.fontNum, fontSize: 11, formatter: (v: number) => String(v) },
+        axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11, formatter: (v: number) => String(v) },
         axisLine: { lineStyle: { color: tokens.rule } }, splitLine: { show: false } },
       yAxis: { type: "log", logBase: 10,
-        axisLabel: { color: tokens.muted, fontFamily: tokens.fontNum, fontSize: 11 }, splitLine: { lineStyle: { color: tokens.rule, opacity: 0.6 } } },
+        axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11 }, splitLine: { lineStyle: { color: tokens.rule, opacity: 0.6 } } },
       series: [{
-        type: "scatter", symbolSize: 14, cursor: "pointer",
+        type: "scatter", symbolSize: 14, symbolKeepAspect: true, cursor: "pointer",
         data: points.map((p, idx) => ({ value: [p.year, p.n], idx, ref: p.ref, symbol: SYMBOL[p.direction],
-          itemStyle: { color: tokens.direction[p.direction], borderColor: tokens.surface, borderWidth: 2 } })),
-        label: { show: true, formatter: (p: { data: { ref: string } }) => p.data.ref, position: "right", color: tokens.ink, fontFamily: tokens.fontNum, fontSize: 11 },
+          itemStyle: { color: tokens.direction[p.direction], borderColor: tokens.surface, borderWidth: haloWidth(p.direction) } })),
+        label: { show: true, formatter: (p: { data: { ref: string } }) => p.data.ref, position: "right", color: tokens.ink, fontFamily: tokens.fontDisplay, fontSize: 11 },
         emphasis: { scale: 1.3 },
       }],
     };
@@ -451,7 +456,7 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
 const CONCEPT_CAPTION = ["เส้นเชื่อมมาจากตารางผลแต่ละการศึกษาเท่านั้น ไม่ได้แสดงตัวแปรคั่นกลาง (mediator)",
   "Links come only from the per-study results table; no mediating variables (mediators) are shown"];
 
-type TreeDatum = { name: string; ref?: string; value: string; tip?: string; symbol: string; symbolSize: number; itemStyle: Record<string, unknown>; label?: Record<string, unknown>; children?: TreeDatum[] };
+type TreeDatum = { name: string; ref?: string; value: string; tip?: string; symbol: string; symbolSize: number; symbolKeepAspect: boolean; itemStyle: Record<string, unknown>; label?: Record<string, unknown>; children?: TreeDatum[] };
 
 function treeData(n: MapNode, t: ChartTokens, lang: Lang): TreeDatum {
   const leaf = n.kind === "group";
@@ -459,10 +464,12 @@ function treeData(n: MapNode, t: ChartTokens, lang: Lang): TreeDatum {
   return {
     name: n.kind === "root" ? L(lang, "คำถาม", "Question") : n.label, value: n.text, ref: n.refs?.[0],
     tip: leaf && n.refs?.length ? L(lang, `คลิกเพื่อเปิด ${n.refs[0]} · ดูทั้งหมดในโครงร่าง`, `Click to open ${n.refs[0]} · see all in the outline`) : undefined,
-    // Shapes no direction glyph uses (circle, diamond, rect, triangle, empty circle): rounded square for structure, pin for design groups.
+    // Shapes no direction glyph uses (circle, diamond, flat bar, half circle, dashed ring): rounded square for structure,
+    // pin for design groups and qualitative themes.
     symbol: leaf ? (n.direction ? SYMBOL[n.direction] : "pin") : "roundRect",
     symbolSize: leaf ? 12 : 10,
-    itemStyle: leaf ? { color: colour, borderColor: t.surface, borderWidth: 1 } : { color: t.muted, borderColor: t.surface, borderWidth: 1 },
+    symbolKeepAspect: true,
+    itemStyle: leaf ? { color: colour, borderColor: t.surface, borderWidth: n.direction ? Math.min(1, haloWidth(n.direction)) : 1 } : { color: t.muted, borderColor: t.surface, borderWidth: 1 },
     // Only study groups label to the right; a childless element or term keeps its label above, clear of the level after it.
     ...(!leaf && !n.children.length ? { label: { ...CONCEPT_LABEL_TOP, color: t.ink, backgroundColor: t.surface, fontFamily: t.fontDisplay } } : {}),
     ...(n.children.length ? { children: n.children.map((c) => treeData(c, t, lang)) } : {}),
@@ -503,7 +510,7 @@ function ConceptOutline({ node, lang, onSelect }: { node: MapNode; lang: Lang; o
         {node.kind === "group" ? (
           <>
             {node.direction && <><Glyph direction={node.direction} lang={lang} />{" "}</>}
-            {node.text} <span className="font-display tabular-nums">({node.count})</span>
+            {node.text}{!node.theme && <> <span className="font-display tabular-nums">({node.count})</span></>}
             {node.refs?.map((r) => (
               <button key={r} type="button" onClick={() => onSelect(r)}
                 className="ml-1 inline-flex min-h-11 min-w-11 items-center justify-center font-display font-semibold text-primary underline underline-offset-2">
@@ -555,7 +562,7 @@ export const DESIGN_GROUP_LABEL: Record<DesignGroup, [string, string]> = {
   review: ["การทบทวน (SR/MA, บทความทบทวน)", "Reviews (SR/MA, narrative)"],
 };
 
-/** A pointy-top hexagon: no direction marker uses it (the chart triangle means mixed, the diamond harm, the square none). */
+/** A pointy-top hexagon: no direction marker uses it (lib/glyphs.ts: circle, diamond, flat bar, half circle, dashed ring). */
 export const HEXAGON_PATH = "path://M50 0L93.3 25L93.3 75L50 100L6.7 75L6.7 25Z";
 
 /**

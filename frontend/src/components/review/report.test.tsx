@@ -462,7 +462,9 @@ describe("Report per review type", () => {
     a.unmount();
     const none = { ...metaReviewFixture, result: { ...metaReviewFixture.result!, meta_analysis: { ...metaReviewFixture.result!.meta_analysis!, pools: [] } } };
     const b = render(<Report review={none} />);
-    expect(screen.getByText(/จึงไม่ได้คำนวณค่ารวม/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "การวิเคราะห์อภิมาน: รวมผลไม่ได้" })).toBeInTheDocument();
+    expect(screen.getByText(/อย่างน้อย 3 ฉบับต่อผลลัพธ์/)).toBeInTheDocument();
+    expect(screen.queryByText(/ไม่ใช่ผลจากงานวิจัยฉบับใด/)).toBeNull();
     expect(b.container.querySelector(".num-computed")).toBeNull();
     b.unmount();
     const slr = render(<Report review={{ ...metaReviewFixture, result: { ...metaReviewFixture.result!, review_type: "slr" as const } }} />);

@@ -36,7 +36,10 @@ export function MetaAnalysisSection({ meta, papers, rows, lang, english, filtere
   const view = useMemo(() => (meta ? metaView(meta, papers, rows, lang, english) : null), [meta, papers, rows, lang, english]);
   return (
     <section aria-labelledby="h-meta" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
-      <h2 id="h-meta" className={SECTION_H2}>{L(lang, "การวิเคราะห์อภิมาน: ค่ารวม", "Meta-analysis: pooled estimates")}</h2>
+      <h2 id="h-meta" className={SECTION_H2}>
+        {view?.pools.length ? L(lang, "การวิเคราะห์อภิมาน: ค่ารวม", "Meta-analysis: pooled estimates")
+          : L(lang, "การวิเคราะห์อภิมาน: รวมผลไม่ได้", "Meta-analysis: not pooled")}
+      </h2>
       {!view ? (
         <p className="text-[0.95rem]">
           {L(lang, "รีวิวนี้ไม่มีค่ารวม เพราะขั้นตอนรวมผลทำไม่สำเร็จ ผลแต่ละงานยังอยู่ในตารางและแผนภาพด้านบน",
@@ -53,6 +56,7 @@ function MetaBody({ view, tokens, lang, filtered, quality, onSelect }: {
   view: MetaView; tokens: ChartTokens | null; lang: Lang; filtered: boolean; quality?: Quality; onSelect: Select;
 }) {
   const removed = quality?.pooled_numbers?.removed ?? 0;
+  if (view.pools.length === 0) return <NoPools view={view} lang={lang} onSelect={onSelect} />;
   return (
     <>
       <div role="note" className="grid gap-2 rounded-sm bg-info-bg p-3 sm:p-4">
@@ -72,12 +76,7 @@ function MetaBody({ view, tokens, lang, filtered, quality, onSelect }: {
         )}
       </div>
 
-      {view.pools.length === 0 ? (
-        <p className="text-[0.95rem]">
-          {L(lang, "ไม่มีผลลัพธ์ใดที่มีงานวิจัยหลักตั้งแต่ 3 ฉบับ วัดผลแบบเดียวกัน และมีตัวเลขที่ตรวจผ่านครบ จึงไม่ได้คำนวณค่ารวม",
-            "No outcome had at least 3 primary studies with the same measure and fully verified numbers, so nothing was pooled.")}
-        </p>
-      ) : view.pools.map((p) => <PoolBlock key={p.key} pool={p} tokens={tokens} lang={lang} onSelect={onSelect} removed={removed} />)}
+      {view.pools.map((p) => <PoolBlock key={p.key} pool={p} tokens={tokens} lang={lang} onSelect={onSelect} removed={removed} />)}
 
       {view.grade.length > 0 && (
         <div className="grid gap-1.5">
@@ -88,6 +87,27 @@ function MetaBody({ view, tokens, lang, filtered, quality, onSelect }: {
 
       {view.reference.length > 0 && <ReferenceRows view={view} lang={lang} onSelect={onSelect} />}
       {view.excluded.length > 0 && <ExcludedList view={view} lang={lang} />}
+    </>
+  );
+}
+
+/** Why nothing was pooled. Nothing was computed, so there is no computed-number banner and no "estimates above". */
+export const NO_POOL_TH = "รวมผลไม่ได้: ไม่มีผลลัพธ์ใดที่มีงานวิจัยหลักตั้งแต่ 3 ฉบับวัดผลด้วยตัววัดเดียวกันและมีตัวเลขที่ตรวจผ่านครบ";
+const NO_POOL_EN = "Could not pool: no outcome had at least 3 primary studies with the same measure and fully verified numbers";
+
+function NoPools({ view, lang, onSelect }: { view: MetaView; lang: Lang; onSelect: Select }) {
+  return (
+    <>
+      <div role="note" className="grid gap-2 rounded-sm bg-warn-bg p-3 sm:p-4" data-no-pools>
+        <p className="font-display font-semibold text-balance">{L(lang, NO_POOL_TH, NO_POOL_EN)}</p>
+        <p className="text-[0.88rem]">
+          {L(lang, "การวิเคราะห์อภิมานต้องมีงานวิจัยหลักอย่างน้อย 3 ฉบับต่อผลลัพธ์ ที่ใช้ตัววัดเดียวกัน (เช่น HR) และแยก RCT กับงานเชิงสังเกต งานทบทวนอย่างเป็นระบบไม่นำมารวม จึงไม่มีค่ารวมในรีวิวนี้ ผลของแต่ละงานยังอยู่ในตารางผลแต่ละการศึกษาและแผนภาพ",
+            "A meta-analysis needs at least 3 primary studies per outcome using the same measure (e.g. HR), with RCTs kept apart from observational studies; systematic reviews are never pooled. So this review has no pooled estimate; each study's result is still in the findings table and charts.")}
+          {" "}<Term k="metaAnalysis" lang={lang}>{L(lang, "การวิเคราะห์อภิมานคืออะไร", "what is a meta-analysis")}</Term>
+        </p>
+      </div>
+      {view.excluded.length > 0 && <ExcludedList view={view} lang={lang} />}
+      {view.reference.length > 0 && <ReferenceRows view={view} lang={lang} onSelect={onSelect} pooled={false} />}
     </>
   );
 }
@@ -170,11 +190,12 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
   );
 }
 
-function ReferenceRows({ view, lang, onSelect }: { view: MetaView; lang: Lang; onSelect: Select }) {
+function ReferenceRows({ view, lang, onSelect, pooled = true }: { view: MetaView; lang: Lang; onSelect: Select; pooled?: boolean }) {
   return (
     <div className="grid gap-1.5">
       <h3 className={H3}>{L(lang, "งานทบทวนอย่างเป็นระบบที่พบ (แสดงเพื่ออ้างอิง ไม่นำมารวม)", "Systematic reviews found (shown for reference, never pooled)")}</h3>
-      <p className="text-[0.85rem] text-muted">{L(lang, "อาจรวมงานวิจัยหลักชุดเดียวกับค่ารวมข้างบน", "They may contain the same primary studies as the estimates above")}</p>
+      {/* only when there are estimates above to overlap with */}
+      {pooled && <p className="text-[0.85rem] text-muted">{L(lang, "อาจรวมงานวิจัยหลักชุดเดียวกับค่ารวมข้างบน", "They may contain the same primary studies as the estimates above")}</p>}
       <ul className="grid gap-0">
         {view.reference.map((r) => (
           <li key={`${r.ref}|${r.outcome}`} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-rule py-1.5 text-[0.92rem]">

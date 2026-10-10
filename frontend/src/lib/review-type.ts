@@ -1,4 +1,5 @@
 // Review types (Plan 14a): labels, grading and which report sections each type shows. Pure data, no React.
+import { isNonQuantitative } from "./charts-data";
 import type { ReviewResult, ReviewType } from "./types";
 
 export const REVIEW_TYPES: ReviewType[] = ["narrative", "slr", "scoping", "meta_analysis"];
@@ -69,6 +70,17 @@ export function showsSection(type: ReviewTypeOrLegacy, id: SectionId): boolean {
 /** Scoping reviews map what exists and never tally or draw a direction of effect. */
 export function showsDirection(type: ReviewTypeOrLegacy): boolean {
   return type !== "scoping";
+}
+
+/** Whether one paper shows a direction (glyph, label, tally): never in scoping, never for a qualitative or
+ * mixed-methods card (themes, not effects). Every per-paper direction in the UI goes through this gate. */
+export function showsCardDirection(type: ReviewTypeOrLegacy, card: { design_category?: string | null } | null | undefined): boolean {
+  return showsDirection(type) && !isNonQuantitative(card);
+}
+
+/** A meta-analysis with papers whose pooling produced nothing (no `meta_analysis`, or `pools: []`). */
+export function isMetaNotPooled(result: Pick<ReviewResult, "review_type" | "meta_analysis" | "papers"> | null | undefined): boolean {
+  return reviewTypeOf(result) === "meta_analysis" && !!result?.papers?.length && !result?.meta_analysis?.pools?.length;
 }
 
 /** Scoping does no quality appraisal, so no risk-of-bias label or filter is shown. */

@@ -22,6 +22,8 @@ export interface MapNode {
   direction?: Direction;
   /** Group nodes under a design grouping (a design category key, or the free text of an older card). */
   design?: string;
+  /** Group of qualitative / mixed-methods studies reporting the theme: "found in k studies", no direction. */
+  theme?: boolean;
   children: MapNode[];
 }
 
@@ -40,6 +42,7 @@ export interface ConceptTree {
 const ROOT_MAX = 90;
 const REFS_SHOWN = 2;
 const NARRATIVE = "narrative_review";
+const THEMES = "themes";
 
 const t = (lang: Lang, th: string, en: string) => (lang === "th" ? th : en);
 const clean = (s: string | null | undefined) => (s ?? "").trim();
@@ -136,14 +139,21 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
       if (!paper || seen.has(cell.ref)) continue;
       seen.add(cell.ref);
       const design = designOf(paper, cell.design_category ?? undefined);
-      if (byDirection && (design === NARRATIVE || NON_QUANTITATIVE_DESIGNS.includes(design))) continue;
-      const key = byDirection ? (DIRECTION_ORDER.includes(cell.direction) ? cell.direction : "unclear") : design;
+      if (byDirection && design === NARRATIVE) continue;
+      // Qualitative / mixed-methods studies report themes: one neutral "found in k studies" group, never a direction.
+      const key = byDirection
+        ? (NON_QUANTITATIVE_DESIGNS.includes(design) ? THEMES : DIRECTION_ORDER.includes(cell.direction) ? cell.direction : "unclear")
+        : design;
       buckets.set(key, [...(buckets.get(key) ?? []), cell.ref]);
     }
     const known = byDirection ? (DIRECTION_ORDER as string[]) : DESIGN_ORDER;
     const keys = [...known.filter((k) => buckets.has(k)), ...[...buckets.keys()].filter((k) => !known.includes(k)).sort()];
     const children: MapNode[] = keys.map((key) => {
       const refs = [...buckets.get(key)!].sort(byRef);
+      if (key === THEMES) {
+        const name = t(lang, `พบใน ${refs.length} การศึกษา`, `Found in ${refs.length} ${refs.length === 1 ? "study" : "studies"}`);
+        return { id: `o${ri}:${key}`, kind: "group", label: `${name} · ${refsLabel(refs)}`, text: name, count: refs.length, refs, theme: true, children: [] };
+      }
       const name = byDirection ? DIRECTION_LABEL[lang][key as Direction] : designLabel(key, lang);
       return {
         id: `o${ri}:${key}`, kind: "group", label: `${name} · ${refsLabel(refs)}`, text: name, count: refs.length, refs,

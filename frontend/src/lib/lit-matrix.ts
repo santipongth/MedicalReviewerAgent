@@ -20,6 +20,8 @@ export interface LitOutcome {
   /** Plan 19: not the question's intervention vs comparator; shown, never counted as evidence. */
   otherComparison: boolean;
   comparison: string | null;
+  /** The reader explicitly said the abstract states no number (`effect_measure: "none"`); else "not extracted". */
+  reportsNone: boolean;
 }
 
 /** The row's direction: none when every outcome is another comparison; when only some are, the matching outcomes'
@@ -46,6 +48,10 @@ export interface LitRow {
   findings: string;
   direction: Direction | null;
   uncertain: boolean;
+  /** Plan 19: kept although its design is outside the ticked study types. */
+  designMismatch: boolean;
+  /** Qualitative / mixed-methods: themes, no numbers and no direction. */
+  theme: boolean;
   risk: RiskOfBias | null;
   n: NumberCell;
   limitations: string;
@@ -66,6 +72,7 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
     const byline = [surnameOf(p.authors?.[0]), p.year].filter(Boolean).join(" ");
     const base = {
       ref: p.ref, title: p.title, byline, uncertain: !!p.verification?.uncertain,
+      designMismatch: !!p.verification?.design_mismatch, theme: isNonQuantitative(p.card_en ?? p.card),
       ...(citations ? { citedBy: citedByCell(citations, p.ref) } : {}),
     };
     if (!card || !en) {
@@ -76,10 +83,14 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
     const outcomes: LitOutcome[] = card.outcomes.map((o, i) => {
       const eo = en.outcomes[i] ?? en.outcomes.find((x) => x.outcome === o.outcome);
       let effect: LitOutcome["effect"] = null;
-      if (eo && isBlankedEffect(p, eo.outcome)) effect = { blanked: true };
+      if (isNonQuantitative(en)) effect = null; // a theme never shows a number, even one that slipped through
+      else if (eo && isBlankedEffect(p, eo.outcome)) effect = { blanked: true };
       else if (eo && eo.effect_value != null) effect = { label: effectLabel(eo), ci: ciLabel(eo) };
       const other = (eo?.matches_question ?? o.matches_question) === false;
-      return { name: o.outcome, effect, otherComparison: other, comparison: other ? o.comparison ?? eo?.comparison ?? null : null };
+      return {
+        name: o.outcome, effect, otherComparison: other, comparison: other ? o.comparison ?? eo?.comparison ?? null : null,
+        reportsNone: (eo ?? o).effect_measure === "none",
+      };
     });
     const sample = en.sample_size ?? card.sample_size;
     const n: NumberCell = isBlankedSampleSize(p) ? { kind: "blanked" }

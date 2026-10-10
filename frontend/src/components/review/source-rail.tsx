@@ -2,10 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import { HighlightedQuote } from "@/components/ui/quote";
-import { designLabel } from "@/lib/charts-data";
+import { designLabel, isNonQuantitative } from "@/lib/charts-data";
 import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, safeHref } from "@/lib/evidence";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
-import { showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
+import { showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
@@ -26,8 +26,21 @@ function MaskedText({ text, lang }: { text: string; lang: Lang }) {
   return <>{parts.map((p, i) => <span key={i}>{p}{i < parts.length - 1 && <Hole lang={lang} />}</span>)}</>;
 }
 
-function OutcomeEvidence({ paper, o, en, lang, selected, visible, direction }: {
+/**
+ * Why an outcome shows no number. A qualitative/mixed-methods theme has none by design. Otherwise only an explicit
+ * `effect_measure: "none"` (the reader said the abstract states no number) reads as "reports no number"; anything else
+ * is only "not extracted": the reader may have missed a number that the source sentence does state.
+ */
+export function noNumberText(o: Pick<OutcomeResult, "effect_measure">, theme: boolean, lang: Lang): string {
+  if (theme) return L(lang, "ประเด็นจากงานเชิงคุณภาพ ไม่มีค่าตัวเลข", "A theme from a qualitative study; no number");
+  if (o.effect_measure === "none") return L(lang, "งานวิจัยไม่ได้รายงานตัวเลขสำหรับผลนี้", "The paper reports no number for this outcome");
+  return L(lang, "ไม่ได้สกัดตัวเลข (ดูประโยคต้นฉบับ)", "Number not extracted (see the source sentence)");
+}
+
+function OutcomeEvidence({ paper, o, en, lang, selected, visible, direction, theme }: {
   paper: Paper; o: OutcomeResult; en?: OutcomeResult; lang: Lang; selected: boolean; visible: boolean; direction: boolean;
+  /** qualitative / mixed-methods card: a theme, never a number or a direction */
+  theme: boolean;
 }) {
   const item = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -37,7 +50,7 @@ function OutcomeEvidence({ paper, o, en, lang, selected, visible, direction }: {
   }, [selected, visible]);
   const quote = en?.evidence_quote ?? o.evidence_quote;
   const blanked = isBlankedEffect(paper, en?.outcome ?? o.outcome);
-  const hasEffect = o.effect_value != null && !blanked;
+  const hasEffect = !theme && o.effect_value != null && !blanked;
   const ci = hasEffect ? ciLabel({ ...o, evidence_quote: quote }) : null;
   return (
     <li ref={item} className={`grid gap-2 border-t border-rule pt-3 ${selected ? "-mx-2 rounded-sm bg-surface px-2 pb-2" : ""}`} aria-current={selected || undefined}>
@@ -62,7 +75,7 @@ function OutcomeEvidence({ paper, o, en, lang, selected, visible, direction }: {
         ) : blanked ? (
           <><Hole lang={lang} explain /> <span className="text-sm text-muted">{L(lang, "ค่าที่โมเดลสกัดได้ไม่พบในข้อความต้นฉบับ จึงไม่แสดงและไม่ใช้ในกราฟ", "The extracted value was not found in the paper text, so it is not shown or plotted")}</span></>
         ) : (
-          <span className="text-sm text-muted">{L(lang, "งานวิจัยไม่ได้รายงานตัวเลขสำหรับผลนี้", "The paper reports no number for this outcome")}</span>
+          <span className="text-sm text-muted" data-no-number>{noNumberText(en ?? o, theme, lang)}</span>
         )}
       </p>
       {quote && (
@@ -160,7 +173,8 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
               <Facts paper={paper} card={card} cardEn={cardEn} lang={lang} riskOfBias={showsRiskOfBias(type)} />
               <ul className="grid gap-3">
                 {card.outcomes.map((o, i) => (
-                  <OutcomeEvidence key={`${o.outcome}-${i}`} paper={paper} o={o} en={cardEn?.outcomes[i]} lang={lang} direction={showsDirection(type)}
+                  <OutcomeEvidence key={`${o.outcome}-${i}`} paper={paper} o={o} en={cardEn?.outcomes[i]} lang={lang}
+                    direction={showsCardDirection(type, cardEn ?? card)} theme={isNonQuantitative(cardEn ?? card)}
                     selected={outcome != null && (cardEn?.outcomes[i]?.outcome ?? o.outcome) === outcome} visible={visible} />
                 ))}
               </ul>

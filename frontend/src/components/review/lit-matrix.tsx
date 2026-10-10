@@ -8,7 +8,7 @@ import { SOURCE_ABBR, SOURCE_LABEL } from "@/lib/citation-network";
 import { litColumns, litRows, type LitColumn, type LitRow } from "@/lib/lit-matrix";
 import type { ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { Citations, Paper } from "@/lib/types";
-import { Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
+import { DesignMismatchFlag, Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { SECTION_H2 } from "./report-nav";
 import { L } from "./text";
@@ -55,7 +55,7 @@ function CitedByNote({ lang }: { lang: Lang }) {
 }
 
 function Outcomes({ row, lang }: { row: LitRow; lang: Lang }) {
-  if (!row.outcomes.length) return <span className="text-muted">{L(lang, "ไม่รายงานตัวเลข", "No numbers reported")}</span>;
+  if (!row.outcomes.length) return <span className="text-muted">{row.theme ? "–" : L(lang, "ไม่ได้สกัดผลลัพธ์", "No outcomes extracted")}</span>;
   return (
     <ul className="grid gap-1">
       {row.outcomes.map((o, i) => (
@@ -63,7 +63,9 @@ function Outcomes({ row, lang }: { row: LitRow; lang: Lang }) {
           <span>{o.name}</span>{" "}
           {o.effect && "blanked" in o.effect ? <Hole lang={lang} />
             : o.effect ? <><VerifiedNumber value={o.effect.label} />{o.effect.ci && <> (95% CI <VerifiedNumber value={o.effect.ci} />)</>}</>
-            : <span className="text-muted">{L(lang, "ไม่รายงานตัวเลข", "no numbers reported")}</span>}
+            : row.theme ? <span className="text-muted">{L(lang, "(ประเด็น)", "(theme)")}</span>
+            : o.reportsNone ? <span className="text-muted">{L(lang, "ไม่รายงานตัวเลข", "no numbers reported")}</span>
+            : <span className="text-muted">{L(lang, "ไม่ได้สกัดตัวเลข", "number not extracted")}</span>}
           {o.otherComparison && (
             <span className="text-sm text-muted" data-other-comparison>
               {" "}({L(lang, "การเปรียบเทียบอื่น ไม่นำไปสรุป", "other comparison, not used in the synthesis")}{o.comparison ? `: ${o.comparison}` : ""})
@@ -78,7 +80,12 @@ function Outcomes({ row, lang }: { row: LitRow; lang: Lang }) {
 function Cell({ col, row, lang }: { col: LitColumn; row: LitRow; lang: Lang }) {
   switch (col) {
     case "design":
-      return row.design?.pooled ? <Term k="srma" lang={lang}>{row.design.label}</Term> : <>{row.design?.label}</>;
+      return (
+        <span className="grid gap-1">
+          {row.design?.pooled ? <Term k="srma" lang={lang}>{row.design.label}</Term> : <span>{row.design?.label}</span>}
+          {row.designMismatch && <DesignMismatchFlag lang={lang} />}
+        </span>
+      );
     case "population": return <p className={CLAMP}>{row.population}</p>;
     case "exposure": return <p className={CLAMP}>{row.exposure}</p>;
     case "comparator": return <p className={CLAMP}>{row.comparator || "–"}</p>;
@@ -90,7 +97,12 @@ function Cell({ col, row, lang }: { col: LitColumn; row: LitRow; lang: Lang }) {
           <span className="inline-flex items-center gap-1.5"><Glyph direction={row.direction} lang={lang} />{DIRECTION_LABEL[lang][row.direction]}</span>
           {row.uncertain && <UncertainFlag lang={lang} />}
         </span>
-      ) : null;
+      ) : row.theme ? (
+        <span className="grid gap-1">
+          <span className="text-muted" data-theme-paper>{L(lang, "ประเด็น ไม่มีทิศทางผล", "Themes, no direction")}</span>
+          {row.uncertain && <UncertainFlag lang={lang} />}
+        </span>
+      ) : row.uncertain ? <UncertainFlag lang={lang} /> : null;
     case "risk": return <>{row.risk ? ROB_LABEL[lang][row.risk] : "–"}</>;
     case "n": return <NCell cell={row.n} lang={lang} />;
     case "citedBy": return <CitedBy row={row} lang={lang} />;

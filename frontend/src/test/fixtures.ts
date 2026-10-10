@@ -190,6 +190,99 @@ export const narrativeReviewFixture: Review = {
   },
 };
 
+// --- Plan 20 P0: qualitative / mixed-methods themes, other comparisons, design mismatch -----------------------------
+// A narrative review where P1 is qualitative and P2 mixed methods (themes: effect_measure "none", numbers null). Their
+// stored directions are deliberately "positive" (as an older or misbehaving extractor might leave them): the UI must
+// still show no direction for them anywhere. P3 is a cohort with one question outcome (HR, verified), one other
+// comparison and a design outside the ticked types; P4 is a cohort whose outcome has no number and no "none" flag.
+
+const themeQuote = "Participants described fear of injections and stigma as the main barriers to starting insulin.";
+const themeCard = (design: "qualitative" | "mixed_methods", theme: string): PaperCard => card({
+  study_design: design === "qualitative" ? "Qualitative interview study" : "Mixed-methods study", design_category: design,
+  population: "adults with type 2 diabetes", intervention_or_exposure: "insulin initiation", comparator: null,
+  outcomes: [{ outcome: theme, result: "Fear of injections and stigma were barriers.", evidence_quote: themeQuote,
+    effect_size: null, effect_measure: "none", effect_value: null, ci_lower: null, ci_upper: null, p_value: null,
+    direction: "positive" }],
+  key_findings: ["Fear of injections", "Stigma"], risk_of_bias: "moderate", overall_direction: "positive",
+});
+const qualP3 = card({
+  sample_size: 1234, sample_size_quote: "We enrolled 1,234 adults with type 2 diabetes in a population-based cohort.",
+  outcomes: [
+    { outcome: "CRC incidence", result: "Lower risk of colorectal cancer", evidence_quote: q3, effect_size: "HR 0.80 (0.71–0.90)",
+      effect_measure: "HR", effect_value: 0.8, ci_lower: 0.71, ci_upper: 0.9, p_value: 0.003, direction: "positive",
+      comparison: "metformin vs no metformin", matches_question: true },
+    { outcome: "CRC incidence vs insulin", result: "Lower than insulin users", evidence_quote: q1, effect_size: "HR 0.86",
+      effect_measure: "HR", effect_value: 0.86, ci_lower: 0.77, ci_upper: 0.96, p_value: null, direction: "positive",
+      comparison: "GLP-1RA vs insulin", matches_question: false },
+  ],
+});
+const qualP4 = card({
+  outcomes: [{ outcome: "Adherence", result: "Adherence was higher with once-daily dosing.",
+    evidence_quote: "Adherence was 82% with once-daily dosing versus 64% with twice-daily dosing.", effect_size: null,
+    effect_measure: null, effect_value: null, ci_lower: null, ci_upper: null, p_value: null, direction: "positive" }],
+});
+
+export const qualitativeReviewFixture: Review = {
+  ...reviewFixture,
+  id: "77777777-8888-9999-aaaa-bbbbbbbbbbbb",
+  result: {
+    ...resultFixture,
+    review_type: "narrative",
+    summary: "ผู้ป่วยกลัวการฉีดยาและการตีตรา [P1, P2] งานเชิงปริมาณพบความเสี่ยงต่ำลง 20% [P3]",
+    synthesis: {
+      ...resultFixture.synthesis!,
+      executive_summary: "ผู้ป่วยกลัวการฉีดยาและการตีตรา [P1, P2] งานเชิงปริมาณพบความเสี่ยงต่ำลง 20% [P3]",
+      comparison: [
+        { outcome: "ความกลัวการฉีดยา", cells: [
+          { ref: "P1", finding: "กลัวเข็มและการตีตรา", direction: "positive", design_category: "qualitative" },
+          { ref: "P2", finding: "กลัวเข็ม", direction: "positive", design_category: "mixed_methods" },
+        ] },
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", cells: [
+          { ref: "P3", finding: "ความเสี่ยงต่ำลง", direction: "positive", effect_measure: "HR", effect_value: 0.8, ci_lower: 0.71, ci_upper: 0.9 },
+        ] },
+      ],
+      consensus: [{ statement: "ความกลัวการฉีดยาพบซ้ำ", refs: ["P1", "P2"], explanation: "สองการศึกษารายงานประเด็นเดียวกัน [P1, P2]" }],
+      conflicts: [],
+      evidence_strength: null, evidence_rationale: "",
+    },
+    synthesis_en: undefined,
+    papers: [
+      { ref: "P1", title: "Barriers to insulin initiation: a qualitative interview study", year: 2022, relevance: 90,
+        card: themeCard("qualitative", "Fear of injections"), card_en: themeCard("qualitative", "Fear of injections"),
+        verification: verification({ numbers_verified: 0, numbers_total: 0 }) },
+      { ref: "P2", title: "Insulin initiation in primary care: a mixed-methods study", year: 2021, relevance: 85,
+        card: themeCard("mixed_methods", "Fear of injections"), card_en: themeCard("mixed_methods", "Fear of injections"),
+        verification: verification({ numbers_verified: 0, numbers_total: 0 }) },
+      { ref: "P3", title: "Metformin use and colorectal cancer risk among adults with type 2 diabetes", year: 2021, relevance: 93,
+        card: qualP3, card_en: qualP3, verification: verification({ design_mismatch: true }) },
+      { ref: "P4", title: "Once-daily dosing and adherence in type 2 diabetes", year: 2019, relevance: 70,
+        card: qualP4, card_en: qualP4, verification: verification({ numbers_verified: 0, numbers_total: 0 }) },
+    ],
+    citations: null,
+  },
+};
+
+/** A meta-analysis whose pooling produced nothing (pools: []): "could not pool" everywhere, no computed banner. */
+export const metaNoPoolReviewFixture: Review = {
+  ...reviewFixture,
+  id: "88888888-9999-aaaa-bbbb-cccccccccccc",
+  result: {
+    ...resultFixture,
+    review_type: "meta_analysis",
+    meta_analysis: {
+      version: "meta-1", pools: [],
+      excluded: [
+        { outcome: "CRC incidence", outcome_display: "อุบัติการณ์มะเร็งลำไส้ใหญ่", ref: "P1", measure: "HR", design_category: "cohort", reason: "too_few_studies", k: 2, design_group: "observational" },
+        { outcome: "CRC incidence", outcome_display: "อุบัติการณ์มะเร็งลำไส้ใหญ่", ref: "P3", measure: "HR", design_category: "cohort", reason: "too_few_studies", k: 2, design_group: "observational" },
+      ],
+      reference: [
+        { outcome: "CRC incidence", outcome_display: "อุบัติการณ์มะเร็งลำไส้ใหญ่", ref: "P4", design_category: "sr_ma_observational", measure: "HR", effect: 1.28, ci_lower: 1.05, ci_upper: 1.56 },
+      ],
+      grade: null,
+    },
+  },
+};
+
 /**
  * result.citations as build_citations (backend app/harness/citations.py) shapes it: later papers cite earlier ones, P3
  * has only a Europe PMC reference list, and P5 has no data at all (null coverage: not "cites nothing").

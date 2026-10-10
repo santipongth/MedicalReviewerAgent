@@ -1,11 +1,11 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
-import { designKey, designLabel } from "@/lib/charts-data";
+import { designKey, designLabel, isNonQuantitative, questionDirection } from "@/lib/charts-data";
 import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
-import { isGraded, REVIEW_TYPE_LABEL, showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
-import type { ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, QuestionBlock, Quality, Synthesis } from "@/lib/types";
+import { isGraded, REVIEW_TYPE_LABEL, showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
+import type { ComparisonCell, ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, PaperCard, QuestionBlock, Quality, Synthesis } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, UncertainFlag } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { L } from "./text";
@@ -161,6 +161,12 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
   pooledRefs?: Set<string>; // systematic reviews / meta-analyses: may already include the primary studies
 }) {
   const byRef = new Map((papers ?? []).map((p) => [p.ref, p]));
+  // A qualitative / mixed-methods study's cell is a theme it reports, never a direction (the card's design decides,
+  // the cell's own design_category is the fallback when the paper is not at hand).
+  const isThemeCell = (c: ComparisonCell) => {
+    const p = byRef.get(c.ref);
+    return isNonQuantitative(p ? p.card_en ?? p.card : { design_category: c.design_category });
+  };
   let selectedLine = "";
   if (selected?.outcome !== undefined) {
     for (const row of rows) {
@@ -196,27 +202,34 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const themes = row.cells.filter((c) => isThemeCell(c)).length;
+            return (
             <tr key={row.outcome} className="border-t border-rule">
-              <th scope="row" className="left-0 z-10 bg-surface px-2.5 py-2 text-left font-body font-medium break-words sm:sticky">{row.outcome}</th>
+              <th scope="row" className="left-0 z-10 bg-surface px-2.5 py-2 text-left font-body font-medium break-words sm:sticky">
+                {row.outcome}
+                {themes > 0 && <span className="block text-[0.75rem] font-normal text-muted" data-theme-count>{themeFoundText(themes, lang)}</span>}
+              </th>
               {refs.map((ref) => {
                 const cell = row.cells.find((c) => c.ref === ref);
                 if (!cell) return <td key={ref} className="h-9 text-center text-muted">–</td>;
                 const outcome = outcomeOf(row, ref);
                 const isSel = selected?.ref === ref && selected.outcome === outcome;
+                const theme = isThemeCell(cell);
                 return (
                   <td key={ref} className="h-9 text-center">
                     <button type="button" onClick={() => onSelect(ref, outcome)} aria-pressed={isSel}
-                      aria-label={`${ref}: ${row.outcome} — ${DIRECTION_LABEL[lang][cell.direction]}. ${cell.finding}`}
+                      aria-label={`${ref}: ${row.outcome} — ${theme ? THEME_CELL_LABEL[lang] : DIRECTION_LABEL[lang][cell.direction]}. ${cell.finding}`}
                       title={cell.finding}
                       className={`inline-grid min-h-11 min-w-11 place-items-center rounded-sm border md:h-7 md:min-h-0 md:w-8 md:min-w-0 ${isSel ? "border-ink bg-rail" : "border-transparent hover:border-ink"}`}>
-                      <Glyph direction={cell.direction} lang={lang} />
+                      {theme ? <ThemeMark lang={lang} /> : <Glyph direction={cell.direction} lang={lang} />}
                     </button>
                   </td>
                 );
               })}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -225,12 +238,36 @@ export function ComparisonMatrix({ rows, refs, lang, onSelect, selected, outcome
   );
 }
 
-export function MatrixLegend({ lang }: { lang: Lang }) {
+const THEME_CELL_LABEL: Record<Lang, string> = {
+  th: "พบประเด็นนี้ (งานเชิงคุณภาพ ไม่มีทิศทางผล)",
+  en: "Theme found (qualitative study, no direction)",
+};
+
+/** "Found in k studies": how a qualitative theme is counted (never "supports"). */
+export function themeFoundText(k: number, lang: Lang): string {
+  return L(lang, `พบใน ${k} การศึกษา`, `Found in ${k} ${k === 1 ? "study" : "studies"}`);
+}
+
+/** The matrix mark of a qualitative theme: a neutral word, not a direction shape. */
+function ThemeMark({ lang }: { lang: Lang }) {
+  return (
+    <span aria-hidden="true" data-theme-mark
+      className="rounded-sm border border-ink px-1 font-display text-[0.68rem] leading-[1.35] font-semibold text-ink">
+      {L(lang, "พบ", "found")}
+    </span>
+  );
+}
+
+export function MatrixLegend({ lang, themes = false }: { lang: Lang; themes?: boolean }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-[0.82rem] text-muted">
       {(["positive", "negative", "null", "mixed", "unclear"] as const).map((d) => (
         <span key={d} className="inline-flex items-center gap-1.5"><Glyph direction={d} lang={lang} />{DIRECTION_LABEL[lang][d]}</span>
       ))}
+      {themes && (
+        <span className="inline-flex items-center gap-1.5"><ThemeMark lang={lang} />
+          {L(lang, "ประเด็นจากงานเชิงคุณภาพ/ผสมผสาน (ไม่มีทิศทางผล)", "Theme from a qualitative or mixed-methods study (no direction)")}</span>
+      )}
       <UncertainFlag lang={lang} />
     </div>
   );
@@ -278,6 +315,8 @@ export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs }: {
   );
 }
 
+const otherComparisons = (card: PaperCard) => card.outcomes.filter((o) => o.matches_question === false).length;
+
 export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy" }: {
   papers: Paper[]; lang: Lang; onSelect: Select; selectedRef?: string; type?: ReviewTypeOrLegacy;
 }) {
@@ -285,6 +324,7 @@ export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy"
     <ul className="border-t border-rule">
       {papers.map((p) => {
         const card = lang === "en" ? p.card_en ?? p.card : p.card;
+        const en = p.card_en ?? p.card; // the checked card: design, direction and comparison flags
         return (
           <li key={p.ref} className="border-b border-rule">
             <button type="button" onClick={() => onSelect(p.ref)} aria-pressed={selectedRef === p.ref}
@@ -295,11 +335,22 @@ export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy"
                 <span className="font-display font-semibold break-words">{p.title}</span>
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.85rem] text-muted">
                   {p.year && <span>{p.year}</span>}
-                  {card ? (
+                  {card && en ? (
                     <>
                       <span>{designLabel(designKey(card), lang)}</span>
-                      {showsDirection(type) && <span className="inline-flex items-center gap-1.5"><Glyph direction={card.overall_direction} lang={lang} />{DIRECTION_LABEL[lang][card.overall_direction]}</span>}
+                      {showsCardDirection(type, en) ? (
+                        <span className="inline-flex items-center gap-1.5"><Glyph direction={questionDirection(en)} lang={lang} />{DIRECTION_LABEL[lang][questionDirection(en)]}</span>
+                      ) : isNonQuantitative(en) && (
+                        <span data-theme-paper>{L(lang, "สรุปเป็นประเด็น ไม่มีทิศทางผล", "Themes, no direction")}</span>
+                      )}
                       {showsRiskOfBias(type) && <span>{L(lang, "อคติ", "Bias")}: {ROB_LABEL[lang][card.risk_of_bias]}</span>}
+                      {otherComparisons(en) > 0 && (
+                        <span data-other-comparison>
+                          {otherComparisons(en) === en.outcomes.length
+                            ? L(lang, "การเปรียบเทียบอื่นทั้งหมด (ไม่นำไปสรุป)", "Other comparisons only (not used in the synthesis)")
+                            : L(lang, `มีการเปรียบเทียบอื่น ${otherComparisons(en)} ผล (ไม่นำไปสรุป)`, `${otherComparisons(en)} other comparison${otherComparisons(en) === 1 ? "" : "s"} (not used in the synthesis)`)}
+                        </span>
+                      )}
                     </>
                   ) : (
                     <span className="text-err">{L(lang, "อ่านไม่สำเร็จ", "Could not be read")}{p.error ? ` · ${p.error}` : ""}</span>
