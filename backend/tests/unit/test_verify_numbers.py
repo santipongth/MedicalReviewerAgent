@@ -119,6 +119,21 @@ def test_quoting_only_the_other_outcomes_clause_fails():
     assert outcome_problems(own, STROKE_FIRST, 90, ("stroke",)) == []
 
 
+@pytest.mark.parametrize(("source", "quote", "ci"), [
+    (STROKE_FIRST, "HR 0.80 (0.70-0.91)", True),
+    (STROKE_FIRST, "HR 0.80 (0.70-0.91) and mortality HR 0.86 (0.75-0.99)", True),
+    ("Stroke was reduced, HR 0.80, P = .01; mortality was reduced, HR 0.86, P = .02, in the trial.",
+     "HR 0.80, P = .01; mortality was reduced", False),
+])
+def test_a_quote_that_starts_at_the_statistic_is_bound_by_its_sentence(source, quote, ci):
+    # fix round 3 (B1): the quote's lead-in is empty, so the paper's sentence lead-in ("Results: stroke HR") decides
+    o = outcome(quote, 0.80, 0.70 if ci else None, 0.91 if ci else None, name="mortality")
+    assert outcome_problems(o, source, 90, ("stroke",)) == [
+        "mortality: effect_value 0.8 is reported for 'stroke', not for this outcome"]
+    stroke = outcome(quote, 0.80, 0.70 if ci else None, 0.91 if ci else None, name="stroke")
+    assert outcome_problems(stroke, source, 90, ("mortality",)) == []
+
+
 def test_binding_limits_are_pinned():
     # documented limits: a lead-in naming both outcomes, and outcome names sharing their words, are not judged
     both = outcome(STROKE_FIRST, 0.80, 0.70, 0.91, name="mortality")
@@ -195,6 +210,15 @@ def test_two_spaces_after_a_minus_keep_the_sign():
     o = outcome(source, 0.5, measure="MD")
     assert any("effect_value 0.5 does not appear" in p for p in outcome_problems(o, source, 90))
     assert numbers_in(f"was {MINUS} {THIN}0.5 and - {NBSP}0.4") == [-0.5, -0.4]
+
+
+def test_any_spaces_after_the_unicode_minus_keep_the_sign():
+    # fix round 3 (R6): only the unicode minus may be followed by any number of spaces
+    assert numbers_in(f"MD {MINUS}   0.5 and {MINUS}{NBSP}{NBSP}{THIN} 0.4") == [-0.5, -0.4]
+    source = f"Mean difference was {MINUS}    0.5 points in the treatment arm over the year."
+    assert any("effect_value 0.5 does not appear" in p for p in outcome_problems(outcome(source, 0.5, measure="MD"),
+                                                                                 source, 90))
+    assert numbers_in("Results -   0.86") == [0.86]  # a hyphen stays a minus for at most two spaces
 
 
 # 84edcb5d P5 and f78b2184 P7 (audit runs): correct bindings in multi-outcome sentences must keep verifying.

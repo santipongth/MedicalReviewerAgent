@@ -131,7 +131,8 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   decimal commas (`0,85`) are read only in abstracts that use no decimal point, and are otherwise unreadable (never
   split into two numbers). An effect with a CI must appear as one run (effect, then lower and upper bound; only the
   CI level and integer counts may stand between). An estimate is rejected when the phrase before it (since the
-  previous estimate, or the quote's lead-in for the first one) names another outcome of the card and not this one.
+  previous estimate, or the quote's lead-in for the first one; for a quote that starts at the statistic, the paper's
+  sentence lead-in) names another outcome of the card and not this one.
   Known limit: this binding is lexical; it does not catch wordings that name the outcome after the number, lead-ins
   that name both outcomes, or outcome names that share their words, so there an estimate can still go to the wrong
   outcome of the same passage (the number itself is still verbatim). Fields are blanked one at a time, so an unverifiable p-value leaves a verified effect

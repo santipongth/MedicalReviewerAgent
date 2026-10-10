@@ -15,7 +15,9 @@ Number verification (Plan 19, audit I-1/I-5):
   and not this one: for a later estimate the phrase since the previous estimate ("... mortality (HR 0.86,
   0.75-0.99) and stroke (HR 0.80 ..." cannot give 0.80 to mortality); for the first estimate of the window the
   quote's lead-in, which must name at least half of the other outcome's words ("Results: stroke HR 0.80" cannot be
-  mortality's), because lead-ins often set the scene with general words.
+  mortality's), because lead-ins often set the scene with general words. When that lead-in names no outcome (a quote
+  that starts at the statistic, "HR 0.80 (0.70-0.91)"), the paper's own lead-in from the start of that sentence is
+  judged instead.
   Known limit: binding is lexical. It does not catch wordings that name the outcome after the number ("HR 0.86 for
   mortality and 0.80 for stroke"), lead-ins that name both outcomes, outcome names that share their words
   ("all-cause mortality" vs "cardiovascular mortality") or sibling outcomes the card does not list. There an
@@ -23,8 +25,8 @@ Number verification (Plan 19, audit I-1/I-5):
 - Both sides are parsed by one tokenizer that folds the formats abstracts use: the unicode minus (always a minus, also
   when a space follows it), a hyphen or en dash used as a minus (one that follows a number is a range), "·" decimals,
   comma or space thousands ("1,234", "111 725" with a normal, thin or no-break space), leading-dot decimals
-  ("P = .003") and percentages ("12.5%" is the number 12.5; it never stands for 0.125). A sign may be followed by up
-  to two spaces. Decimal commas ("0,85") are read only when the paper text has no decimal point and never inside a
+  ("P = .003") and percentages ("12.5%" is the number 12.5; it never stands for 0.125). The unicode minus may be
+  followed by any number of spaces, a hyphen or en dash by up to two (more is read as a prose dash). Decimal commas ("0,85") are read only when the paper text has no decimal point and never inside a
   list ("1,2,5"). In a decimal-point text "0,86" or "weeks 2,4" is one opaque token: it matches only the same text
   and never verifies a field (it is never split into 0 and 86).
 - Equality is exact on the decimal value: 0.8 equals 0.80 (the model's JSON float cannot keep a trailing zero, and the
@@ -68,7 +70,7 @@ _REF = re.compile(r"\bP\d+\b")
 _FOLD = str.maketrans({_EM_DASH: _EN_DASH, _MIDDOT: ".", **{c: " " for c in _SPACES}})
 _TOKEN_HEAD = r"""
     (?<![A-Za-z0-9_.])                                  # not glued to a word ("T2D") or inside a decimal
-    (?:(?P<sign>[-SIGNS])\ {0,2})?                      # a sign may be followed by spaces ("MD - 0.5")
+    (?:(?P<sign>[-DASH])\ {0,2}|(?P<usign>MINUS)\ *)?   # "MD - 0.5"; any spaces only after the unicode minus
     (?:
 """
 _TOKEN_TAIL = r"""
@@ -83,7 +85,7 @@ _DEC_COMMA = r"(?<!\d,)(?P<dec_comma>0,\d+|[1-9]\d{0,2},\d{1,2})(?!\d|,\d) |"
 # decimal-point papers: "0,86" (a stray comma decimal) or "2,4" is one opaque token that verifies nothing, never two
 # integers
 _OPAQUE_COMMA = r"(?<!\d,)(?P<opaque>\d+,\d{1,2})(?!\d|,\d) |"
-_HEAD = _TOKEN_HEAD.replace("SIGNS", _EN_DASH + _MINUS)
+_HEAD = _TOKEN_HEAD.replace("DASH", _EN_DASH).replace("MINUS", _MINUS)
 _TOKEN_POINT = re.compile(_HEAD + _OPAQUE_COMMA + _TOKEN_TAIL, re.VERBOSE)
 _TOKEN_COMMA = re.compile(_HEAD + _DEC_COMMA + _TOKEN_TAIL, re.VERBOSE)
 _DECIMAL_POINT = re.compile(r"\d\.\d")
@@ -129,11 +131,12 @@ def _tokens(text: str, comma_decimals: bool | None = None) -> tuple[Tok, ...]:
             raw = "0" + raw
         value = Decimal(raw)
         start = m.start(kind)
-        if sign := m.group("sign"):
-            # a hyphen or en dash right after a number ("0.71 - 0.90", "12% – 15%") is a range, not a minus;
-            # the unicode minus is always a minus
+        if m.group("usign"):  # the unicode minus is always a minus
+            value, start, text_ = -value, m.start("usign"), "-" + text_
+        elif m.group("sign"):
+            # a hyphen or en dash right after a number ("0.71 - 0.90", "12% – 15%") is a range, not a minus
             before = folded[: m.start("sign")].rstrip(" ")
-            if sign == _MINUS or not (before and (before[-1].isdigit() or before[-1] == "%")):
+            if not (before and (before[-1].isdigit() or before[-1] == "%")):
                 value, start, text_ = -value, m.start("sign"), "-" + text_
         out.append(Tok(start, m.end(), value, integer, text_, kind == "opaque"))
     return tuple(out)
@@ -335,6 +338,34 @@ def _bound_elsewhere(name: str, others: tuple[str, ...], phrase: str, lead_in: b
     return best[1] or None
 
 
+_SENTENCE_END = re.compile(r"[.;:!?](?=\s)|\n")
+
+
+def _sentence_lead_in(m: _Match, source: str, p: int) -> str:
+    """The source text from the start of the sentence (or clause) that holds the estimate at p, or from the previous
+    estimate when that is nearer, up to the estimate."""
+    start = 0
+    for e in _SENTENCE_END.finditer(source, 0, m.toks[p].start):
+        start = e.end()
+    k = p - 1
+    while k >= 0 and _gap_ok(m.toks[k], source):
+        k -= 1
+    if k >= 0:
+        start = max(start, m.toks[k].end)
+    return source[start:m.toks[p].start]
+
+
+def _owner(m: _Match, source: str, p: int, name: str, others: tuple[str, ...]) -> str | None:
+    """The other outcome the estimate at p belongs to, if its phrase says so (None = this outcome or undecided).
+    A quote that starts at the statistic ("HR 0.80 (0.70-0.91)") has a lead-in that names no outcome; then the
+    paper's own lead-in, from the start of that sentence, is judged instead."""
+    phrase, lead_in = _phrase_before(m, source, p)
+    owner = _bound_elsewhere(name, others, phrase, lead_in)
+    if owner or not lead_in or _words(name) & _words(phrase):
+        return owner
+    return _bound_elsewhere(name, others, _sentence_lead_in(m, source, p), True)
+
+
 def outcome_failures(o: OutcomeResult, source: str, threshold: int,
                      others: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], str]]:
     """Every problem with the numeric fields it condemns, so callers can null exactly those fields. `others` are the
@@ -370,7 +401,7 @@ def outcome_failures(o: OutcomeResult, source: str, threshold: int,
                     out.append((estimate, (f"{name}: effect_value {o.effect_value:g} and its CI {lo} to {hi} are not "
                                            "reported together (estimate, then its interval) in the paper text")))
                 else:
-                    owners = [_bound_elsewhere(name, others, *_phrase_before(m, source, p)) for p in starts]
+                    owners = [_owner(m, source, p, name, others) for p in starts]
                     if all(owners):
                         out.append((estimate, (f"{name}: effect_value {o.effect_value:g} is reported for "
                                                f"'{owners[0]}', not for this outcome")))
