@@ -235,6 +235,20 @@ h4 {
   white-space: nowrap;
 }
 
+/* Report section nav (Plan 20): fade the edge that has more links, so a cut-off row reads as scrollable. */
+.nav-fade {
+  scrollbar-width: thin;
+}
+.nav-fade[data-fade-end] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+}
+.nav-fade[data-fade-start] {
+  mask-image: linear-gradient(to right, transparent, #000 2.5rem);
+}
+.nav-fade[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+}
+
 .label {
   font: 600 0.75rem/1.3 var(--font-display);
   letter-spacing: 0.04em;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isGraded, REVIEW_TYPE_LABEL, REVIEW_TYPES, reviewTypeOf, SECTIONS_BY_TYPE } from "./review-type";
+import { isGraded, REVIEW_TYPE_LABEL, REVIEW_TYPES, reportLayout, reviewTypeOf, SECTION_BLOCKS, SECTIONS_BY_TYPE, type SectionId } from "./review-type";
 
 describe("review-type", () => {
   it("lists the types with SLR as the default label", () => {
@@ -21,13 +21,33 @@ describe("review-type", () => {
     expect(isGraded("scoping")).toBe(false);
   });
   it("encodes the report sections per type", () => {
-    expect(SECTIONS_BY_TYPE.scoping).toEqual(["summary", "evidence_map", "lit_matrix", "concept_map", "citations", "prisma"]);
     expect(SECTIONS_BY_TYPE.scoping).not.toContain("claims");
     expect(SECTIONS_BY_TYPE.scoping).not.toContain("forest");
+    expect(SECTIONS_BY_TYPE.scoping).not.toContain("sof");
     expect(SECTIONS_BY_TYPE.narrative).not.toContain("prisma");
+    expect(SECTIONS_BY_TYPE.narrative).not.toContain("sof");
     expect(SECTIONS_BY_TYPE.narrative).toContain("claims");
-    expect(SECTIONS_BY_TYPE.slr).toEqual(["summary", "claims", "findings", "forest", "prisma", "lit_matrix", "concept_map", "citations"]);
-    expect(SECTIONS_BY_TYPE.legacy).toEqual(["summary", "claims", "findings", "forest", "prisma"]);
+    expect(SECTIONS_BY_TYPE.legacy).not.toContain("lit_matrix");
+  });
+  it("puts every type in the answer-first order (Plan 20)", () => {
+    const ORDER: SectionId[] = ["title", "bottom_line", "key_findings", "sof", "selection", "characteristics", "results", "rob",
+      "consistency", "landscape", "limitations", "gaps", "discussion", "methods", "references", "downloads"];
+    for (const t of [...REVIEW_TYPES, "legacy"] as const) {
+      const top = reportLayout(t).map((s) => s.id);
+      expect(top, t).toEqual(ORDER.filter((id) => top.includes(id as never)));
+      expect(top.slice(0, 2), t).toEqual(["title", "bottom_line"]);
+      expect(top.at(-1), t).toBe("downloads");
+    }
+    expect(reportLayout("slr").map((s) => s.id)).toEqual(ORDER);
+    expect(reportLayout("scoping").find((s) => s.id === "characteristics")?.blocks).toEqual(["evidence_map", "lit_matrix"]);
+    expect(reportLayout("meta_analysis").find((s) => s.id === "results")?.blocks).toEqual(["findings", "forest", "meta"]);
+    expect(reportLayout("slr").find((s) => s.id === "selection")?.blocks).toEqual(["prisma"]);
+    expect(reportLayout("legacy").find((s) => s.id === "results")?.blocks).toEqual(["findings", "forest"]);
+  });
+  it("lists each block right after a group section that may hold it", () => {
+    for (const t of [...REVIEW_TYPES, "legacy"] as const) {
+      for (const s of reportLayout(t)) for (const b of s.blocks) expect(SECTION_BLOCKS[s.id], `${t} ${b}`).toContain(b);
+    }
   });
   it("shows the citation network after the concept map for every type except legacy", () => {
     for (const t of ["narrative", "slr", "scoping", "meta_analysis"] as const) {

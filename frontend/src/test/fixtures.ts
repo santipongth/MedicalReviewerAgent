@@ -1,5 +1,5 @@
 // Realistic result shaped exactly like the backend's finalize output (sample data for tests and e2e mocks).
-import type { ComparisonCell as Cell, Paper, PaperCard, Review, ReviewResult } from "@/lib/types";
+import type { ComparisonCell as Cell, Paper, PaperCard, Review, ReviewMethods, ReviewResult } from "@/lib/types";
 
 const q3 = "Metformin use was associated with a lower risk of colorectal cancer (HR 0.80, 95% CI 0.71–0.90; p = 0.003).";
 const q1 = "Users of metformin had a lower incidence of colorectal cancer than users of sulfonylureas (HR 0.86, 95% CI 0.77–0.96).";
@@ -435,4 +435,143 @@ export const metaReviewFixture: Review = {
       source_note: "Reference lists and citation counts from OpenAlex; Europe PMC reference lists for papers OpenAlex lacked",
     },
   },
+};
+
+// --- Plan 20: answer-first report (answer, key findings, methods) --------------------------------------------------
+// Each type gets an `answer` and numberless `key_findings` (k = refs, as the backend sets it) plus `result.methods`.
+
+const DEEPSEEK = "openrouter:deepseek/deepseek-v4-pro";
+
+function methodsFixture(over: Partial<ReviewMethods> = {}): ReviewMethods {
+  return {
+    searched_at: "2026-10-05T03:00:30Z",
+    sources: { pubmed: 30, "europe pmc": 12, "europe pmc (rct search)": 4, openalex: 9 },
+    eligibility: { year_from: null, study_types: [], inclusion_criteria: ["Adults with type 2 diabetes"], exclusion_criteria: ["Editorials"] },
+    limits: { candidate_limit: 60, max_papers: 30, min_abstract_chars: 150 },
+    screening: { model: DEEPSEEK, second_model: DEEPSEEK, second_vote: "same_model", borderline: [35, 70], relevance_floor: 35 },
+    extraction: { model: DEEPSEEK, second_model: DEEPSEEK, verify_quotes: true, quote_match_threshold: 90, text: "abstract" },
+    synthesis: { model: DEEPSEEK, pooling: null, grading: "GRADE-lite" },
+    ...over,
+  };
+}
+
+const enRows = (rows: { outcome: string; cells: Cell[] }[], names: string[]) => rows.map((r, i) => ({ ...r, outcome: names[i] }));
+
+/** SLR: incidence (P1–P4, a range of two verified HRs; P2 blanked; P4 an SR/MA) and mortality (P3, no number). */
+export const slrP20ReviewFixture: Review = {
+  ...slrReviewFixture,
+  id: "20200000-0000-4000-8000-000000000001",
+  result: {
+    ...slrReviewFixture.result!,
+    synthesis: {
+      ...resultFixture.synthesis!,
+      answer: "เมตฟอร์มินอาจลดอุบัติการณ์มะเร็งลำไส้ใหญ่ในผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2 แต่หลักฐานมีความเชื่อมั่นต่ำ",
+      key_findings: [
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "งานเชิงสังเกตส่วนใหญ่พบอุบัติการณ์ต่ำลงในผู้ใช้เมตฟอร์มิน แต่มีงานหนึ่งพบทิศทางตรงข้าม", refs: ["P1", "P2", "P3", "P4"], k: 4 },
+        { outcome: "การเสียชีวิตจากมะเร็งลำไส้ใหญ่", statement: "งานเดียวที่รายงานพบว่าอัตราตายไม่ต่างกัน", refs: ["P3"], k: 1 },
+      ],
+    },
+    synthesis_en: {
+      ...resultFixture.synthesis_en!,
+      comparison: enRows(resultFixture.synthesis!.comparison!, ["CRC incidence", "CRC mortality"]),
+      answer: "Metformin may reduce colorectal cancer incidence in adults with type 2 diabetes, but the certainty of the evidence is low.",
+      key_findings: [
+        { outcome: "CRC incidence", statement: "Most observational studies found lower incidence among metformin users; one found the opposite.", refs: ["P1", "P2", "P3", "P4"], k: 4 },
+        { outcome: "CRC mortality", statement: "The one study that reported it found no difference in mortality.", refs: ["P3"], k: 1 },
+      ],
+    },
+    stats: { ...resultFixture.stats, found: 55, unique: 41, with_abstract: 38, no_abstract: 3, candidates: 20, screened: 20, selected: 5 },
+    methods: methodsFixture(),
+  },
+};
+
+/** Meta-analysis: the primary outcome pooled (computed), the safety outcome a range of two verified HRs. */
+export const metaP20ReviewFixture: Review = {
+  ...metaReviewFixture,
+  id: "20200000-0000-4000-8000-000000000002",
+  result: {
+    ...metaReviewFixture.result!,
+    synthesis: {
+      ...metaReviewFixture.result!.synthesis!,
+      answer: "งานวิจัยเชิงสังเกตอาจไม่พบผลต่อผลลัพธ์หลักเมื่อรวมผลกัน ความเชื่อมั่นของหลักฐานต่ำมาก",
+      key_findings: [
+        { outcome: "ผลลัพธ์หลัก", statement: "ค่ารวมของงานเชิงสังเกตไม่ชัดว่ามีผล และงานให้ผลต่างกันมาก", refs: ["P1", "P2", "P3", "P4", "P7"], k: 5 },
+        { outcome: "ผลด้านความปลอดภัย", statement: "งานที่รายงานไม่พบสัญญาณด้านความปลอดภัย", refs: ["P1", "P3", "P5"], k: 3 },
+      ],
+    },
+    synthesis_en: {
+      ...metaReviewFixture.result!.synthesis_en!,
+      answer: "Pooled observational studies may show no effect on the primary outcome; the evidence is very uncertain.",
+      key_findings: [
+        { outcome: "Primary outcome", statement: "The observational pooled estimate is unclear and the studies differ a lot.", refs: ["P1", "P2", "P3", "P4", "P7"], k: 5 },
+        { outcome: "Safety outcome", statement: "The studies that reported it found no safety signal.", refs: ["P1", "P3", "P5"], k: 3 },
+      ],
+    },
+    methods: methodsFixture({
+      sources: { pubmed: 41, "europe pmc": 30, "semantic scholar": 22, arxiv: 3 },
+      screening: { model: DEEPSEEK, second_model: "openrouter:qwen/qwen3-max", second_vote: "two_models", borderline: [35, 70], relevance_floor: 35 },
+      extraction: { model: DEEPSEEK, second_model: "openrouter:qwen/qwen3-max", verify_quotes: true, quote_match_threshold: 90, text: "abstract" },
+      synthesis: { model: DEEPSEEK, pooling: "DerSimonian-Laird random effects", grading: "GRADE-lite" },
+    }),
+  },
+};
+
+/** Meta-analysis that pooled nothing: the answer leads with "could not pool". */
+export const metaNoPoolP20ReviewFixture: Review = {
+  ...metaNoPoolReviewFixture,
+  id: "20200000-0000-4000-8000-000000000003",
+  result: {
+    ...metaNoPoolReviewFixture.result!,
+    synthesis: {
+      ...metaNoPoolReviewFixture.result!.synthesis!,
+      answer: "รวมผลไม่ได้: ไม่มีผลลัพธ์ใดมีงานวิจัยหลักพอที่จะรวมผล งานแต่ละชิ้นส่วนใหญ่ชี้ว่าความเสี่ยงอาจต่ำลง ความเชื่อมั่นต่ำ",
+      key_findings: [
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "งานหลักสองงานพบความเสี่ยงต่ำลง ส่วนงานทบทวนหนึ่งงานพบทิศทางตรงข้าม", refs: ["P1", "P3", "P4"], k: 3 },
+      ],
+    },
+    methods: methodsFixture({ synthesis: { model: DEEPSEEK, pooling: "DerSimonian-Laird random effects", grading: "GRADE-lite" } }),
+  },
+};
+
+/** Scoping: a mapping answer, no grade, sources not recorded (falls back to the queries). */
+export const scopingP20ReviewFixture: Review = {
+  ...scopingReviewFixture,
+  id: "20200000-0000-4000-8000-000000000004",
+  result: {
+    ...scopingReviewFixture.result!,
+    synthesis: {
+      ...scopingReviewFixture.result!.synthesis!,
+      answer: "งานวิจัยเรื่องเมตฟอร์มินกับมะเร็งลำไส้ใหญ่ส่วนใหญ่เป็นงานเชิงสังเกตในผู้ใหญ่ที่เป็นเบาหวาน",
+      key_findings: [
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "งานส่วนใหญ่ศึกษาอุบัติการณ์ด้วยรูปแบบ cohort", refs: ["P1", "P2", "P3", "P4"], k: 4 },
+      ],
+    },
+    methods: methodsFixture({ sources: null, screening: { model: DEEPSEEK, second_model: null, second_vote: "off", borderline: [35, 70], relevance_floor: 35 },
+      extraction: { model: DEEPSEEK, second_model: null, verify_quotes: true, quote_match_threshold: 90, text: "abstract" },
+      synthesis: { model: DEEPSEEK, pooling: null, grading: null } }),
+  },
+};
+
+/** Narrative with qualitative themes: a theme finding ("found in 2 studies") and a one-study finding with its HR. */
+export const narrativeP20ReviewFixture: Review = {
+  ...qualitativeReviewFixture,
+  id: "20200000-0000-4000-8000-000000000005",
+  result: {
+    ...qualitativeReviewFixture.result!,
+    synthesis: {
+      ...qualitativeReviewFixture.result!.synthesis!,
+      answer: "ผู้ป่วยกลัวการฉีดยาและการตีตรา ซึ่งเป็นอุปสรรคต่อการเริ่มอินซูลิน",
+      key_findings: [
+        { outcome: "ความกลัวการฉีดยา", statement: "งานเชิงคุณภาพและแบบผสมผสานพบความกลัวเข็มและการตีตราซ้ำกัน", refs: ["P1", "P2"], k: 2 },
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "งานเชิงปริมาณงานเดียวพบความเสี่ยงต่ำลง", refs: ["P3"], k: 1 },
+      ],
+    },
+    methods: methodsFixture({ synthesis: { model: DEEPSEEK, pooling: null, grading: null } }),
+  },
+};
+
+/** Every Plan 20 fixture, for e2e mocks and per-type screenshots. */
+export const P20_FIXTURES: Record<"slr" | "meta" | "metaNoPool" | "scoping" | "narrative" | "legacy", Review> = {
+  slr: slrP20ReviewFixture, meta: metaP20ReviewFixture, metaNoPool: metaNoPoolP20ReviewFixture, scoping: scopingP20ReviewFixture,
+  narrative: narrativeP20ReviewFixture, legacy: legacyReviewFixture,
 };

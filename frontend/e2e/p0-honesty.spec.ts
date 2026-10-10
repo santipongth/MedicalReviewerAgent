@@ -36,7 +36,7 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(litRow.locator(".g")).toHaveCount(0);
 
     // the bottom-line tally counts only the quantitative papers
-    const summary = page.locator("section:has(#h-summary)");
+    const summary = page.locator("section[aria-labelledby=h-answer]");
     await expect(summary.getByText(/งานเชิงคุณภาพหรือแบบผสมผสาน 2 ฉบับ/)).toBeVisible();
 
     // the source rail for a theme paper: no glyph, no direction words, an honest "no number" line
@@ -62,9 +62,9 @@ for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await mockApi(page, { [`GET /api/v1/reviews/${MID}`]: (route) => json(route, 200, metaNoPoolReviewFixture) });
     await page.goto(`/r/${MID}`);
-    await expect(page.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toContainText("การวิเคราะห์อภิมาน (รวมผลไม่ได้)");
-    await expect(page.locator("section:has(#h-summary)").getByText("การวิเคราะห์อภิมาน (รวมผลไม่ได้)")).toBeVisible();
-    const section = page.locator("section:has(#h-meta)");
+    await expect(page.getByLabel("ข้อมูลรายงาน")).toContainText("การวิเคราะห์อภิมาน (รวมผลไม่ได้)");
+    await expect(page.locator("section[aria-labelledby=h-answer]").getByText("การวิเคราะห์อภิมาน (รวมผลไม่ได้)")).toBeVisible();
+    const section = page.locator("section[aria-labelledby=h-meta]");
     await expect(section.getByRole("heading", { name: "การวิเคราะห์อภิมาน: รวมผลไม่ได้" })).toBeVisible();
     await expect(section.getByText(/อย่างน้อย 3 ฉบับต่อผลลัพธ์/)).toBeVisible();
     await expect(section.getByText(/ไม่ใช่ผลจากงานวิจัยฉบับใด/)).toHaveCount(0);
@@ -72,7 +72,7 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.locator("[data-computed=true]")).toHaveCount(0);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    const r = await new AxeBuilder({ page }).include("section:has(#h-meta)").withTags(["wcag2a", "wcag2aa"]).analyze();
+    const r = await new AxeBuilder({ page }).include("section[aria-labelledby=h-meta]").withTags(["wcag2a", "wcag2aa"]).analyze();
     expect(r.violations.map((v) => `${v.impact} ${v.id}`)).toEqual([]);
   });
 }

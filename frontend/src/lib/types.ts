@@ -126,6 +126,8 @@ export interface KeyFinding {
   statement: string; // no numbers, no [Pn]
   refs: string[];
   k: number; // refs.length
+  /** Set in code (Plan 20 fix round): equals the global evidence_strength; absent before it, then use the global value. */
+  certainty?: EvidenceStrength | null;
 }
 
 /** Plan 20: result.methods (absent in results stored before Plan 20). Models are "provider:model" strings. */

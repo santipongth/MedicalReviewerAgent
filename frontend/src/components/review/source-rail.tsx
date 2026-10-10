@@ -7,8 +7,9 @@ import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlan
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import { showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
-import { DesignMismatchFlag, Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
+import { DesignMismatchFlag, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
+import { ReadingFlag } from "./report-parts";
 import { L } from "./text";
 
 // Results stored before abstract-only reading name the full text they read; new results are always the abstract.
@@ -152,12 +153,12 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
         )}
       </div>
       {!paper ? (
-        <p className="text-[0.92rem] text-muted">{L(lang, "เลือกตัวเลข ช่องในตาราง หรือการอ้างอิง [P1] เพื่อดูประโยคต้นฉบับ", "Select a number, a table cell or a citation like [P1] to see its source sentence")}</p>
+        <p className="text-[0.92rem] text-muted" data-rail-empty>{L(lang, "แตะตัวเลขหรือรหัสงานวิจัยเพื่อดูประโยคต้นฉบับ", "Tap a number or a study code to see its source sentence")}</p>
       ) : (
         <>
           {paper.verification?.uncertain && (
             <p className="flex flex-wrap items-center gap-2 border-t-2 border-dashed border-harm pt-2 font-display text-[0.85rem] font-semibold text-warn">
-              <UncertainFlag lang={lang} />
+              <ReadingFlag lang={lang} />
               <Term k="uncertain" lang={lang}>{L(lang, "หมายถึงอะไร", "what does this mean?")}</Term>
             </p>
           )}

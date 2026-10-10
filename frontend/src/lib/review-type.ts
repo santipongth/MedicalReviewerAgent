@@ -45,26 +45,69 @@ export function isGraded(type: ReviewTypeOrLegacy): boolean {
   return type === "slr" || type === "meta_analysis" || type === "legacy";
 }
 
-export type SectionId =
-  | "summary" | "claims" | "findings" | "evidence_map" | "lit_matrix" | "concept_map" | "forest" | "prisma" | "meta"
-  | "citations";
+/** Top-level report sections (Plan 20 answer-first order). Each gets one H2 and one table-of-contents entry. */
+export type TopSectionId =
+  | "title" | "bottom_line" | "key_findings" | "sof" | "selection" | "characteristics" | "results" | "rob"
+  | "consistency" | "landscape" | "limitations" | "gaps" | "discussion" | "methods" | "references" | "downloads";
 
-/** Report sections per type, in display order; report.tsx renders and numbers its nav from this list (forest and
- * prisma are drawn together by Charts, at the position of whichever comes first). Legacy = today's report exactly. */
+/** Content blocks (Plan 10–14b sections) drawn inside a group section, under their own H3. */
+export type BlockId =
+  | "claims" | "findings" | "evidence_map" | "lit_matrix" | "concept_map" | "forest" | "prisma" | "meta" | "citations";
+
+export type SectionId = TopSectionId | BlockId;
+
+/** Which blocks each group section may hold (a block is listed in SECTIONS_BY_TYPE right after its group). */
+export const SECTION_BLOCKS: Partial<Record<TopSectionId, readonly BlockId[]>> = {
+  selection: ["prisma"],
+  characteristics: ["evidence_map", "lit_matrix"],
+  results: ["findings", "forest", "meta"],
+  consistency: ["claims"],
+  landscape: ["concept_map", "citations"],
+};
+
+/**
+ * Report sections per type, in display order (Plan 20: answer first, methods and references last). A group section
+ * (selection, characteristics, results, consistency, landscape) is followed by the blocks it holds; report.tsx renders
+ * and builds its table of contents from this list, and a section with nothing to show is left out.
+ * "rob" is reserved for the risk-of-bias summary (Plan 20 Task 4); "citations" (Plan 14b) shows only when
+ * result.citations is present; "sof" (summary of findings) is for the graded types that pool or grade per outcome.
+ */
 export const SECTIONS_BY_TYPE: Record<ReviewTypeOrLegacy, SectionId[]> = {
-  // "citations" (Plan 14b) is the citation network; it shows only when result.citations is present.
-  narrative: ["summary", "claims", "findings", "lit_matrix", "concept_map", "citations", "forest"],
-  slr: ["summary", "claims", "findings", "forest", "prisma", "lit_matrix", "concept_map", "citations"],
-  scoping: ["summary", "evidence_map", "lit_matrix", "concept_map", "citations", "prisma"],
-  // An SLR plus the pooled analysis, right after the per-study findings and forest plot (Charts holds forest + prisma,
-  // so the pooled section follows that block).
-  meta_analysis: ["summary", "claims", "findings", "forest", "meta", "prisma", "lit_matrix", "concept_map", "citations"],
-  // The study map renders with forest/prisma exactly as it does today (charts.tsx).
-  legacy: ["summary", "claims", "findings", "forest", "prisma"],
+  narrative: ["title", "bottom_line", "key_findings", "characteristics", "lit_matrix", "results", "findings", "forest",
+    "rob", "consistency", "claims", "landscape", "concept_map", "citations", "limitations", "gaps", "discussion",
+    "methods", "references", "downloads"],
+  slr: ["title", "bottom_line", "key_findings", "sof", "selection", "prisma", "characteristics", "lit_matrix",
+    "results", "findings", "forest", "rob", "consistency", "claims", "landscape", "concept_map", "citations",
+    "limitations", "gaps", "discussion", "methods", "references", "downloads"],
+  // Scoping maps what exists: the evidence map is a study characteristic, and there are no results by outcome.
+  scoping: ["title", "bottom_line", "key_findings", "selection", "prisma", "characteristics", "evidence_map",
+    "lit_matrix", "landscape", "concept_map", "citations", "limitations", "gaps", "discussion", "methods",
+    "references", "downloads"],
+  // An SLR plus the pooled analysis, after the per-study findings and forest plot in the results.
+  meta_analysis: ["title", "bottom_line", "key_findings", "sof", "selection", "prisma", "characteristics",
+    "lit_matrix", "results", "findings", "forest", "meta", "rob", "consistency", "claims", "landscape",
+    "concept_map", "citations", "limitations", "gaps", "discussion", "methods", "references", "downloads"],
+  // Results stored before Plan 14a: the same blocks as before (claims, findings, forest, prisma), in the new order.
+  legacy: ["title", "bottom_line", "key_findings", "selection", "prisma", "results", "findings", "forest",
+    "consistency", "claims", "limitations", "gaps", "discussion", "methods", "references", "downloads"],
 };
 
 export function showsSection(type: ReviewTypeOrLegacy, id: SectionId): boolean {
   return SECTIONS_BY_TYPE[type].includes(id);
+}
+
+export function isBlock(id: SectionId): id is BlockId {
+  return Object.values(SECTION_BLOCKS).some((blocks) => blocks.includes(id as BlockId));
+}
+
+/** SECTIONS_BY_TYPE as top-level sections, each with the blocks listed after it. */
+export function reportLayout(type: ReviewTypeOrLegacy): { id: TopSectionId; blocks: BlockId[] }[] {
+  const out: { id: TopSectionId; blocks: BlockId[] }[] = [];
+  for (const id of SECTIONS_BY_TYPE[type]) {
+    if (isBlock(id)) out.at(-1)?.blocks.push(id);
+    else out.push({ id, blocks: [] });
+  }
+  return out;
 }
 
 /** Scoping reviews map what exists and never tally or draw a direction of effect. */

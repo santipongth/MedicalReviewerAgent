@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo } from "react";
+import { useId, useMemo, type HTMLAttributes } from "react";
 import type { Lang } from "@/lib/i18n";
 import { metaView, type MetaPoolView, type MetaView } from "@/lib/meta-view";
 import type { ComparisonRow, MetaAnalysis, Paper, Quality } from "@/lib/types";
@@ -9,7 +9,7 @@ import { readTokens, type ChartTokens } from "../charts/tokens";
 import { useTheme } from "../theme-toggle";
 import { ComputedNumber, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
-import { SECTION_H2 } from "./report-nav";
+import { SectionHeading, useNested } from "./report-nav";
 import { L } from "./text";
 
 /** The exact banner over every pooled analysis (Plan 14b honest-display rule). */
@@ -19,6 +19,11 @@ const META_BANNER_EN = "Computed by the system from numbers checked against the 
 type Select = (ref: string, outcome?: string) => void;
 
 const H3 = "font-display text-base font-semibold";
+
+/** A sub-heading of this section: H3 on its own, H4 when the section sits inside the results group. */
+function Sub(props: HTMLAttributes<HTMLHeadingElement>) {
+  return useNested() ? <h4 {...props} /> : <h3 {...props} />;
+}
 const REF_BTN = "inline-flex min-h-11 min-w-11 items-center justify-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0 md:min-w-0";
 
 /**
@@ -36,10 +41,10 @@ export function MetaAnalysisSection({ meta, papers, rows, lang, english, filtere
   const view = useMemo(() => (meta ? metaView(meta, papers, rows, lang, english) : null), [meta, papers, rows, lang, english]);
   return (
     <section aria-labelledby="h-meta" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
-      <h2 id="h-meta" className={SECTION_H2}>
+      <SectionHeading id="h-meta">
         {view?.pools.length ? L(lang, "การวิเคราะห์อภิมาน: ค่ารวม", "Meta-analysis: pooled estimates")
           : L(lang, "การวิเคราะห์อภิมาน: รวมผลไม่ได้", "Meta-analysis: not pooled")}
-      </h2>
+      </SectionHeading>
       {!view ? (
         <p className="text-[0.95rem]">
           {L(lang, "รีวิวนี้ไม่มีค่ารวม เพราะขั้นตอนรวมผลทำไม่สำเร็จ ผลแต่ละงานยังอยู่ในตารางและแผนภาพด้านบน",
@@ -80,7 +85,7 @@ function MetaBody({ view, tokens, lang, filtered, quality, onSelect }: {
 
       {view.grade.length > 0 && (
         <div className="grid gap-1.5">
-          <h3 className={H3}>{L(lang, "ผลต่อระดับความแข็งแรงของหลักฐาน", "Effect on the evidence strength")}</h3>
+          <Sub className={H3}>{L(lang, "ผลต่อระดับความแข็งแรงของหลักฐาน", "Effect on the evidence strength")}</Sub>
           <ul className="grid list-disc gap-1 pl-5 text-[0.92rem]">{view.grade.map((g) => <li key={g}>{g}</li>)}</ul>
         </div>
       )}
@@ -118,9 +123,9 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
   const id = useId();
   return (
     <article aria-labelledby={id} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 border-t border-rule pt-4">
-      <h3 id={id} className={`${H3} break-words`}>
+      <Sub id={id} className={`${H3} break-words`}>
         {pool.outcome} · {pool.groupLabel} · {pool.measure}
-      </h3>
+      </Sub>
       <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[1.05rem]">
         <span className="inline-flex items-baseline gap-2">
           <span className="font-display">{L(lang, "ค่ารวม", "Pooled")} {pool.measure}</span>
@@ -193,7 +198,7 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
 function ReferenceRows({ view, lang, onSelect, pooled = true }: { view: MetaView; lang: Lang; onSelect: Select; pooled?: boolean }) {
   return (
     <div className="grid gap-1.5">
-      <h3 className={H3}>{L(lang, "งานทบทวนอย่างเป็นระบบที่พบ (แสดงเพื่ออ้างอิง ไม่นำมารวม)", "Systematic reviews found (shown for reference, never pooled)")}</h3>
+      <Sub className={H3}>{L(lang, "งานทบทวนอย่างเป็นระบบที่พบ (แสดงเพื่ออ้างอิง ไม่นำมารวม)", "Systematic reviews found (shown for reference, never pooled)")}</Sub>
       {/* only when there are estimates above to overlap with */}
       {pooled && <p className="text-[0.85rem] text-muted">{L(lang, "อาจรวมงานวิจัยหลักชุดเดียวกับค่ารวมข้างบน", "They may contain the same primary studies as the estimates above")}</p>}
       <ul className="grid gap-0">
@@ -221,7 +226,7 @@ function ReferenceRows({ view, lang, onSelect, pooled = true }: { view: MetaView
 function ExcludedList({ view, lang }: { view: MetaView; lang: Lang }) {
   return (
     <div className="grid gap-1.5">
-      <h3 className={H3}>{L(lang, "ผลที่ไม่ได้นำมารวม", "Results not pooled")}</h3>
+      <Sub className={H3}>{L(lang, "ผลที่ไม่ได้นำมารวม", "Results not pooled")}</Sub>
       <ul className="grid gap-0">
         {view.excluded.map((g) => (
           <li key={g.reason} className="grid gap-0.5 border-b border-rule py-2 text-[0.92rem]">

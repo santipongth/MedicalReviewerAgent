@@ -8,7 +8,7 @@ import { CitationNetworkFigure } from "../charts/figures";
 import { readTokens } from "../charts/tokens";
 import { useTheme } from "../theme-toggle";
 import { Term } from "../ui/term";
-import { SECTION_H2 } from "./report-nav";
+import { SectionHeading } from "./report-nav";
 import { L } from "./text";
 
 /**
@@ -24,7 +24,7 @@ export function CitationNetworkSection({ citations, papers, lang, onSelect }: {
   const net = useMemo(() => citationNetwork(papers, citations, lang), [papers, citations, lang]);
   return (
     <section aria-labelledby="h-citations" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
-      <h2 id="h-citations" className={SECTION_H2}>{L(lang, "เครือข่ายการอ้างอิง", "Citation network")}</h2>
+      <SectionHeading id="h-citations">{L(lang, "เครือข่ายการอ้างอิง", "Citation network")}</SectionHeading>
       <p className="max-w-[65ch] text-[0.9rem] text-muted">
         {L(lang, "งานใดในรีวิวนี้", "Which studies in this review")}{" "}
         <Term k="citationNetwork" lang={lang}>{L(lang, "อ้างอิงกัน", "cite each other")}</Term>

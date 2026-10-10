@@ -1,14 +1,18 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
+import { createContext, Fragment, useContext, type ReactNode } from "react";
 import { designKey, designLabel, isNonQuantitative, questionDirection } from "@/lib/charts-data";
 import { surnameOf } from "@/lib/author";
 import { DIRECTION_LABEL, ROB_LABEL, STRENGTH_LABEL, type Lang } from "@/lib/i18n";
 import { isGraded, REVIEW_TYPE_LABEL, showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
-import type { ComparisonCell, ComparisonRow, EvidenceCluster, EvidenceStrength, Paper, PaperCard, QuestionBlock, Quality, Synthesis } from "@/lib/types";
+import type { ComparisonCell, ComparisonRow, EvidenceCluster, Paper, PaperCard, QuestionBlock, Quality, Synthesis } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, UncertainFlag } from "../ui/evidence";
 import { Term } from "../ui/term";
+import { CertaintyMark } from "./certainty";
 import { L } from "./text";
+
+/** Thai reading text (DESIGN.md: 17px / 1.75) for running prose in the report: answer, findings, claims, gaps. */
+export const READING = "text-[17px] leading-[1.75]";
 
 export type Select = (ref: string, outcome?: string) => void;
 
@@ -38,17 +42,6 @@ export function CitedText({ text, onSelect, refs }: { text: string; onSelect: Se
   }
   parts.push(text.slice(last));
   return <>{parts}</>;
-}
-
-export function QuestionTitle({ question, topic, lang }: { question?: QuestionBlock; topic: string; lang: Lang }) {
-  const text = lang === "en" && question?.english ? question.english : question;
-  const refined = text?.refined_question || question?.english_topic || topic;
-  return (
-    <header className="grid gap-3">
-      <span className="label">{question?.refined ? L(lang, "คำถามที่เอเจนต์ตีความแล้ว", "Question as the agent interpreted it") : L(lang, "หัวข้อ", "Topic")}</span>
-      <h1 className="max-w-[40ch] text-[clamp(1.2rem,2vw,1.5rem)] font-semibold leading-snug break-words">{refined}</h1>
-    </header>
-  );
 }
 
 /** How the agent read the question: interpretation, PICO, sub-questions, assumptions. One disclosure, no nesting. */
@@ -116,16 +109,14 @@ export function QuestionDetails({ question, lang, type = "legacy" }: { question?
   );
 }
 
-const LEVELS: EvidenceStrength[] = ["very_low", "low", "moderate", "high"];
-
 export function StrengthLine({ synthesis, lang, quality, type = "legacy" }: {
   synthesis: Synthesis; lang: Lang; quality?: Quality; type?: ReviewTypeOrLegacy;
 }) {
   // A typed result with no grade must never read as "very low": only legacy results keep that fallback.
   const ungraded = type !== "legacy" && (!isGraded(type) || synthesis.evidence_strength == null);
   const level = synthesis.evidence_strength ?? "very_low";
-  const idx = LEVELS.indexOf(level);
   const typeName = type === "legacy" ? "" : REVIEW_TYPE_LABEL[type][lang];
+  const rationale = (!ungraded || isGraded(type)) && synthesis.evidence_rationale;
   return (
     <div className="grid gap-1.5">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.92rem]">
@@ -134,11 +125,9 @@ export function StrengthLine({ synthesis, lang, quality, type = "legacy" }: {
             {L(lang, `ไม่ได้ประเมินความแข็งแรงของหลักฐาน (${typeName})`, `Evidence strength not assessed (${typeName})`)}
           </p>
         ) : (
-        <p className="flex items-center gap-2 font-display font-semibold">
+        <p className="flex flex-wrap items-center gap-2 font-display font-semibold">
           <Term k="evidenceStrength" lang={lang}>{L(lang, "ความแข็งแรงของหลักฐาน", "Evidence strength")}</Term>: <b>{STRENGTH_LABEL[lang][level]}</b>
-          <span aria-hidden="true" className="inline-flex gap-0.5">
-            {LEVELS.map((l, i) => <i key={l} className={`h-2 w-[18px] ${i <= idx ? "bg-ink" : "bg-rule"}`} />)}
-          </span>
+          <CertaintyMark level={level} lang={lang} label={false} />
         </p>
         )}
         {quality?.numbers_total ? (
@@ -148,10 +137,27 @@ export function StrengthLine({ synthesis, lang, quality, type = "legacy" }: {
           </p>
         ) : null}
       </div>
-      {/* a graded type left ungraded (no quantitative studies) says why; narrative/scoping need no reason */}
-      {(!ungraded || isGraded(type)) && synthesis.evidence_rationale && <p className="max-w-[65ch] text-[0.88rem] text-muted">{synthesis.evidence_rationale}</p>}
+      {/* A grade's rationale sits behind a disclosure (Plan 20: the answer comes first); a graded type left ungraded
+          (no quantitative studies) says why in the open. Narrative and scoping need no reason. */}
+      {rationale && (ungraded ? <p className="max-w-[65ch] text-[0.88rem] text-muted">{rationale}</p> : (
+        <details className="text-[0.9rem]">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold text-primary md:min-h-0">
+            {L(lang, "เหตุผลของระดับหลักฐาน", "Why this certainty")}
+          </summary>
+          <p className="mt-1 max-w-[65ch] text-muted">{rationale}</p>
+        </details>
+      ))}
     </div>
   );
+}
+
+/** True when both readings of each paper came from the same model (Plan 20): the flag then says "two readings". */
+export const SameModelReadings = createContext(false);
+
+/** The uncertain flag in the report: "two readings disagree" when both readings came from one model. */
+export function ReadingFlag({ lang }: { lang: Lang }) {
+  const same = useContext(SameModelReadings);
+  return <UncertainFlag lang={lang} label={same ? L(lang, "การอ่านสองครั้งไม่ตรงกัน", "two readings disagree") : undefined} />;
 }
 
 /** Outcome × paper; every cell is a glyph button that opens its source in the rail. */
@@ -268,17 +274,18 @@ export function MatrixLegend({ lang, themes = false }: { lang: Lang; themes?: bo
         <span className="inline-flex items-center gap-1.5"><ThemeMark lang={lang} />
           {L(lang, "ประเด็นจากงานเชิงคุณภาพ/ผสมผสาน (ไม่มีทิศทางผล)", "Theme from a qualitative or mixed-methods study (no direction)")}</span>
       )}
-      <UncertainFlag lang={lang} />
+      <ReadingFlag lang={lang} />
     </div>
   );
 }
 
-function RefButtons({ refs, onSelect, lang }: { refs: string[]; onSelect: Select; lang: Lang }) {
+/** Study codes that open the paper in the source rail (44px tall on touch). */
+export function RefButtons({ refs, onSelect, lang }: { refs: string[]; onSelect: Select; lang: Lang }) {
   return (
     <span className="inline-flex flex-wrap gap-1.5">
       {refs.map((r) => (
         <button key={r} type="button" onClick={() => onSelect(r)} aria-label={L(lang, `เปิด ${r}`, `Open ${r}`)}
-          className="rounded-sm border border-rule px-1.5 font-display text-[0.8rem] hover:border-ink">{r}</button>
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm border border-rule px-1.5 font-display text-[0.8rem] leading-normal hover:border-ink md:min-h-6 md:min-w-0">{r}</button>
       ))}
     </span>
   );
@@ -298,9 +305,9 @@ export function ClaimsPanel({ consensus, conflicts, lang, onSelect, refs }: {
           ) : (
             <ul className="grid gap-3">
               {items.map((c) => (
-                <li key={c.statement} className={`grid gap-1.5 rounded-sm p-3 text-[0.92rem] ${isConflict ? "bg-warn-bg" : "bg-ground"}`}>
+                <li key={c.statement} className={`grid gap-1.5 rounded-sm p-3 ${isConflict ? "bg-warn-bg" : "bg-ground"}`}>
                   <b className="font-display">{c.statement}</b>
-                  <p><CitedText text={c.explanation} onSelect={onSelect} refs={refs} /></p>
+                  <p className={READING}><CitedText text={c.explanation} onSelect={onSelect} refs={refs} /></p>
                   {!!c.likely_reasons?.length && (
                     <p className="text-[0.88rem]"><span className="label mr-1.5">{L(lang, "เหตุผลที่เป็นไปได้", "Likely reasons")}</span>{c.likely_reasons.join(" · ")}</p>
                   )}
@@ -355,7 +362,7 @@ export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy"
                   ) : (
                     <span className="text-err">{L(lang, "อ่านไม่สำเร็จ", "Could not be read")}{p.error ? ` · ${p.error}` : ""}</span>
                   )}
-                  {p.verification?.uncertain && <UncertainFlag lang={lang} />}
+                  {p.verification?.uncertain && <ReadingFlag lang={lang} />}
                   {p.verification?.design_mismatch && <DesignMismatchFlag lang={lang} />}
                 </span>
               </span>
@@ -369,13 +376,14 @@ export function PaperList({ papers, lang, onSelect, selectedRef, type = "legacy"
 
 export function QualityNote({ quality, stats, lang, preset }: { quality?: Quality; stats?: { found?: number; with_abstract?: number; selected?: number; extracted?: number; with_fulltext?: number }; lang: Lang; preset?: string }) {
   const total = quality?.timings?.total;
+  const sameModel = useContext(SameModelReadings);
   const parts = [
     stats?.found != null && `${L(lang, "ค้นเจอ", "Found")} ${stats.found}`,
     stats?.selected != null && (stats.with_fulltext != null  // legacy full-text-era result
       ? `${L(lang, "เลือกอ่าน", "read")} ${stats.selected}`
       : `${L(lang, "วิเคราะห์จากบทคัดย่อ", "analysed from abstracts")} ${stats.selected}`),
     stats?.with_fulltext != null && `${L(lang, "ฉบับเต็ม", "full text")} ${stats.with_fulltext}`,
-    quality?.papers_uncertain ? `${L(lang, "สองโมเดลอ่านต่างกัน", "models disagree")} ${quality.papers_uncertain}` : false,
+    quality?.papers_uncertain ? `${sameModel ? L(lang, "การอ่านสองครั้งไม่ตรงกัน", "two readings disagree") : L(lang, "สองโมเดลอ่านต่างกัน", "models disagree")} ${quality.papers_uncertain}` : false,
     total != null && `${L(lang, "ใช้เวลา", "took")} ${Math.round(total)} ${L(lang, "วินาที", "s")}`,
     preset && `${L(lang, "ชุดโมเดล", "model preset")} ${preset}`,
   ].filter(Boolean);

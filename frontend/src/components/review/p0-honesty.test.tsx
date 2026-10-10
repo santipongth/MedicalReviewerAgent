@@ -43,7 +43,7 @@ describe("(a) qualitative and mixed-methods studies never show a direction", () 
 
   it("bottom line: themes are counted aside, never in the direction tally", () => {
     render(<Report review={qualitativeReviewFixture} />);
-    const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    const summary = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
     const tally = within(summary).getByRole("list");
     expect(tally).toHaveTextContent("สนับสนุนผล 2"); // P3 and P4 only, not P1/P2 stored as "positive"
     expect(within(summary).getByText(/งานเชิงคุณภาพหรือแบบผสมผสาน 2 ฉบับ/)).toBeInTheDocument();
@@ -118,8 +118,8 @@ describe("(d) summary and claims prose is plain text", () => {
 describe("(e) a meta-analysis that pooled nothing says so", () => {
   it("chip, bottom line, heading, nav and empty state; no computed banner and no 'estimates above'", () => {
     const { container } = render(<Report review={metaNoPoolReviewFixture} />);
-    expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การวิเคราะห์อภิมาน (รวมผลไม่ได้)");
-    const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("การวิเคราะห์อภิมาน (รวมผลไม่ได้)");
+    const summary = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
     expect(within(summary).getByText("การวิเคราะห์อภิมาน (รวมผลไม่ได้)")).toBeInTheDocument();
     const section = screen.getByRole("heading", { name: "การวิเคราะห์อภิมาน: รวมผลไม่ได้" }).closest("section")!;
     expect(section).toHaveTextContent(/อย่างน้อย 3 ฉบับต่อผลลัพธ์/);
@@ -128,12 +128,14 @@ describe("(e) a meta-analysis that pooled nothing says so", () => {
     expect(within(section).getByRole("heading", { name: /งานทบทวนอย่างเป็นระบบที่พบ/ })).toBeInTheDocument();
     expect(within(section).getByRole("heading", { name: "ผลที่ไม่ได้นำมารวม" })).toBeInTheDocument();
     expect(container.querySelector(".num-computed")).toBeNull();
-    expect(screen.getByRole("link", { name: "รวมผลไม่ได้" })).toHaveAttribute("href", "#h-meta");
+    // the results group holds the not-pooled meta block; its heading says so (the nav names the group)
+    expect(section.closest("section[aria-labelledby='h-results']")).not.toBeNull();
   });
 
   it("English labels", async () => {
     render(<Report review={{ ...metaNoPoolReviewFixture, language: "en", result: { ...metaNoPoolReviewFixture.result!, language: "en" } }} />);
-    expect(screen.getByText(/automated · abstracts only/)).toHaveTextContent("Meta-analysis (not pooled)");
+    expect(screen.getByText("Automated · abstracts only · not medical advice")).toBeInTheDocument();
+    expect(screen.getByLabelText("Report details")).toHaveTextContent("Meta-analysis (not pooled)");
     expect(screen.getByRole("heading", { name: "Meta-analysis: not pooled" })).toBeInTheDocument();
     expect(screen.queryByText(/estimates above/)).toBeNull();
   });

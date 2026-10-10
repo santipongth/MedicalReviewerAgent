@@ -34,6 +34,7 @@ function collect(node: unknown, key: string, out: unknown[] = []): unknown[] {
 function renderAll() {
   options.length = 0;
   render(<Charts result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} />);
+  render(<Charts result={resultFixture} papers={resultFixture.papers!} lang="en" onSelect={() => {}} part="prisma" />);
   const meta = metaReviewFixture.result!;
   render(<MetaAnalysisSection meta={meta.meta_analysis} papers={meta.papers!} rows={meta.synthesis_en!.comparison!} lang="en" english
     filtered={false} onSelect={() => {}} />);

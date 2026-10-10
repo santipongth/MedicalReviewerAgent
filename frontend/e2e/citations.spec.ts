@@ -16,15 +16,17 @@ for (const width of [1440, 390]) {
       await page.emulateMedia({ colorScheme: scheme });
       await mockApi(page, { [`GET /api/v1/reviews/${SID}`]: (route) => json(route, 200, slr) });
       await page.goto(`/r/${SID}`);
-      const section = page.locator("section:has(#h-citations)");
-      await expect(section.getByRole("heading", { level: 2, name: "เครือข่ายการอ้างอิง" })).toBeVisible();
+      const section = page.locator("section[aria-labelledby=h-citations]");
+      await expect(section.getByRole("heading", { level: 3, name: "เครือข่ายการอ้างอิง" })).toBeVisible();
       await expect(section.getByRole("img", { name: "เครือข่ายการอ้างอิง 5 งานวิจัย 4 เส้นเชื่อม" }).locator("svg")).toBeVisible();
       await expect(section.getByText("ไม่มีข้อมูล ≠ ไม่อ้างอิง")).toBeVisible();
-      await expect(page.getByRole("navigation", { name: "ในรายงานนี้" }).getByRole("link", { name: "เครือข่ายการอ้างอิง" })).toHaveAttribute("href", "#h-citations");
+      // the citation network sits in the evidence landscape; the table of contents (xl) or the top nav links the group
+      const nav = page.getByRole("navigation", { name: width >= 1280 ? "สารบัญ" : "ในรายงานนี้" });
+      await expect(nav.getByRole("link", { name: "ภาพรวมความรู้" })).toHaveAttribute("href", "#h-landscape");
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(overflow).toBeLessThanOrEqual(0);
       const axe = async () => {
-        const r = await new AxeBuilder({ page }).include("section:has(#h-citations)").withTags(["wcag2a", "wcag2aa"]).analyze();
+        const r = await new AxeBuilder({ page }).include("section[aria-labelledby=h-citations]").withTags(["wcag2a", "wcag2aa"]).analyze();
         expect(r.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`)).toEqual([]);
       };
       await axe();
@@ -38,7 +40,7 @@ for (const width of [1440, 390]) {
 test("clicking a node of the graph opens the paper in the rail", async ({ page }) => {
   await mockApi(page, { [`GET /api/v1/reviews/${SID}`]: (route) => json(route, 200, slr) });
   await page.goto(`/r/${SID}`);
-  const chart = page.locator("section:has(#h-citations)").getByRole("img", { name: /^เครือข่ายการอ้างอิง/ });
+  const chart = page.locator("section[aria-labelledby=h-citations]").getByRole("img", { name: /^เครือข่ายการอ้างอิง/ });
   await expect(chart.locator("svg")).toBeVisible();
   // Each node is labelled with its ref, and a click on the label is a click on the node (the label is part of it).
   await chart.locator("svg text", { hasText: /^P4$/ }).click();
@@ -48,7 +50,7 @@ test("clicking a node of the graph opens the paper in the rail", async ({ page }
 test("the citation table twin opens a paper in the rail; the lit matrix shows cited-by counts", async ({ page }) => {
   await mockApi(page, { [`GET /api/v1/reviews/${SID}`]: (route) => json(route, 200, slr) });
   await page.goto(`/r/${SID}`);
-  const section = page.locator("section:has(#h-citations)");
+  const section = page.locator("section[aria-labelledby=h-citations]");
   await section.getByRole("button", { name: "ดูเป็นตาราง" }).click();
   const table = section.getByRole("table", { name: "ตารางการอ้างอิง" });
   await expect(table.getByRole("row", { name: /^P5/ })).toContainText("ไม่มีข้อมูล");

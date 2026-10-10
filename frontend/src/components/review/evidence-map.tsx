@@ -2,7 +2,7 @@
 
 import type { EvidenceMap, MapTable } from "@/lib/evidence-map";
 import type { Lang } from "@/lib/i18n";
-import { SECTION_H2 } from "./report-nav";
+import { SectionHeading } from "./report-nav";
 import { L } from "./text";
 
 function Count({ n }: { n: number | undefined }) {
@@ -40,7 +40,7 @@ export function EvidenceMapSection({ map, lang }: { map: EvidenceMap; lang: Lang
   if (!map.byConcept.rows.length && !map.byYear.rows.length) return null;
   return (
     <section aria-labelledby="h-evidence-map" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
-      <h2 id="h-evidence-map" className={SECTION_H2}>{L(lang, "แผนที่หลักฐาน", "Evidence map")}</h2>
+      <SectionHeading id="h-evidence-map">{L(lang, "แผนที่หลักฐาน", "Evidence map")}</SectionHeading>
       <p className="text-[0.85rem] text-muted">{L(lang, "จำนวนงานที่พบ ไม่ใช่การประเมินว่าได้ผล", "Number of studies found, not an assessment of whether something works")}</p>
       {map.byConcept.rows.length > 0 && (
         <CountTable table={map.byConcept} lang={lang}

@@ -14,7 +14,7 @@ for (const width of [1440, 390]) {
       await page.emulateMedia({ colorScheme: scheme });
       await mockApi(page, { [`GET /api/v1/reviews/${MID}`]: (route) => json(route, 200, metaReviewFixture) });
       await page.goto(`/r/${MID}`);
-      const section = page.locator("section:has(#h-meta)");
+      const section = page.locator("section[aria-labelledby=h-meta]");
       await expect(section.getByText("คำนวณโดยระบบจากตัวเลขที่ตรวจกับบทคัดย่อแล้ว — ไม่ใช่ผลจากงานวิจัยฉบับใด")).toBeVisible();
       await expect(section.getByRole("img", { name: /^0\.96 \(คำนวณโดยระบบ/ }).first()).toBeVisible();
       await expect(section.getByRole("img", { name: /Forest plot ค่ารวม/ })).toBeVisible();
@@ -23,7 +23,7 @@ for (const width of [1440, 390]) {
       await section.getByRole("button", { name: "ดูเป็นตาราง" }).click();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(overflow).toBeLessThanOrEqual(0);
-      const r = await new AxeBuilder({ page }).include("section:has(#h-meta)").withTags(["wcag2a", "wcag2aa"]).analyze();
+      const r = await new AxeBuilder({ page }).include("section[aria-labelledby=h-meta]").withTags(["wcag2a", "wcag2aa"]).analyze();
       expect(r.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`)).toEqual([]);
     });
   }
@@ -33,7 +33,7 @@ test("computed numbers carry no verified tape and the pooled estimate is an outl
   await page.setViewportSize({ width: 1440, height: 1000 });
   await mockApi(page, { [`GET /api/v1/reviews/${MID}`]: (route) => json(route, 200, metaReviewFixture) });
   await page.goto(`/r/${MID}`);
-  const section = page.locator("section:has(#h-meta)");
+  const section = page.locator("section[aria-labelledby=h-meta]");
   await expect(section.getByText("คำนวณโดยระบบจากตัวเลขที่ตรวจกับบทคัดย่อแล้ว — ไม่ใช่ผลจากงานวิจัยฉบับใด")).toBeVisible();
   const computed = section.locator("[data-computed=true]");
   expect(await computed.count()).toBeGreaterThan(0);

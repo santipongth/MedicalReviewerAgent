@@ -252,13 +252,15 @@ test("live run: the search queries are listed under the PubMed step", async ({ p
   await expect(page.locator("ol li").filter({ hasText: "metformin colorectal cancer" })).toBeVisible();
 });
 
-test("report: the section nav jumps to the papers", async ({ page }) => {
+test("report: the table of contents jumps to the papers and stays in view", async ({ page }) => {
   await mockApi(page);
   await page.goto(`/r/${RID}`);
-  const nav = page.getByRole("navigation", { name: "ในรายงานนี้" });
-  await nav.getByRole("link", { name: "งานวิจัยที่อ่าน" }).click();
+  const toc = page.getByRole("navigation", { name: "สารบัญ" });
+  await expect(page.getByRole("navigation", { name: "ในรายงานนี้" })).toBeHidden(); // the top nav is below 1280px only
+  await toc.getByRole("link", { name: "งานวิจัยที่อ่าน" }).click();
   await expect(page).toHaveURL(/#h-papers$/);
   await expect(page.locator("#h-papers")).toBeInViewport();
+  await expect(toc.getByRole("link", { name: "คำตอบ" })).toBeInViewport();
 });
 
 test("report on a phone: the section nav sticks below the wrapped site header and jumps clear of it", async ({ page }) => {
@@ -378,30 +380,32 @@ test("landing: choosing the meta-analysis type sends review_type=meta_analysis",
   expect(body.options?.review_type).toBe("meta_analysis");
 });
 
-test("report per review type: badge, sections and nav", async ({ page }) => {
-  const nav = () => page.getByRole("navigation", { name: "ในรายงานนี้" });
+test("report per review type: type in the title block, sections and table of contents", async ({ page }) => {
+  const nav = () => page.getByRole("navigation", { name: "สารบัญ" });
+  const meta = () => page.getByLabel("ข้อมูลรายงาน");
   await openReport(page, scopingReviewFixture);
-  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ").first()).toContainText("การทบทวนขอบเขต");
+  await expect(meta()).toContainText("การทบทวนขอบเขต");
+  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ · ไม่ใช่คำแนะนำทางการแพทย์")).toBeVisible();
   await expect(page.getByRole("heading", { name: "แผนที่หลักฐาน" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่หลักฐาน" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "ตารางงานวิจัย" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่ความรู้" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ลักษณะงานวิจัย" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ภาพรวมความรู้" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "จุดที่ตรงกันและขัดกัน" })).toHaveCount(0);
   await expect(page.getByRole("img", { name: /^Forest plot/ })).toHaveCount(0);
-  await expect(nav().getByRole("link", { name: "จุดตรงกัน/ขัดกัน" })).toHaveCount(0);
+  await expect(nav().getByRole("link", { name: "ตรงกัน/ขัดกัน" })).toHaveCount(0);
+  await expect(nav().getByRole("link", { name: "ผลลัพธ์" })).toHaveCount(0);
 
   await openReport(page, narrativeReviewFixture);
-  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ").first()).toContainText("การทบทวนแบบบรรยาย");
-  await expect(nav().getByRole("link", { name: "ตารางงานวิจัย" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่ความรู้" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่หลักฐาน" })).toHaveCount(0);
+  await expect(meta()).toContainText("การทบทวนแบบบรรยาย");
+  await expect(nav().getByRole("link", { name: "ลักษณะงานวิจัย" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ภาพรวมความรู้" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "การคัดเลือก" })).toHaveCount(0);
   await expect(page.getByRole("table", { name: "เหตุผลที่คัดออก" })).toHaveCount(0);
 
   await openReport(page, slrReviewFixture);
-  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ").first()).toContainText("การทบทวนวรรณกรรมอย่างเป็นระบบ");
-  await expect(nav().getByRole("link", { name: "จุดตรงกัน/ขัดกัน" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนภาพ" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่หลักฐาน" })).toHaveCount(0);
+  await expect(meta()).toContainText("การทบทวนวรรณกรรมอย่างเป็นระบบ");
+  await expect(nav().getByRole("link", { name: "ตรงกัน/ขัดกัน" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ผลลัพธ์" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ตารางสรุปผล" })).toBeVisible();
 });
 
 test("scoping report: PRISMA lists the exclusion reasons; the concept map toggles to its outline", async ({ page }) => {

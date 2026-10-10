@@ -8,9 +8,10 @@ import { SOURCE_ABBR, SOURCE_LABEL } from "@/lib/citation-network";
 import { litColumns, litRows, type LitColumn, type LitRow } from "@/lib/lit-matrix";
 import type { ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { Citations, Paper } from "@/lib/types";
-import { DesignMismatchFlag, Glyph, Hole, UncertainFlag, VerifiedNumber } from "../ui/evidence";
+import { DesignMismatchFlag, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
-import { SECTION_H2 } from "./report-nav";
+import { SectionHeading } from "./report-nav";
+import { ReadingFlag } from "./report-parts";
 import { L } from "./text";
 
 const CLAMP = "line-clamp-4 break-words";
@@ -95,14 +96,14 @@ function Cell({ col, row, lang }: { col: LitColumn; row: LitRow; lang: Lang }) {
       return row.direction ? (
         <span className="grid gap-1">
           <span className="inline-flex items-center gap-1.5"><Glyph direction={row.direction} lang={lang} />{DIRECTION_LABEL[lang][row.direction]}</span>
-          {row.uncertain && <UncertainFlag lang={lang} />}
+          {row.uncertain && <ReadingFlag lang={lang} />}
         </span>
       ) : row.theme ? (
         <span className="grid gap-1">
           <span className="text-muted" data-theme-paper>{L(lang, "ประเด็น ไม่มีทิศทางผล", "Themes, no direction")}</span>
-          {row.uncertain && <UncertainFlag lang={lang} />}
+          {row.uncertain && <ReadingFlag lang={lang} />}
         </span>
-      ) : row.uncertain ? <UncertainFlag lang={lang} /> : null;
+      ) : row.uncertain ? <ReadingFlag lang={lang} /> : null;
     case "risk": return <>{row.risk ? ROB_LABEL[lang][row.risk] : "–"}</>;
     case "n": return <NCell cell={row.n} lang={lang} />;
     case "citedBy": return <CitedBy row={row} lang={lang} />;
@@ -139,7 +140,7 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
   return (
     <section aria-labelledby="h-litmatrix" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 id="h-litmatrix" className={SECTION_H2}>{L(lang, "ตารางงานวิจัย", "Literature review matrix")}</h2>
+        <SectionHeading id="h-litmatrix">{L(lang, "ตารางงานวิจัย", "Literature review matrix")}</SectionHeading>
         {!offline && (
           <a href={exportUrl(reviewId, "csv")} download
             className="inline-flex min-h-11 items-center font-display text-[0.9rem] font-semibold text-primary underline underline-offset-2 md:min-h-0">
@@ -172,7 +173,7 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
                       {row.byline && <span className="text-[0.75rem] font-normal text-muted no-underline">{row.byline}</span>}
                     </button>
                     {/* the direction column is dropped (scoping), so the uncertain flag lives next to the ref */}
-                    {!cols.includes("direction") && row.uncertain && <UncertainFlag lang={lang} />}
+                    {!cols.includes("direction") && row.uncertain && <ReadingFlag lang={lang} />}
                   </th>
                   {row.failed ? (
                     <FailedCells others={others} row={row} lang={lang} />

@@ -1,24 +1,52 @@
 "use client";
 
-import { exportUrl } from "@/lib/api";
 import { directionTally, hasPooledPapers, themePapers } from "@/lib/charts-data";
 import { POOLED_OVERLAP_TH } from "@/lib/copy";
 import { DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "@/lib/i18n";
+import { DESIGN_GROUP_LABEL, fixed } from "@/lib/meta-view";
 import { isMetaNotPooled, reviewTypeOf, showsDirection } from "@/lib/review-type";
-import type { Paper, QuestionBlock, ReviewResult, Synthesis } from "@/lib/types";
-import { CopyLinkButton } from "../ui/copy-link";
-import { Glyph } from "../ui/evidence";
+import type { Paper, Pool, ReviewResult, Synthesis } from "@/lib/types";
+import { ComputedNumber, Glyph } from "../ui/evidence";
 import { Term } from "../ui/term";
-import { CitedText, QuestionTitle, StrengthLine, type Select } from "./report-parts";
+import { CitedText, READING, StrengthLine, type Select } from "./report-parts";
 import { SECTION_H2 } from "./report-nav";
 import { L } from "./text";
 
-const LINK = "inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0";
+/** The pools in reading order: the graded (primary) outcome first, as the backend computed them. */
+function orderedPools(result: ReviewResult): Pool[] {
+  const pools = result.meta_analysis?.pools ?? [];
+  const primary = result.meta_analysis?.grade?.primary_outcome;
+  return [...pools].sort((a, b) => Number(b.outcome === primary) - Number(a.outcome === primary));
+}
 
-/** The answer first: question, evidence strength, summary, how the papers split, and what to do with the report. */
-export function BottomLine({ id, question, topic, synthesis, result, papers, lang, offline, onSelect, refs }: {
-  id: string; question?: QuestionBlock; topic: string; synthesis: Synthesis; result: ReviewResult; papers: Paper[];
-  lang: Lang; offline: boolean; onSelect: Select; refs: Set<string>;
+/** One pooled estimate in a sentence: outcome, group, k, then the computed value and interval (ComputedNumber only). */
+export function PooledLine({ pool, lang, english }: { pool: Pool; lang: Lang; english: boolean }) {
+  const outcome = english ? pool.outcome : pool.outcome_display || pool.outcome;
+  const group = DESIGN_GROUP_LABEL[pool.design_group]?.[lang] ?? pool.design_group;
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-2 gap-y-1" data-pooled-line>
+      <span className="font-display font-semibold break-words">{outcome}</span>
+      <span className="text-[0.88rem] text-muted">{group} · k = <span className="tabular-nums">{pool.k}</span></span>
+      <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
+        <span className="font-display">{pool.measure}</span>
+        <ComputedNumber value={fixed(pool.pooled.est, 2)} lang={lang} />
+        <span className="font-display text-muted">(95% CI</span>
+        <ComputedNumber value={`${fixed(pool.pooled.ci_lower, 2)}–${fixed(pool.pooled.ci_upper, 2)}`} lang={lang} tag={false} />
+        <span className="font-display text-muted">)</span>
+      </span>
+    </li>
+  );
+}
+
+/**
+ * The bottom line (Plan 20): the direct answer with its certainty, the pooled value(s) of a meta-analysis (computed)
+ * or "could not pool", how the papers split, and the grading rationale behind a disclosure. A result stored before
+ * Plan 20 has no `answer`: its executive summary leads here instead (and no Discussion section repeats it).
+ */
+export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, english }: {
+  synthesis: Synthesis; result: ReviewResult; papers: Paper[]; lang: Lang; onSelect: Select; refs: Set<string>;
+  /** the reader switched a Thai review to English: English pool names */
+  english: boolean;
 }) {
   const hasPapers = papers.length > 0;
   const type = reviewTypeOf(result);
@@ -28,10 +56,11 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
   // Qualitative / mixed-methods studies are never tallied by direction; they are counted as themes instead.
   const themes = type === "scoping" ? 0 : themePapers(papers).length;
   const notPooled = isMetaNotPooled(result);
+  const pools = type === "meta_analysis" ? orderedPools(result) : [];
+  const lead = synthesis.answer?.trim() || synthesis.executive_summary || result.summary || "";
   return (
-    <section aria-labelledby="h-summary" className="grid gap-4">
-      <QuestionTitle question={question} topic={topic} lang={lang} />
-      {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} />}
+    <section aria-labelledby="h-answer" className="grid gap-4">
+      <h2 id="h-answer" className={SECTION_H2}>{L(lang, "คำตอบโดยสรุป", "Bottom line")}</h2>
       {notPooled && (
         <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.92rem]" data-not-pooled>
           <span className="label rounded-sm bg-warn-bg px-2 py-1">{L(lang, "การวิเคราะห์อภิมาน (รวมผลไม่ได้)", "Meta-analysis (not pooled)")}</span>
@@ -39,20 +68,26 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
             "No outcome had at least 3 primary studies measured the same way, so there is no pooled estimate")}</span>
         </p>
       )}
-      <div className="grid gap-2">
-        <h2 id="h-summary" className={SECTION_H2}>{L(lang, "สรุป", "Summary")}</h2>
-        {/* Model prose: plain text only. A number in it is never styled as verified (no tape, no verified face). */}
-        <p className="max-w-[65ch] text-[1.02rem] leading-[1.75]" data-prose>
-          <CitedText text={synthesis.executive_summary || result.summary || ""} onSelect={onSelect} refs={refs} />
-        </p>
-        {hasPapers && <p className="text-[0.8rem] text-muted">
-          {type === "scoping"
-            ? L(lang, "สรุปเขียนโดยโมเดล ข้อความสรุปไม่ใช่ตัวเลขที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะรหัสงานวิจัยในรายการ)",
-              "The summary is written by a model and is not itself a verified number. Numbers checked against the papers carry a striped underline; see them in the source rail (select a paper in the list).")
-            : L(lang, "สรุปเขียนโดยโมเดล ข้อความสรุปไม่ใช่ตัวเลขที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะช่องในตารางผลแต่ละการศึกษา) และในมุมมองตารางของแผนภาพ",
-              "The summary is written by a model and is not itself a verified number. Numbers checked against the papers carry a striped underline; see them in the source rail (select a cell in the findings table) and in the table view of the charts.")}
-        </p>}
-      </div>
+      {/* Model prose: plain text only. A number in it is never styled as verified (no tape, no verified face). */}
+      <p className={`max-w-[65ch] ${READING}`} data-prose data-answer={synthesis.answer?.trim() ? "" : undefined}>
+        <CitedText text={lead} onSelect={onSelect} refs={refs} />
+      </p>
+      {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} />}
+      {pools.length > 0 && (
+        <div className="grid gap-1.5" data-bottom-pools>
+          <p className="label">{L(lang, "ค่ารวม (คำนวณโดยระบบ ไม่ใช่ตัวเลขจากงานวิจัยฉบับใด)", "Pooled estimate (computed by the system, not from any single study)")}</p>
+          <ul className="grid gap-1.5">
+            {pools.map((p, i) => <PooledLine key={`${p.outcome}|${p.design_group}|${p.measure}|${i}`} pool={p} lang={lang} english={english} />)}
+          </ul>
+        </div>
+      )}
+      {hasPapers && <p className="text-[0.8rem] text-muted">
+        {type === "scoping"
+          ? L(lang, "สรุปเขียนโดยโมเดล ข้อความสรุปไม่ใช่ตัวเลขที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะรหัสงานวิจัยในรายการ)",
+            "The summary is written by a model and is not itself a verified number. Numbers checked against the papers carry a striped underline; see them in the source rail (select a paper in the list).")
+          : L(lang, "สรุปเขียนโดยโมเดล ข้อความสรุปไม่ใช่ตัวเลขที่ตรวจแล้ว ตัวเลขที่ตรวจกับต้นฉบับแล้วมีเส้นใต้ลายเทป ดูได้ในแถบต้นฉบับ (แตะช่องในตารางผลแต่ละการศึกษา) และในมุมมองตารางของแผนภาพ",
+            "The summary is written by a model and is not itself a verified number. Numbers checked against the papers carry a striped underline; see them in the source rail (select a cell in the findings table) and in the table view of the charts.")}
+      </p>}
       {shown.length > 0 && (
         <div className="grid gap-1.5 text-[0.92rem]">
           <p className="text-muted">
@@ -79,28 +114,6 @@ export function BottomLine({ id, question, topic, synthesis, result, papers, lan
             `${themes} qualitative or mixed-methods ${themes === 1 ? "study is" : "studies are"} summarised as the themes found, not counted by direction`)}
         </p>
       )}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.9rem]">
-        {!offline && (
-          <details>
-            <summary className="inline-flex min-h-11 cursor-pointer items-center rounded-sm border border-rule px-3 font-display md:min-h-0 md:py-1.5">
-              {L(lang, "ดาวน์โหลด", "Download")}
-            </summary>
-            <nav aria-label={L(lang, "ดาวน์โหลดรีวิว", "Download this review")} className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-              <a href={`/r/${encodeURIComponent(id)}/report.html`} download className={LINK}>
-                {L(lang, "HTML (เปิดได้ออฟไลน์)", "HTML (works offline)")}
-              </a>
-              {([["md", "Markdown"], ["csv", "CSV"], ["json", "JSON"]] as const).map(([fmt, name]) => (
-                <a key={fmt} href={exportUrl(id, fmt)} download className={LINK}>{name}</a>
-              ))}
-            </nav>
-          </details>
-        )}
-        {!offline && <CopyLinkButton />}
-        <button type="button" onClick={() => window.print()}
-          className="cursor-pointer rounded-sm border border-rule bg-transparent px-3 py-1.5 font-display text-sm hover:text-primary">
-          {L(lang, "พิมพ์", "Print")}
-        </button>
-      </div>
     </section>
   );
 }
