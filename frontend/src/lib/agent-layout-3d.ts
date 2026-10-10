@@ -1,72 +1,110 @@
-// Pure 3D layout for the optional 3D agent stage: node positions, edge curves, reader-pool slots, evidence piles,
-// the tray under them, and bounds. Plain tuples only (no three import) so it stays tiny, testable and out of every
-// eager chunk.
+// Pure 3D layout for the optional 3D agent stage (Plan 18): the five team members standing around a low round table,
+// their phase tiles, the hand-off arcs between their heads, the evidence piles on the table, and what the camera must
+// keep in view. Plain tuples only (no three import) so it stays tiny, testable and out of every eager chunk.
 // Attribution: see NOTICE.md (AI-Agent-observatory by sakshigupta372, used with permission).
 // The arc formula (lifted midpoint, quadratic control through it) is adapted from the AI-Agent-observatory project.
-import { PIPELINE, type AgentId, type EdgeId } from "./agent-scene";
+import type { MemberId } from "./agent-team";
 import { DIRECTION_ORDER } from "./i18n";
 import type { Direction } from "./types";
 
 export type Vec3 = [number, number, number];
 export interface Seg3 { a: Vec3; c: Vec3; b: Vec3 } // quadratic control through the lifted midpoint
-export interface Tray3D { y: number; x0: number; x1: number; z0: number; z1: number }
-export interface Layout3D {
-  nodes: Partial<Record<AgentId, Vec3>>; // visible agents only
-  edges: { id: EdgeId; seg: Seg3 }[];
-  slots: Vec3[];
-  piles: Record<Direction, Vec3> | null; // base of each direction's pile; null while there are no slots
-  tray: Tray3D | null; // flat plane under the pool and the piles; null while there are no slots
-  frame: Vec3[]; // what the camera must keep in view: geometry plus the room DOM labels take (see layout3dFor)
-  bounds: { min: Vec3; max: Vec3 }; // box around every frame point
-}
-export interface Layout3DOpts { showLocalize: boolean; showExternal: boolean; slots: number }
 
-const MAX_SLOTS = 30;
-const STEP = 1.9; // spacing between lane agents along x
-const CURVE = 0.008; // z = -CURVE * x^2 (a gentle bow: a deeper curve crowded the two end nodes in perspective)
-const EXTERNAL_Y = 1.6;
-// Far enough below the lane that the read label's count never sits on the pool.
-export const POOL_Y = -2.3;
-// The pool, piles and tray sit this far in front of the lane: closer to the camera they draw larger (the fit is
-// bound by the lane's width, so the stage's spare height takes the shift), and full piles (10 tokens high) stay clear
-// of the synth label above them on screen.
-export const POOL_FORWARD = 1.6;
-const POOL_COLS = 6;
-const POOL_PITCH = 0.35;
-/** Half-extent of the largest reader-pool silhouette (sphere radius 0.12 x the 1.5 uncertain scale). */
-export const SLOT_HALF = 0.18;
+/** Member order around the table, left to right as seen from the camera (the pipeline order). */
+export const TEAM_ORDER: readonly MemberId[] = ["planner", "researcher", "screener", "reader", "synthesizer"];
 
-// --- evidence piles: one pile per direction, tokens stacked 10 high, later tokens start stacks further back -------
-// 0.6, not 0.4: at the fitted distance (~45 px per unit) a 0.4 pitch put the per-pile DOM labels (glyph / count /
-// flag count) on top of each other.
-export const PILE_PITCH = 0.6;
-// Tokens are ~0.2 tall (1.5x the first cut); a 0.15 rise keeps a stack reading as one column without growing a full
-// pile much taller.
-export const PILE_RISE = 0.15;
-export const PILE_STACK = 10;
-export const PILE_STACK_DZ = 0.3; // deeper than the widest token (0.24), so stacks behind never intersect
+// --- robot geometry (world units; a robot stands on y = 0) --------------------------------------------------------
+export const BODY_R = 0.24;
+export const BODY_H = 0.5;
+export const HEAD: Vec3 = [0.6, 0.46, 0.44]; // width, height, depth
+export const HEAD_Y = BODY_H + 0.05 + HEAD[1] / 2; // head centre
+export const EYE_R = 0.065;
+export const EYE_DX = 0.14;
+export const ANTENNA_H = 0.22;
+export const BALL_R = 0.065;
+export const BALL_Y = HEAD_Y + HEAD[1] / 2 + ANTENNA_H + BALL_R * 0.5;
+
+// --- phase tiles: four flat tiles on a shallow arc above the head, left to right คิด, วิเคราะห์, วางแผน, ลงมือ ---------
+export const TILE = 0.17; // side of a square tile
+export const TILE_T = 0.035; // thickness
+export const TILE_RAISE = 0.1; // the active tile sits this much higher
+const TILE_X = [-0.345, -0.115, 0.115, 0.345]; // centres across the head
+const TILE_BOW = [0, 0.055, 0.055, 0]; // the middle tiles sit higher: a shallow arc
+const TILE_TILT = [0.22, 0.07, -0.07, -0.22]; // each tile leans with the arc (rad about z)
+const TILE_LIFT = 0.3; // outer tiles' centres above the antenna ball
+
+// --- the table: round, drawn a little wider than deep so the team can spread across the flat box -------------------
+export const TABLE_R = 2.0;
+export const TABLE_STRETCH = 1.4; // x scale of the table top
+export const TABLE_TOP = 0.32; // a low table: the top is below a robot's waist
+export const TABLE_T = 0.07;
+export const TABLE_LEG_R = 0.3;
+
+// --- members around the table: an elliptical arc behind it, open toward the camera ---------------------------------
+const RING_X = 6.8;
+const RING_Z = 2.8;
+const RING_DEG = [180, 136, 90, 44, 0];
+const FACE_Z = 3.5; // robots turn toward a point in front of the table (toward the viewer), not straight at its centre
+
+// --- evidence piles on the table: one per direction, 5 tokens high, later tokens start stacks further back ----------
+// 0.75 apart, so the one-line per-pile DOM labels (glyph, count, flag count) never sit on each other.
+export const PILE_PITCH = 0.75;
+export const PILE_RISE = 0.12;
+export const PILE_STACK = 5;
+export const PILE_STACK_DZ = 0.27; // deeper than the widest token (0.24), so stacks behind never intersect
 export const PILE_CAP = 30;
 /** Half-width of the widest pile token (the flat "no association" bar is 0.33 wide). */
 export const PILE_HALF = 0.165;
-const PILE_FROM_SYNTH = 0.6; // first base starts near synth.x - 0.6 ...
-const POOL_PILE_GAP = 0.2; // ... but never closer than this to the pool's silhouettes
-const TRAY_PAD = 0.3;
-const TRAY_DROP = 0.2;
-const THOUGHT_HEADROOM = 0.9; // the floating thought label (centred 0.85 above its node) sits above the highest node
+const PILE_FRONT_Z = 0.85; // the first stack sits toward the table's front edge, later stacks behind it
+const PILE_BASE_LIFT = 0.1; // token centres sit this far above the table top
 
-// Room the DOM labels take, in world units at the fitted distance (~39 px per unit across, ~30 px per unit of height
-// on screen; 12px Thai text, 15px lines). Label anchors in model-3d.ts use the same constants, so framing and labels
-// stay in step. The piles' caption hangs a fixed number of pixels under the pile labels (CSS), so it is framed here
-// as part of PILE_LABEL_ROOM.
-export const PILE_LABEL_DROP = 0.32; // top of a pile's label (and of the caption's box), below its base
-export const PILE_LABEL_FORWARD = 0.2; // pile labels and caption sit slightly in front of the bases
-export const POOL_LABEL_GAP = 0.25; // pool label's right edge, left of the pool's silhouettes
-const NODE_LABEL_ROOM: [number, number] = [0.9, 2.1]; // half-width, depth below the node (up to 3 lines)
-const THOUGHT_ROOM: [number, number] = [1.4, 1.2]; // half-width of a short thought label, top above its node
-const SIDE_LABEL_ROOM = 2.4; // external node's label: to its left
-const POOL_LABEL_ROOM: [number, number] = [3.9, 0.5]; // width (to the left), half-height
-const PILE_LABEL_ROOM = 2.1; // 3-line pile labels (45px) plus the caption line under them
-const CAPTION_HALF = 1.8; // half-width of the caption
+// Room the DOM labels take, in world units at the fitted distance (~70 px per unit; 12px Thai text, 15px lines).
+// Label anchors in model-3d.ts use the same constants, so framing and labels stay in step.
+export const PILE_LABEL_DROP = 0.3; // top of a pile's label (and of the caption's box), below the front stack's base
+export const PILE_LABEL_FORWARD = 0.95; // pile labels hang in front of the table's front edge
+export const NAME_DROP = 0.08; // top of a member's name label, below its feet
+export const BUBBLE_GAP = 0.12; // bubble's tail tip, above the top of the raised tile arc
+const NAME_ROOM: [number, number] = [0.75, 0.4]; // half-width, depth below the feet (one 12px line)
+export const BUBBLE_W = 4.3; // world width of the widest bubble (260px)
+// World height of a 3-line bubble (about 73px: 3 x 17.4px lines, padding, border, the 7px tail) at the narrowest
+// offered stage (1024px wide, where the fitted camera gives about 44 px per unit at the bubble's tail). A bubble is
+// DOM text of fixed pixel size while the scene scales with the stage, so this is sized for the worst case; wider
+// stages just get a little spare room above the bubble.
+export const BUBBLE_H = 1.7;
+/** The end members' bubbles grow inward from a tail this far (world units; 24px) from their outer edge. */
+export const BUBBLE_TAIL_IN = 0.4;
+/**
+ * The end members stand further forward than their neighbours, so their tiles sit lower on screen; their inward bubble
+ * is lifted this much more so it clears the next member's tiles.
+ */
+export const BUBBLE_END_LIFT = 0.75;
+const PILE_LABEL_ROOM = 0.6; // one-line pile labels plus the caption line under them
+const CAPTION_HALF = 1.5;
+
+/** Where a member's bubble sits over its tail: centred, or growing inward for the two end members. */
+export type BubbleAlign = "start" | "center" | "end";
+
+export interface Member3D {
+  feet: Vec3; // where the robot stands
+  head: Vec3; // head centre
+  ball: Vec3; // antenna ball (packets leave and land here)
+  yaw: number; // rotation about +y so the face (+z) turns toward the viewer side of the table
+  tiles: Vec3[]; // 4 tile centres at rest, in phase order
+  raised: Vec3[]; // the same tiles raised (active)
+  tileRot: number[]; // tile rotation about z, tangent to the arc
+  tilesTop: number; // highest point of the raised arc (y)
+  bubble: BubbleAlign;
+  bubbleY: number; // the bubble's tail tip (y): above the tiles; the end members' higher, clear of the next member's tiles
+}
+export interface TeamLayout3D {
+  members: Record<MemberId, Member3D>;
+  table: { at: Vec3; r: number; stretch: number }; // centre of the table top, radius, x scale
+  piles: Record<Direction, Vec3>; // base (first token centre) of each direction's pile, on the table
+  arcs: Record<string, Seg3>; // `${from}>${to}` for every ordered pair of members, head to head
+  frame: Vec3[]; // what the camera must always keep in view: geometry plus the room DOM labels take
+  bubbles: Record<MemberId, [Vec3, Vec3]>; // top corners of each member's speech bubble (framed only while it speaks)
+  bounds: { min: Vec3; max: Vec3 }; // box around every frame and bubble point
+}
 
 export function arc3(a: Vec3, b: Vec3, bend = 0.18): Seg3 {
   const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
@@ -96,12 +134,15 @@ export function arc3Z(s: Seg3, t: number): number {
   return u * u * s.a[2] + 2 * u * t * s.c[2] + t * t * s.b[2];
 }
 
+/** Key of the hand-off arc from one member to another. */
+export const arcKey = (from: MemberId, to: MemberId): string => `${from}>${to}`;
+
 /**
  * Position of token `i` (0-based, clamped to PILE_CAP - 1) of a direction's pile, written into `out` (no allocation;
- * called per frame). Tokens rise PILE_RISE each, PILE_STACK per stack; tokens 10-19 and 20-29 start new stacks
- * PILE_STACK_DZ and 2 x PILE_STACK_DZ further back. Returns null when the layout has no piles.
+ * called per frame). Tokens rise PILE_RISE each, PILE_STACK per stack; each later group of PILE_STACK starts a new
+ * stack PILE_STACK_DZ further back. Returns null when the layout has no piles.
  */
-export function pileSpot(layout: Layout3D, dir: Direction, i: number, out: Vec3): Vec3 | null {
+export function pileSpot(layout: { piles: Record<Direction, Vec3> | null }, dir: Direction, i: number, out: Vec3): Vec3 | null {
   const base = layout.piles?.[dir];
   if (!base) return null;
   const k = Math.max(0, Math.min(PILE_CAP - 1, Math.floor(i)));
@@ -112,99 +153,93 @@ export function pileSpot(layout: Layout3D, dir: Direction, i: number, out: Vec3)
   return out;
 }
 
-const clampInt = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, Math.floor(Number.isFinite(n) ? n : 0)));
+const rad = (deg: number): number => (deg * Math.PI) / 180;
 
-export function layout3dFor(o: Layout3DOpts): Layout3D {
-  const vis = PIPELINE.filter((id) => id !== "localize" || o.showLocalize);
-  const nodes: Partial<Record<AgentId, Vec3>> = {};
-  vis.forEach((id, i) => {
-    const x = (i - (vis.length - 1) / 2) * STEP;
-    nodes[id] = [x, 0, -CURVE * x * x];
+/** The bubble's left and right edges relative to its tail (world x offsets). */
+export function bubbleSpan(m: Pick<Member3D, "bubble">): [number, number] {
+  if (m.bubble === "start") return [-BUBBLE_TAIL_IN, BUBBLE_W - BUBBLE_TAIL_IN];
+  if (m.bubble === "end") return [BUBBLE_TAIL_IN - BUBBLE_W, BUBBLE_TAIL_IN];
+  return [-BUBBLE_W / 2, BUBBLE_W / 2];
+}
+
+function member(i: number): Member3D {
+  const a = rad(RING_DEG[i]);
+  const x = RING_X * Math.cos(a);
+  const z = -RING_Z * Math.sin(a);
+  const head: Vec3 = [x, HEAD_Y, z];
+  const end = i === 0 || i === RING_DEG.length - 1;
+  const tiles: Vec3[] = [];
+  const raised: Vec3[] = [];
+  const tileRot: number[] = [];
+  let tilesTop = -Infinity;
+  TILE_X.forEach((dx, k) => {
+    const y = BALL_Y + TILE_LIFT + TILE_BOW[k];
+    tiles.push([x + dx, y, z]);
+    raised.push([x + dx, y + TILE_RAISE, z]);
+    tileRot.push(TILE_TILT[k]);
+    tilesTop = Math.max(tilesTop, y + TILE_RAISE + TILE / 2);
   });
-  if (o.showExternal) {
-    const r = nodes.read!;
-    nodes.external = [r[0], EXTERNAL_Y, r[2]];
+  return {
+    feet: [x, 0, z], head, ball: [x, BALL_Y, z], yaw: Math.atan2(-x, FACE_Z - z), tiles, raised, tileRot, tilesTop,
+    bubble: end ? (i === 0 ? "start" : "end") : "center",
+    bubbleY: tilesTop + BUBBLE_GAP + (end ? BUBBLE_END_LIFT : 0),
+  };
+}
+
+/** The (constant) team layout: five members on an arc behind a low round table, the piles on its top. */
+export function teamLayout3D(): TeamLayout3D {
+  const members = {} as Record<MemberId, Member3D>;
+  TEAM_ORDER.forEach((id, i) => { members[id] = member(i); });
+
+  const arcs: Record<string, Seg3> = {};
+  for (const p of TEAM_ORDER) {
+    for (const q of TEAM_ORDER) if (p !== q) arcs[arcKey(p, q)] = arc3(members[p].ball, members[q].ball, 0.12);
   }
 
-  const pairs: [AgentId, AgentId][] = [];
-  for (let i = 1; i < vis.length; i++) pairs.push([vis[i - 1], vis[i]]);
-  if (o.showExternal) pairs.push(["read", "external"], ["external", "synth"]);
-  const edges = pairs.map(([p, q]) => ({ id: `${p}>${q}` as EdgeId, seg: arc3(nodes[p]!, nodes[q]!) }));
+  // five piles across the table in DIRECTION_ORDER (a fixed order, never a ranking), first stacks at the front
+  const piles = {} as Record<Direction, Vec3>;
+  DIRECTION_ORDER.forEach((d, i) => {
+    piles[d] = [(i - (DIRECTION_ORDER.length - 1) / 2) * PILE_PITCH, TABLE_TOP + PILE_BASE_LIFT, PILE_FRONT_Z];
+  });
 
-  // reader pool: 6 columns on the y = POOL_Y plane, centred under read (x), POOL_FORWARD in front of it
-  const ns = clampInt(o.slots, 0, MAX_SLOTS);
-  const slots: Vec3[] = [];
-  const read = nodes.read!;
-  const synth = nodes.synth!;
-  const cx = read[0];
-  const cz = read[2] + POOL_FORWARD;
-  const rows = Math.ceil(MAX_SLOTS / POOL_COLS);
-  for (let i = 0; i < ns; i++) {
-    const col = i % POOL_COLS;
-    const row = Math.floor(i / POOL_COLS);
-    slots.push([cx + (col - (POOL_COLS - 1) / 2) * POOL_PITCH, POOL_Y, cz + (row - (rows - 1) / 2) * POOL_PITCH]);
-  }
-
-  // evidence piles: five bases to the right of the pool, in DIRECTION_ORDER (a fixed order, never a ranking)
-  let piles: Record<Direction, Vec3> | null = null;
-  let tray: Tray3D | null = null;
-  if (ns > 0) {
-    const poolRight = cx + ((POOL_COLS - 1) / 2) * POOL_PITCH + SLOT_HALF;
-    const x0 = Math.max(synth[0] - PILE_FROM_SYNTH, poolRight + POOL_PILE_GAP + PILE_HALF);
-    piles = {} as Record<Direction, Vec3>;
-    DIRECTION_ORDER.forEach((d, i) => { piles![d] = [x0 + i * PILE_PITCH, POOL_Y, cz]; });
-    const poolHalfZ = ((rows - 1) / 2) * POOL_PITCH;
-    const lastStack = Math.floor((PILE_CAP - 1) / PILE_STACK) * PILE_STACK_DZ;
-    tray = {
-      y: POOL_Y - TRAY_DROP,
-      x0: cx - ((POOL_COLS - 1) / 2) * POOL_PITCH - SLOT_HALF - TRAY_PAD,
-      x1: x0 + (DIRECTION_ORDER.length - 1) * PILE_PITCH + PILE_HALF + TRAY_PAD,
-      z0: Math.min(cz - poolHalfZ - SLOT_HALF, cz - lastStack - PILE_HALF) - TRAY_PAD,
-      z1: cz + poolHalfZ + SLOT_HALF + TRAY_PAD,
-    };
-  }
-
-  // frame: geometry, plus the room the DOM labels take around it
   const frame: Vec3[] = [];
   const add = (x: number, y: number, z: number): void => { frame.push([x, y, z]); };
-  let top = -Infinity;
-  for (const [id, p] of Object.entries(nodes) as [AgentId, Vec3][]) {
-    add(p[0], p[1], p[2]);
-    if (id === "external") {
-      add(p[0] - SIDE_LABEL_ROOM, p[1], p[2]);
-    } else {
-      add(p[0] - NODE_LABEL_ROOM[0], p[1] - NODE_LABEL_ROOM[1], p[2]);
-      add(p[0] + NODE_LABEL_ROOM[0], p[1] - NODE_LABEL_ROOM[1], p[2]);
-    }
-    add(p[0] - THOUGHT_ROOM[0], p[1] + THOUGHT_ROOM[1], p[2]);
-    add(p[0] + THOUGHT_ROOM[0], p[1] + THOUGHT_ROOM[1], p[2]);
-    if (p[1] > top) top = p[1];
+  const bubbles = {} as Record<MemberId, [Vec3, Vec3]>;
+  for (const id of TEAM_ORDER) {
+    const m = members[id];
+    const [x, , z] = m.feet;
+    add(x - NAME_ROOM[0], -NAME_DROP - NAME_ROOM[1], z);
+    add(x + NAME_ROOM[0], -NAME_DROP - NAME_ROOM[1], z);
+    add(x, m.tilesTop, z);
+    const [left, right] = bubbleSpan(m);
+    const top = m.bubbleY + BUBBLE_H;
+    bubbles[id] = [[x + left, top, z], [x + right, top, z]];
   }
-  const any = Object.values(nodes)[0];
-  if (any) add(any[0], top + THOUGHT_HEADROOM, any[2]);
-  for (const p of slots) add(p[0], p[1], p[2]);
-  for (const e of edges) for (let k = 0; k <= 10; k++) add(arc3X(e.seg, k / 10), arc3Y(e.seg, k / 10), arc3Z(e.seg, k / 10));
-  const layout: Layout3D = { nodes, edges, slots, piles, tray, frame, bounds: { min: [0, 0, 0], max: [0, 0, 0] } };
-  if (piles && tray) {
-    for (const d of DIRECTION_ORDER) {
-      for (let i = 0; i < PILE_CAP; i++) add(...pileSpot(layout, d, i, [0, 0, 0])!);
-      const b = piles[d];
-      add(b[0], b[1] - PILE_LABEL_DROP - PILE_LABEL_ROOM, b[2] + PILE_LABEL_FORWARD);
-    }
-    for (const x of [tray.x0, tray.x1]) for (const z of [tray.z0, tray.z1]) add(x, tray.y, z);
-    const first = piles[DIRECTION_ORDER[0]];
-    const last = piles[DIRECTION_ORDER[DIRECTION_ORDER.length - 1]];
-    const mid = (first[0] + last[0]) / 2;
-    const capY = first[1] - PILE_LABEL_DROP - PILE_LABEL_ROOM;
-    add(mid - CAPTION_HALF, capY, first[2] + PILE_LABEL_FORWARD);
-    add(mid + CAPTION_HALF, capY, first[2] + PILE_LABEL_FORWARD);
-    const poolLeft = cx - ((POOL_COLS - 1) / 2) * POOL_PITCH - SLOT_HALF - POOL_LABEL_GAP;
-    add(poolLeft - POOL_LABEL_ROOM[0], POOL_Y - POOL_LABEL_ROOM[1], cz);
-    add(poolLeft - POOL_LABEL_ROOM[0], POOL_Y + POOL_LABEL_ROOM[1], cz);
+  for (let k = 0; k < 16; k++) {
+    const t = (k / 16) * Math.PI * 2;
+    add(TABLE_R * TABLE_STRETCH * Math.cos(t), TABLE_TOP, TABLE_R * Math.sin(t));
   }
+  const layout: TeamLayout3D = {
+    members, table: { at: [0, TABLE_TOP, 0], r: TABLE_R, stretch: TABLE_STRETCH }, piles, arcs, frame, bubbles,
+    bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+  };
+  const spot: Vec3 = [0, 0, 0];
+  for (const d of DIRECTION_ORDER) {
+    for (let i = 0; i < PILE_CAP; i++) add(...pileSpot(layout, d, i, spot)!);
+  }
+  const first = piles[DIRECTION_ORDER[0]];
+  const capY = first[1] - PILE_LABEL_DROP - PILE_LABEL_ROOM;
+  add(-CAPTION_HALF, capY, first[2] + PILE_LABEL_FORWARD);
+  add(CAPTION_HALF, capY, first[2] + PILE_LABEL_FORWARD);
+  // hand-offs only ever pass to the next member (agent-team handoffs), so only those arcs need to stay in view
+  for (let i = 1; i < TEAM_ORDER.length; i++) {
+    const s = arcs[arcKey(TEAM_ORDER[i - 1], TEAM_ORDER[i])];
+    for (let k = 0; k <= 8; k++) add(arc3X(s, k / 8), arc3Y(s, k / 8), arc3Z(s, k / 8));
+  }
+
   const min: Vec3 = [Infinity, Infinity, Infinity];
   const max: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const p of frame) {
+  for (const p of [...frame, ...Object.values(bubbles).flat()]) {
     for (let k = 0; k < 3; k++) {
       if (p[k] < min[k]) min[k] = p[k];
       if (p[k] > max[k]) max[k] = p[k];

@@ -1,204 +1,153 @@
 import { describe, expect, it } from "vitest";
-import { initialScene, reduceScene, type EdgeId } from "./agent-scene";
-import type { ReviewEvent } from "./types";
 import {
-  PILE_CAP, PILE_HALF, PILE_PITCH, PILE_RISE, PILE_STACK_DZ, POOL_Y, SLOT_HALF, arc3, arc3X, arc3Y, arc3Z, layout3dFor, pileSpot,
-  type Layout3D, type Vec3,
+  BALL_Y, BODY_R, BUBBLE_END_LIFT, BUBBLE_TAIL_IN, BUBBLE_W, PILE_CAP, PILE_HALF, PILE_RISE, PILE_STACK, PILE_STACK_DZ,
+  TABLE_R, TABLE_STRETCH, TABLE_TOP, TEAM_ORDER, TILE, TILE_RAISE, arc3, arc3X, arc3Y, arc3Z, arcKey, bubbleSpan,
+  pileSpot, teamLayout3D, type Vec3,
 } from "./agent-layout-3d";
+import { TEAM } from "./agent-team";
 import { DIRECTION_ORDER } from "./i18n";
 
-const base = { showLocalize: true, showExternal: true, slots: 0 };
+const layout = teamLayout3D();
+/** How far outside the (stretched) table ellipse a point on the floor is, in units of the table's radius (>1 = outside). */
+const tableR = (x: number, z: number): number => Math.hypot(x / (TABLE_R * TABLE_STRETCH), z / TABLE_R);
 
 describe("arc3", () => {
   it("lifts the midpoint by |b-a|*bend+0.6 along +y", () => {
-    const s = arc3([0, 0, 0], [4, 0, 0]);
-    expect(arc3X(s, 0.5)).toBeCloseTo(2, 6);
-    expect(arc3Y(s, 0.5)).toBeCloseTo(4 * 0.18 + 0.6, 6);
+    const s = arc3([0, 0, 0], [2, 0, 0]);
+    expect(arc3Y(s, 0.5)).toBeCloseTo(2 * 0.18 + 0.6, 6);
+    expect(arc3X(s, 0.5)).toBeCloseTo(1, 6);
     expect(arc3Z(s, 0.5)).toBeCloseTo(0, 6);
-    expect(arc3X(s, 0)).toBe(0);
-    expect(arc3Y(s, 1)).toBe(0);
-  });
-  it("helpers return finite numbers at the ends and in between", () => {
-    const s = arc3([1, 2, 3], [-4, 0.5, -2], 0.3);
-    for (const t of [0, 0.25, 0.5, 1]) {
-      expect(Number.isFinite(arc3X(s, t))).toBe(true);
-      expect(Number.isFinite(arc3Y(s, t))).toBe(true);
-      expect(Number.isFinite(arc3Z(s, t))).toBe(true);
-    }
-    expect(arc3Z(s, 1)).toBe(-2);
+    expect([arc3X(s, 0), arc3Y(s, 0), arc3Z(s, 0)]).toEqual([0, 0, 0]);
+    expect([arc3X(s, 1), arc3Y(s, 1), arc3Z(s, 1)]).toEqual([2, 0, 0]);
   });
 });
 
-describe("layout3dFor", () => {
-  it("keeps nodes at least 1.2 apart, centred on x=0, external above read", () => {
-    for (const showLocalize of [true, false]) {
-      for (const showExternal of [true, false]) {
-        const l = layout3dFor({ showLocalize, showExternal, slots: 30 });
-        const ns = Object.values(l.nodes);
-        for (let i = 0; i < ns.length; i++) {
-          for (let j = i + 1; j < ns.length; j++) {
-            expect(Math.hypot(ns[i]![0] - ns[j]![0], ns[i]![1] - ns[j]![1], ns[i]![2] - ns[j]![2])).toBeGreaterThanOrEqual(1.2);
-          }
+describe("teamLayout3D", () => {
+  it("places the five members in team order, left to right, symmetric about the table", () => {
+    expect(TEAM_ORDER).toEqual(TEAM.map((m) => m.id));
+    const xs = TEAM_ORDER.map((id) => layout.members[id].feet[0]);
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeGreaterThan(1.5);
+    expect(xs[0]).toBeCloseTo(-xs[4], 9);
+    expect(xs[1]).toBeCloseTo(-xs[3], 9);
+    expect(xs[2]).toBeCloseTo(0, 9);
+    for (const id of TEAM_ORDER) expect(layout.members[id].feet[1]).toBe(0);
+  });
+
+  it("stands around the table, on its far side, never touching it; the middle member furthest back", () => {
+    for (const id of TEAM_ORDER) {
+      const [x, , z] = layout.members[id].feet;
+      expect(z).toBeLessThanOrEqual(1e-9); // behind or beside the table, open toward the camera
+      expect(tableR(x, z), id).toBeGreaterThan(1 + (BODY_R + 0.3) / TABLE_R);
+    }
+    const zs = TEAM_ORDER.map((id) => layout.members[id].feet[2]);
+    expect(Math.min(...zs)).toBe(layout.members.screener.feet[2]);
+    expect(layout.table).toEqual({ at: [0, TABLE_TOP, 0], r: TABLE_R, stretch: TABLE_STRETCH });
+    expect(TABLE_TOP).toBeLessThan(0.5); // low: below a robot's waist
+  });
+
+  it("turns each member toward the viewer's side of the table", () => {
+    expect(layout.members.planner.yaw).toBeGreaterThan(0); // left members turn right
+    expect(layout.members.researcher.yaw).toBeGreaterThan(0);
+    expect(layout.members.screener.yaw).toBeCloseTo(0, 9);
+    expect(layout.members.reader.yaw).toBeCloseTo(-layout.members.researcher.yaw, 9);
+    expect(layout.members.synthesizer.yaw).toBeLessThan(0);
+    for (const id of TEAM_ORDER) expect(Math.abs(layout.members[id].yaw)).toBeLessThan(Math.PI / 2);
+  });
+
+  it("four phase tiles on a shallow arc above the antenna, left to right; the raised one TILE_RAISE higher", () => {
+    for (const id of TEAM_ORDER) {
+      const m = layout.members[id];
+      expect(m.tiles).toHaveLength(4);
+      expect(m.raised).toHaveLength(4);
+      expect(m.tileRot).toHaveLength(4);
+      for (let i = 0; i < 4; i++) {
+        expect(m.tiles[i][1] - TILE / 2).toBeGreaterThan(BALL_Y);
+        expect(m.raised[i]).toEqual([m.tiles[i][0], m.tiles[i][1] + TILE_RAISE, m.tiles[i][2]]);
+        expect(m.tilesTop).toBeGreaterThanOrEqual(m.raised[i][1] + TILE / 2 - 1e-9);
+        if (i > 0) expect(m.tiles[i][0] - m.tiles[i - 1][0]).toBeGreaterThan(TILE); // never overlapping
+      }
+      expect(m.tiles[1][1]).toBeGreaterThan(m.tiles[0][1]); // an arc: the middle tiles higher
+      expect(m.tiles[2][1]).toBeCloseTo(m.tiles[1][1], 9);
+      expect(m.tiles[3][1]).toBeCloseTo(m.tiles[0][1], 9);
+      expect(m.ball).toEqual([m.feet[0], BALL_Y, m.feet[2]]);
+    }
+  });
+
+  it("end members' bubbles grow inward from a lifted tail; the others are centred over their tiles", () => {
+    expect(TEAM_ORDER.map((id) => layout.members[id].bubble)).toEqual(["start", "center", "center", "center", "end"]);
+    expect(bubbleSpan(layout.members.planner)).toEqual([-BUBBLE_TAIL_IN, BUBBLE_W - BUBBLE_TAIL_IN]);
+    expect(bubbleSpan(layout.members.synthesizer)).toEqual([BUBBLE_TAIL_IN - BUBBLE_W, BUBBLE_TAIL_IN]);
+    expect(bubbleSpan(layout.members.reader)).toEqual([-BUBBLE_W / 2, BUBBLE_W / 2]);
+    const gap = (id: (typeof TEAM_ORDER)[number]) => layout.members[id].bubbleY - layout.members[id].tilesTop;
+    expect(gap("planner") - gap("reader")).toBeCloseTo(BUBBLE_END_LIFT, 9);
+    expect(gap("synthesizer")).toBeCloseTo(gap("planner"), 9);
+    for (const id of TEAM_ORDER) {
+      const [a, b] = layout.bubbles[id];
+      expect(a[1]).toBeGreaterThan(layout.members[id].bubbleY);
+      expect(b[0] - a[0]).toBeCloseTo(BUBBLE_W, 9);
+    }
+  });
+
+  it("hand-off arcs run antenna to antenna for every ordered pair, lifted in the middle", () => {
+    for (const p of TEAM_ORDER) {
+      for (const q of TEAM_ORDER) {
+        const s = layout.arcs[arcKey(p, q)];
+        if (p === q) {
+          expect(s).toBeUndefined();
+          continue;
         }
-        const lane = Object.entries(l.nodes).filter(([k]) => k !== "external").map(([, p]) => p![0]);
-        expect(lane.reduce((a, b) => a + b, 0)).toBeCloseTo(0, 6);
-        expect(l.nodes.localize !== undefined).toBe(showLocalize);
-        expect(l.nodes.external !== undefined).toBe(showExternal);
-        if (showExternal) expect(l.nodes.external![1]).toBe(1.6);
+        expect(s.a).toEqual(layout.members[p].ball);
+        expect(s.b).toEqual(layout.members[q].ball);
+        expect(arc3Y(s, 0.5)).toBeGreaterThan(BALL_Y + 0.5);
       }
     }
   });
-  it("slot count is min(n, 30) and slots keep a 0.35 pitch on the y=POOL_Y plane", () => {
-    for (const n of [0, 1, 7, 30, 99, -3, Number.NaN]) {
-      const l = layout3dFor({ ...base, slots: n });
-      expect(l.slots).toHaveLength(Number.isFinite(n) ? Math.max(0, Math.min(n, 30)) : 0);
-      for (const s of l.slots) expect(s[1]).toBe(POOL_Y);
-    }
-    const l = layout3dFor({ ...base, slots: 30 });
-    expect(l.slots[1][0] - l.slots[0][0]).toBeCloseTo(0.35, 6);
-    expect(l.slots[6][2] - l.slots[0][2]).toBeCloseTo(0.35, 6);
-  });
-  it("bounds contain every node, slot and edge sample", () => {
-    const l = layout3dFor({ ...base, slots: 30 });
-    const inB = (x: number, y: number, z: number) => {
-      const { min, max } = l.bounds;
-      expect(x).toBeGreaterThanOrEqual(min[0]); expect(x).toBeLessThanOrEqual(max[0]);
-      expect(y).toBeGreaterThanOrEqual(min[1]); expect(y).toBeLessThanOrEqual(max[1]);
-      expect(z).toBeGreaterThanOrEqual(min[2]); expect(z).toBeLessThanOrEqual(max[2]);
-    };
-    for (const p of [...Object.values(l.nodes), ...l.slots]) inB(p![0], p![1], p![2]);
-    for (const e of l.edges) for (let k = 0; k <= 10; k++) inB(arc3X(e.seg, k / 10), arc3Y(e.seg, k / 10), arc3Z(e.seg, k / 10));
-  });
-  const inBounds = (l: Layout3D, p: Vec3) => {
-    const { min, max } = l.bounds;
-    for (let k = 0; k < 3; k++) {
-      expect(p[k]).toBeGreaterThanOrEqual(min[k]);
-      expect(p[k]).toBeLessThanOrEqual(max[k]);
-    }
-  };
 
-  it("centres the reader pool under read", () => {
-    const l = layout3dFor({ ...base, slots: 30 });
-    const xs = l.slots.map((p) => p[0]);
-    expect((Math.min(...xs) + Math.max(...xs)) / 2).toBeCloseTo(l.nodes.read![0], 6);
+  it("piles: five bases in direction order across the table top", () => {
+    const xs = DIRECTION_ORDER.map((d) => layout.piles[d][0]);
+    for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeGreaterThan(xs[i - 1] + 2 * PILE_HALF);
+    expect(xs[0]).toBeCloseTo(-xs[4], 9);
+    for (const d of DIRECTION_ORDER) expect(layout.piles[d][1]).toBeGreaterThan(TABLE_TOP);
   });
 
-  it("has no piles or tray without slots", () => {
-    const l = layout3dFor({ ...base, slots: 0 });
-    expect(l.piles).toBeNull();
-    expect(l.tray).toBeNull();
-    expect(pileSpot(l, "positive", 0, [0, 0, 0])).toBeNull();
-  });
-
-  for (const [lane, showLocalize] of [["Thai", true], ["English", false]] as const) {
-    it(`piles: five bases in direction order on the pool plane, clear of the pool (${lane} lane)`, () => {
-      const l = layout3dFor({ showLocalize, showExternal: true, slots: 30 });
-      const piles = l.piles!;
-      const xs = DIRECTION_ORDER.map((d) => piles[d][0]);
-      for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeCloseTo(PILE_PITCH, 6);
-      for (const d of DIRECTION_ORDER) expect(piles[d][1]).toBe(POOL_Y);
-      expect(xs[0]).toBeGreaterThanOrEqual(l.nodes.synth![0] - 0.6 - 1e-9);
-      expect(xs[0]).toBeLessThan(l.nodes.synth![0]);
-      const poolRight = Math.max(...l.slots.map((p) => p[0])) + SLOT_HALF;
-      const pileLeft = xs[0] - PILE_HALF;
-      expect(pileLeft - poolRight).toBeGreaterThanOrEqual(0.2 - 1e-9);
-    });
-  }
-
-  it("pileSpot stacks 10 high at PILE_RISE, then starts stacks further back, without allocating", () => {
-    const l = layout3dFor({ ...base, slots: 30 });
-    const b = l.piles!.negative;
-    const out: Vec3 = [0, 0, 0];
-    expect(pileSpot(l, "negative", 0, out)).toBe(out);
-    expect(out).toEqual([b[0], b[1], b[2]]);
-    pileSpot(l, "negative", 9, out);
-    expect(out[1]).toBeCloseTo(b[1] + 9 * PILE_RISE, 6);
-    expect(out[2]).toBe(b[2]);
-    pileSpot(l, "negative", 10, out);
-    expect(out[1]).toBeCloseTo(b[1], 6);
-    expect(out[2]).toBeCloseTo(b[2] - PILE_STACK_DZ, 6);
-    pileSpot(l, "negative", 25, out);
-    expect(out[1]).toBeCloseTo(b[1] + 5 * PILE_RISE, 6);
-    expect(out[2]).toBeCloseTo(b[2] - 2 * PILE_STACK_DZ, 6);
-    pileSpot(l, "negative", 99, out); // clamped to the last token
-    expect(out[1]).toBeCloseTo(b[1] + 9 * PILE_RISE, 6);
-  });
-
-  it("bounds contain every pile spot, the tray, and thought headroom above the highest node", () => {
-    for (const showExternal of [true, false]) {
-      const l = layout3dFor({ ...base, showExternal, slots: 30 });
-      const out: Vec3 = [0, 0, 0];
-      for (const d of DIRECTION_ORDER) for (let i = 0; i < PILE_CAP; i++) inBounds(l, pileSpot(l, d, i, out)!);
-      const t = l.tray!;
-      inBounds(l, [t.x0, t.y, t.z0]);
-      inBounds(l, [t.x1, t.y, t.z1]);
-      const top = Math.max(...Object.values(l.nodes).map((p) => p![1]));
-      expect(l.bounds.max[1]).toBeGreaterThanOrEqual(top + 0.9);
-    }
-  });
-
-  it("bounds are the box around the frame points, which include every node, slot and pile spot", () => {
-    for (const showExternal of [true, false]) {
-      const l = layout3dFor({ ...base, showExternal, slots: 30 });
-      for (const p of l.frame) inBounds(l, p);
-      const has = (p: Vec3) => l.frame.some((q) => q[0] === p[0] && q[1] === p[1] && q[2] === p[2]);
-      for (const p of [...Object.values(l.nodes), ...l.slots]) expect(has(p!)).toBe(true);
-      expect(has(pileSpot(l, "unclear", 29, [0, 0, 0])!)).toBe(true);
-    }
-  });
-
-  it("the tray lies under the pool and the piles", () => {
-    const l = layout3dFor({ ...base, slots: 30 });
-    const t = l.tray!;
-    expect(t.y).toBeCloseTo(POOL_Y - 0.2, 6);
-    for (const p of l.slots) {
-      expect(p[0]).toBeGreaterThan(t.x0);
-      expect(p[0]).toBeLessThan(t.x1);
-      expect(p[2]).toBeGreaterThan(t.z0);
-      expect(p[2]).toBeLessThan(t.z1);
-    }
+  it("every pile spot, full piles included, stays on the table", () => {
     const out: Vec3 = [0, 0, 0];
     for (const d of DIRECTION_ORDER) {
-      for (const i of [0, 29]) {
-        pileSpot(l, d, i, out);
-        expect(out[0]).toBeLessThan(t.x1);
-        expect(out[2]).toBeGreaterThan(t.z0);
+      for (let i = 0; i < PILE_CAP; i++) {
+        const p = pileSpot(layout, d, i, out)!;
+        expect(tableR(Math.abs(p[0]) + PILE_HALF, Math.abs(p[2]) + PILE_HALF), `${d} ${i}`).toBeLessThan(1);
       }
     }
   });
 
-  it("drops localize and adds synth>finish when localize is hidden", () => {
-    const l = layout3dFor({ ...base, showLocalize: false });
-    expect(l.edges.some((e) => e.id === "synth>finish")).toBe(true);
-    expect(l.edges.some((e) => e.id === "synth>localize")).toBe(false);
-    const full = layout3dFor(base).edges.map((e) => e.id);
-    expect(full).toContain("synth>localize");
-    expect(full).toContain("localize>finish");
-    expect(full).toContain("read>external");
-    expect(full).toContain("external>synth");
-    expect(layout3dFor({ ...base, showExternal: false }).edges.some((e) => e.id === "read>external")).toBe(false);
+  it("pileSpot stacks PILE_STACK high at PILE_RISE, then starts stacks further back, without allocating", () => {
+    const out: Vec3 = [0, 0, 0];
+    const base = layout.piles.positive;
+    expect(pileSpot(layout, "positive", 0, out)).toBe(out);
+    expect(out).toEqual(base);
+    pileSpot(layout, "positive", PILE_STACK - 1, out);
+    expect(out[1]).toBeCloseTo(base[1] + (PILE_STACK - 1) * PILE_RISE, 9);
+    pileSpot(layout, "positive", PILE_STACK, out);
+    expect(out).toEqual([base[0], base[1], base[2] - PILE_STACK_DZ]);
+    pileSpot(layout, "positive", 999, out); // clamped to the last token
+    expect(out[2]).toBeCloseTo(base[2] - Math.floor((PILE_CAP - 1) / PILE_STACK) * PILE_STACK_DZ, 9);
+    expect(pileSpot({ piles: null }, "positive", 0, out)).toBeNull();
   });
-});
 
-describe("scene edge ids exist in 3D layout", () => {
-  const E = (seq: number, type: string, payload: Record<string, unknown> = {}): ReviewEvent => ({ seq, type, payload });
-  const walk = (withLocalize: boolean): ReviewEvent[] => [
-    E(1, "started"), E(2, "checking_topic"), E(3, "refining"), E(4, "question_refined"), E(5, "planning", { queries: ["a"] }),
-    E(6, "searching", { found: 3 }), E(7, "enriching", { candidates: 3 }), E(8, "screening"), E(9, "screened", { kept: 1, total: 3 }),
-    E(10, "external_lookup"), E(11, "reading", { ref: "P1" }), E(12, "extracted", { ref: "P1", ok: true }),
-    E(13, "synthesizing", { papers: 1 }), ...(withLocalize ? [E(14, "localizing")] : []), E(15, "finalizing"), E(16, "done"),
-  ];
-  for (const [language, withLocalize] of [["th", true], ["en", false], ["th", false]] as const) {
-    it(`every edge the scene emits is drawable (${language}, localizing=${withLocalize})`, () => {
-      let s = initialScene({ language });
-      const emitted = new Set<string>();
-      for (const ev of walk(withLocalize)) {
-        s = reduceScene(s, { kind: "event", ev });
-        s.pulses.forEach((p) => emitted.add(p.edge));
-        Object.keys(s.edges).forEach((k) => emitted.add(k));
-      }
-      const ids = new Set(layout3dFor({ ...base, showLocalize: s.expectLocalize }).edges.map((e) => e.id));
-      for (const id of emitted) expect(ids.has(id as EdgeId), id).toBe(true);
-    });
-  }
+  it("bounds hold every frame point and every bubble; the frame holds the robots, tiles, table and hand-off arcs", () => {
+    const { min, max } = layout.bounds;
+    const inside = (p: Vec3) => p.every((v, k) => v >= min[k] - 1e-9 && v <= max[k] + 1e-9);
+    for (const p of layout.frame) expect(inside(p)).toBe(true);
+    for (const id of TEAM_ORDER) for (const p of layout.bubbles[id]) expect(inside(p)).toBe(true);
+    const yTop = Math.max(...layout.frame.map((p) => p[1]));
+    for (const id of TEAM_ORDER) expect(yTop).toBeGreaterThanOrEqual(layout.members[id].tilesTop);
+    for (let i = 1; i < TEAM_ORDER.length; i++) {
+      const s = layout.arcs[arcKey(TEAM_ORDER[i - 1], TEAM_ORDER[i])];
+      expect(yTop).toBeGreaterThanOrEqual(arc3Y(s, 0.5) - 1e-9);
+    }
+  });
+
+  it("is constant: the same layout every time", () => {
+    expect(teamLayout3D()).toEqual(layout);
+  });
 });

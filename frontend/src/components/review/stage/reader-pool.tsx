@@ -11,7 +11,7 @@ const RING: Record<SlotState, string> = {
   waiting: "stroke-rule", reading: "stroke-primary", ok: "stroke-ok", failed: "stroke-err", uncertain: "stroke-warn",
 };
 
-function Slot({ slot, r }: { slot: ReaderSlot; r: number }) {
+function Slot({ slot, r, refFont }: { slot: ReaderSlot; r: number; refFont: number }) {
   const st = slot.state;
   return (
     <>
@@ -20,7 +20,7 @@ function Slot({ slot, r }: { slot: ReaderSlot; r: number }) {
         strokeWidth={st === "reading" ? 1.5 : 1.25} strokeDasharray={st === "waiting" ? "3 3" : undefined}
       />
       {st === "reading" && slot.ref && (
-        <text textAnchor="middle" y={4} fontSize={REF_FONT} className="font-display fill-ink" style={{ fontVariantNumeric: "tabular-nums" }}>{slot.ref}</text>
+        <text textAnchor="middle" y={4} fontSize={refFont} className="font-display fill-ink" style={{ fontVariantNumeric: "tabular-nums" }}>{slot.ref}</text>
       )}
       {st === "ok" && <path d={CHECK} fill="none" className="stroke-ok" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />}
       {st === "failed" && <path d={CROSS} fill="none" className="stroke-err" strokeWidth={1.5} strokeLinecap="round" />}
@@ -45,7 +45,7 @@ export function burstRanks(prev: ReaderSlot[], next: ReaderSlot[]): Map<number, 
   return ranks;
 }
 
-function PoolSlot({ slot, r, x, y, rank }: { slot: ReaderSlot; r: number; x: number; y: number; rank: number }) {
+function PoolSlot({ slot, r, x, y, rank, refFont }: { slot: ReaderSlot; r: number; x: number; y: number; rank: number; refFont: number }) {
   const reduced = useReducedMotion();
   // no pop on first mount (finished or replayed run) or under reduced motion (MotionConfig does not stop opacity)
   const pop = useChangedSinceMount(slot.state) && !reduced;
@@ -54,14 +54,14 @@ function PoolSlot({ slot, r, x, y, rank }: { slot: ReaderSlot; r: number; x: num
       {/* each state change pops the slot (keyed on state); a burst ripples in slot order (Plan 17b) */}
       <m.g key={slot.state} initial={pop ? { scale: 0.55, opacity: 0.35 } : false} animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 380, damping: 18, delay: slot.state === "reading" ? rank * RIPPLE_S : 0 }}>
-        <Slot slot={slot} r={r} />
+        <Slot slot={slot} r={r} refFont={refFont} />
       </m.g>
     </g>
   );
 }
 
 /** One round slot per paper. A "reading" slot means reading or queued behind the LLM limit; it never claims to be in flight. */
-export function ReaderPool({ slots, layout }: { slots: ReaderSlot[]; layout: StageLayout }) {
+export function ReaderPool({ slots, layout, refFont = REF_FONT }: { slots: ReaderSlot[]; layout: Pick<StageLayout, "slots" | "slotR">; refFont?: number }) {
   // the ripple is ranked within the burst, so a slot that starts reading alone pops at once
   const [seen, setSeen] = useState(slots);
   const [ranks, setRanks] = useState<Map<number, number>>(() => new Map());
@@ -74,7 +74,7 @@ export function ReaderPool({ slots, layout }: { slots: ReaderSlot[]; layout: Sta
       {layout.slots.map((p, i) => {
         const slot = slots[i];
         if (!slot) return null;
-        return <PoolSlot key={i} slot={slot} r={layout.slotR} x={p.x} y={p.y} rank={ranks.get(i) ?? 0} />;
+        return <PoolSlot key={i} slot={slot} r={layout.slotR} x={p.x} y={p.y} rank={ranks.get(i) ?? 0} refFont={refFont} />;
       })}
     </g>
   );

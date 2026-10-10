@@ -1,26 +1,29 @@
 "use client";
-// Fixed pool of packet spheres in one InstancedMesh. Packets come only from takeFreshPulses/planDots on a scene
-// change, with `seen` initialised at mount (a replay or a burst never queues minutes of animation). The frame loop
-// runs (invalidates) only while a packet is waiting for its delay or in flight; no per-frame allocations.
+// Hand-off packets between member heads: a fixed pool of packet spheres in one InstancedMesh, plus a two-ghost wake.
+// Packets come only from `handoffs(scene, seen)` on a scene change (a pulse crossing two members), with `seen`
+// initialised at mount (a replay or a burst never queues minutes of animation). The frame loop runs (invalidates) only
+// while a packet is waiting for its delay or in flight; no per-frame allocations.
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { Color, Object3D, type InstancedMesh } from "three";
-import { MAX_DOTS, PACKET_CAP, planDots, takeFreshPulses, type Scene } from "@/lib/agent-scene";
-import { arc3X, arc3Y, arc3Z, type Layout3D } from "@/lib/agent-layout-3d";
+import { MAX_DOTS, type Scene } from "@/lib/agent-scene";
+import { handoffs } from "@/lib/agent-team";
+import { arc3X, arc3Y, arc3Z, type TeamLayout3D } from "@/lib/agent-layout-3d";
+import { handoffDots } from "@/lib/team-motion";
 import { PACKET_COLOR, easeInOut, flightT, makeFlights, packetScale, schedulePackets, type Flight } from "./model-3d";
 import type { Tokens3D } from "./tokens-3d";
 
-const R = 0.07;
+const R = 0.085;
 
-interface Pool { flights: Flight[]; cursor: number; obj: Object3D; color: Color }
-const makePool = (): Pool => ({ flights: makeFlights(MAX_DOTS), cursor: 0, obj: new Object3D(), color: new Color() });
+export interface Pool { flights: Flight[]; cursor: number; obj: Object3D; color: Color }
+export const makePool = (): Pool => ({ flights: makeFlights(MAX_DOTS), cursor: 0, obj: new Object3D(), color: new Color() });
 
 function paint(mesh: InstancedMesh, pool: Pool, tokens: Tokens3D): void {
   for (let i = 0; i < pool.flights.length; i++) mesh.setColorAt(i, pool.color.set(tokens[PACKET_COLOR[pool.flights[i].kind]]));
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 }
 
-const TRAIL = [0.06, 0.12]; // trailing ghosts (Plan 17b), as fractions of the flight behind the packet
+export const TRAIL = [0.06, 0.12]; // trailing ghosts (Plan 17b), as fractions of the flight behind the packet
 const TRAIL_SCALE = [0.7, 0.45];
 
 /** Places (or hides) the trailing ghosts of flight `i` in the trail mesh. */
@@ -41,7 +44,7 @@ function stepTrail(trail: InstancedMesh | null, pool: Pool, i: number, t: number
 }
 
 /** Advances every flight to `now`; hides idle/pending/finished instances. Returns true while any is pending/flying. */
-function step(mesh: InstancedMesh, pool: Pool, now: number, trail: InstancedMesh | null = null): boolean {
+export function step(mesh: InstancedMesh, pool: Pool, now: number, trail: InstancedMesh | null = null): boolean {
   const { flights, obj } = pool;
   let busy = false;
   let dirty = false;
@@ -76,7 +79,7 @@ function step(mesh: InstancedMesh, pool: Pool, now: number, trail: InstancedMesh
   return busy;
 }
 
-export function Packets3D({ scene, layout, tokens }: { scene: Scene; layout: Layout3D; tokens: Tokens3D }) {
+export function Packets3D({ scene, layout, tokens }: { scene: Scene; layout: TeamLayout3D; tokens: Tokens3D }) {
   const mesh = useRef<InstancedMesh>(null);
   const trail = useRef<InstancedMesh>(null);
   const invalidate = useThree((s) => s.invalidate);
@@ -111,11 +114,11 @@ export function Packets3D({ scene, layout, tokens }: { scene: Scene; layout: Lay
   const seq = scene.lastSeq;
   useEffect(() => {
     const { scene: sc, layout: lay, tokens: tk } = latest.current;
-    const fresh = takeFreshPulses(sc.pulses, seen.current, PACKET_CAP);
+    const fresh = handoffs(sc, seen.current);
     seen.current = seq;
     const p = pool.current;
     if (!p || fresh.length === 0 || (typeof document !== "undefined" && document.hidden)) return;
-    p.cursor = schedulePackets(p.flights, p.cursor, planDots(fresh, MAX_DOTS), lay.edges, performance.now());
+    p.cursor = schedulePackets(p.flights, p.cursor, handoffDots(fresh, MAX_DOTS), lay.arcs, performance.now());
     if (mesh.current) paint(mesh.current, p, tk);
     invalidate();
   }, [seq, invalidate]);

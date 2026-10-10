@@ -1,12 +1,11 @@
 "use client";
-// Eases the camera toward the current agent (a partial pan; the whole lane stays framed). Requests frames only while
-// moving. Under reduced motion this view is never offered, but the rig still jumps instead of easing.
+// Eases the camera toward a goal (6 numbers: position + look-at; for the team, a partial pan toward the speaking
+// member, the whole table stays framed). Requests frames only while moving. Under reduced motion this view is never
+// offered, but the rig still jumps instead of easing.
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import type { Camera } from "three";
-import type { AgentId } from "@/lib/agent-scene";
-import type { Layout3D } from "@/lib/agent-layout-3d";
-import { cameraGoal, easeToward } from "./model-3d";
+import { easeToward } from "./model-3d";
 
 function prefersReduced(): boolean {
   return typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -20,14 +19,14 @@ function apply(camera: Camera, cur: number[]): void {
   camera.lookAt(cur[3], cur[4], cur[5]);
 }
 
-export function CameraRig({ layout, agent }: { layout: Layout3D; agent: AgentId | null }) {
+export function CameraRig({ goal }: { goal: readonly number[] }) {
   const invalidate = useThree((s) => s.invalidate);
   const rig = useRef<Rig>({ cur: [0, 0, 0, 0, 0, 0], goal: [0, 0, 0, 0, 0, 0], moving: false, reduced: false, placed: false });
 
   useEffect(() => {
     const r = rig.current;
-    cameraGoal(layout, agent, r.goal);
-    r.reduced = prefersReduced(); // read on scene change, not per frame
+    for (let i = 0; i < 6; i++) r.goal[i] = goal[i];
+    r.reduced = prefersReduced(); // read on goal change, not per frame
     if (!r.placed) {
       // first placement starts on the goal (no fly-in)
       for (let i = 0; i < 6; i++) r.cur[i] = r.goal[i];
@@ -35,7 +34,7 @@ export function CameraRig({ layout, agent }: { layout: Layout3D; agent: AgentId 
     }
     r.moving = true;
     invalidate();
-  }, [layout, agent, invalidate]);
+  }, [goal, invalidate]);
 
   useFrame((state, delta) => {
     const r = rig.current;

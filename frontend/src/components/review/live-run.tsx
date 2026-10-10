@@ -60,6 +60,7 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
     () => (directions ? scene : { ...scene, directionless: true, slots: scene.slots.map((sl) => (sl.direction ? { ...sl, direction: null } : sl)) }),
     [scene, directions],
   );
+  const framework = reviewType === "scoping" ? "PCC" : "PICO";
   const activeIdx = STEPS.indexOf(waiting ? "queue" : run.step);
   const counts = readCounts(run);
   const shownQueries = run.queries.slice(0, SHOWN_QUERIES);
@@ -93,7 +94,8 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
             <StageView
               scene={viewScene} connection={connection}
               heading={<h2 id="h-stage" className="label">เวทีเอเจนต์</h2>}
-              lead={<ThoughtCard scene={viewScene} framework={reviewType === "scoping" ? "PCC" : "PICO"} />}
+              lead={<ThoughtCard scene={viewScene} framework={framework} />}
+              question={run.question?.refined_question} framework={framework}
             />
           </StageLocalize.Provider>
           <MilestoneStatus scene={scene} />

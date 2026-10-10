@@ -1,100 +1,108 @@
 import { describe, expect, it } from "vitest";
+import { MAX_DOTS, PACKET_CAP, initialScene, reduceScene, type Scene } from "@/lib/agent-scene";
 import {
-  MAX_DOTS, PACKET_CAP, PIPELINE, emptySlot, initialScene, planDots, reduceScene, takeFreshPulses, type AgentStatus, type Pulse,
-  type Scene,
-} from "@/lib/agent-scene";
-import { PILE_HALF, PILE_PITCH, PILE_STACK_DZ, layout3dFor, type Vec3 } from "@/lib/agent-layout-3d";
+  BUBBLE_END_LIFT, NAME_DROP, PILE_HALF, PILE_PITCH, PILE_STACK_DZ, TEAM_ORDER, arcKey, teamLayout3D, type Vec3,
+} from "@/lib/agent-layout-3d";
+import { handoffs, type MemberStatus, type Phase } from "@/lib/agent-team";
+import { handoffDots } from "@/lib/team-motion";
 import { DIRECTION_ORDER } from "@/lib/i18n";
+import type { ReviewEvent } from "@/lib/types";
 import {
-  ARRIVAL_STAGGER_MS, EDGE_COLOR, EDGE_RADIUS, FIT_MARGIN, FIT_MARGIN_V, FLIGHT_MS, NODE_VISUAL, PACKET_COLOR, PILE_BAR, PILE_COLOR, PILE_R, PILE_SHAPE,
-  SLOT_COLOR, SLOT_SCALE, STAGE_ASPECT, STAGE_FOV, THOUGHT_LIFT, anySpinning, cameraAgent, cameraGoal, easeInOut,
-  easeToward, fitCamera, flightT, makeFlights, packetScale, pileCaptionAt, pileLabelAt, planArrivals, poolLabelAt,
-  poolSummary, schedulePackets, thoughtAnchor, thoughtLeader, visibleAgents,
+  ARRIVAL_STAGGER_MS, FIT_MARGIN, FIT_MARGIN_V, FLIGHT_MS, PACKET_COLOR, PAN, PILE_BAR, PILE_COLOR, PILE_R, PILE_SHAPE,
+  STAGE_ASPECT, STAGE_FOV, TILE_COLOR, VIEW_BACK, VIEW_UP, anyPinging, bubbleAnchor, bubbleLeader, easeInOut,
+  easeToward, fitCamera, flightT, framePoints, makeFlights, memberVisual, nameAnchor, packetScale, pileCaptionAt,
+  pileLabelAt, planArrivals, schedulePackets, teamCameraGoal, tileState,
 } from "./model-3d";
 
-const layout = layout3dFor({ showLocalize: true, showExternal: false, slots: 12 });
+const layout = teamLayout3D();
+const ev = (seq: number, type: string, payload: Record<string, unknown> = {}): ReviewEvent => ({ seq, type, payload });
+const run = (evs: ReviewEvent[]): Scene => evs.reduce((s, e) => reduceScene(s, { kind: "event", ev: e }), initialScene({ language: "th" }));
 
-describe("status -> visual", () => {
-  it("maps every status to the brief's colour token and ring style", () => {
-    const want: Record<AgentStatus, [string, string, boolean]> = {
-      idle: ["rule", "solid", false], active: ["primary", "solid", false], working: ["primary", "dashed", true],
-      done: ["ink", "solid", false], failed: ["err", "solid", false], skipped: ["muted", "wire", false],
-      paused: ["warn", "solid", false],
+describe("member status -> visual", () => {
+  it("speaking (or working) is solid primary; done ink; idle a rule body; failed err; paused warn; stopped muted", () => {
+    const want: Record<MemberStatus, [string, string, boolean, string | null, boolean]> = {
+      idle: ["rule", "muted", false, null, true],
+      working: ["primary", "primary", true, null, false],
+      done: ["surface", "ink", false, "done", false],
+      failed: ["surface", "err", false, "failed", false],
+      paused: ["surface", "warn", false, null, false],
+      stopped: ["surface", "muted", false, null, true],
     };
-    for (const [st, [color, ring, spin]] of Object.entries(want)) {
-      const v = NODE_VISUAL[st as AgentStatus];
-      expect([v.color, v.ring, v.spin]).toEqual([color, ring, spin]);
+    for (const [st, [fill, edge, ping, mark, dim]] of Object.entries(want)) {
+      const v = memberVisual(st as MemberStatus, false);
+      expect([v.fill, v.edge, v.ping, v.mark, v.dim], st).toEqual([fill, edge, ping, mark, dim]);
     }
-    expect(NODE_VISUAL.active.scale).toBe(1.12);
-    expect(NODE_VISUAL.done.mark).toBe("done");
-    expect(NODE_VISUAL.failed.mark).toBe("failed");
+    // the speaker is primary even in a gap between its own steps; only real work pings
+    expect(memberVisual("working", true)).toMatchObject({ fill: "primary", ping: true });
+    expect(memberVisual("idle", true)).toMatchObject({ fill: "primary", ping: false });
+    // a failed member is never painted as the speaker: err and the cross cue win over speaking
+    expect(memberVisual("failed", true)).toMatchObject({ fill: "surface", edge: "err", eyes: "err", mark: "failed", ping: false });
+    expect(memberVisual("working", false).eyes).toBe("surface");
+    expect(memberVisual("done", false).eyes).toBe("ink");
   });
 
-  it("edges, slots and packets use the same tokens as the 2D stage", () => {
-    expect(EDGE_COLOR).toEqual({ idle: "rule", visited: "ink", live: "primary" });
-    expect(SLOT_COLOR).toEqual({ waiting: "rule", reading: "primary", ok: "ok", failed: "err", uncertain: "warn" });
-    expect(PACKET_COLOR).toEqual({ query: "ink", paper: "ink", kept: "primary", card: "primary", failed: "err", signal: "muted" });
+  it("phase tiles: the current phase is active (primary), passed ones ink, the rest rule", () => {
+    expect(TILE_COLOR).toEqual({ active: "primary", passed: "ink", rest: "rule" });
+    const passed: Phase[] = ["think", "analyse"];
+    expect(tileState("plan", "plan", passed)).toBe("active");
+    expect(tileState("think", "plan", passed)).toBe("passed");
+    expect(tileState("act", "plan", passed)).toBe("rest");
+    expect(tileState("act", null, ["think", "analyse", "plan", "act"])).toBe("passed");
   });
 
-  it("gives every reader-slot state its own silhouette (failed and uncertain are not colour-only)", () => {
-    const shapes = Object.values(SLOT_SCALE).map((s) => s.join(","));
-    expect(new Set(shapes).size).toBe(shapes.length);
-    const [fx, fy, fz] = SLOT_SCALE.failed;
-    const [ux, uy, uz] = SLOT_SCALE.uncertain;
-    expect(fy).toBeGreaterThan(fx); // failed: tall and narrow
-    expect(fx).toBe(fz);
-    expect(ux).toBeGreaterThan(uy); // uncertain: a capsule lying along x, narrow in depth (not the round ok disc)
-    expect(ux).toBeGreaterThan(uz);
-    expect(SLOT_SCALE.ok[0]).toBe(SLOT_SCALE.ok[2]);
-  });
-
-  it("anySpinning is true only while a visible node is working", () => {
-    const s = initialScene({ language: "th" });
-    expect(anySpinning(s, layout)).toBe(false);
-    expect(anySpinning({ ...s, agents: { ...s.agents, search: "working" } }, layout)).toBe(true);
-    // external is not in this layout, so its status cannot keep the loop alive
-    expect(anySpinning({ ...s, agents: { ...s.agents, external: "working" } }, layout)).toBe(false);
+  it("anyPinging only while a member works", () => {
+    expect(anyPinging([{ status: "idle" }, { status: "done" }])).toBe(false);
+    expect(anyPinging([{ status: "done" }, { status: "working" }])).toBe(true);
   });
 });
 
-describe("packet scheduling", () => {
-  const edge = layout.edges[0];
-  const pulses = (n: number, per = 1): Pulse[] =>
-    Array.from({ length: n }, (_, i) => ({ key: i + 1, edge: edge.id, kind: "paper", n: per }));
+describe("hand-off packets", () => {
+  // planning -> searching makes a plan>search pulse: a hand-off from the planner to the researcher
+  const pre = [ev(1, "started"), ev(2, "checking_topic"), ev(3, "refining"), ev(4, "question_refined"), ev(5, "planning", { queries: ["a", "b"] })];
+  const scene = run([...pre, ev(6, "searching", { found: 40 })]);
 
-  it("assigns dots round-robin with their delays and wraps the cursor", () => {
+  it("packets use the 2D stage's tokens", () => {
+    expect(PACKET_COLOR).toEqual({ query: "ink", paper: "ink", kept: "primary", card: "primary", failed: "err", signal: "muted" });
+  });
+
+  it("assigns dots round-robin onto the head-to-head arc, with their delays, and wraps the cursor", () => {
+    const fresh = handoffs(scene, 0);
+    expect(fresh.length).toBeGreaterThan(0);
+    const dots = handoffDots([{ key: 9, from: "planner", to: "researcher", kind: "query", n: 3 }], MAX_DOTS);
     const flights = makeFlights(4);
-    const dots = planDots(takeFreshPulses(pulses(1, 3), 0, PACKET_CAP), MAX_DOTS);
-    let c = schedulePackets(flights, 2, dots, layout.edges, 1000);
+    let c = schedulePackets(flights, 2, dots, layout.arcs, 1000);
     expect(c).toBe(1);
     expect(flights.map((f) => f.start)).toEqual([1240, 0, 1000, 1120]);
-    expect(flights[0].seg).toBe(edge.seg);
+    expect(flights[0].seg).toBe(layout.arcs[arcKey("planner", "researcher")]);
+    expect(flights[0].seg!.a).toEqual(layout.members.planner.ball);
+    expect(flights[0].seg!.b).toEqual(layout.members.researcher.ball);
     expect(flights[1].seg).toBeNull();
-    c = schedulePackets(flights, c, dots.slice(0, 1), layout.edges, 5000);
+    c = schedulePackets(flights, c, dots.slice(0, 1), layout.arcs, 5000);
     expect(c).toBe(2);
     expect(flights[1].start).toBe(5000);
   });
 
-  it("drops dots on edges the layout does not draw without taking a slot", () => {
+  it("drops a dot with no arc without taking a slot", () => {
     const flights = makeFlights(4);
-    const c = schedulePackets(flights, 0, [{ edge: "read>external", kind: "signal", delayMs: 0 }], layout.edges, 0);
+    const c = schedulePackets(flights, 0, [{ from: "reader", to: "reader", kind: "signal", delayMs: 0 }], layout.arcs, 0);
     expect(c).toBe(0);
     expect(flights.every((f) => f.seg === null)).toBe(true);
   });
 
-  it("replays collapse: pulses seen at mount produce no dots, a burst is capped", () => {
-    expect(takeFreshPulses(pulses(10), 10, PACKET_CAP)).toHaveLength(0);
-    const dots = planDots(takeFreshPulses(pulses(30, 8), 0, PACKET_CAP), MAX_DOTS);
+  it("replays collapse: hand-offs seen at mount produce no dots, a burst stays capped", () => {
+    expect(handoffs(scene, scene.lastSeq)).toEqual([]);
+    const burst = Array.from({ length: 30 }, (_, i) => ({ key: i + 1, from: "screener" as const, to: "reader" as const, kind: "kept" as const, n: 8 }));
+    const dots = handoffDots(burst.slice(-PACKET_CAP), MAX_DOTS);
     expect(dots.length).toBeLessThanOrEqual(MAX_DOTS);
     const flights = makeFlights(MAX_DOTS);
-    schedulePackets(flights, 0, dots, layout.edges, 0);
+    schedulePackets(flights, 0, dots, layout.arcs, 0);
     expect(Math.max(...flights.map((f) => f.start))).toBeLessThan(5000);
   });
 
   it("flight progress: pending < 0, flying 0..1, finished > 1, idle Infinity", () => {
     const [f] = makeFlights(1);
     expect(flightT(f, 0)).toBe(Infinity);
-    f.seg = edge.seg;
+    f.seg = layout.arcs[arcKey("reader", "synthesizer")];
     f.start = 100;
     expect(flightT(f, 0)).toBeLessThan(0);
     expect(flightT(f, 100 + FLIGHT_MS / 2)).toBeCloseTo(0.5);
@@ -113,102 +121,6 @@ describe("packet scheduling", () => {
   });
 });
 
-describe("camera", () => {
-  it("frames the layout with no current agent and pans part-way toward the current one", () => {
-    const centre = cameraGoal(layout, null);
-    const cx = centre[0];
-    const { min, max } = layout.bounds;
-    expect(cx).toBeGreaterThan(min[0]);
-    expect(cx).toBeLessThan(max[0]);
-    expect(centre[4]).toBeGreaterThan(min[1]);
-    expect(centre[4]).toBeLessThan(max[1]);
-    expect(centre[1]).toBeGreaterThan(centre[4]); // above, looking down at the fixed elevation
-    const g = cameraGoal(layout, "guard");
-    const gx = layout.nodes.guard![0];
-    expect(g[0]).toBeLessThan(cx);
-    expect(g[0]).toBeGreaterThan(gx); // partial pan keeps the lane framed
-    expect(g[0] - cx).toBeCloseTo((gx - (min[0] + max[0]) / 2) * 0.1, 6);
-    expect(g[3]).toBe(g[0]);
-    expect(g.slice(1, 3)).toEqual(centre.slice(1, 3));
-  });
-
-  it("writes into the provided buffer", () => {
-    const out = new Array(6).fill(0);
-    expect(cameraGoal(layout, "read", out)).toBe(out);
-  });
-
-  it("follows the scene's current agent", () => {
-    let s: Scene = initialScene();
-    expect(cameraAgent(s)).toBeNull();
-    s = reduceScene(s, { kind: "event", ev: { seq: 1, type: "checking_topic", payload: {} } as never });
-    expect(cameraAgent(s)).toBe("guard");
-  });
-
-  it("eases toward the goal, then snaps and reports settled; reduced motion jumps", () => {
-    const cur = [0, 0, 0, 0, 0, 0];
-    const goal = [1, 2, 3, 4, 5, 6];
-    expect(easeToward(cur, goal, 1 / 60)).toBe(false);
-    expect(cur[0]).toBeGreaterThan(0);
-    expect(cur[0]).toBeLessThan(1);
-    let settled = false;
-    for (let i = 0; i < 600 && !settled; i++) settled = easeToward(cur, goal, 1 / 60);
-    expect(settled).toBe(true);
-    expect(cur).toEqual(goal);
-    const c2 = [0, 0, 0, 0, 0, 0];
-    expect(easeToward(c2, goal, 0, true)).toBe(true);
-    expect(c2).toEqual(goal);
-  });
-
-  it("clamps a long idle gap so the first frame after a pause does not teleport", () => {
-    const cur = [0];
-    easeToward(cur, [1], 5);
-    expect(cur[0]).toBeLessThan(0.5);
-  });
-});
-
-describe("labels", () => {
-  it("summarises the pool as counts only: unfinished (reading or queued), ok without uncertain, failed, uncertain", () => {
-    const s: Scene = {
-      ...initialScene(),
-      slots: [
-        { ...emptySlot("P1"), state: "reading" }, { ...emptySlot("P2"), state: "reading" }, { ...emptySlot("P3"), state: "reading" },
-        { ...emptySlot("P4"), state: "reading" }, { ...emptySlot("P5"), state: "reading" }, { ...emptySlot("P6"), state: "ok" },
-        { ...emptySlot("P7"), state: "uncertain" }, { ...emptySlot("P8"), state: "failed" }, emptySlot(null),
-      ],
-    };
-    s.counts = { ...s.counts, readOk: 2, uncertain: 1, readFailed: 1 };
-    const sum = poolSummary(s);
-    expect(sum).toEqual({ pending: 6, ok: 1, failed: 1, uncertain: 1, total: 9 });
-    expect(JSON.stringify(sum)).not.toMatch(/P\d/); // no refs presented as "being read now"
-  });
-
-  it("anchors the pool label left of the pool, none without slots", () => {
-    expect(poolLabelAt(layout3dFor({ showLocalize: false, showExternal: false, slots: 0 }))).toBeNull();
-    const at = poolLabelAt(layout)!;
-    expect(at[0]).toBeLessThan(Math.min(...layout.slots.map((p) => p[0])));
-    expect(at[1]).toBe(layout.slots[0][1]);
-  });
-
-  it("pile labels hang under their bases, the caption centred on their row; none without slots", () => {
-    const l = layout3dFor({ showLocalize: true, showExternal: false, slots: 30 });
-    for (const d of DIRECTION_ORDER) {
-      const at = pileLabelAt(l, d)!;
-      expect(at[0]).toBe(l.piles![d][0]);
-      expect(at[1]).toBeLessThan(l.piles![d][1]);
-      expect(at[1]).toBe(pileCaptionAt(l)![1]); // the caption shares the row; CSS pushes it below the labels
-    }
-    const empty = layout3dFor({ showLocalize: true, showExternal: false, slots: 0 });
-    expect(pileLabelAt(empty, "positive")).toBeNull();
-    expect(pileCaptionAt(empty)).toBeNull();
-  });
-
-  it("visible agents follow the pipeline, external last", () => {
-    expect(visibleAgents(layout, PIPELINE)).toEqual(PIPELINE);
-    const en = layout3dFor({ showLocalize: false, showExternal: true, slots: 0 });
-    expect(visibleAgents(en, PIPELINE)).toEqual([...PIPELINE.filter((id) => id !== "localize"), "external"]);
-  });
-});
-
 describe("evidence piles", () => {
   it("maps all five directions to a distinct glyph-matching shape and a finding colour", () => {
     expect(Object.keys(PILE_SHAPE).sort()).toEqual([...DIRECTION_ORDER].sort());
@@ -218,18 +130,13 @@ describe("evidence piles", () => {
   });
 
   it("tokens are large enough to tell apart, yet stacks and neighbouring piles never touch", () => {
-    // half-extents across (x) and in depth (z) of each token
     const half = [PILE_R.sphere, PILE_R.octahedron, PILE_R.dome, PILE_R.torus + PILE_R.torusTube, PILE_BAR[0] / 2];
     expect(Math.min(PILE_R.sphere, PILE_R.octahedron, PILE_R.dome, PILE_R.torus)).toBeGreaterThanOrEqual(0.09);
-    expect(PILE_R.torusTube / PILE_R.torus).toBeGreaterThanOrEqual(0.25); // a thick ring, not a hairline
-    expect(Math.max(...half)).toBeCloseTo(PILE_HALF, 6); // the layout's clearance uses the real widest token
+    expect(PILE_R.torusTube / PILE_R.torus).toBeGreaterThanOrEqual(0.25);
+    expect(Math.max(...half)).toBeCloseTo(PILE_HALF, 6);
     const depth = [PILE_R.sphere, PILE_R.octahedron, PILE_R.dome, PILE_R.torusTube, PILE_BAR[2] / 2];
     expect(2 * Math.max(...depth, PILE_R.torus + PILE_R.torusTube)).toBeLessThan(PILE_STACK_DZ);
     expect(2 * PILE_HALF).toBeLessThan(PILE_PITCH);
-  });
-
-  it("edges: idle and visited thin, live thicker", () => {
-    expect(EDGE_RADIUS).toEqual({ idle: 0.012, visited: 0.012, live: 0.02 });
   });
 
   it("planArrivals: items seen at mount snap, a burst animates only the newest `cap` with a 60ms stagger", () => {
@@ -237,49 +144,50 @@ describe("evidence piles", () => {
     const replay = planArrivals(items, 30, PACKET_CAP);
     expect(replay.animate).toEqual([]);
     expect(replay.snap).toHaveLength(30);
-
     const burst = planArrivals(items, 0, PACKET_CAP);
     expect(burst.animate.map((a) => a.item.key)).toEqual(Array.from({ length: 12 }, (_, i) => 19 + i));
     expect(burst.animate.map((a) => a.delayMs)).toEqual(Array.from({ length: 12 }, (_, i) => i * ARRIVAL_STAGGER_MS));
     expect(burst.snap).toHaveLength(18);
-
     const two = planArrivals([{ key: 9 }, { key: 3 }, { key: 7 }], 5, PACKET_CAP);
     expect(two.animate.map((a) => [a.item.key, a.delayMs])).toEqual([[7, 0], [9, 60]]);
     expect(two.snap).toEqual([{ key: 3 }]);
   });
 });
 
-describe("thought label", () => {
-  const withExt = layout3dFor({ showLocalize: true, showExternal: true, slots: 30 });
-  it("floats THOUGHT_LIFT (0.85) above the agent's node", () => {
-    const at = thoughtAnchor(layout, "screen")!;
-    const n = layout.nodes.screen!;
-    expect(at).toEqual([n[0], n[1] + 0.85, n[2]]);
-    expect(THOUGHT_LIFT).toBe(0.85);
+describe("label anchors", () => {
+  it("names hang just under each member's feet", () => {
+    for (const id of TEAM_ORDER) {
+      const f = layout.members[id].feet;
+      expect(nameAnchor(layout, id)).toEqual([f[0], -NAME_DROP, f[2]]);
+    }
   });
-  it("goes above the external node for read while external is shown, without a leader line", () => {
-    const ext = withExt.nodes.external!;
-    expect(thoughtAnchor(withExt, "read")).toEqual([ext[0], ext[1] + 0.85, ext[2]]);
-    expect(thoughtLeader(withExt, "read")).toBeNull();
-    expect(thoughtAnchor(layout, "read")![1]).toBeCloseTo(layout.nodes.read![1] + 0.85);
-  });
-  it("leader runs from the node's ring up to the label; nothing for an undrawn or missing agent", () => {
-    const [a, b] = thoughtLeader(layout, "search")!;
-    const n = layout.nodes.search!;
-    expect(a[0]).toBe(n[0]);
-    expect(a[1]).toBeGreaterThan(n[1]);
-    expect(b[1]).toBeGreaterThan(a[1]);
-    expect(b[1]).toBeLessThan(n[1] + 0.85);
-    expect(thoughtAnchor(layout, null)).toBeNull();
-    expect(thoughtAnchor(layout, "external")).toBeNull(); // not in this layout
-    expect(thoughtLeader(layout, "external")).toBeNull();
-  });
-  it("stays inside the bounds' headroom", () => {
-    for (const l of [layout, withExt]) {
-      for (const id of Object.keys(l.nodes) as (keyof typeof l.nodes)[]) {
-        expect(thoughtAnchor(l, id)![1]).toBeLessThanOrEqual(l.bounds.max[1]);
+
+  it("the bubble's tail sits above the tiles; the end members' is lifted, with a leader down to the tiles", () => {
+    for (const id of TEAM_ORDER) {
+      const m = layout.members[id];
+      const at = bubbleAnchor(layout, id);
+      expect(at).toEqual([m.feet[0], m.bubbleY, m.feet[2]]);
+      expect(at[1]).toBeGreaterThan(m.tilesTop);
+      const leader = bubbleLeader(layout, id);
+      if (id === "planner" || id === "synthesizer") {
+        expect(m.bubbleY - m.tilesTop).toBeGreaterThan(BUBBLE_END_LIFT);
+        expect(leader![0][1]).toBeGreaterThan(m.tilesTop);
+        expect(leader![1]).toEqual(at);
+      } else {
+        expect(leader).toBeNull();
       }
     }
+  });
+
+  it("pile labels hang in front of the table under their piles, the caption centred on their row", () => {
+    for (const d of DIRECTION_ORDER) {
+      const at = pileLabelAt(layout, d)!;
+      expect(at[0]).toBe(layout.piles[d][0]);
+      expect(at[1]).toBeLessThan(layout.piles[d][1]);
+      expect(at[2]).toBeGreaterThan(layout.piles[d][2]);
+      expect(at[1]).toBe(pileCaptionAt(layout)![1]);
+    }
+    expect(pileCaptionAt(layout)![0]).toBeCloseTo(0, 9);
   });
 });
 
@@ -305,71 +213,98 @@ const corners = (b: { min: Vec3; max: Vec3 }): Vec3[] =>
 
 const LIM_X = 1 - FIT_MARGIN + 1e-6;
 const LIM_Y = 1 - FIT_MARGIN_V + 1e-6;
+const SPEAKERS = [null, ...TEAM_ORDER] as const;
 
-describe("fitted framing", () => {
+describe("camera", () => {
   it("uses a slimmer vertical margin than the side margin (the flat box is height-bound)", () => {
     expect(FIT_MARGIN_V).toBeLessThan(FIT_MARGIN);
     expect(FIT_MARGIN_V).toBeGreaterThan(0);
   });
-  const cases = [
-    layout3dFor({ showLocalize: true, showExternal: true, slots: 30 }),
-    layout3dFor({ showLocalize: false, showExternal: false, slots: 30 }),
-    layout3dFor({ showLocalize: true, showExternal: false, slots: 0 }),
-  ];
-  it("projects every bounds corner inside the margins (8% sides, 2% top/bottom), and one corner touches a margin", () => {
-    for (const l of cases) {
-      const cam = fitCamera(l.bounds);
-      let edge = 0;
-      for (const p of corners(l.bounds)) {
+
+  it("fitCamera projects every bounds corner inside the margins, one touching a margin", () => {
+    const cam = fitCamera(layout.bounds);
+    let edge = 0;
+    for (const p of corners(layout.bounds)) {
+      const [x, y, depth] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
+      expect(depth).toBeGreaterThan(0);
+      expect(Math.abs(x)).toBeLessThanOrEqual(LIM_X);
+      expect(Math.abs(y)).toBeLessThanOrEqual(LIM_Y);
+      edge = Math.max(edge, Math.abs(x) / (1 - FIT_MARGIN), Math.abs(y) / (1 - FIT_MARGIN_V));
+    }
+    expect(edge).toBeCloseTo(1, 3);
+  });
+
+  it("keeps the fixed elevation for every speaker and centres the projected extent", () => {
+    for (const who of SPEAKERS) {
+      const cam = fitCamera(layout.bounds, STAGE_ASPECT, STAGE_FOV, undefined, framePoints(layout, who));
+      expect(Math.atan2(cam[1] - cam[4], cam[2] - cam[5])).toBeCloseTo(Math.atan2(VIEW_UP, VIEW_BACK), 6);
+      expect(cam[0]).toBe(cam[3]);
+      const ys = framePoints(layout, who).map((p) => project(cam, p, STAGE_FOV, STAGE_ASPECT)[1]);
+      expect(Math.min(...ys) + Math.max(...ys)).toBeCloseTo(0, 2);
+    }
+  });
+
+  it("frames the team plus only the speaker's bubble", () => {
+    expect(framePoints(layout, null)).toBe(layout.frame);
+    const pts = framePoints(layout, "reader");
+    expect(pts).toHaveLength(layout.frame.length + 2);
+    expect(pts.slice(-2)).toEqual(layout.bubbles.reader);
+  });
+
+  it("teamCameraGoal keeps every frame point and the speaker's bubble in view, whoever speaks", () => {
+    for (const who of SPEAKERS) {
+      const cam = teamCameraGoal(layout, who);
+      for (const p of framePoints(layout, who)) {
         const [x, y, depth] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
         expect(depth).toBeGreaterThan(0);
-        expect(Math.abs(x)).toBeLessThanOrEqual(LIM_X);
-        expect(Math.abs(y)).toBeLessThanOrEqual(LIM_Y);
-        edge = Math.max(edge, Math.abs(x) / (1 - FIT_MARGIN), Math.abs(y) / (1 - FIT_MARGIN_V));
-      }
-      expect(edge).toBeCloseTo(1, 3); // fills the wrapper: not further away than needed
-    }
-  });
-  it("keeps the fixed elevation and centres the projected extent", () => {
-    for (const l of cases) {
-      for (const pts of [null, l.frame]) {
-        const cam = fitCamera(l.bounds, STAGE_ASPECT, STAGE_FOV, undefined, pts);
-        expect(Math.atan2(cam[1] - cam[4], cam[2] - cam[5])).toBeCloseTo(Math.atan2(4.2, 7), 6);
-        expect(cam[0]).toBe(cam[3]);
-        const ys = (pts ?? corners(l.bounds)).map((p) => project(cam, p, STAGE_FOV, STAGE_ASPECT)[1]);
-        expect(Math.min(...ys) + Math.max(...ys)).toBeCloseTo(0, 2);
+        expect(Math.abs(x), `${who} x`).toBeLessThanOrEqual(LIM_X);
+        expect(Math.abs(y), `${who} y`).toBeLessThanOrEqual(LIM_Y);
       }
     }
   });
-  it("fits the frame points (not the deep bounding box) so the layout fills the wrapper", () => {
-    for (const l of cases) {
-      const cam = fitCamera(l.bounds, STAGE_ASPECT, STAGE_FOV, undefined, l.frame);
-      let edge = 0;
-      for (const p of l.frame) {
-        const [x, y, depth] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
-        expect(depth).toBeGreaterThan(0);
-        expect(Math.abs(x)).toBeLessThanOrEqual(LIM_X);
-        expect(Math.abs(y)).toBeLessThanOrEqual(LIM_Y);
-        edge = Math.max(edge, Math.abs(x) / (1 - FIT_MARGIN), Math.abs(y) / (1 - FIT_MARGIN_V));
-      }
-      expect(edge).toBeCloseTo(1, 2);
-      const box = fitCamera(l.bounds);
-      const dist = (c: number[]) => Math.hypot(c[0] - c[3], c[1] - c[4], c[2] - c[5]);
-      expect(dist(cam)).toBeLessThan(dist(box)); // closer than fitting the box corners
-    }
+
+  it("eases toward the speaking member: a partial pan along x, look-at and position together", () => {
+    const centre = teamCameraGoal(layout, null);
+    const { min, max } = layout.bounds;
+    const cx = (min[0] + max[0]) / 2;
+    expect(centre[1]).toBeGreaterThan(centre[4]); // above, looking down
+    const left = teamCameraGoal(layout, "planner");
+    const right = teamCameraGoal(layout, "synthesizer");
+    const px = layout.members.planner.feet[0];
+    expect(left[3]).toBeLessThan(right[3]);
+    expect(left[0]).toBe(left[3]);
+    expect(left[0]).toBeGreaterThan(px); // partial: the far end stays framed
+    const unpanned = fitCamera(layout.bounds, STAGE_ASPECT, STAGE_FOV, undefined, framePoints(layout, "planner"),
+      Math.max(...TEAM_ORDER.map((id) => Math.abs(layout.members[id].feet[0] - cx) * PAN)));
+    expect(left[0] - unpanned[0]).toBeCloseTo((px - cx) * PAN, 6);
   });
-  it("cameraGoal keeps every frame point inside the view even when panned toward an end node", () => {
-    for (const l of cases) {
-      for (const id of [null, "guard", "finish", "read"] as const) {
-        const cam = cameraGoal(l, id);
-        for (const p of l.frame) {
-          const [x, y] = project(cam, p, STAGE_FOV, STAGE_ASPECT);
-          expect(Math.abs(x)).toBeLessThanOrEqual(LIM_X);
-          expect(Math.abs(y)).toBeLessThanOrEqual(LIM_Y);
-        }
-      }
-    }
+
+  it("writes into the provided buffer", () => {
+    const out = new Array(6).fill(0);
+    expect(teamCameraGoal(layout, "reader", out)).toBe(out);
   });
+
+  it("eases toward the goal, then snaps and reports settled; reduced motion jumps", () => {
+    const cur = [0, 0, 0, 0, 0, 0];
+    const goal = [1, 2, 3, 4, 5, 6];
+    expect(easeToward(cur, goal, 1 / 60)).toBe(false);
+    expect(cur[0]).toBeGreaterThan(0);
+    expect(cur[0]).toBeLessThan(1);
+    let settled = false;
+    for (let i = 0; i < 600 && !settled; i++) settled = easeToward(cur, goal, 1 / 60);
+    expect(settled).toBe(true);
+    expect(cur).toEqual(goal);
+    const c2 = [0, 0, 0, 0, 0, 0];
+    expect(easeToward(c2, goal, 0, true)).toBe(true);
+    expect(c2).toEqual(goal);
+  });
+
+  it("clamps a long idle gap so the first frame after a pause does not teleport", () => {
+    const cur = [0];
+    easeToward(cur, [1], 5);
+    expect(cur[0]).toBeLessThan(0.5);
+  });
+
   it("falls back to a finite camera for empty bounds and writes into `out`", () => {
     const out = new Array(6).fill(0);
     const cam = fitCamera({ min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }, STAGE_ASPECT, STAGE_FOV, out);

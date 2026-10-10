@@ -11,7 +11,8 @@ const ZERO: Seg = { a: { x: 0, y: 0 }, c: { x: 0, y: 0 }, b: { x: 0, y: 0 } };
 
 export interface DotHandle { launch(seg: Seg, kind: PulseKind, delayMs: number): void }
 
-function PacketDot({ handle }: { handle: Ref<DotHandle> }) {
+/** One packet with its two-ghost wake; also used by the team view's hand-offs. */
+export function PacketDot({ handle }: { handle: Ref<DotHandle> }) {
   const t = useMotionValue(0);
   const segRef = useRef<Seg>(ZERO);
   const el = useRef<SVGCircleElement>(null);

@@ -287,6 +287,33 @@ h4 {
   transform-origin: center;
 }
 
+/* Plan 18 team view: a working agent blinks every 4-6 s (period set per member), its mouth moves while its speech
+   types in, and a sender's eyes glance at the receiver during a hand-off. All off under reduced motion (above). */
+@keyframes team-blink {
+  0%, 93%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.12); }
+}
+.team-blink {
+  animation: team-blink 5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes team-talk {
+  50% { transform: scaleY(2.4); }
+}
+[data-member][data-typing] .team-mouth {
+  animation: team-talk 0.24s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.team-eyes {
+  transition: transform 150ms ease-out;
+}
+.team-eyes[data-look="r"] { transform: translateX(2.5px); }
+.team-eyes[data-look="l"] { transform: translateX(-2.5px); }
+.team-eyes[data-look="d"] { transform: translateY(2.5px); }
+.team-eyes[data-look="u"] { transform: translateY(-2.5px); }
+
 /* Finding-direction glyphs (DESIGN.md): shape + color, never color alone. */
 .g {
   display: inline-block;

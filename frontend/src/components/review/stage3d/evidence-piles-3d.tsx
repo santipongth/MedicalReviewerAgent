@@ -3,18 +3,20 @@
 // stacked in the order they finished. Shapes match the 2D glyphs (PILE_SHAPE) and colours come from the finding tokens,
 // so a pile is never colour-only. Direction is the reading model's judgement of one abstract (labels say
 // "ตามที่เอเจนต์อ่าน"); piles are in a fixed order and nothing ranks them.
-// Arrivals: only tokens finished after mount fly in (newest PACKET_CAP, planArrivals), from their paper's pool slot
-// along a low arc; the frame loop invalidates only while one is waiting or in flight; no per-frame allocations.
+// The piles stand on the team's table. Arrivals: only tokens finished after mount fly in (newest PACKET_CAP,
+// planArrivals), from the reader's antenna along a low arc; the frame loop invalidates only while one is waiting or
+// in flight; no per-frame allocations.
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Object3D, type InstancedMesh } from "three";
 import { PACKET_CAP, type Scene } from "@/lib/agent-scene";
-import { arc3, arc3X, arc3Y, arc3Z, PILE_CAP, pileSpot, type Layout3D, type Seg3, type Vec3 } from "@/lib/agent-layout-3d";
+import { arc3, arc3X, arc3Y, arc3Z, PILE_CAP, pileSpot, type TeamLayout3D, type Seg3, type Vec3 } from "@/lib/agent-layout-3d";
 import { DIRECTION_ORDER, liveTally } from "@/lib/live-evidence";
 import type { Direction } from "@/lib/types";
 import { FLIGHT_MS, PILE_BAR, PILE_COLOR, PILE_R, PILE_SHAPE, easeInOut, planArrivals, type PileShape } from "./model-3d";
 import type { Tokens3D } from "./tokens-3d";
 
+type PileLayout = Pick<TeamLayout3D, "piles">;
 const ARC_BEND = 0.12;
 
 /** Per-direction instance state, preallocated: flight segment + start time per instance index. */
@@ -40,7 +42,7 @@ function Geometry({ shape }: { shape: PileShape }) {
 }
 
 /** Places every instance of one pile for time `now`; returns true while any is waiting or flying. */
-function place(mesh: InstancedMesh, lane: Lane, dir: Direction, w: Work, layout: Layout3D, now: number): boolean {
+function place(mesh: InstancedMesh, lane: Lane, dir: Direction, w: Work, layout: PileLayout, now: number): boolean {
   const { obj, spot } = w;
   let busy = false;
   for (let i = 0; i < lane.n; i++) {
@@ -74,7 +76,7 @@ function place(mesh: InstancedMesh, lane: Lane, dir: Direction, w: Work, layout:
   return busy;
 }
 
-export function EvidencePiles3D({ scene, layout, tokens }: { scene: Scene; layout: Layout3D; tokens: Tokens3D }) {
+export function EvidencePiles3D({ scene, layout, from, tokens }: { scene: Scene; layout: PileLayout; from: Vec3; tokens: Tokens3D }) {
   const invalidate = useThree((s) => s.invalidate);
   const meshes = useRef<Partial<Record<Direction, InstancedMesh | null>>>({});
   const work = useRef<Work | null>(null);
@@ -95,10 +97,8 @@ export function EvidencePiles3D({ scene, layout, tokens }: { scene: Scene; layou
     if (!hidden) {
       for (const { item, delayMs } of animate) {
         const idx = tally.groups[item.direction].indexOf(item);
-        const slot = scene.slots.findIndex((sl) => sl.ref === item.ref);
-        const from = slot >= 0 ? layout.slots[slot] : undefined;
         const to = pileSpot(layout, item.direction, idx, [0, 0, 0]);
-        if (!from || !to || idx >= PILE_CAP) continue;
+        if (!to || idx >= PILE_CAP) continue;
         w.flights.set(item.key, { seg: arc3(from, to, ARC_BEND), start: now + delayMs });
       }
     }
@@ -116,7 +116,7 @@ export function EvidencePiles3D({ scene, layout, tokens }: { scene: Scene; layou
       if (m) place(m, lane, d, w, layout, now);
     }
     invalidate(); // the frame loop keeps invalidating while a token is waiting or in flight
-  }, [scene, tally, layout, invalidate]);
+  }, [scene, tally, layout, from, invalidate]);
 
   useFrame(() => {
     const w = work.current;
@@ -144,21 +144,5 @@ export function EvidencePiles3D({ scene, layout, tokens }: { scene: Scene; layou
         </instancedMesh>
       ))}
     </>
-  );
-}
-
-/**
- * Flat tray under the reader pool and the piles in `rail` (no shadows, no transparency). Unlit and not tone-mapped:
- * a Lambert plane under these two lights came out darker than `surface` in the dark theme (a black slab), breaking
- * DESIGN.md's ground < surface < rail order, so the tray shows the rail token exactly.
- */
-export function Tray3D({ layout, tokens }: { layout: Layout3D; tokens: Tokens3D }) {
-  const t = layout.tray;
-  if (!t) return null;
-  return (
-    <mesh position={[(t.x0 + t.x1) / 2, t.y, (t.z0 + t.z1) / 2]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[t.x1 - t.x0, t.z1 - t.z0]} />
-      <meshBasicMaterial color={tokens.rail} toneMapped={false} />
-    </mesh>
   );
 }
