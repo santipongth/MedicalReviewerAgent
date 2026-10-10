@@ -54,7 +54,8 @@ describe("evidence primitives", () => {
 
   it("Hole without explain has no Term; with explain it shows one outside the slot", async () => {
     const { container, rerender } = render(<Hole lang="th" />);
-    expect(container.innerHTML).toBe('<span class="hole ">ไม่ยืนยัน</span>');
+    // data-print-label: the bracketed text a printout shows instead (Plan 20 Task 8)
+    expect(container.innerHTML).toBe('<span class="hole " data-print-label="[ไม่ได้ตรวจ]">ไม่ยืนยัน</span>');
     expect(screen.queryByRole("button")).toBeNull();
     rerender(<Hole lang="th" explain />);
     expect(container.querySelectorAll(".hole")).toHaveLength(1);

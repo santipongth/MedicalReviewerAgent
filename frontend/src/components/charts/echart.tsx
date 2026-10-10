@@ -1,9 +1,16 @@
 "use client";
 
 import type { ECharts, EChartsCoreOption } from "echarts/core";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { usePrinting } from "../review/print-mode";
 
 export type EChartsOption = EChartsCoreOption;
+
+/**
+ * A chart's width on paper (CSS px): A4 less the print margins (globals.css `@page`, 182mm ≈ 688px) and a little room.
+ * The SVG has a fixed size, so it is redrawn at this width instead of the screen's (vector, never scaled).
+ */
+export const PRINT_CHART_WIDTH = 660;
 
 /** Same escaping as echarts.format.encodeHTML, kept here so building tooltip strings never pulls in echarts. */
 export function encodeHTML(source: unknown): string {
@@ -60,12 +67,26 @@ export function EChart({
     };
   }, []);
 
-  useEffect(() => {
+  // Layout effects: in print mode (Plan 20 Task 8) the chart must be redrawn before the browser lays the page out for
+  // print, right after `beforeprint`. setOption draws synchronously; with no animation the printout never catches a
+  // half-way transition (the colours switch to the light theme at the same time).
+  const printing = usePrinting();
+  const printed = useRef(false);
+  useLayoutEffect(() => {
     optionRef.current = option;
-    chart.current?.setOption(option, { notMerge: true });
-  }, [option]);
+    const c = chart.current;
+    if (!c) return;
+    if (printing) {
+      c.resize({ width: PRINT_CHART_WIDTH, animation: { duration: 0 } });
+      printed.current = true;
+    } else if (printed.current) {
+      c.resize({ animation: { duration: 0 } }); // back to the container's width
+      printed.current = false;
+    }
+    c.setOption(printing ? { ...option, animation: false } : option, { notMerge: true });
+  }, [option, printing]);
 
   // Tabular figures for every tick, count and label. font-feature-settings (unlike font-variant-numeric) survives the
   // `font` shorthand the SVG renderer writes on each text node, so it inherits into the chart's text.
-  return <div ref={el} role="img" aria-label={label} style={{ height, width: "100%", fontFeatureSettings: '"tnum"' }} />;
+  return <div ref={el} role="img" aria-label={label} data-echart style={{ height, width: "100%", fontFeatureSettings: '"tnum"' }} />;
 }

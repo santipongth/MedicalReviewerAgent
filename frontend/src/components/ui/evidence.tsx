@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { DIRECTION_LABEL, t, type Lang } from "@/lib/i18n";
+import { RC } from "@/lib/i18n-report";
 import type { Direction } from "@/lib/types";
 import { L } from "@/components/review/text";
 import { Term } from "./term";
@@ -48,9 +49,12 @@ export function ComputedNumber({ value, lang = "th", tag = true, className = "" 
   );
 }
 
-/** A value the verifier blanked: shown as a visible gap, never hidden or estimated. */
+/**
+ * A value the verifier blanked: shown as a visible gap, never hidden or estimated. On paper (Plan 20 Task 8) the hatch
+ * would print as a grey smudge, so the print stylesheet swaps it for bracketed text ("[unverified]").
+ */
 export function Hole({ lang, className = "", explain = false }: { lang: Lang; className?: string; explain?: boolean }) {
-  const slot = <span className={`hole ${className}`}>{t(lang, "notVerified")}</span>;
+  const slot = <span className={`hole ${className}`} data-print-label={L(lang, RC.print.unverified)}>{t(lang, "notVerified")}</span>;
   if (!explain) return slot;
   return (
     <>

@@ -31,7 +31,7 @@ export function ScrollRegion({ label, lang, children, className = "", bordered =
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1" data-scroll-region={scrollable ? "scrollable" : "fits"}>
       {scrollable && (
-        <p aria-hidden="true" className="justify-self-end font-display text-[0.78rem] text-muted" data-scroll-hint>
+        <p aria-hidden="true" className="justify-self-end font-display text-[0.78rem] text-muted print:hidden" data-scroll-hint>
           {L(lang, edges.end ? RC.scroll.more : RC.scroll.back)}
         </p>
       )}

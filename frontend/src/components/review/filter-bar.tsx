@@ -20,7 +20,7 @@ export function FilterStatus({ filters, onChange, shown, total, lang }: {
   return (
     <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm bg-info-bg px-3 py-2 text-[0.88rem]">
       <span>{L(lang, F.status(shown, total))}</span>
-      <button type="button" onClick={() => onChange(emptyFilters())} className="min-h-11 font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">
+      <button type="button" onClick={() => onChange(emptyFilters())} className="min-h-11 font-display font-semibold text-primary underline underline-offset-2 md:min-h-0 print:hidden">
         {L(lang, F.clear)}
       </button>
     </p>
@@ -42,7 +42,7 @@ export function FilterBar({ papers, filters, onChange, shown, lang, showRisk = t
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-2 print:hidden">
     <button type="button" aria-expanded={open} aria-controls={`${id}-panel`} onClick={() => setOpen(!open)}
       className="min-h-11 w-fit rounded-sm border border-rule px-3 font-display text-[0.9rem] hover:border-ink md:min-h-0 md:py-1.5">
       {L(lang, F.button(shown, papers.length))}

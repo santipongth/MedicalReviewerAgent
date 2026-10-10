@@ -225,7 +225,7 @@ export function ComparisonMatrix({ rows, refs: allRefs, lang, onSelect, selected
       </p>
       {(view.hidden > 0 || showAll) && (
         <button type="button" onClick={() => setShowAll((s) => !s)} aria-pressed={showAll}
-          className="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0">
+          className="inline-flex min-h-11 items-center font-display font-semibold text-primary underline underline-offset-2 md:min-h-0 print:hidden">
           {showAll ? L(lang, P.showTwoPlus) : L(lang, P.showAll(view.total))}
         </button>
       )}
@@ -472,7 +472,7 @@ export function StudyButton({ p, lang, onSelect, selected, type = "legacy" }: {
           {relatedReportsLabel(lang)}: {p.related_reports.join(", ")}
         </span>
       )}
-      <span className="font-display text-[0.85rem] font-semibold text-primary underline underline-offset-2">
+      <span className="font-display text-[0.85rem] font-semibold text-primary underline underline-offset-2 print:hidden">
         {cue}
       </span>
     </button>

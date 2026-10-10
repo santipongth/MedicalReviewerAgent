@@ -25,7 +25,7 @@ describe("Plan 20 answer-first report, per review type", () => {
   it("SLR: title, bottom line, key findings, summary of findings … limitations, discussion, methods, references", () => {
     render(<Report review={slrP20ReviewFixture} />);
     expect(tocIds()).toEqual(["h-answer", "h-key-findings", "h-sof", "h-selection", "h-characteristics", "h-results", "h-rob", "h-claims",
-      "h-landscape", "h-limitations", "h-gaps", "h-discussion", "h-method", "h-papers", "h-downloads"]);
+      "h-landscape", "h-limitations", "h-gaps", "h-discussion", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     const answer = answerSection();
     // the reading size (globals.css `.reading`: 17px / 1.75 in a Thai report, Plan 20 Task 7)
     expect(within(answer).getByText(/^เมตฟอร์มินอาจลดอุบัติการณ์/)).toHaveClass("reading");
@@ -79,7 +79,7 @@ describe("Plan 20 answer-first report, per review type", () => {
   it("scoping: no summary-of-findings table and no results group; the evidence map is a study characteristic", () => {
     const { container } = render(<Report review={scopingP20ReviewFixture} />);
     expect(tocIds()).toEqual(["h-answer", "h-key-findings", "h-selection", "h-characteristics", "h-landscape", "h-limitations", "h-gaps",
-      "h-discussion", "h-method", "h-papers", "h-downloads"]);
+      "h-discussion", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     const characteristics = screen.getByRole("heading", { level: 2, name: "ลักษณะของงานวิจัยที่รวบรวม" }).closest("section")!;
     expect(within(characteristics).getByRole("heading", { level: 3, name: "แผนที่หลักฐาน" })).toBeInTheDocument();
     expect(container.querySelector("#h-sof, #h-results")).toBeNull();

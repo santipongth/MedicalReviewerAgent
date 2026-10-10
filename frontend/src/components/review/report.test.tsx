@@ -193,7 +193,7 @@ describe("Report", () => {
     const h2ids = [...container.querySelectorAll("h2[id^='h-']")].map((h) => h.id);
     expect(h2ids).toEqual(ids);
     expect(ids[0]).toBe("h-answer");
-    expect(ids.at(-1)).toBe("h-downloads");
+    expect(ids.slice(-2)).toEqual(["h-downloads", "h-appendix"]);
     const toc = screen.getByRole("navigation", { name: "สารบัญ" });
     expect(within(toc).getAllByRole("link").map((a) => a.getAttribute("href")!.slice(1))).toEqual(ids);
     expect(within(toc).getAllByRole("link").map((a) => a.textContent)).toContain("ดาวน์โหลด");
@@ -298,8 +298,8 @@ describe("Report per review type", () => {
     const noStrength = { ...reviewFixture, result: { ...reviewFixture.result!, synthesis: { ...reviewFixture.result!.synthesis!, evidence_strength: null } } };
     const { container } = render(<Report review={noStrength} />);
     expect(screen.queryByText(/อ่านเฉพาะบทคัดย่อ/)).toBeNull();
-    expect(navIds(container)).toEqual(["h-answer", "h-selection", "h-results", "h-rob", "h-claims", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
-    expect(headingIds(container)).toEqual(["h-answer", "h-selection", "h-results", "h-matrix", "h-charts", "h-rob", "h-claims", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
+    expect(navIds(container)).toEqual(["h-answer", "h-selection", "h-results", "h-rob", "h-claims", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(headingIds(container)).toEqual(["h-answer", "h-selection", "h-results", "h-matrix", "h-charts", "h-rob", "h-claims", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     expect(container.querySelector("#h-key-findings, #h-sof, #h-discussion")).toBeNull(); // no answer, no SoF for legacy
     expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำมาก");
   });
@@ -320,9 +320,9 @@ describe("Report per review type", () => {
     const { container } = render(<Report review={scopingReviewFixture} />);
     expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("การทบทวนขอบเขต");
     expect(screen.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ · ไม่ใช่คำแนะนำทางการแพทย์")).toBeInTheDocument();
-    expect(navIds(container)).toEqual(["h-answer", "h-selection", "h-characteristics", "h-landscape", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
+    expect(navIds(container)).toEqual(["h-answer", "h-selection", "h-characteristics", "h-landscape", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     expect(headingIds(container)).toEqual(["h-answer", "h-selection", "h-characteristics", "h-evidence-map", "h-litmatrix", "h-landscape", "h-map",
-      "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
+      "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     expect(container.querySelector("#h-sof")).toBeNull();
     expect(container.querySelector("#h-claims")).toBeNull();
     expect(container.querySelector("#h-matrix")).toBeNull();
@@ -388,10 +388,10 @@ describe("Report per review type", () => {
     const { container } = render(<Report review={narrativeReviewFixture} />);
     expect(screen.getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนแบบบรรยาย\)/)).toBeInTheDocument();
     expect(screen.queryByText("ต่ำมาก")).toBeNull();
-    expect(navIds(container)).toEqual(["h-answer", "h-characteristics", "h-results", "h-rob", "h-claims", "h-landscape", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
+    expect(navIds(container)).toEqual(["h-answer", "h-characteristics", "h-results", "h-rob", "h-claims", "h-landscape", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     // Plan 20 Task 5: no outcome has 3 effect sizes and the study map has < 5 points, so the charts block is left out
     expect(headingIds(container)).toEqual(["h-answer", "h-characteristics", "h-litmatrix", "h-results", "h-matrix", "h-rob", "h-claims",
-      "h-landscape", "h-map", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
+      "h-landscape", "h-map", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     expect(screen.queryByTestId("charts")).toBeNull();
     expect(container.querySelector("[data-prisma-flow]")).toBeNull();
     expect(container.querySelector("#h-sof")).toBeNull();
@@ -424,9 +424,9 @@ describe("Report per review type", () => {
   it("meta-analysis: SLR sections plus the pooled section right after the charts, graded, typed badge", () => {
     const { container } = render(<Report review={metaReviewFixture} />);
     expect(navIds(container)).toEqual(["h-answer", "h-sof", "h-selection", "h-characteristics", "h-results", "h-rob", "h-claims", "h-landscape",
-      "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
+      "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     expect(headingIds(container)).toEqual(["h-answer", "h-sof", "h-selection", "h-characteristics", "h-litmatrix", "h-results", "h-matrix",
-      "h-charts", "h-meta", "h-rob", "h-claims", "h-landscape", "h-map", "h-citations", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
+      "h-charts", "h-meta", "h-rob", "h-claims", "h-landscape", "h-map", "h-citations", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("การวิเคราะห์อภิมาน");
     const answer = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
     expect(within(answer).getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำมาก");
@@ -638,7 +638,7 @@ describe("mobile source drawer", () => {
     const slr = { ...reviewFixture, result: { ...reviewFixture.result!, review_type: "slr" as const } };
     const a = render(<Report review={slr} />);
     expect(navIds(a.container)).toEqual(["h-answer", "h-sof", "h-selection", "h-characteristics", "h-results", "h-rob", "h-claims", "h-landscape",
-      "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
+      "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     expect(headingIds(a.container).filter((id) => ["h-landscape", "h-map"].includes(id))).toEqual(["h-landscape", "h-map"]);
     expect(screen.getByRole("img", { name: /แผนที่ความรู้ \d+ กลุ่มงานวิจัย/ })).toBeInTheDocument();
     expect(screen.getByText(/เส้นเชื่อมมาจากตารางผลแต่ละการศึกษาเท่านั้น/)).toBeInTheDocument();
@@ -654,7 +654,7 @@ describe("mobile source drawer", () => {
 
   it("citation network: after the concept map when result.citations exists; never for legacy or without data", async () => {
     const a = render(<Report review={slrReviewFixture} />);
-    expect(headingIds(a.container).slice(-8)).toEqual(["h-landscape", "h-map", "h-citations", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads"]);
+    expect(headingIds(a.container).slice(-9)).toEqual(["h-landscape", "h-map", "h-citations", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
     expect(screen.getAllByRole("link", { name: "ภาพรวมความรู้" })[0]).toHaveAttribute("href", "#h-landscape");
     const section = screen.getByRole("heading", { level: 3, name: "เครือข่ายการอ้างอิง" }).closest("section")!;
     expect(within(section).getByRole("img", { name: "เครือข่ายการอ้างอิง 5 งานวิจัย 4 เส้นเชื่อม" })).toBeInTheDocument();

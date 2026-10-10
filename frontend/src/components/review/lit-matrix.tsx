@@ -18,6 +18,7 @@ import { ThaiText } from "../ui/thai-text";
 import { SectionHeading } from "./report-nav";
 import { ReadingFlag } from "./report-parts";
 import { ScrollRegion } from "./scroll-region";
+import { usePrinting } from "./print-mode";
 import { useMinWidth } from "./use-min-width";
 import { L } from "./text";
 
@@ -96,7 +97,7 @@ function Outcomes({ row, lang, onSelect }: { row: LitRow; lang: Lang; onSelect: 
       <p className="line-clamp-2 break-words" data-clamped>{items}</p>
       <button type="button" onClick={() => onSelect(row.ref)}
         aria-label={L(lang, T.showAllOf(row.ref, row.outcomes.length))}
-        className="inline-flex min-h-11 items-center font-display text-[0.8rem] font-semibold text-primary underline underline-offset-2 md:min-h-0">
+        className="inline-flex min-h-11 items-center font-display text-[0.8rem] font-semibold text-primary underline underline-offset-2 md:min-h-0 print:hidden">
         {L(lang, T.showAll(row.outcomes.length))}
       </button>
     </span>
@@ -250,7 +251,7 @@ function Pager({ page, pages, start, end, total, lang, onPage }: {
   if (pages <= 1) return null;
   const btn = "inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm border border-rule px-3 font-display text-[0.85rem] hover:border-ink disabled:opacity-45 disabled:hover:border-rule";
   return (
-    <nav aria-label={L(lang, T.pages)} className="flex flex-wrap items-center gap-x-3 gap-y-1" data-lit-pager>
+    <nav aria-label={L(lang, T.pages)} className="flex flex-wrap items-center gap-x-3 gap-y-1 print:hidden" data-lit-pager>
       <button type="button" className={btn} disabled={page === 0} onClick={() => onPage(page - 1)}>{L(lang, T.previous)}</button>
       <span className="font-display text-[0.85rem] tabular-nums text-muted" aria-live="polite">
         {/* rows are records: a further report of a trial is a row too, so the pager never calls them studies */}
@@ -271,8 +272,10 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
   papers: Paper[]; allPapers?: Paper[]; lang: Lang; type: ReviewTypeOrLegacy; onSelect: (ref: string) => void; reviewId: string; offline?: boolean;
   citations?: Citations | null; question?: QuestionBlock | null;
 }) {
-  // A table only where all six columns fit (>= 1280px); cards below, 1024–1279 included (fix round 1)
-  const wide = useMinWidth(LIT_TABLE_MIN_WIDTH);
+  // A table only where all six columns fit (>= 1280px); cards below, 1024–1279 included (fix round 1). Print (Plan 20
+  // Task 8) is always one table of every row: paper repeats its header on each page, so no pager and no cards.
+  const printing = usePrinting();
+  const wide = useMinWidth(LIT_TABLE_MIN_WIDTH) || printing;
   const rows = useMemo(() => litRows(papers, lang, citations), [papers, lang, citations]);
   const allRows = useMemo(() => (allPapers === papers ? rows : litRows(allPapers, lang, citations)), [allPapers, papers, rows, lang, citations]);
   // The columns and framework follow the whole review, so they do not change while the reader filters.
@@ -282,7 +285,7 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
   // risk of bias under the direction; a review without a direction column has its own risk column instead
   const riskUnder = showsRiskOfBias(type) && cols.includes("direction");
   const [page, setPage] = useState(0);
-  const pg = paginate(rows, page, LIT_PAGE_SIZE);
+  const pg = printing ? paginate(rows, 0, Math.max(1, rows.length)) : paginate(rows, page, LIT_PAGE_SIZE);
   const caption = L(lang, T.caption);
   const context = question?.context?.trim();
   return (
@@ -291,7 +294,7 @@ export function LitMatrixSection({ papers, allPapers = papers, lang, type, onSel
         <SectionHeading id="h-litmatrix">{L(lang, T.h)}</SectionHeading>
         {!offline && (
           <a href={exportUrl(reviewId, "csv")} download
-            className="inline-flex min-h-11 items-center font-display text-[0.9rem] font-semibold text-primary underline underline-offset-2 md:min-h-0">
+            className="inline-flex min-h-11 items-center font-display text-[0.9rem] font-semibold text-primary underline underline-offset-2 md:min-h-0 print:hidden">
             {L(lang, T.csv)}
           </a>
         )}

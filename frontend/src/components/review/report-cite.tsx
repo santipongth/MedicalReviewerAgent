@@ -89,7 +89,7 @@ export function DownloadsAndCite({ review, result, type, lang, offline }: {
         <h3 id="cite-report" className={H3}>{citeTitle}</h3>
         {citeBlock}
       </div>
-      <div className="grid gap-3">
+      <div className="grid gap-3 print:hidden">
         <h3 id="download-files" className={H3}>{Lw(lang, C.downloads)}</h3>
         <Downloads id={review.id} lang={lang} />
       </div>

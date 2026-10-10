@@ -10,7 +10,7 @@ import { ThemeToggle } from "./theme-toggle";
 export function SiteHeader() {
   const lang = useDocLang();
   return (
-    <header className="sticky top-[env(safe-area-inset-top,0px)] z-20 border-b border-rule bg-ground">
+    <header className="sticky top-[env(safe-area-inset-top,0px)] z-20 border-b border-rule bg-ground print:hidden">
       <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-4 px-4 py-2.5">
         <HeaderHeight />
         <Link href="/" className="flex min-h-11 items-center gap-2.5 font-display text-base font-bold text-ink no-underline md:min-h-0">

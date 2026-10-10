@@ -109,6 +109,8 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
         <b className="font-display font-semibold">{statusText(type, lang)}</b>
         <span>{L(lang, type === "legacy" ? T.byAgentLegacy : T.byAgent)}</span>
       </p>
+      {/* paper has no striped tape or hatch (Plan 20 Task 8): the printout says how its marks read */}
+      <p className="hidden max-w-[75ch] text-[0.85rem] print:block" data-print-key>{L(lang, RC.print.key)}</p>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.9rem] print:hidden">
         {!offline && (

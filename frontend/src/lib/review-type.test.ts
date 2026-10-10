@@ -38,12 +38,13 @@ describe("review-type", () => {
   });
   it("puts every type in the answer-first order (Plan 20)", () => {
     const ORDER: SectionId[] = ["title", "bottom_line", "key_findings", "sof", "selection", "characteristics", "results", "rob",
-      "consistency", "landscape", "limitations", "gaps", "discussion", "methods", "references", "downloads"];
+      "consistency", "landscape", "limitations", "gaps", "discussion", "methods", "references", "downloads", "appendix"];
     for (const t of [...REVIEW_TYPES, "legacy"] as const) {
       const top = reportLayout(t).map((s) => s.id);
       expect(top, t).toEqual(ORDER.filter((id) => top.includes(id as never)));
       expect(top.slice(0, 2), t).toEqual(["title", "bottom_line"]);
-      expect(top.at(-1), t).toBe("downloads");
+      // Plan 20 Task 8: the verified-numbers appendix closes every report, after the downloads
+      expect(top.slice(-2), t).toEqual(["downloads", "appendix"]);
     }
     expect(reportLayout("slr").map((s) => s.id)).toEqual(ORDER);
     expect(reportLayout("scoping").find((s) => s.id === "characteristics")?.blocks).toEqual(["evidence_map", "lit_matrix"]);

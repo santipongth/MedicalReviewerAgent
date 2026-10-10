@@ -186,7 +186,7 @@ describe("Report placement (SECTIONS_BY_TYPE)", () => {
       const ids = toc();
       if (type === "scoping") expect(ids, type).not.toContain("#h-rob");
       else expect(ids.indexOf("#h-rob"), type).toBe(ids.indexOf("#h-results") + 1);
-      expect(ids.at(-3), type).toBe("#h-method");
+      expect(ids.at(-4), type).toBe("#h-method"); // then references, downloads and the appendix (Task 8)
       unmount();
     }
   });

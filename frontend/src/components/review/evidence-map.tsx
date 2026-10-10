@@ -60,7 +60,7 @@ function CountTable({ table, label, corner, lang, limit }: { table: MapTable; la
       </ScrollRegion>
       {limit != null && table.rows.length > limit && (
         <button type="button" onClick={() => setAll((a) => !a)} aria-pressed={all}
-          className="inline-flex min-h-11 w-fit items-center font-display text-[0.9rem] font-semibold text-primary underline underline-offset-2 md:min-h-0">
+          className="inline-flex min-h-11 w-fit items-center font-display text-[0.9rem] font-semibold text-primary underline underline-offset-2 md:min-h-0 print:hidden">
           {L(lang, all ? E.top(limit) : RC.parts.showAll(table.rows.length))}
         </button>
       )}

@@ -7,6 +7,7 @@ import { ComputedNumber, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { ThaiText } from "../ui/thai-text";
 import { CertaintyMark } from "./certainty";
+import { usePrinting } from "./print-mode";
 import { NoEffectText, PooledValue, StudyEffectValue } from "./key-findings";
 import { themeFoundText, type Select } from "./report-parts";
 import { SECTION_H2 } from "./report-nav";
@@ -17,9 +18,24 @@ const S = RC.sof;
 
 const TH = "px-3 py-2 text-left align-bottom label";
 // From md up a table cell; below md each outcome is a stacked card and every cell shows its column name first.
-const TD = "px-3 py-2.5 align-top max-md:block max-md:px-0 max-md:py-1.5 max-md:before:mb-0.5 max-md:before:block "
+const TD_CARD = "max-md:block max-md:px-0 max-md:py-1.5 max-md:before:mb-0.5 max-md:before:block "
   + "max-md:before:font-display max-md:before:text-[0.72rem] max-md:before:font-semibold max-md:before:tracking-[0.04em] "
   + "max-md:before:text-muted max-md:before:content-[attr(data-label)]";
+const TD = "px-3 py-2.5 align-top";
+
+/**
+ * The stacked-card classes below md, none in print (Plan 20 Task 8): a sheet of paper is narrower than md, but the
+ * summary of findings prints as the table it is (its header repeated on each page).
+ */
+function cards(printing: boolean) {
+  return printing
+    ? { table: "", head: "", body: "", row: "", rowHead: "", td: "", statement: "" }
+    : {
+      table: "max-md:block", head: "max-md:sr-only", row: "max-md:block", td: TD_CARD,
+      body: "max-md:mb-3 max-md:block max-md:rounded-sm max-md:border max-md:border-rule max-md:bg-surface max-md:px-3 max-md:py-2",
+      rowHead: "max-md:block max-md:px-0 max-md:pt-0.5", statement: "max-md:block max-md:px-0 max-md:pb-1",
+    };
+}
 const COUNT = new Intl.NumberFormat("en-US");
 const NOTE = "text-[0.78rem] text-muted";
 
@@ -123,6 +139,7 @@ function Statement({ row, lang }: { row: SofRow; lang: Lang }) {
  * Thai cell text wraps only between words (ThaiText, Plan 20 Task 7); short labels never wrap.
  */
 export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lang: Lang; onSelect: Select; graded: boolean }) {
+  const c = cards(usePrinting());
   if (!rows.length) return null;
   const caption = L(lang, S.caption);
   // Every certainty here is the review's single grade: the engine's per-finding value is that grade copied onto each
@@ -143,11 +160,11 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
       </p>
       {/* Fits without scrolling since Task 3; the region keeps the scroll cue in case a long word ever widens it. */}
       <ScrollRegion label={caption} lang={lang} bordered={false} className="rounded-sm md:border md:border-rule">
-        <table className="w-full border-collapse text-[0.9rem] max-md:block" aria-describedby="sof-note">
+        <table className={`w-full border-collapse text-[0.9rem] ${c.table}`} aria-describedby="sof-note">
           <caption className="sr-only">
             {caption} {L(lang, S.captionNote)}
           </caption>
-          <thead className="max-md:sr-only">
+          <thead className={c.head}>
             <tr className="bg-ground">
               <th scope="col" className={`${TH} w-[24%]`}>{L(lang, S.colOutcome)}</th>
               <th scope="col" className={`${TH} w-[26%]`}>{col.studies}</th>
@@ -156,14 +173,13 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
             </tr>
           </thead>
           {rows.map((r) => (
-            <tbody key={r.key} data-sof-row
-              className="border-t border-rule max-md:mb-3 max-md:block max-md:rounded-sm max-md:border max-md:border-rule max-md:bg-surface max-md:px-3 max-md:py-2">
-              <tr className="max-md:block">
+            <tbody key={r.key} data-sof-row className={`border-t border-rule ${c.body}`}>
+              <tr className={c.row}>
                 <th scope="row" lang={fieldLang(r.outcome, lang)}
-                  className="px-3 pt-2.5 text-left align-top font-display font-semibold break-words max-md:block max-md:px-0 max-md:pt-0.5">
+                  className={`px-3 pt-2.5 text-left align-top font-display font-semibold break-words ${c.rowHead}`}>
                   <ThaiText>{r.outcome}</ThaiText>
                 </th>
-                <td className={TD} data-label={col.studies}>
+                <td className={`${TD} ${c.td}`} data-label={col.studies}>
                   <span className="font-display font-semibold nw">
                     <span className="tabular-nums">{r.k}</span> {L(lang, S.studies(r.k))}
                   </span>
@@ -177,8 +193,8 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
                     <Participants row={r} lang={lang} />
                   </span>
                 </td>
-                <td className={TD} data-label={col.effect}><Effect effect={r.effect} k={r.k} lang={lang} onSelect={onSelect} /></td>
-                <td className={TD} data-label={col.certainty}>
+                <td className={`${TD} ${c.td}`} data-label={col.effect}><Effect effect={r.effect} k={r.k} lang={lang} onSelect={onSelect} /></td>
+                <td className={`${TD} ${c.td}`} data-label={col.certainty}>
                   {graded && r.certainty ? (
                     <span className="grid gap-0.5">
                       <CertaintyMark level={r.certainty} lang={lang} />
@@ -187,8 +203,8 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
                   ) : <span className="text-[0.88rem] text-muted nw">{L(lang, S.notAssessed)}</span>}
                 </td>
               </tr>
-              <tr className="max-md:block">
-                <td colSpan={4} className="px-3 pb-3 text-[0.92rem] max-md:block max-md:px-0 max-md:pb-1" data-sof-statement>
+              <tr className={c.row}>
+                <td colSpan={4} className={`px-3 pb-3 text-[0.92rem] ${c.statement}`} data-sof-statement>
                   <span className="label mr-2">{col.means}</span>
                   <Statement row={r} lang={lang} />
                 </td>

@@ -586,7 +586,7 @@ Plan 20 Task 10 adds:
 
 ### Exports
 
-The web app also serves the whole interactive report as one HTML file that works offline: `GET <origin>/r/{id}/report.html` (attachment `review-<id8>.html`, about 1 MB; 409 until done).
+The web app also serves the whole interactive report as one HTML file that works offline: `GET <origin>/r/{id}/report.html` (attachment `review-<id8>.html`, about 1.3 MB; 409 until done). It renders from the embedded `review.result` and makes no network request (Plan 20 Task 8: the verified-number face is embedded, the other fonts fall back to system fonts); its header carries a metadata line (review id, review type, search date or else created date, generated date, report language, `prompt_version`) and a light/dark theme toggle. Like the web page, it prints as an A4 report that ends with an appendix of every verified number and its source sentence from the abstract (pooled numbers listed apart, with k and the studies).
 
 `GET /reviews/{id}/export?format=…` returns an attachment named `review-<first 8 chars of id>.<format>`. It is only available once the review is `done`; before that it returns 409.
 

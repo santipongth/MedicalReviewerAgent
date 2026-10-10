@@ -65,7 +65,7 @@ export function Term({
         <span
           role="note"
           id={id}
-          className="fixed inset-x-0 bottom-0 z-30 block rounded-sm border border-rule bg-surface p-3 text-sm font-normal text-ink sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:w-72 sm:max-w-[min(18rem,calc(100vw-2rem))]"
+          className="fixed inset-x-0 bottom-0 z-30 block rounded-sm border border-rule bg-surface p-3 text-sm font-normal text-ink print:hidden sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:w-72 sm:max-w-[min(18rem,calc(100vw-2rem))]"
         >
           {L(lang, entry.body.th, entry.body.en)}
         </span>

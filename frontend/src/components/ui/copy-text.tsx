@@ -57,7 +57,7 @@ export function CopyTextButton({ text, label, name, copied, failed, boxLabel, cl
   }
 
   return (
-    <span className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${className}`}>
+    <span className={`flex flex-wrap items-center gap-x-2 gap-y-1 print:hidden ${className}`}>
       <button type="button" onClick={copy} aria-label={name} aria-controls={state === "fallback" ? boxId : undefined}
         className="inline-flex min-h-11 cursor-pointer items-center rounded-sm border border-rule bg-transparent px-3 font-display text-[0.85rem] font-semibold text-primary hover:border-ink">
         {label}

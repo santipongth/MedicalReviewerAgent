@@ -48,7 +48,8 @@ export function isGraded(type: ReviewTypeOrLegacy): boolean {
 /** Top-level report sections (Plan 20 answer-first order). Each gets one H2 and one table-of-contents entry. */
 export type TopSectionId =
   | "title" | "bottom_line" | "key_findings" | "sof" | "selection" | "characteristics" | "results" | "rob"
-  | "consistency" | "landscape" | "limitations" | "gaps" | "discussion" | "methods" | "references" | "downloads";
+  | "consistency" | "landscape" | "limitations" | "gaps" | "discussion" | "methods" | "references" | "downloads"
+  | "appendix";
 
 /** Content blocks (Plan 10–14b sections) drawn inside a group section, under their own H3. */
 export type BlockId =
@@ -71,25 +72,27 @@ export const SECTION_BLOCKS: Partial<Record<TopSectionId, readonly BlockId[]>> =
  * and builds its table of contents from this list, and a section with nothing to show is left out.
  * "rob" is the risk-of-bias summary (Plan 20 Task 4; never for scoping, which appraises nothing); "citations" (Plan 14b) shows only when
  * result.citations is present; "sof" (summary of findings) is for the graded types that pool or grade per outcome.
+ * "appendix" (Plan 20 Task 8) closes every report: each verified number with its source sentence, and the computed
+ * (pooled) numbers apart.
  */
 export const SECTIONS_BY_TYPE: Record<ReviewTypeOrLegacy, SectionId[]> = {
   narrative: ["title", "bottom_line", "key_findings", "characteristics", "lit_matrix", "results", "findings", "forest",
     "rob", "consistency", "claims", "landscape", "concept_map", "citations", "limitations", "gaps", "discussion",
-    "methods", "references", "downloads"],
+    "methods", "references", "downloads", "appendix"],
   slr: ["title", "bottom_line", "key_findings", "sof", "selection", "prisma", "characteristics", "lit_matrix",
     "results", "findings", "forest", "rob", "consistency", "claims", "landscape", "concept_map", "citations",
-    "limitations", "gaps", "discussion", "methods", "references", "downloads"],
+    "limitations", "gaps", "discussion", "methods", "references", "downloads", "appendix"],
   // Scoping maps what exists: the evidence map is a study characteristic, and there are no results by outcome.
   scoping: ["title", "bottom_line", "key_findings", "selection", "prisma", "characteristics", "evidence_map",
     "lit_matrix", "landscape", "concept_map", "citations", "limitations", "gaps", "discussion", "methods",
-    "references", "downloads"],
+    "references", "downloads", "appendix"],
   // An SLR plus the pooled analysis, after the per-study findings and forest plot in the results.
   meta_analysis: ["title", "bottom_line", "key_findings", "sof", "selection", "prisma", "characteristics",
     "lit_matrix", "results", "findings", "forest", "meta", "rob", "consistency", "claims", "landscape",
-    "concept_map", "citations", "limitations", "gaps", "discussion", "methods", "references", "downloads"],
+    "concept_map", "citations", "limitations", "gaps", "discussion", "methods", "references", "downloads", "appendix"],
   // Results stored before Plan 14a: the same blocks as before (claims, findings, forest, prisma), in the new order.
   legacy: ["title", "bottom_line", "key_findings", "selection", "prisma", "results", "findings", "forest", "rob",
-    "consistency", "claims", "limitations", "gaps", "discussion", "methods", "references", "downloads"],
+    "consistency", "claims", "limitations", "gaps", "discussion", "methods", "references", "downloads", "appendix"],
 };
 
 export function showsSection(type: ReviewTypeOrLegacy, id: SectionId): boolean {

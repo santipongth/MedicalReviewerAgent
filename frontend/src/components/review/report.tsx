@@ -14,7 +14,10 @@ import {
   type BlockId, type TopSectionId,
 } from "@/lib/review-type";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
+import { printPageCss } from "@/lib/print";
+import { VerifiedAppendix } from "./appendix";
 import { BottomLine } from "./bottom-line";
+import { PrintMode, usePrintSetup } from "./print-mode";
 import { chartsContent } from "@/lib/charts-content";
 import { Charts } from "./charts";
 import { CitationNetworkSection } from "./citation-network";
@@ -27,7 +30,7 @@ import { MetaAnalysisSection } from "./meta-analysis";
 import { FilterBar, FilterStatus } from "./filter-bar";
 import { CitedText, ClaimsPanel, ComparisonMatrix, MatrixLegend, READING, SameModelReadings } from "./report-parts";
 import { ReferencesSection } from "./references";
-import { DownloadsAndCite } from "./report-cite";
+import { citedQuestion, DownloadsAndCite } from "./report-cite";
 import { MethodsSection } from "./methods-section";
 import { PrismaFlow } from "./prisma-flow";
 import { RobSummarySection } from "./rob-summary";
@@ -63,6 +66,7 @@ const TOP: Record<Exclude<TopSectionId, "title">, { id: string; nav: Pair; h2?: 
   methods: { id: "h-method", nav: N.methods },
   references: { id: "h-papers", nav: N.references },
   downloads: { id: "h-downloads", nav: N.downloads },
+  appendix: { id: "h-appendix", nav: N.appendix },
 };
 
 /**
@@ -115,6 +119,9 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const active = selection;
 
   const railHeading = useId();
+  const root = useRef<HTMLDivElement>(null);
+  // Plan 20 Task 8: print mode (every disclosure open, tables instead of cards, light charts at paper width)
+  const printing = usePrintSetup(root);
   const returnFocus = useRef<HTMLElement | null>(null);
   const pressed = useRef<HTMLElement | null>(null);
 
@@ -276,6 +283,9 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
         ) : null;
       case "downloads":
         return <DownloadsAndCite review={review} result={result} type={type} lang={lang} offline={offline} />;
+      case "appendix":
+        // Plan 20 Task 8: every verified number with its source sentence (collapsed on screen, open in print)
+        return hasPapers ? <VerifiedAppendix papers={papers} meta={result.meta_analysis} metaRows={metaRows} lang={lang} onSelect={select} /> : null;
       default:
         return null;
     }
@@ -289,10 +299,14 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     return { id: top.id, label: L(lang, offline && id === "downloads" ? N.offlineDownloads : top.nav) };
   });
   if (!hasPapers) navItems.splice(lead, 0, { id: "h-next", label: L(lang, N.tryThis) });
+  // The running header and footer of a printout: @page margin boxes (where the browser draws them)
+  const pageCss = printPageCss({ title: citedQuestion(review, result, lang), id: review.id.slice(0, 8), lang });
   return (
+    <PrintMode.Provider value={printing}>
     <SameModelReadings.Provider value={sameModelReadings(result)}>
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 pt-8" onPointerDownCapture={notePress} onClickCapture={notePress}
-      style={offline ? ({ "--header-h": "0px" } as CSSProperties) : undefined} data-report lang={lang}>
+    <div ref={root} className="grid grid-cols-[minmax(0,1fr)] gap-6 pt-8 print:pt-0" onPointerDownCapture={notePress} onClickCapture={notePress}
+      style={offline ? ({ "--header-h": "0px" } as CSSProperties) : undefined} data-report lang={lang} data-printing={printing || undefined}>
+      <style data-print-page>{pageCss}</style>
       <div className={`grid grid-cols-[minmax(0,1fr)] rounded-sm border border-rule bg-surface ${hasPapers ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] xl:grid-cols-[10rem_minmax(0,1fr)_minmax(0,22rem)]" : ""}`}>
         {hasPapers && <ReportToc items={navItems} label={L(lang, N.contents)} />}
         <div className={`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-10 p-5 sm:p-8 ${hasPapers ? "lg:border-r lg:border-rule" : ""}`}>
@@ -328,5 +342,6 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
       </div>
     </div>
     </SameModelReadings.Provider>
+    </PrintMode.Provider>
   );
 }

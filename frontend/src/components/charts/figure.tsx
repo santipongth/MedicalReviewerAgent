@@ -18,7 +18,7 @@ export function Figure({ title, caption, lang, chart, table, defaultTable = fals
       <div className={`flex flex-wrap items-baseline gap-2 ${title ? "justify-between" : "justify-end"}`}>
         {title && <figcaption className="min-w-0 font-display text-base font-semibold break-words">{title}</figcaption>}
         <button type="button" onClick={() => setAsTable((t) => !t)} aria-pressed={asTable}
-          className="inline-flex min-h-11 items-center rounded-sm border border-rule px-2.5 py-0.5 font-display text-[0.8rem] hover:border-ink md:min-h-0">
+          className="inline-flex min-h-11 items-center rounded-sm border border-rule px-2.5 py-0.5 font-display text-[0.8rem] hover:border-ink md:min-h-0 print:hidden">
           {L(lang, asTable ? RC.charts.showChart : RC.charts.showTable)}
         </button>
       </div>

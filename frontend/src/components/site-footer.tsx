@@ -17,11 +17,11 @@ export function SiteFooter() {
           <b className="block font-display text-ink">{t(lang, "notAdvice")}</b>
           {t(lang, "footerNote")}
         </p>
-        <div className="grid content-start gap-2">
+        <div className="grid content-start gap-2 print:hidden">
           <h2 className="label">{t(lang, "dataSources")}</h2>
           <ul className="grid gap-1 text-[0.9rem]">{SOURCES.map((s) => <li key={s}>{s}</li>)}</ul>
         </div>
-        <nav aria-label={t(lang, "footerNav")} className="grid content-start gap-2">
+        <nav aria-label={t(lang, "footerNav")} className="grid content-start gap-2 print:hidden">
           <h2 className="label">{t(lang, "site")}</h2>
           <ul className="grid gap-1 text-[0.9rem]">
             <li><Link href="/" className="hover:text-primary">{t(lang, "review")}</Link></li>

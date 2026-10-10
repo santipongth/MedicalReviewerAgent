@@ -53,6 +53,7 @@ export const RC = {
     references: ["อ้างอิง", "References"],
     downloads: ["ดาวน์โหลด", "Downloads"],
     offlineDownloads: ["อ้างอิงรายงาน", "Cite"],
+    appendix: ["ภาคผนวก", "Appendix"],
     tryThis: ["ลองแบบนี้", "Try this"],
     contents: ["สารบัญ", "Contents"],
     inThisReport: ["ในรายงานนี้", "In this report"],
@@ -721,5 +722,45 @@ export const RC = {
     noDataNotNone: ["ไม่มีข้อมูล ≠ ไม่อ้างอิง", "No data ≠ cites nothing"],
     timedOut: ["การดึงข้อมูลหมดเวลา", "the lookup timed out"],
     conceptMap: ["แผนที่ความรู้", "Concept map"],
+  },
+
+  /** Verified-numbers appendix (appendix.tsx, Plan 20 Task 8). */
+  appendix: {
+    h2: ["ภาคผนวก: ตัวเลขที่ตรวจแล้ว", "Appendix: verified numbers"],
+    summary: (n: number, k: number): Pair => [`ตัวเลขจากงานวิจัย ${n} ค่า${k ? ` และค่ารวมที่คำนวณ ${k} ค่า` : ""} พร้อมประโยคต้นฉบับ`,
+      `${n} ${pl(n, "number", "numbers")} from the studies${k ? ` and ${k} computed ${pl(k, "pool", "pools")}` : ""}, with the source sentences`],
+    note: ["ทุกตัวเลขจากงานวิจัยที่แสดงในรายงานนี้ พร้อมประโยคในบทคัดย่อที่ใช้ตรวจ ตัวเลขที่ตรวจไม่ผ่านไม่แสดงและไม่อยู่ในรายการนี้",
+      "Every number from a study shown in this report, with the abstract sentence it was checked against. Numbers that failed the check are not shown and are not listed."],
+    verifiedCaption: ["ตัวเลขจากงานวิจัยที่ตรวจกับบทคัดย่อแล้ว", "Numbers from the studies, checked against the abstracts"],
+    colStudy: ["งานวิจัย", "Study"],
+    colOutcome: ["ผลลัพธ์", "Outcome"],
+    colNumber: ["ตัวเลข", "Number"],
+    colQuote: ["ประโยคต้นฉบับ (บทคัดย่อ)", "Source sentence (abstract)"],
+    sampleSize: ["ขนาดตัวอย่าง", "Sample size"],
+    otherComparison: ["การเปรียบเทียบอื่น ไม่ใช้สรุป", "other comparison, not used in the synthesis"],
+    noQuote: ["ไม่ได้บันทึกประโยคต้นฉบับ", "No source sentence stored"],
+    noVerified: ["รายงานนี้ไม่มีตัวเลขจากงานวิจัยที่ตรวจผ่าน", "This report shows no verified number from a study."],
+    computedCaption: ["ตัวเลขที่ระบบคำนวณ (ค่ารวม)", "Numbers computed by the system (pooled)"],
+    computedNote: ["คำนวณโดยระบบจากตัวเลขที่ตรวจแล้วข้างบน ไม่ใช่ตัวเลขจากงานวิจัยฉบับใด",
+      "Computed by the system from the verified numbers above; not a number from any single study."],
+    colPool: ["ค่ารวม (95% CI)", "Pooled (95% CI)"],
+    colInputs: ["คำนวณจาก", "Computed from"],
+    colHeterogeneity: ["ความต่างกันระหว่างงาน", "Heterogeneity"],
+    inputs: (k: number): Pair => [`k = ${k} งาน:`, `k = ${k} ${pl(k, "study", "studies")}:`],
+  },
+
+  /** Print and the offline file (Plan 20 Task 8). */
+  print: {
+    unverified: ["[ไม่ได้ตรวจ]", "[unverified]"],
+    key: ["ฉบับพิมพ์: ตัวเลขที่ตรวจกับบทคัดย่อแล้วขีดเส้นใต้และมีเครื่องหมาย ✓ ตัวเลขที่ระบบคำนวณมีป้าย “คำนวณ” ค่าที่ตรวจไม่ผ่านแสดงเป็น [ไม่ได้ตรวจ] ประโยคต้นฉบับของทุกตัวเลขอยู่ในภาคผนวกท้ายรายงาน",
+      "On paper: numbers checked against the abstracts are underlined and marked ✓; numbers the system computed carry a “computed” tag; values that failed the check read [unverified]. The appendix at the end gives each number's source sentence."],
+  },
+  offline: {
+    generated: ["สร้างไฟล์เมื่อ", "Generated"],
+    created: ["สร้างรีวิวเมื่อ", "Created"],
+    prompt: ["เวอร์ชันพรอมต์", "Prompt version"],
+    unknown: ["ไม่ทราบ", "unknown"],
+    legacyType: ["รูปแบบเดิม (ก่อนมีประเภทรีวิว)", "Earlier format (before review types)"],
+    details: ["ข้อมูลไฟล์รายงาน", "Report file details"],
   },
 } as const;
