@@ -271,6 +271,16 @@ h4 {
 .stage-pulse {
   animation: stage-pulse 1.6s ease-in-out infinite;
 }
+/* Plan 17b: the agent that is working sends out a thin ring (stroke only: no glow, no fill). */
+@keyframes stage-ping {
+  from { opacity: 0.55; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.45); }
+}
+.stage-ping {
+  animation: stage-ping 1.8s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
 
 /* Finding-direction glyphs (DESIGN.md): shape + color, never color alone. */
 .g {

@@ -19,6 +19,18 @@ function PacketDot({ handle }: { handle: Ref<DotHandle> }) {
   const cx = useTransform(t, (v) => segX(segRef.current, v));
   const cy = useTransform(t, (v) => segY(segRef.current, v));
   const opacity = useTransform(t, [0, 0.1, 0.9, 1], [0, 1, 1, 0]);
+  // Two trailing ghosts a few percent behind the packet (Plan 17b): a short flat wake, no glow.
+  const lag = (d: number) => (v: number) => Math.max(0, v - d);
+  const t1 = useTransform(t, lag(0.05));
+  const t2 = useTransform(t, lag(0.1));
+  const x1 = useTransform(t1, (v) => segX(segRef.current, v));
+  const y1 = useTransform(t1, (v) => segY(segRef.current, v));
+  const x2 = useTransform(t2, (v) => segX(segRef.current, v));
+  const y2 = useTransform(t2, (v) => segY(segRef.current, v));
+  const o1 = useTransform(t, [0, 0.15, 0.85, 1], [0, 0.45, 0.45, 0]);
+  const o2 = useTransform(t, [0, 0.2, 0.8, 1], [0, 0.22, 0.22, 0]);
+  const tail1 = useRef<SVGCircleElement>(null);
+  const tail2 = useRef<SVGCircleElement>(null);
   useEffect(() => () => ctl.current?.stop(), []);
   useImperativeHandle(handle, () => ({
     launch(seg, kind, delayMs) {
@@ -29,6 +41,8 @@ function PacketDot({ handle }: { handle: Ref<DotHandle> }) {
         node.setAttribute("data-packet", kind); // DOM attribute only: no React state per packet
         node.setAttribute("class", KIND_CLS[kind]);
       }
+      tail1.current?.setAttribute("class", KIND_CLS[kind]);
+      tail2.current?.setAttribute("class", KIND_CLS[kind]);
       t.set(0);
       const c = animate(t, [0, 1], { duration: 0.7, delay: delayMs / 1000, ease: "easeInOut" });
       ctl.current = c;
@@ -37,7 +51,13 @@ function PacketDot({ handle }: { handle: Ref<DotHandle> }) {
       });
     },
   }), [t]);
-  return <m.circle ref={el} r={3.5} className="fill-ink" style={{ cx, cy, opacity }} />;
+  return (
+    <>
+      <m.circle ref={tail2} r={2} className="fill-ink" style={{ cx: x2, cy: y2, opacity: o2 }} />
+      <m.circle ref={tail1} r={2.75} className="fill-ink" style={{ cx: x1, cy: y1, opacity: o1 }} />
+      <m.circle ref={el} r={3.5} className="fill-ink" style={{ cx, cy, opacity }} data-head />
+    </>
+  );
 }
 
 /** Fixed pool of dots; each fresh pulse (never replayed ones) animates along its edge's cached segment. */

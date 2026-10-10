@@ -1,3 +1,4 @@
+import { m } from "motion/react";
 import type { ReaderSlot, SlotState } from "@/lib/agent-scene";
 import { REF_FONT, type StageLayout } from "@/lib/agent-layout";
 import { FLAG_PATHS } from "@/components/ui/evidence";
@@ -39,7 +40,11 @@ export function ReaderPool({ slots, layout }: { slots: ReaderSlot[]; layout: Sta
         if (!slot) return null;
         return (
           <g key={i} data-testid={`reader-${slot.state}`} transform={`translate(${p.x} ${p.y})`}>
-            <Slot slot={slot} r={layout.slotR} />
+            {/* each state change pops the slot (keyed on state); slots ripple in order of their ref (Plan 17b) */}
+            <m.g key={slot.state} initial={{ scale: 0.55, opacity: 0.35 }} animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 380, damping: 18, delay: slot.state === "reading" ? Math.min(i, 30) * 0.018 : 0 }}>
+              <Slot slot={slot} r={layout.slotR} />
+            </m.g>
           </g>
         );
       })}
