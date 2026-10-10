@@ -64,6 +64,100 @@ def trial_search_queries(queries: list[str], limit: int) -> list[str]:
     return list(out.values())[: max(0, limit)]
 
 
+# ---- trial-name harvest (Plan 20 Task 10, meta-analysis recall) ----------------------------------------------
+# The planner is asked for a trial-name query but often writes none (the SGLT2 re-run had five keyword queries), and
+# the landmark trials then depend on keyword ranking. Their acronyms are, however, all over the first-round hits:
+# reviews, sub-studies and commentaries name them ("the EMPEROR-Reduced trial", "DAPA-HF ClinicalTrials.gov number").
+# An acronym counts only in a trial context (followed by trial/study/programme/investigators/ClinicalTrials.gov, or
+# in brackets after "trial"/"study"), has at least 4 capitals, and is named by at least TRIAL_NAME_MIN_DOCS hits.
+_ACRONYM = (r"[A-Z][A-Z0-9]{2,}(?:[-–][A-Za-z0-9]+)*(?:\s(?:TIMI\s)?\d{1,3}\b)?"
+            r"(?:\s(?:OUTCOMES?|PROGRAM(?:ME)?)\b)?")
+_ACRONYM_IN_CONTEXT = re.compile(
+    rf"({_ACRONYM})\s*\)?\s*(?i:trials?|study|studies|programme|program|investigators|ClinicalTrials)\b")
+_ACRONYM_IN_BRACKETS = re.compile(rf"\b(?i:trial|study)\s*\(({_ACRONYM})\)")
+_NOT_TRIAL_NAMES = frozenset({"OUTCOME", "OUTCOMES", "CVOT", "CVOTS", "RCT", "RCTS", "NYHA", "HFPEF", "HFREF",
+                              "HFMREF", "LVEF", "COVID", "COVID-19", "SARS", "MACE", "KCCQ", "PRISMA", "GRADE",
+                              "NHANES", "SEER", "MIMIC", "UK", "USA", "NIH", "WHO", "FDA", "EMA", "NICE"})
+TRIAL_NAME_MIN_DOCS = 2
+TRIAL_NAME_LIMIT = 12
+TRIAL_NAME_FRONT = 10  # the name search's best hits that lead the candidate list
+
+
+def _trial_key(name: str) -> str:
+    return re.sub(r"[\s\-–]+", "-", name.strip()).upper()
+
+
+def harvest_trial_names(cands: list[Candidate], *, min_docs: int = TRIAL_NAME_MIN_DOCS,
+                        limit: int = TRIAL_NAME_LIMIT) -> list[str]:
+    """Trial acronyms named in a trial context by at least `min_docs` hits, most named first (ties: first seen),
+    spelled as most often written."""
+    docs: Counter[str] = Counter()
+    spellings: dict[str, Counter[str]] = {}
+    for c in cands:
+        text = f"{c.title}. {c.abstract or ''}"
+        matches = sorted((m.start(1), m.group(1)) for pattern in (_ACRONYM_IN_CONTEXT, _ACRONYM_IN_BRACKETS)
+                         for m in pattern.finditer(text))
+        keys: dict[str, None] = {}  # in text order, so ties rank deterministically
+        for _, name in matches:
+            name = re.sub(r"\s+", " ", name.replace("–", "-")).strip()
+            key = _trial_key(name)
+            if (key in _NOT_TRIAL_NAMES or key.split("-")[0] in _NOT_TRIAL_NAMES
+                    or sum(ch.isupper() for ch in name) < 4 or re.search(r"\d{5,}", name)):
+                continue
+            keys[key] = None
+            spellings.setdefault(key, Counter())[name] += 1
+        docs.update(list(keys))
+    ranked = [k for k, n in docs.most_common() if n >= min_docs]
+    return [spellings[k].most_common(1)[0][0] for k in ranked[:limit]]
+
+
+def intervention_terms(question: dict | None, limit: int = 10) -> list[str]:
+    """Phrases naming the review's intervention for a Europe PMC query: the key terms (with their MeSH heading and
+    synonyms) that share a word with intervention_or_exposure, else its own comma/bracket-separated parts of at most
+    four words. Empty without a refined question."""
+    q = question or {}
+    own = {w for w in re.findall(r"[a-z0-9]+", (q.get("intervention_or_exposure") or "").lower()) if len(w) >= 4}
+    if not own:
+        return []
+    out: list[str] = []
+    for term in q.get("key_terms") or []:
+        names = [term.get("term") or "", term.get("mesh") or "", *(term.get("synonyms") or [])]
+        words = {w for n in names for w in re.findall(r"[a-z0-9]+", n.lower())}
+        if words & own:
+            out += [n for n in names if n.strip()]
+    if not out:
+        parts = re.split(r"[,;()]|\be\.g\.|\bor\b", q.get("intervention_or_exposure") or "")
+        out = [p.strip() for p in parts if p.strip() and len(p.split()) <= 4]
+    return list(dict.fromkeys(out))[:limit]
+
+
+# ---- topic focus of the candidate cut (Plan 20 Task 10) --------------------------------------------------------
+def _norm(text: str) -> str:
+    words = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return " " + " ".join(w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+                          for w in words) + " "
+
+
+def focus_terms(question: dict | None) -> list[str]:
+    """Every key term, MeSH heading and synonym of the refined question, normalised (lower case, singular)."""
+    out: list[str] = []
+    for term in (question or {}).get("key_terms") or []:
+        for name in [term.get("term") or "", term.get("mesh") or "", *(term.get("synonyms") or [])]:
+            n = _norm(name).strip()
+            if len(n) >= 3:
+                out.append(n)
+    return list(dict.fromkeys(out))
+
+
+def on_focus(c: Candidate, terms: list[str]) -> bool:
+    """Whether the title or abstract names any key term (as a phrase; for a term with a digit, also with its spaces
+    and hyphens removed: "SGLT-2" = "SGLT2")."""
+    text = _norm(f"{c.title} {c.abstract or ''}")
+    squashed = text.replace(" ", "")
+    return any(f" {t} " in text or (any(ch.isdigit() for ch in t) and t.replace(" ", "") in squashed)
+               for t in terms)
+
+
 def make_search(deps):
     async def search(state: ReviewState) -> dict:
         started = time.perf_counter()
@@ -91,16 +185,32 @@ def make_search(deps):
                 errors.append(f"search failed for '{q}' page {page}: {type(res).__name__}")
             else:
                 per_query[q].extend(res)
-        trial_hits = 0
+        trial_hits = trial_failed = 0
         for q, res in zip(trial_queries, results[len(jobs):], strict=True):
             if isinstance(res, BaseException):
+                trial_failed += 1
                 errors.append(f"Europe PMC trial search failed for '{q}': {type(res).__name__}")
             else:  # its own list in the round-robin, after the SearXNG queries
                 per_query[f"trials:{q}"] = list(res)
                 trial_hits += len(res)
+        # Plan 20 Task 10: one more Europe PMC RCT search for the trial acronyms the first round names, scoped to the
+        # review's intervention; its best hits lead the candidate list (they are the landmark trials of the question).
+        names: list[str] = []
+        name_hits: list[Candidate] = []
+        if trial_queries and hasattr(deps.europepmc, "search_trial_names"):
+            names = harvest_trial_names([c for hits in per_query.values() for c in hits])
+            terms = intervention_terms(state.get("question"))
+            if names and terms:
+                try:
+                    name_hits = list(await deps.europepmc.search_trial_names(
+                        names, terms, page_size=settings.trial_search_page_size))
+                except Exception as exc:  # noqa: BLE001 - a recall extra; the search hits stand
+                    trial_failed += 1
+                    errors.append(f"Europe PMC trial-name search failed: {type(exc).__name__}")
+        per_query["trials:names"] = name_hits[TRIAL_NAME_FRONT:]
         # Round-robin by rank across queries: the candidate cut keeps each query's best hits instead of
         # favouring the first query or highly cited (older) papers.
-        found: list[Candidate] = []
+        found: list[Candidate] = list(name_hits[:TRIAL_NAME_FRONT])
         for rank in range(max((len(v) for v in per_query.values()), default=0)):
             found.extend(v[rank] for v in per_query.values() if rank < len(v))
         progress_writer()({"type": "searching", "found": len(found), "queries": len(queries),
@@ -114,12 +224,17 @@ def make_search(deps):
                     per_source["europe pmc (rct search)"] += 1
                 else:
                     per_source.update(set(c.engines) or {"unknown"})
+        if name_hits[:TRIAL_NAME_FRONT]:
+            per_source["europe pmc (rct search)"] += len(name_hits[:TRIAL_NAME_FRONT])
         searched_at = datetime.now(UTC).isoformat(timespec="seconds")
+        entry = {"stage": "search", "queries": len(queries), "failed": len(errors), "pages": pages,
+                 "trial_queries": len(trial_queries), "trial_hits": trial_hits,
+                 "seconds": round(time.perf_counter() - started, 3)}
+        if trial_queries:  # Plan 20 Task 10: Europe PMC failures after the retries, and the trial-name search
+            entry |= {"trial_failed": trial_failed, "trial_names": names, "trial_name_hits": len(name_hits)}
         return {"candidates": [c.model_dump() for c in found], "errors": errors,
                 "search_stats": {"found": len(found), "per_source": dict(per_source), "searched_at": searched_at},
-                "quality": [{"stage": "search", "queries": len(queries), "failed": len(errors), "pages": pages,
-                             "trial_queries": len(trial_queries), "trial_hits": trial_hits,
-                             "seconds": round(time.perf_counter() - started, 3)}]}
+                "quality": [entry]}
 
     return search
 
@@ -136,11 +251,17 @@ def make_enrich(deps):
         dois = [c.doi for c in lookup if c.doi]
         pmids = [c.pmid for c in lookup if c.pmid]
         records: list[Candidate] = []
+        failures: list[str] = []
         if dois or pmids:
-            try:
-                records = await deps.europepmc.lookup(dois=dois, pmids=pmids)
+            try:  # each batch is retried with backoff; a batch that still fails is skipped (Plan 20 Task 10)
+                records = await deps.europepmc.lookup(dois=dois, pmids=pmids, failures=failures)
             except Exception as exc:  # noqa: BLE001 - enrichment is optional; keep search hits
+                failures.append(type(exc).__name__)
                 errors.append(f"Europe PMC enrichment failed: {type(exc).__name__}")
+            else:
+                if failures:
+                    errors.append(f"Europe PMC enrichment failed for {len(failures)} batch(es): "
+                                  f"{', '.join(sorted(set(failures)))}")
         # Europe PMC first so its curated metadata wins scalar fields; the order stays the search rank order
         # (rank_from), so the candidate cut below keeps the best-ranked hits (audit I-8).
         enriched = merge_candidates([*records, *merged], rank_from=len(records)) if records else merged
@@ -157,14 +278,26 @@ def make_enrich(deps):
                            and len((c.abstract or "").strip()) >= MIN_ABSTRACT_CHARS)
         no_abstract = sum(1 for c in enriched if not usable_abstract(c))
         enriched = [c for c in enriched if usable_abstract(c)]
+        # Plan 20 Task 10: hits that name none of the question's key terms (an arXiv paper on call admission control
+        # for "HF admission", a veterinary trial) move behind the on-topic ones, so they no longer take slots of the
+        # candidate cut; their order is kept and nothing is dropped. Skipped without a refined question.
+        terms = focus_terms(state.get("question"))
+        off_focus = 0
+        if terms:
+            focused = [c for c in enriched if on_focus(c, terms)]
+            off_focus = len(enriched) - len(focused)
+            enriched = focused + [c for c in enriched if not on_focus(c, terms)]
         kept = enriched[: options.candidate_limit]  # search rank order is kept
         progress_writer()({"type": "enriching", "candidates": len(kept)})
+        entry = {"stage": "enrich", "snippet_only": snippet_only,
+                 "looked_up": len(lookup), "skipped_lookup": len(merged) - len(lookup),
+                 "off_focus": off_focus, "seconds": round(time.perf_counter() - started, 3)}
+        if failures:
+            entry["europepmc_failed"] = len(failures)
         return {"candidates": [c.model_dump() for c in kept], "errors": errors,
                 "search_stats": {**(state.get("search_stats") or {}), "unique": unique,
                                  "with_abstract": len(enriched), "non_research": non_research,
                                  "year_excluded": year_excluded, "no_abstract": no_abstract},
-                "quality": [{"stage": "enrich", "snippet_only": snippet_only,
-                             "looked_up": len(lookup), "skipped_lookup": len(merged) - len(lookup),
-                             "seconds": round(time.perf_counter() - started, 3)}]}
+                "quality": [entry]}
 
     return enrich

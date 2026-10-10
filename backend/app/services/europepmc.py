@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
 from app.graph.schemas import Candidate
 from app.services.http import HttpClient
 from app.services.text import normalize_doi, strip_markup
@@ -80,33 +82,116 @@ def trial_names(words: str) -> list[str]:
     return list(dict.fromkeys(names)) if len(names) >= 2 and 2 * len(names) >= len(tokens) else []
 
 
+# Europe PMC answers 429/5xx under load (measured 2026-10-10: the trial searches and the enrichment lookup of two
+# concurrent reviews failed with HTTPStatusError, a 503 "temporarily unavailable", while the same requests succeeded
+# moments later).
+RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+
+def _phrase(text: str) -> str:
+    """Words, spaces and hyphens only: a quoted Europe PMC phrase never carries user syntax."""
+    return " ".join(re.sub(r"[^\w\s-]", " ", text).split())
+
+
 class EuropePmcClient:
     BATCH = 40
     CONCURRENCY = 3  # batches in flight; HttpClient's per-host spacing still applies
-    TRIAL_TIMEOUT = 8.0  # seconds per trial-search attempt (one retry): worst case ~17 s, not ~2 min
+    TRIAL_TIMEOUT = 8.0  # seconds per trial-search attempt
+    # Bounded backoff before each retry (Plan 20 Task 10): two retries after a 429/5xx answer, one after a timeout or
+    # a connection error, so a stalled Europe PMC costs a trial search at most 2 x TRIAL_TIMEOUT + 1 s.
+    RETRY_DELAYS = (1.0, 2.0)
+    TRANSPORT_RETRIES = 1
 
-    def __init__(self, http: HttpClient, base_url: str) -> None:
+    def __init__(self, http: HttpClient, base_url: str, *, sleep=asyncio.sleep) -> None:
         self.http = http
         self.base_url = base_url.rstrip("/")
+        self._sleep = sleep
+
+    async def _get(self, url: str, params: dict[str, Any], *, timeout: float | None = None,
+                   last_params: dict[str, Any] | None = None) -> httpx.Response:
+        """GET with the bounded retry above; the shared HttpClient's own retries are off here, so this backoff is the
+        only one. `last_params` replaces the params on the final attempt (the trial search drops its citation sort,
+        the expensive part, when the sorted query keeps failing). Raises HTTPStatusError, or the transport error,
+        when every attempt failed."""
+        attempts = len(self.RETRY_DELAYS) + 1
+        transport_failures = 0
+        for attempt in range(attempts):
+            final = attempt == attempts - 1
+            kwargs: dict[str, Any] = {"params": last_params if final and last_params is not None else params,
+                                      "retries": 0}
+            if timeout is not None:
+                kwargs["timeout"] = timeout
+            try:
+                resp = await self.http.get(url, **kwargs)
+            except httpx.TransportError:
+                transport_failures += 1
+                if final or transport_failures > self.TRANSPORT_RETRIES:
+                    raise
+            else:
+                if resp.status_code not in RETRY_STATUSES or final:
+                    resp.raise_for_status()
+                    return resp
+            await self._sleep(self.RETRY_DELAYS[attempt])
+        raise AssertionError("unreachable")
 
     async def _batch(self, terms: list[str], gate: asyncio.Semaphore) -> list[Candidate]:
         async with gate:
-            resp = await self.http.get(
+            resp = await self._get(
                 f"{self.base_url}/search",
-                params={"query": " OR ".join(terms), "format": "json", "resultType": "core", "pageSize": 100},
+                {"query": " OR ".join(terms), "format": "json", "resultType": "core", "pageSize": 100},
             )
-        resp.raise_for_status()
         return [parse_epmc_result(r) for r in resp.json().get("resultList", {}).get("result", [])]
 
-    async def lookup(self, *, dois: list[str], pmids: list[str]) -> list[Candidate]:
+    async def lookup(self, *, dois: list[str], pmids: list[str],
+                     failures: list[str] | None = None) -> list[Candidate]:
+        """Europe PMC records for the identifiers, in batch order. A batch that still fails after its retries is
+        skipped and its error name is appended to `failures` (when given); only when every batch failed is the error
+        raised."""
         terms = [f'DOI:"{d}"' for d in dict.fromkeys(dois)] + [
             f"(EXT_ID:{p} AND SRC:MED)" for p in dict.fromkeys(pmids)
         ]
         gate = asyncio.Semaphore(self.CONCURRENCY)
         batches = await asyncio.gather(
-            *(self._batch(terms[i : i + self.BATCH], gate) for i in range(0, len(terms), self.BATCH))
+            *(self._batch(terms[i : i + self.BATCH], gate) for i in range(0, len(terms), self.BATCH)),
+            return_exceptions=True,
         )
-        return [c for batch in batches for c in batch]  # batch order kept
+        errors = [b for b in batches if isinstance(b, BaseException)]
+        for exc in errors:
+            if not isinstance(exc, Exception):  # cancellation and the like are never swallowed
+                raise exc
+        if errors and len(errors) == len(batches):
+            raise errors[-1]
+        if failures is not None:
+            failures += [type(e).__name__ for e in errors]
+        return [c for batch in batches if not isinstance(batch, BaseException) for c in batch]  # batch order kept
+
+    async def _rct_search(self, query: str, page_size: int) -> list[Candidate]:
+        params = {"query": f'{query} AND PUB_TYPE:"Randomized Controlled Trial" AND HAS_ABSTRACT:y',
+                  "format": "json", "resultType": "core", "pageSize": page_size, "sort": "CITED desc"}
+        unsorted = {k: v for k, v in params.items() if k != "sort"}
+        # a recall extra: a slow Europe PMC must not hold the search node for minutes (the searches run in parallel)
+        resp = await self._get(f"{self.base_url}/search", params, timeout=self.TRIAL_TIMEOUT, last_params=unsorted)
+        out = []
+        for r in resp.json().get("resultList", {}).get("result", []):
+            c = parse_epmc_result(r)
+            out.append(c.model_copy(update={"engines": ["europe pmc"]}))
+        return out
+
+    async def search_trial_names(self, names: list[str], terms: list[str], *,
+                                 page_size: int = 25) -> list[Candidate]:
+        """RCTs that name any of `names` (trial acronyms harvested from the first search round) and any of `terms`
+        (the review's intervention), most cited first (Plan 20 Task 10). Acronyms such as DELIVER or CANVAS are also
+        English words, so the intervention terms are required. Measured 2026-10-10 on the SGLT2 / heart-failure
+        question: the first 13 hits include EMPA-REG OUTCOME, CANVAS, DAPA-HF, DECLARE-TIMI 58, EMPEROR-Reduced,
+        EMPEROR-Preserved, DELIVER, SOLOIST-WHF, VERTIS-CV and EMPULSE; without the terms the first hits were
+        unrelated landmark trials (COVID-19 vaccines, melanoma)."""
+        names = [n for n in dict.fromkeys(_phrase(n) for n in names) if n]
+        terms = [t for t in dict.fromkeys(_phrase(t) for t in terms) if t]
+        if not names or not terms:
+            return []
+        quoted = " OR ".join(f'"{n}"' for n in names)
+        scope = " OR ".join(f'"{t}"' for t in terms)
+        return await self._rct_search(f"({quoted}) AND ({scope})", page_size)
 
     async def search_trials(self, query: str, *, page_size: int = 25) -> list[Candidate]:
         """Randomized controlled trials with an abstract that match the keyword query, most cited first (meta-analysis
@@ -120,19 +205,7 @@ class EuropePmcClient:
         names = trial_names(words)
         if names:  # a list of trial names ("DAPA-HF EMPEROR-Reduced DELIVER"): any of them, not all at once
             words = " OR ".join(f'"{n}"' for n in names)
-        resp = await self.http.get(
-            f"{self.base_url}/search",
-            params={"query": f'({words}) AND PUB_TYPE:"Randomized Controlled Trial" AND HAS_ABSTRACT:y',
-                    "format": "json", "resultType": "core", "pageSize": page_size, "sort": "CITED desc"},
-            # a recall extra: a slow Europe PMC must not hold the search node for minutes (3 searches run in parallel)
-            timeout=self.TRIAL_TIMEOUT, retries=1,
-        )
-        resp.raise_for_status()
-        out = []
-        for r in resp.json().get("resultList", {}).get("result", []):
-            c = parse_epmc_result(r)
-            out.append(c.model_copy(update={"engines": ["europe pmc"]}))
-        return out
+        return await self._rct_search(f"({words})", page_size)
 
     REF_PAGE = 1000
     REF_MAX_PAGES = 3
@@ -141,13 +214,13 @@ class EuropePmcClient:
         """Reference list (metadata only) of one Europe PMC record; [] when it has none or is unknown."""
         out: list[EpmcReference] = []
         for page in range(1, (max_pages or self.REF_MAX_PAGES) + 1):
-            resp = await self.http.get(
-                f"{self.base_url}/{source}/{id}/references",
-                params={"format": "json", "pageSize": self.REF_PAGE, "page": page},
-            )
-            if resp.status_code == 404:
-                return out
-            resp.raise_for_status()
+            try:
+                resp = await self._get(f"{self.base_url}/{source}/{id}/references",
+                                       {"format": "json", "pageSize": self.REF_PAGE, "page": page})
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    return out
+                raise
             data = resp.json()
             items = (data.get("referenceList") or {}).get("reference") or []
             out += [ref for ref in map(parse_epmc_reference, items) if ref]

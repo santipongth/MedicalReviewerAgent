@@ -87,6 +87,19 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
     search = by_stage.get("search") or []
     if search and search[-1].get("trial_queries"):  # meta_analysis Europe PMC RCT search
         extra["trial_search"] = {"queries": search[-1]["trial_queries"], "hits": search[-1].get("trial_hits", 0)}
+        if "trial_failed" in search[-1]:  # Plan 20 Task 10: failures after the retries; the trial-name search
+            extra["trial_search"] |= {"failed": search[-1]["trial_failed"],
+                                      "names": list(search[-1].get("trial_names") or []),
+                                      "name_hits": search[-1].get("trial_name_hits", 0)}
+    # Plan 20 Task 10: Europe PMC requests that still failed after their retries (trial searches + lookup batches);
+    # absent when none failed
+    epmc_failed = (search[-1].get("trial_failed", 0) if search else 0) + sum(
+        e.get("europepmc_failed", 0) for e in by_stage.get("enrich", []))
+    if epmc_failed:
+        extra["europepmc_failures"] = epmc_failed
+    enrich = by_stage.get("enrich") or []
+    if enrich and "off_focus" in enrich[-1]:  # candidates naming no key term, moved behind the on-topic ones
+        extra["off_focus_demoted"] = enrich[-1]["off_focus"]
     templated = [e["templated"] for e in by_stage.get("localize", []) if "templated" in e]
     if templated:  # consensus/conflict strings rendered from fixed Thai templates in code
         extra["localize_templated"] = templated[-1]

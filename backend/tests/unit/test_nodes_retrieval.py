@@ -21,7 +21,7 @@ class FakeEpmc:
     def __init__(self, records, fail=False):
         self.records, self.fail, self.calls = records, fail, []
 
-    async def lookup(self, *, dois, pmids):
+    async def lookup(self, *, dois, pmids, failures=None):
         self.calls.append((sorted(dois), sorted(pmids)))
         if self.fail:
             raise RuntimeError("epmc down")

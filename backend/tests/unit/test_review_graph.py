@@ -55,7 +55,7 @@ class FakeEpmc:
         self.trial_queries = [*getattr(self, "trial_queries", []), query]
         return []
 
-    async def lookup(self, *, dois, pmids):
+    async def lookup(self, *, dois, pmids, failures=None):
         return [Candidate(title="Paper 0 about metformin and colorectal cancer", doi="10.1/0", pmcid="PMC0",
                           is_open_access=True, abstract="enriched abstract", engines=["europepmc"])]
 
