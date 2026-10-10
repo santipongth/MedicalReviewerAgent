@@ -248,6 +248,8 @@ class KeyFinding(BaseModel):
     statement: str
     refs: list[str]
     k: int
+    # set in code (never by the model): the review's final evidence_strength for graded types, null otherwise
+    certainty: Literal["high", "moderate", "low", "very_low"] | None = None
 
 
 class Synthesis(BaseModel):

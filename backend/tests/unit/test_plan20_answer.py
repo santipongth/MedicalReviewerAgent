@@ -103,8 +103,8 @@ async def test_answer_and_key_findings_are_checked_and_k_is_counted():
     s = out["synthesis"]
     assert s["answer"] == "It is well tolerated. " + ANSWER_CERTAINTY["low"]  # no "may" left: certainty appended
     assert s["key_findings"] == [
-        {"outcome": "CRC incidence", "statement": "Metformin may lower CRC incidence.", "refs": ["P1", "P2"], "k": 2},
-        {"outcome": "Adherence", "statement": "Adherence was rarely reported.", "refs": ["P2"], "k": 1},
+        {"outcome": "CRC incidence", "statement": "Metformin may lower CRC incidence.", "refs": ["P1", "P2"], "k": 2, "certainty": "low"},
+        {"outcome": "Adherence", "statement": "Adherence was rarely reported.", "refs": ["P2"], "k": 1, "certainty": "low"},
     ]
     q = next(e for e in out["quality"] if e["stage"] == "prose_check")
     assert q["answer_removed"] == 1 and q["key_findings_removed"] == 2

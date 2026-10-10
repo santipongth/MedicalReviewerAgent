@@ -389,7 +389,9 @@ def _result_numbers(sentence: str, refs: list[str], ctx: ProseContext, toks: tup
     """Numbers a numberless statement may not carry: everything except context numbers (the question and PICO text,
     the scope's titles, years, population, intervention, comparator and outcome names: "type 2 diabetes", "ejection
     fraction of more than 40%"). Card estimates, sample sizes, pooled values and counts are results, which the report
-    renders from the cards and pools (Plan 20)."""
+    renders from the cards and pools (Plan 20).
+    Known gap: only numbers written in digits are tokens; number words ("three trials", "half", "thirty-two percent")
+    are not caught here or anywhere in the prose check."""
     return [t.text for t in toks
             if not (ctx.context.admits(t, sentence) or any(ctx.facts[r].context.admits(t, sentence) for r in refs))]
 

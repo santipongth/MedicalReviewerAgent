@@ -492,7 +492,7 @@ async def test_narrative_repairs_then_fixes_numbers_measures_and_appends_certain
     q = next(e for e in out["quality"] if e["stage"] == "prose_check")
     assert q == {"stage": "prose_check", "numbers_removed": 2, "measures_fixed": 1, "measures_removed": 0,
                  "population_removed": 0, "certainty_added": 1, "repairs": 1, "rationale_fixed": None,
-                 "answer_removed": 0, "key_findings_removed": 0}
+                 "answer_removed": 0, "key_findings_removed": 0, "key_findings_hedged": 0}
 
 
 @pytest.mark.parametrize("strength,summary,added", [
@@ -618,7 +618,7 @@ async def test_graph_keeps_other_comparisons_out_of_the_evidence_and_grounds_the
                                            "population_removed": 0, "certainty_added": 1, "repairs": 1,
                                            "conflict_sentences_removed": 0, "conflict_measures_fixed": 0,
                                            "conflict_repairs": 0, "rationale_fixed": None,
-                                           "answer_removed": 0, "key_findings_removed": 0}
+                                           "answer_removed": 0, "key_findings_removed": 0, "key_findings_hedged": 0}
     assert len(deps_.llms.synthesizer.calls) == 2  # the narrative got one repair round with the problems
     assert "Other comparisons" in deps_.llms.synthesizer.calls[0][0]
     # the extractor was asked for the comparison

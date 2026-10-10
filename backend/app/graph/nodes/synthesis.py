@@ -732,10 +732,18 @@ def _check_prose(narrative: SynthesisNarrative | NarrativeNoGrade, prose: ProseC
 MAX_KEY_FINDINGS = 5
 NO_POOL_ANSWER = ("Pooling was not possible: no outcome had enough comparable studies with verified estimates, so no "
                   "pooled estimate was computed.")
-# "could not be pooled", "no outcome could be pooled", "pooling was not possible" (a short word window, so "does not
-# reduce mortality in the pooled analysis" is no statement that pooling failed)
-_SAYS_NO_POOL = re.compile(r"(?i)\b(?:not|no|cannot|unable|insufficient)\b(?:\W+\w+){0,4}?\W+pool|"
-                           r"\bpool\w*\W+(?:\w+\W+){0,2}?(?:not |im)(?:possible|feasible)")
+# A statement that pooling failed: the negation must attach to the pooling verb or noun ("pooling was not possible",
+# "could not be pooled", "no outcome could be pooled", "unable to pool", "too few studies to pool"). Arbitrary
+# words in between are not allowed, so "does not reduce mortality in the pooled analysis" is no such statement
+# (Task 1 review finding 1).
+_SAYS_NO_POOL = re.compile(
+    r"(?i)\bpool(?:ing|ed analysis|ed estimate)?\s+(?:was|is|were)\s+(?:not\s+(?:possible|feasible|performed|done)"
+    r"|impossible|infeasible)"
+    r"|\b(?:could|can|cannot|can't|couldn't)\s*(?:not\s+)?be\s+pooled|\b(?:was|were)\s+not\s+pooled"
+    r"|\b(?:could|can)\s*not\s+pool\b|\bcannot\s+pool\b|\bunable\s+to\s+pool\b"
+    r"|\bno\s+(?:outcomes?|estimates?|results?|studies|data)\s+(?:could|can)\s+be\s+pooled"
+    r"|\b(?:not\s+enough|too\s+few|insufficient)\s+(?:\w+\s+){0,3}?(?:to|for)\s+pool(?:ing)?\b"
+    r"|\bno\s+pooled\s+(?:estimate|analysis)\s+(?:was|could)")
 _POOLED_CLAIM = re.compile(r"(?i)\b(?:pooled|pooling|overall effect|combined estimate)\b")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[])")
 _CITE_GROUP = re.compile(r"\s*\[\s*P\d+[^\]]*\]")
@@ -755,45 +763,106 @@ def _bottom_line(answer: str, prose: ProseContext, allowed: set[str], *, no_pool
     context number), a wrong population or measure removed (fix_statement). A meta-analysis without pools states so
     in a fixed sentence, and loses any sentence that claims a pooled effect. A graded answer without the GRADE
     wording for its certainty gets a fixed certainty sentence. Returns (answer, sentences removed)."""
-    text, counts = fix_statement(strip_unknown_citations(answer or "", allowed), prose)
+    # the answer carries no [Pn] (the report shows the cited cards beside it; Task 1 review finding 5)
+    text, counts = fix_statement(_CITE_GROUP.sub("", strip_unknown_citations(answer or "", allowed)).strip(), prose)
     removed = sum(counts[k] for k in ("numbers_removed", "population_removed", "measures_removed"))
     if no_pool:
+        text, n = _drop_pooled_claims(text)
+        removed += n
+        if not _SAYS_NO_POOL.search(text):
+            text = f"{NO_POOL_ANSWER} {text}".strip()
+    if strength:
+        # a sentence that names another certainty level than the final one is removed (Task 1 review finding 6)
         kept = []
         for sentence in _SENTENCE_END.split(text) if text else []:
-            if _POOLED_CLAIM.search(sentence) and not _SAYS_NO_POOL.search(sentence):
+            named = _named_level(sentence)
+            if named and named != strength:
                 removed += 1
                 continue
             kept.append(sentence)
         text = " ".join(kept)
-        if not _SAYS_NO_POOL.search(text):
-            text = f"{NO_POOL_ANSWER} {text}".strip()
     wording = CERTAINTY_WORDING.get(strength or "")
-    if text and wording and not wording.search(text) and not re.search(r"(?i)\bcertainty\b", text):
+    if text and wording and not wording.search(text) and _named_level(text) != strength:
         text = f"{text} {ANSWER_CERTAINTY[strength]}"
     return text, removed
 
 
+_LEVEL_NAMED = re.compile(r"(?i)\bcertainty\b[^.]{0,60}?\b(very low|low|moderate|high)\b|"
+                          r"\b(very low|low|moderate|high)[- ]certainty\b")
+
+
+def _named_level(text: str) -> str | None:
+    """The GRADE level a text names for the certainty ("the certainty of the evidence is low", "low-certainty")."""
+    m = _LEVEL_NAMED.search(text or "")
+    return (m.group(1) or m.group(2)).lower().replace(" ", "_") if m else None
+
+
+def _drop_pooled_claims(text: str) -> tuple[str, int]:
+    """Sentences that claim a pooled or overall effect, removed (a meta-analysis that pooled nothing)."""
+    kept, removed = [], 0
+    for sentence in _SENTENCE_END.split(text) if text else []:
+        if _POOLED_CLAIM.search(sentence) and not _SAYS_NO_POOL.search(sentence):
+            removed += 1
+            continue
+        kept.append(sentence)
+    return " ".join(kept), removed
+
+
+# Present-tense causal claims ("reduces", "leads to") that a below-high certainty must hedge (Task 1 review finding 3)
+_CAUSAL = re.compile(r"(?i)\b(reduces|lowers|decreases|increases|improves|prevents|causes|raises|worsens|"
+                     r"eliminates|cures|protects|leads|results)\b(?=\s)")
+_HEDGED = re.compile(r"(?i)\b(may|might|probably|likely|possibly|not|no|unclear|uncertain)\s+$")
+
+
+def _hedge(statement: str, strength: str | None) -> tuple[str, bool]:
+    """A key-finding statement worded for its certainty, fixed in code: when it lacks the GRADE wording for a final
+    level below high, each unhedged present-tense causal verb is hedged ("probably reduces" for moderate, "may
+    reduce" for low and very low), and a very-low statement ends with "but the evidence is very uncertain"."""
+    wording = CERTAINTY_WORDING.get(strength or "")
+    if not wording or not statement or wording.search(statement):
+        return statement, False
+
+    def hedge(m: re.Match[str]) -> str:
+        if _HEDGED.search(statement[: m.start()]):
+            return m.group(0)
+        verb = m.group(1)
+        return f"probably {verb}" if strength == "moderate" else f"may {verb[:-1]}"
+
+    text = _CAUSAL.sub(hedge, statement)
+    if strength == "very_low" and text != statement:
+        text = f"{text.rstrip().rstrip('.')}, but the evidence is very uncertain."
+    return text, text != statement
+
+
 def _key_findings(drafts: list[NarrativeFinding], prose: ProseContext, allowed: set[str],
-                  rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+                  rows: list[dict[str, Any]], *, no_pool: bool = False,
+                  strength: str | None = None) -> tuple[list[dict[str, Any]], int, int]:
     """The checked key findings: refs limited to the analysed papers (inline [Pn] citations are moved into refs),
     the statement made numberless (fix_statement, scoped to the refs), an outcome that names a comparison row
-    written exactly as that row, and k = the number of refs. A finding left without a statement, a ref or an outcome
-    is dropped; at most MAX_KEY_FINDINGS are kept. Returns (findings, dropped)."""
+    written exactly as that row, and k = the number of refs. A meta-analysis that pooled nothing loses every
+    statement sentence claiming a pooled effect; a statement below high certainty is hedged (_hedge); `certainty`
+    is the review's final evidence_strength (null when not graded), set in code. A finding left without a statement,
+    a ref or an outcome is dropped; at most MAX_KEY_FINDINGS are kept. Returns (findings, dropped, hedged)."""
     names = {r["outcome"].strip().casefold(): r["outcome"] for r in rows}
     out: list[dict[str, Any]] = []
-    dropped = 0
+    dropped = hedged = 0
     for f in drafts:
         if len(out) == MAX_KEY_FINDINGS:
             break
         statement = strip_unknown_citations(f.statement or "", allowed)
         refs = sorted(({r.strip() for r in f.refs} | cited_refs(statement)) & allowed, key=_ref_num)
         text, _counts = fix_statement(_CITE_GROUP.sub("", statement).strip(), prose, refs)
+        if no_pool:
+            text, _n = _drop_pooled_claims(text)
+        text, was_hedged = _hedge(text, strength)
         outcome = names.get((f.outcome or "").strip().casefold(), (f.outcome or "").strip())
         if not text.strip() or not refs or not outcome or is_placeholder(text) or is_placeholder(outcome):
             dropped += 1
             continue
-        out.append(KeyFinding(outcome=outcome, statement=text, refs=refs, k=len(refs)).model_dump())
-    return out, dropped
+        hedged += int(was_hedged)
+        out.append(KeyFinding(outcome=outcome, statement=text, refs=refs, k=len(refs),
+                              certainty=strength).model_dump())
+    return out, dropped, hedged
 
 
 def make_write_synthesis(deps):
@@ -960,13 +1029,13 @@ def make_write_synthesis(deps):
             entry["no_pool_stated"] = True
         try:  # Plan 20; a crash fails closed: no model-written answer or findings (the no-pool sentence stays)
             answer, answer_removed = _bottom_line(narrative.answer, prose, allowed, no_pool=no_pool, strength=strength)
-            key_findings, findings_dropped = _key_findings(narrative.key_findings, prose, allowed,
-                                                           matrix.get("rows") or [])
+            key_findings, findings_dropped, findings_hedged = _key_findings(
+                narrative.key_findings, prose, allowed, matrix.get("rows") or [], no_pool=no_pool, strength=strength)
         except Exception as exc:
             log.exception("answer/key-findings check failed")
             errors.append(f"answer check failed: {type(exc).__name__}")
             answer, answer_removed = (NO_POOL_ANSWER if no_pool else ""), 0
-            key_findings, findings_dropped = [], len(narrative.key_findings)
+            key_findings, findings_dropped, findings_hedged = [], len(narrative.key_findings), 0
             prose_counts["check_failed"] += 1
         # coverage telemetry (audit I-22): analysed papers the summary never cites
         # (None when there is no model-written summary to judge: withheld or failed)
@@ -979,6 +1048,7 @@ def make_write_synthesis(deps):
                         "certainty_added": certainty_added,
                         # Plan 20: answer sentences and key findings removed by the numberless check
                         "answer_removed": answer_removed, "key_findings_removed": findings_dropped,
+                        "key_findings_hedged": findings_hedged,  # causal verbs hedged for their certainty
                         **({"check_failed": True} if prose_counts["check_failed"] else {}),
                         "rationale_fixed": rationale_fix,  # "replaced" | "appended" | None (audit I-13e)
                         # narrative rounds the grounded-prose check sent back to the model (false positives show here)
@@ -1178,7 +1248,11 @@ def _methods(state: ReviewState, deps, models: dict[str, str]) -> dict[str, Any]
     spec = harness_spec(deps)
     llms = deps.llms
     secondary = getattr(getattr(llms, "screener_secondary", None), "model", None)
-    second_vote = ("off" if secondary is None
+    # what the screening batches logged (Task 1 review finding 7); derived from the models when nothing was logged
+    logged = {q.get("second_vote") for q in state.get("quality") or []
+              if q.get("stage") == "screen" and q.get("second_vote")}
+    second_vote = (next(iter(logged)) if len(logged) == 1
+                   else "off" if secondary is None
                    else "same_model" if secondary == getattr(getattr(llms, "screener", None), "model", 0)
                    else "two_models")
     per_source = stats.get("per_source")

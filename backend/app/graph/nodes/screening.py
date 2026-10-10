@@ -86,6 +86,8 @@ def make_screen_batch(deps):
         low, high = spec.screen_borderline
         borderline = [r for r in refs if r in decisions and low <= decisions[r]["relevance"] <= high]
         secondary = getattr(deps.llms, "screener_secondary", None)
+        # what ran, logged for the Methods section (Task 1 review finding 7)
+        quality["second_vote"] = "off" if secondary is None else "two_models"
         if secondary is not None and getattr(secondary, "model", None) == getattr(deps.llms.screener, "model", 0):
             secondary = None  # the same model at temperature 0 is no second opinion, only a second bill (audit I-10)
             quality["second_vote"] = "same_model"

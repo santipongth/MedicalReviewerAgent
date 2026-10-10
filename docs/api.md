@@ -123,14 +123,26 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 **Answer and key findings (Plan 20).** `synthesis` (and `synthesis_en`) also has:
 - `answer`: the bottom line, 1–2 sentences that answer the question directly. Graded types (`slr`, `meta_analysis`)
   carry GRADE certainty wording; when the model's answer lacks the wording for the final `evidence_strength`
-  (moderate "probably"/"likely", low "may"/"might", very low "very uncertain") and does not name the certainty, a fixed
-  sentence is appended ("The certainty of the evidence is low."). A `meta_analysis` whose `meta_analysis` has no pools
+  (moderate "probably"/"likely", low "may"/"might", very low "very uncertain") and does not name its final level
+  ("low certainty", "the certainty of the evidence is low"), a fixed sentence is appended ("The certainty of the
+  evidence is low."). A sentence that names another certainty level than the final one is removed first. The answer
+  carries no `[Pn]` citations (they are stripped in code). A `meta_analysis` whose `meta_analysis` has no pools
   (null, or `pools: []`) always says so: a fixed sentence ("Pooling was not possible: ...") leads the answer unless it
   already states that pooling was not possible, and any answer sentence that claims a pooled or overall effect is
-  removed. `""` when the narrative step failed (or for results stored before Plan 20); a review with no papers repeats
+  removed. "States that pooling was not possible" means a negation attached to pooling ("pooling was not possible",
+  "could not be pooled", "no outcome could be pooled", "unable to pool", "too few ... to pool"); "does not reduce
+  mortality in the pooled analysis" is a pooled claim, not such a statement. `""` when the narrative step failed (or for results stored before Plan 20); a review with no papers repeats
   its notice. Since Plan 20 Task 10 the same fixed sentence also leads `executive_summary` (and so `summary`) of such a
   meta-analysis when the summary does not already say that pooling was not possible.
-- `key_findings[]`: at most 5 items `{outcome, statement, refs[], k}`, most important first.
+- `key_findings[]`: at most 5 items `{outcome, statement, refs[], k, certainty}`, most important first.
+  - `certainty` is set in code, never by the model: the review's final `evidence_strength` for graded types, null for
+    narrative and scoping reviews (and absent from results stored before Plan 20 Task 10's Task 1 fixes).
+  - A statement below high certainty is worded for it in code when it lacks the GRADE wording: each unhedged
+    present-tense causal verb ("reduces", "improves", "causes", "leads to", ...) becomes "probably reduces"
+    (moderate) or "may reduce" (low, very low), and a very-low statement ends with "but the evidence is very
+    uncertain". `result.quality.prose_check.key_findings_hedged` counts the hedged findings.
+  - In a `meta_analysis` without pools, statement sentences that claim a pooled or overall effect are removed (a
+    finding left empty is dropped).
   - `outcome` is a `synthesis.comparison` row name when the finding is about a row (matched case-insensitively and
     written exactly as the row), else a short outcome name. In `synthesis` it is localized like the row, so it
     equals the localized row name; `synthesis_en.key_findings[i]` is the same finding in English (same order).
@@ -164,8 +176,9 @@ It is absent from results stored before Plan 20.
   planner's, in English).
 - `limits`: `{candidate_limit, max_papers, min_abstract_chars}`.
 - `screening`: `{model, second_model, second_vote, borderline: [low, high], relevance_floor}`. `second_vote` is
-  `two_models`, `same_model` (skipped: the secondary screener is the screener's model) or `off`; `second_model` is
-  null unless it is `two_models`.
+  `two_models`, `same_model` (skipped: the secondary screener is the screener's model) or `off`, as the screening
+  batches logged it (`quality` stage `screen`, `second_vote`), else derived from the configured models;
+  `second_model` is null unless it is `two_models`.
 - `extraction`: `{model, second_model, verify_quotes, quote_match_threshold, text: "abstract"}` (`second_model` null
   when dual extraction is off).
 - `synthesis`: `{model, pooling, grading}`: `pooling` is `"DerSimonian-Laird random effects"` for `meta_analysis`,
@@ -428,8 +441,11 @@ failure-isolated like pooling: an error is logged in `errors` and the step falls
 grade with a factor that says so, the factors as rationale, or the card as extracted) without failing the review.
 Graded summaries use GRADE certainty wording (moderate "probably", low "may", very low "very uncertain"); when the
 summary lacks the wording for its final `evidence_strength`, a fixed certainty sentence is appended.
+Known gap: only numbers written in digits are checked; number words ("three trials", "half", "thirty-two percent")
+pass the prose and numberless checks.
 `result.quality.prose_check` is `{numbers_removed, measures_fixed, measures_removed, population_removed,
-certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, conflict_repairs, rationale_fixed}` (absent for results
+certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, conflict_repairs, rationale_fixed}`, plus
+(Plan 20) `answer_removed`, `key_findings_removed` and `key_findings_hedged` (absent for results
 stored before Plan 19); `repairs` and `conflict_repairs` count the model rounds the check sent back for repair.
 `check_failed: true` is added only when the check crashed and failed closed (summary or conflict explanation
 replaced by its fixed fallback). `numbers_removed` also counts removed research-gap sentences, and
@@ -473,8 +489,8 @@ The web app also serves the whole interactive report as one HTML file that works
 
 | Format | Contents |
 |---|---|
-| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). A paper with other comparisons (Plan 19) lists them on its line as "Other comparisons, not evidence for the question: …". `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
-| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty), then (Plan 19) `comparison` (the outcome's own comparison) and `matches_question` (`true`/`false`; `false` marks an other comparison, which is not evidence for the review question and whose `direction` is relative to its own comparison; outcomes stored before Plan 19 are `true`). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
+| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). Since Plan 20 it starts with "## Answer" (`synthesis.answer`) and "## Key findings" (one line per finding: outcome, statement, refs, k and certainty) before the summary; the `methods` block is not in it yet. Qualitative and mixed-methods cells in the comparison table carry no direction word. A paper with other comparisons (Plan 19) lists them on its line as "Other comparisons, not evidence for the question: …". `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
+| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty; for qualitative and mixed-methods papers, `direction` and `overall_direction` are empty), then (Plan 19) `comparison` (the outcome's own comparison) and `matches_question` (`true`/`false`; `false` marks an other comparison, which is not evidence for the review question and whose `direction` is relative to its own comparison; outcomes stored before Plan 19 are `true`). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
 | `json` | `{review_id, topic, language, created_at, finished_at, result}` |
 
 ### `GET /api/v1/status`

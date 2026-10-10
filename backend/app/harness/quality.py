@@ -63,7 +63,8 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
             # how the evidence rationale was made to agree with the GRADE-lite factors: "replaced", "appended" or null
             "rationale_fixed": last.get("rationale_fixed"),
         }
-        for k in ("answer_removed", "key_findings_removed"):  # Plan 20; absent for results stored before it
+        for k in ("answer_removed", "key_findings_removed",  # Plan 20; absent for results stored before it
+                  "key_findings_hedged"):
             if k in last:
                 extra["prose_check"][k] = int(last[k])
         if last.get("check_failed") or any(e.get("prose_check_failed") for e in conflicts):
