@@ -24,7 +24,6 @@ Configuration::
 
 from __future__ import annotations
 
-import html
 import logging
 import re
 import threading
@@ -34,6 +33,7 @@ from collections import deque
 from datetime import datetime
 from urllib.parse import urlencode
 
+from searx.engines.mra_markup import clean_markup as _clean  # type: ignore[import-not-found]
 from searx.result_types import EngineResults  # type: ignore[import-not-found]
 
 about = {
@@ -58,8 +58,6 @@ logger = logging.getLogger(__name__)  # replaced by SearXNG with the engine logg
 
 # Real tags only: a literal "<" ("p<0.001") must survive. Inline markup joins ("CO<sub>2</sub>" -> "CO2"), other tags
 # become a space.
-_INLINE_TAG = re.compile(r"</?(?:sub|sup|i|b|em|strong|span|u|small)(?:\s[^<>]*)?/?>", re.IGNORECASE)
-_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9:_-]*(?:\s[^<>]*)?/?>")
 # Solr query syntax characters; a plain topic should not become a syntax error.
 _SOLR_SPECIAL = re.compile(r'[\\+\-!():^\[\]"{}~*?|&/]')
 _lock = threading.Lock()
@@ -77,14 +75,6 @@ def allow_request(now: float | None = None) -> bool:
             return False
         _calls.append(now)
         return True
-
-
-def _clean(value: t.Any) -> str:
-    if not value:
-        return ""
-    if isinstance(value, list):
-        value = " ".join(str(v) for v in value)
-    return " ".join(html.unescape(_TAG.sub(" ", _INLINE_TAG.sub("", str(value)))).split())
 
 
 def build_url(query: str, pageno: int) -> str:

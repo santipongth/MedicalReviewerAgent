@@ -24,7 +24,6 @@ Configuration::
 
 from __future__ import annotations
 
-import html
 import logging
 import re
 import threading
@@ -33,6 +32,7 @@ import typing as t
 from datetime import datetime
 from urllib.parse import quote, urlencode
 
+from searx.engines.mra_markup import clean_markup as _clean  # type: ignore[import-not-found]
 from searx.result_types import EngineResults  # type: ignore[import-not-found]
 
 about = {
@@ -57,10 +57,9 @@ logger = logging.getLogger(__name__)  # replaced by SearXNG with the engine logg
 
 # Real tags only: a literal "<" ("p<0.001") must survive. Inline markup joins ("CO<sub>2</sub>" -> "CO2"), other tags
 # become a space.
-_INLINE_TAG = re.compile(r"</?(?:sub|sup|i|b|em|strong|span|u|small)(?:\s[^<>]*)?/?>", re.IGNORECASE)
-_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9:_-]*(?:\s[^<>]*)?/?>")
 # Elasticsearch query-string syntax characters that would turn a plain topic into a parse error.
 _ES_SPECIAL = re.compile(r'[\\/:!^~{}\[\]()"]')
+_DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", re.IGNORECASE)
 _lock = threading.Lock()
 _next_slot = 0.0
 
@@ -77,12 +76,6 @@ def _throttle() -> bool:
     if wait:
         time.sleep(wait)
     return True
-
-
-def _clean(value: t.Any) -> str:
-    if not value:
-        return ""
-    return " ".join(html.unescape(_TAG.sub(" ", _INLINE_TAG.sub("", str(value)))).split())
 
 
 def build_url(query: str, pageno: int) -> str:
@@ -107,6 +100,12 @@ def _published(bib: dict[str, t.Any]) -> datetime | None:
     return datetime(int(year), month_n, 1)
 
 
+def normalize_doi(value: str) -> str:
+    """DOAJ stores some DOIs as URLs or with a "doi:" prefix; keep only a bare "10." DOI."""
+    doi = _DOI_PREFIX.sub("", value.strip()).strip()
+    return doi if doi.startswith("10.") else ""
+
+
 def parse(data: dict[str, t.Any]) -> list[dict[str, t.Any]]:
     papers: list[dict[str, t.Any]] = []
     for record in data.get("results") or []:
@@ -114,8 +113,8 @@ def parse(data: dict[str, t.Any]) -> list[dict[str, t.Any]]:
         title = _clean(bib.get("title"))
         if not title:
             continue
-        doi = next((str(i.get("id") or "").strip() for i in bib.get("identifier") or []
-                    if str(i.get("type") or "").lower() == "doi"), "")
+        doi = normalize_doi(next((str(i.get("id") or "") for i in bib.get("identifier") or []
+                                  if str(i.get("type") or "").lower() == "doi"), ""))
         journal = bib.get("journal") or {}
         fulltext = next((ln.get("url") for ln in bib.get("link") or [] if ln.get("type") == "fulltext"), "")
         doaj_page = f"{article_url}{record['id']}" if record.get("id") else ""

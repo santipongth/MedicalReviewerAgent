@@ -9,7 +9,7 @@ Written for the Medical Reviewer Agent, following the structure of SearXNG's eng
 (``/graph/v1/researchProducts``), which answers in ~1.5 s with DOI, PMID, abstract,
 date and journal. No key needed (anonymous limit reported as ~7200 requests/hour).
 
-- ``url`` is the PubMed page when the record has a PMID, else the DOI link, else the
+- ``url`` is the PubMed page when the record has a top-level PMID, else the DOI link, else the
   first instance URL, else the OpenAIRE Explore page;
 - ``content`` is the longest description (the abstract).
 
@@ -28,12 +28,11 @@ Configuration::
 
 from __future__ import annotations
 
-import html
-import re
 import typing as t
 from datetime import datetime
 from urllib.parse import quote, urlencode
 
+from searx.engines.mra_markup import clean_markup as _clean  # type: ignore[import-not-found]
 from searx.result_types import EngineResults  # type: ignore[import-not-found]
 
 about = {
@@ -55,14 +54,6 @@ page_size = 10
 
 # Real tags only: a literal "<" ("p<0.001") must survive. Inline markup joins ("CO<sub>2</sub>" -> "CO2"), other tags
 # become a space.
-_INLINE_TAG = re.compile(r"</?(?:sub|sup|i|b|em|strong|span|u|small)(?:\s[^<>]*)?/?>", re.IGNORECASE)
-_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9:_-]*(?:\s[^<>]*)?/?>")
-
-
-def _clean(value: t.Any) -> str:
-    if not value:
-        return ""
-    return " ".join(html.unescape(_TAG.sub(" ", _INLINE_TAG.sub("", str(value)))).split())
 
 
 def build_url(query: str, pageno: int) -> str:
@@ -74,15 +65,28 @@ def request(query: str, params: dict[str, t.Any]) -> None:
     params["url"] = build_url(query, params["pageno"])
 
 
-def _pid(item: dict[str, t.Any], scheme: str) -> str:
+def _top_pid(item: dict[str, t.Any], scheme: str) -> str:
     for pid in item.get("pids") or []:
         if (pid or {}).get("scheme") == scheme and pid.get("value"):
             return str(pid["value"]).strip()
-    for inst in item.get("instances") or []:
-        for pid in (inst or {}).get("pids") or []:
-            if (pid or {}).get("scheme") == scheme and pid.get("value"):
-                return str(pid["value"]).strip()
     return ""
+
+
+def _doi(item: dict[str, t.Any]) -> str:
+    """Top-level DOI; else an instance DOI only when the instances agree on exactly one.
+
+    A deduplicated product groups versions (preprint, accepted manuscript, publisher record);
+    an instance identifier can belong to another version, so ambiguity means no DOI.
+    """
+    if doi := _top_pid(item, "doi"):
+        return doi
+    found = {
+        str(pid["value"]).strip().lower()
+        for inst in item.get("instances") or []
+        for pid in (inst or {}).get("pids") or []
+        if (pid or {}).get("scheme") == "doi" and pid.get("value")
+    }
+    return found.pop() if len(found) == 1 else ""
 
 
 def parse(data: dict[str, t.Any]) -> list[dict[str, t.Any]]:
@@ -91,8 +95,8 @@ def parse(data: dict[str, t.Any]) -> list[dict[str, t.Any]]:
         title = _clean(item.get("mainTitle"))
         if not title:
             continue
-        doi = _pid(item, "doi")
-        pmid = _pid(item, "pmid")
+        doi = _doi(item)
+        pmid = _top_pid(item, "pmid")  # top level only: an instance PMID may be another version's
         first_url = next((u for inst in item.get("instances") or [] for u in (inst or {}).get("urls") or []), "")
         if pmid:
             url = f"{pubmed_url}{pmid}/"

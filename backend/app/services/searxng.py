@@ -56,6 +56,9 @@ def parse_searxng_result(r: dict[str, Any]) -> Candidate | None:
         authors=[str(a) for a in authors][:20],
         url=url or None,
         pdf_url=r.get("pdf_url") or None,
+        # Europe PMC's pubTypeList (the same list the enrichment lookup returns), for the non-research filter.
+        pub_types=[t.strip() for t in str(r.get("type") or "").split(",") if t.strip()]
+        if "europe pmc" in engines else [],
         engines=engines,
     )
 

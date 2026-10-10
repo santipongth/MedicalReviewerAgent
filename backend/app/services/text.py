@@ -3,10 +3,28 @@ from __future__ import annotations
 import html
 import re
 
-# Real tags only: a literal "<" ("p<0.001", "aged >65") must survive. Inline markup joins ("CO<sub>2</sub>" -> "CO2"),
-# every other tag becomes a space. Tags are removed before entities are unescaped, so "&lt;" stays a literal "<".
-_INLINE_TAG = re.compile(r"</?(?:sub|sup|i|b|em|strong|span|u|small)(?:\s[^<>]*)?/?>", re.IGNORECASE)
-_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9:_-]*(?:\s[^<>]*)?/?>")
+# Known tag names only (HTML, JATS, MathML; optional "jats:"/"mml:" prefix; strict attribute grammar), so clinical
+# notation survives: "p<0.001", "aged >65", "ALT <ULN in 40 patients and >3xULN in 12". Inline sub/superscript and
+# font tags join with no space, as a plain-text reader sees them ("CO<sub>2</sub>" -> "CO2",
+# "10<jats:sup>9</jats:sup>/L" -> "109/L"); every other known tag becomes a space. Tags are removed before entities
+# are unescaped, so "&lt;" stays a literal "<". Same rules as infra/searxng/engines/mra_markup.py (keep in step).
+_INLINE_NAMES = r"sub|sup|i|b|em|strong|span|u|small|italic|bold|sc|underline|monospace"
+_BLOCK_NAMES = (
+    r"p|sec|title|abstract|br|hr|div|list|list-item|ext-link|xref|h[1-6]|a|label|ul|ol|li"
+    r"|table|thead|tbody|tfoot|tr|td|th|caption|table-wrap|inline-formula|disp-formula"
+    r"|named-content|break|math|mi|mo|mn|ms|mtext|mrow|msub|msup|msubsup|mfrac|msqrt|mroot"
+    r"|mover|munder|munderover|mspace|mstyle|mtable|mtr|mtd|semantics|annotation"
+)
+_ATTRS = r"""(?:\s+[A-Za-z_:][-\w:.]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'<>]+))?)*\s*/?"""
+
+
+def _tag(names: str) -> re.Pattern[str]:
+    return re.compile(rf"<(?:/(?:(?:jats|mml):)?(?:{names})\s*|(?:(?:jats|mml):)?(?:{names}){_ATTRS})>",
+                      re.IGNORECASE)
+
+
+_INLINE_TAG = _tag(_INLINE_NAMES)
+_TAG = _tag(_BLOCK_NAMES)
 _WS = re.compile(r"\s+")
 _PMID = re.compile(r"(?:ncbi\.nlm\.nih\.gov/pubmed|pubmed\.ncbi\.nlm\.nih\.gov|europepmc\.org/article/MED)/(\d+)")
 _ARXIV = re.compile(r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?", re.IGNORECASE)

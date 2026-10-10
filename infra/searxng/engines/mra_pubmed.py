@@ -59,7 +59,7 @@ pubmed_url = "https://pubmed.ncbi.nlm.nih.gov/"
 number_of_results = 10
 tool = "medical-reviewer-agent"
 email = ""
-max_wait = 8.0  # seconds; the engine timeout is 12 s
+max_wait = 8.0  # seconds of queueing/backoff for esearch + efetch together; the engine timeout is 12 s
 
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
@@ -74,18 +74,19 @@ def _api_key() -> str:
     return os.environ.get("NCBI_API_KEY", "").strip()
 
 
-def _throttle() -> bool:
+def _throttle(deadline: float) -> bool:
     """Space E-utilities calls: NCBI allows 3 req/s without a key, 10 with one.
 
-    Returns False (and reserves nothing) when the queue is so long that waiting would run
-    past ``max_wait`` seconds, i.e. into the engine timeout; the caller then skips the call.
+    Returns False (and reserves nothing) when the turn would come after ``deadline`` (a
+    ``time.monotonic()`` value shared by one search's esearch and efetch), i.e. into the engine
+    timeout; the caller then skips the call.
     """
     global _next_slot  # pylint: disable=global-statement
     interval = 0.12 if _api_key() else 0.45  # a little under the limit: arrival times jitter
     with _lock:
         now = time.monotonic()
         wait = max(0.0, _next_slot - now)
-        if wait > max_wait:
+        if now + wait > deadline:
             return False
         _next_slot = max(now, _next_slot) + interval
     if wait:
@@ -125,15 +126,16 @@ def parse_esearch(payload: str | bytes) -> list[str]:
     return [str(i) for i in (data.get("esearchresult") or {}).get("idlist") or []]
 
 
-def _get_with_retry(url: str) -> t.Any:
-    """GET with the per-process spacing; up to two retries (after 1 s, then 2 s) on HTTP 429."""
+def _get_with_retry(url: str, deadline: float) -> t.Any:
+    """GET with the per-process spacing; up to two retries (after 1 s, then 2 s) on HTTP 429,
+    none of which may start after ``deadline``."""
     resp = None
     for backoff in (1.0, 2.0, None):
-        if not _throttle():
-            logger.warning("PubMed request queue longer than %.0f s; skipping this call", max_wait)
+        if not _throttle(deadline):
+            logger.warning("PubMed request queue past the deadline; skipping this call")
             return None
         resp = get(url, raise_for_httperror=False)
-        if resp.status_code != 429 or backoff is None:
+        if resp.status_code != 429 or backoff is None or time.monotonic() + backoff > deadline:
             break
         time.sleep(backoff)
     return resp
@@ -142,7 +144,8 @@ def _get_with_retry(url: str) -> t.Any:
 def request(query: str, params: dict[str, t.Any]) -> None:
     # A 429 must not reach SearXNG's error handling: it suspends the engine for an hour.
     params["raise_for_httperror"] = False
-    resp = _get_with_retry(esearch_url(query, params["pageno"]))
+    deadline = time.monotonic() + max_wait  # one budget for esearch and efetch
+    resp = _get_with_retry(esearch_url(query, params["pageno"]), deadline)
     if resp is None or resp.status_code != 200:
         logger.warning("PubMed esearch HTTP %s", getattr(resp, "status_code", "?"))
         params["url"] = None
@@ -151,8 +154,8 @@ def request(query: str, params: dict[str, t.Any]) -> None:
     if not pmids:
         params["url"] = None  # nothing found: skip the efetch request
         return
-    if not _throttle():
-        logger.warning("PubMed request queue longer than %.0f s; skipping efetch", max_wait)
+    if not _throttle(deadline):
+        logger.warning("PubMed request queue past the deadline; skipping efetch")
         params["url"] = None
         return
     params["url"] = efetch_url(pmids)
@@ -247,7 +250,7 @@ def response(resp: t.Any) -> EngineResults:
     res = EngineResults()
     content = resp.content
     if resp.status_code == 429:
-        retry = _get_with_retry(str(resp.url))
+        retry = _get_with_retry(str(resp.url), time.monotonic() + 2.0)
         content = retry.content if retry is not None and retry.status_code == 200 else b""
     elif resp.status_code != 200:
         content = b""

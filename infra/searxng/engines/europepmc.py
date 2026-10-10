@@ -31,12 +31,11 @@ Configuration::
 
 from __future__ import annotations
 
-import html
-import re
 import typing as t
 from datetime import datetime
 from urllib.parse import urlencode
 
+from searx.engines.mra_markup import clean_markup as _clean  # type: ignore[import-not-found]
 from searx.result_types import EngineResults  # type: ignore[import-not-found]
 
 about = {
@@ -59,14 +58,6 @@ max_page_size = 100  # Europe PMC caps pageSize at 1000; keep requests small
 
 # Real tags only: a literal "<" ("p<0.001") must survive. Inline markup joins ("CO<sub>2</sub>" -> "CO2"), other tags
 # become a space.
-_INLINE_TAG = re.compile(r"</?(?:sub|sup|i|b|em|strong|span|u|small)(?:\s[^<>]*)?/?>", re.IGNORECASE)
-_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9:_-]*(?:\s[^<>]*)?/?>")
-
-
-def _clean(value: t.Any) -> str:
-    if not value:
-        return ""
-    return " ".join(html.unescape(_TAG.sub(" ", _INLINE_TAG.sub("", str(value)))).split())
 
 
 def request(query: str, params: dict[str, t.Any]) -> None:

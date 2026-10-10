@@ -158,6 +158,17 @@ def test_europe_pmc_med_urls_give_a_pmid():
     ("<jats:p>Background</jats:p>", "Background"),
     ("x &lt;0.05 and y &gt; 3", "x <0.05 and y > 3"),
     ("&lt;sub&gt;kept&lt;/sub&gt; p&lt;0.01", "<sub>kept</sub> p<0.01"),
+    # clinical lab-limit notation is not markup (only known tag names are)
+    ("ALT <ULN in 40 patients and >3xULN in 12", "ALT <ULN in 40 patients and >3xULN in 12"),
+    ("levels <LOD in 30% and >LOQ in 70%", "levels <LOD in 30% and >LOQ in 70%"),
+    ("<b in 40 > ok", "<b in 40 > ok"),
+    # JATS/MathML-prefixed inline tags join like plain HTML ones (what a plain-text reader sees)
+    ("10<jats:sup>9</jats:sup>/L", "109/L"),
+    ("CO<jats:sub>2</jats:sub>", "CO2"),
+    ("<jats:italic>E. coli</jats:italic> grew", "E. coli grew"),
+    ('<jats:sec id="s1"><jats:title>Aims</jats:title>To test</jats:sec>', "Aims To test"),
+    ('<a href="https://x.org/a?b=1">link</a> text<br/>next', "link text next"),
+    ("<mml:math><mml:mi>x</mml:mi><mml:mo>=</mml:mo><mml:mn>2</mml:mn></mml:math>", "x = 2"),
 ])
 def test_strip_markup_keeps_literal_angle_brackets(raw, clean):
     from app.services.text import strip_markup
@@ -209,3 +220,9 @@ async def test_searxng_client_retries_once_only():
         await SearxngClient(http, "http://searxng:8080", "pubmed").search("x")
     await http.aclose()
     assert route.call_count == 2
+
+
+def test_europe_pmc_hits_carry_pub_types_for_the_non_research_filter():
+    c = parse_searxng_result({"title": "T", "engines": ["europe pmc"], "type": "Editorial, Comment"})
+    assert c.pub_types == ["Editorial", "Comment"]
+    assert parse_searxng_result({"title": "T", "engines": ["crossref"], "type": "journal-article"}).pub_types == []

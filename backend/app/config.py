@@ -55,7 +55,9 @@ class Settings(BaseSettings):
 
     searxng_engines: str = "pubmed,europe pmc,openalex,semantic scholar,crossref,arxiv,doaj,openaire"
     searxng_pages: int = 1
-    searxng_timeout_seconds: float = 15.0  # PubMed engine alone may take 12 s; SearXNG took up to 7.4 s under load
+    # Must exceed every requested engine's SearXNG timeout (infra/searxng/settings.yml: pubmed 12 s, crossref 10 s,
+    # the rest 8 s): SearXNG waits for the slowest engine. SearXNG took up to 7.4 s under load.
+    searxng_timeout_seconds: float = 15.0
     europepmc_url: str = "https://www.ebi.ac.uk/europepmc/webservices/rest"
     http_timeout_seconds: float = 30.0
     screen_batch_size: int = 10

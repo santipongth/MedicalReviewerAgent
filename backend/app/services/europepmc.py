@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from app.graph.schemas import Candidate
@@ -41,26 +42,27 @@ def parse_epmc_result(r: dict[str, Any]) -> Candidate:
 
 class EuropePmcClient:
     BATCH = 40
+    CONCURRENCY = 3  # batches in flight; HttpClient's per-host spacing still applies
 
     def __init__(self, http: HttpClient, base_url: str) -> None:
         self.http = http
         self.base_url = base_url.rstrip("/")
 
+    async def _batch(self, terms: list[str], gate: asyncio.Semaphore) -> list[Candidate]:
+        async with gate:
+            resp = await self.http.get(
+                f"{self.base_url}/search",
+                params={"query": " OR ".join(terms), "format": "json", "resultType": "core", "pageSize": 100},
+            )
+        resp.raise_for_status()
+        return [parse_epmc_result(r) for r in resp.json().get("resultList", {}).get("result", [])]
+
     async def lookup(self, *, dois: list[str], pmids: list[str]) -> list[Candidate]:
         terms = [f'DOI:"{d}"' for d in dict.fromkeys(dois)] + [
             f"(EXT_ID:{p} AND SRC:MED)" for p in dict.fromkeys(pmids)
         ]
-        out: list[Candidate] = []
-        for i in range(0, len(terms), self.BATCH):
-            resp = await self.http.get(
-                f"{self.base_url}/search",
-                params={
-                    "query": " OR ".join(terms[i : i + self.BATCH]),
-                    "format": "json",
-                    "resultType": "core",
-                    "pageSize": 100,
-                },
-            )
-            resp.raise_for_status()
-            out += [parse_epmc_result(r) for r in resp.json().get("resultList", {}).get("result", [])]
-        return out
+        gate = asyncio.Semaphore(self.CONCURRENCY)
+        batches = await asyncio.gather(
+            *(self._batch(terms[i : i + self.BATCH], gate) for i in range(0, len(terms), self.BATCH))
+        )
+        return [c for batch in batches for c in batch]  # batch order kept

@@ -67,3 +67,25 @@ async def test_lookup_splits_large_batches_and_skips_empty():
     await client.lookup(dois=[f"10.1/{i}" for i in range(85)], pmids=[])
     await http.aclose()
     assert route.call_count == 3  # 40 + 40 + 5
+
+
+async def test_lookup_runs_at_most_three_batches_at_once_and_keeps_order():
+    import asyncio
+
+    from app.graph.schemas import Candidate
+
+    class SlowClient(EuropePmcClient):
+        in_flight = peak = 0
+
+        async def _batch(self, terms, gate):
+            async with gate:
+                SlowClient.in_flight += 1
+                SlowClient.peak = max(SlowClient.peak, SlowClient.in_flight)
+                await asyncio.sleep(0.01)
+                SlowClient.in_flight -= 1
+            return [Candidate(title=terms[0])]
+
+    client = SlowClient(http=None, base_url=BASE)
+    out = await client.lookup(dois=[f"10.1/{i}" for i in range(7 * 40)], pmids=[])
+    assert SlowClient.peak == 3
+    assert [c.title for c in out] == [f'DOI:"10.1/{i * 40}"' for i in range(7)]

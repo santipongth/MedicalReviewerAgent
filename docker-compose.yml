@@ -59,6 +59,7 @@ services:
       - ./infra/searxng/engines/europepmc.py:/usr/local/searxng/searx/engines/europepmc.py:ro
       - ./infra/searxng/engines/doaj.py:/usr/local/searxng/searx/engines/doaj.py:ro
       - ./infra/searxng/engines/plos.py:/usr/local/searxng/searx/engines/plos.py:ro
+      - ./infra/searxng/engines/mra_markup.py:/usr/local/searxng/searx/engines/mra_markup.py:ro  # shared helper
     ports:
       - "8080:8080"
     healthcheck:

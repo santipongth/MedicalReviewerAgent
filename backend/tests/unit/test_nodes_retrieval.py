@@ -117,3 +117,18 @@ async def test_enrich_drops_editorials_letters_and_retracted_papers_before_scree
 def test_screening_prompt_excludes_narrative_reviews():
     from app.graph.prompts import SCREEN_SYSTEM
     assert "narrative" in SCREEN_SYSTEM.lower()
+
+
+async def test_enrich_skips_lookup_for_hits_with_a_europe_pmc_abstract_and_pmcid():
+    done = Candidate(title="Already complete", doi="10.1/done", pmid="1", pmcid="PMC1", abstract=ABSTRACT,
+                     abstract_source="engine", engines=["europe pmc", "pubmed"], pub_types=["Journal Article"])
+    no_pmcid = Candidate(title="Needs a lookup", doi="10.1/todo", pmid="2", abstract=ABSTRACT,
+                         abstract_source="engine", engines=["europe pmc"])
+    other = Candidate(title="From PubMed only", pmid="3", abstract=ABSTRACT, abstract_source="engine",
+                      engines=["pubmed"])
+    epmc = FakeEpmc([])
+    raw = [c.model_dump() for c in (done, no_pmcid, other)]
+    out = await make_enrich(_deps(europepmc=epmc))({"candidates": raw, "options": {}})
+    assert epmc.calls == [(["10.1/todo"], ["2", "3"])]
+    assert len(out["candidates"]) == 3
+    assert out["quality"][0]["looked_up"] == 2 and out["quality"][0]["skipped_lookup"] == 1

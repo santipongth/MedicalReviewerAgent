@@ -1,6 +1,7 @@
 """Parsing tests for our SearXNG engine modules (infra/searxng/engines), run without SearXNG.
 
-The modules import ``searx.result_types`` / ``searx.network``; a tiny stub stands in for them.
+The modules import ``searx.result_types`` / ``searx.network`` / ``searx.engines.mra_markup``; a tiny stub
+stands in for them (the markup helper is the real module, loaded by path).
 Fixtures are trimmed live responses recorded on 2026-10-10 (``tests/fixtures/searxng_engines``),
 except ``s2_graph.json`` (hand-written to the Graph API schema: a keyed call is needed to record it).
 """
@@ -58,6 +59,9 @@ def searx_stub(monkeypatch):
     monkeypatch.setitem(sys.modules, "searx", searx)
     monkeypatch.setitem(sys.modules, "searx.result_types", result_types)
     monkeypatch.setitem(sys.modules, "searx.network", network)
+    engines_pkg = types.ModuleType("searx.engines")
+    monkeypatch.setitem(sys.modules, "searx.engines", engines_pkg)
+    monkeypatch.setitem(sys.modules, "searx.engines.mra_markup", load("mra_markup"))
     return types.SimpleNamespace(calls=calls, replies=replies)
 
 
@@ -294,3 +298,92 @@ def test_throttle_skips_instead_of_queueing_past_the_timeout(searx_stub, monkeyp
     doaj._next_slot = 0.0
     doaj.request("metformin", p)
     assert p["url"].startswith(doaj.search_url)
+
+
+def test_pubmed_esearch_and_efetch_share_one_deadline(searx_stub, monkeypatch):
+    m = load("mra_pubmed")
+    clock = [1000.0]
+    monkeypatch.setattr(m.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(m.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    esearch = (FIX / "pubmed_esearch.json").read_bytes()
+
+    def slow_get(url, **_kw):  # esearch spends 7 of the 8 s budget ...
+        searx_stub.calls.append(url)
+        clock[0] += 7.0
+        m._next_slot = clock[0] + queued[0]  # ... while other searches queue up
+        return _Resp(200, esearch)
+
+    monkeypatch.setattr(m, "get", slow_get)
+    queued = [1.5]  # efetch's turn would come 0.5 s after the shared deadline: skipped
+    p = params()
+    m.request("metformin", p)
+    assert len(searx_stub.calls) == 1 and p["url"] is None
+    queued[0] = 0.5  # turn still inside the budget: efetch goes ahead
+    m._next_slot = 0.0
+    p = params()
+    m.request("metformin", p)
+    assert p["url"].startswith(m.eutils_api + "/efetch.fcgi")
+
+
+# --- markup (shared helper; same rules as the backend's strip_markup) -----------------------
+
+MARKUP_CASES = [
+    ("ALT <ULN in 40 patients and >3xULN in 12", "ALT <ULN in 40 patients and >3xULN in 12"),
+    ("levels <LOD in 30% and >LOQ in 70%", "levels <LOD in 30% and >LOQ in 70%"),
+    ("p<0.001 in patients aged >65", "p<0.001 in patients aged >65"),
+    ("10<jats:sup>9</jats:sup>/L", "109/L"),
+    ("CO<jats:sub>2</jats:sub> and CO<sub>2</sub>", "CO2 and CO2"),
+    ('<jats:p>Background</jats:p><jats:p>Methods <jats:italic>in vitro</jats:italic></jats:p>',
+     "Background Methods in vitro"),
+    ("<h4>Results</h4>x &lt;0.05", "Results x <0.05"),
+    (["<p>a</p>", "b"], "a b"),
+]
+
+
+def _backend_text():
+    from app.services import text
+
+    return text
+
+
+@pytest.mark.parametrize(("raw", "clean"), MARKUP_CASES)
+def test_engine_markup_matches_backend(searx_stub, raw, clean):
+    from app.services.text import strip_markup
+
+    helper = sys.modules["searx.engines.mra_markup"]
+    assert helper.clean_markup(raw) == clean
+    if isinstance(raw, str):
+        assert strip_markup(raw) == clean
+    assert helper._BLOCK_NAMES == _backend_text()._BLOCK_NAMES  # one whitelist on both sides
+    assert helper._INLINE_NAMES == _backend_text()._INLINE_NAMES
+
+
+def test_doaj_normalises_url_and_prefixed_dois(searx_stub):
+    m = load("doaj")
+    assert m.normalize_doi("https://doi.org/10.14456/tjog.2015.10") == "10.14456/tjog.2015.10"
+    assert m.normalize_doi("doi: 10.1/X") == "10.1/X" and m.normalize_doi("n/a") == ""
+    data = {"results": [{"id": "abc", "bibjson": {
+        "title": "T", "identifier": [{"type": "doi", "id": "https://dx.doi.org/10.14456/tjog.2015.10"}]}}]}
+    paper = m.parse(data)[0]
+    assert paper["doi"] == "10.14456/tjog.2015.10"
+    assert paper["url"] == "https://doi.org/10.14456/tjog.2015.10"
+    data["results"][0]["bibjson"]["identifier"][0]["id"] = "not a doi"
+    assert m.parse(data)[0]["url"] == "https://doaj.org/article/abc"
+
+
+def test_openaire_ids_from_top_level_only(searx_stub):
+    m = load("mra_openaire")
+
+    def item(pids, instances):
+        return {"mainTitle": "T", "id": "x", "pids": pids, "instances": instances}
+
+    inst = [{"pids": [{"scheme": "pmid", "value": "111"}, {"scheme": "doi", "value": "10.1/A"}],
+             "urls": ["https://example.org/a"]}]
+    only_instances = m.parse({"results": [item([], inst)]})[0]
+    assert only_instances["doi"] == "10.1/a"  # exactly one distinct instance DOI
+    assert only_instances["url"] == "https://doi.org/10.1/a"  # instance PMID ignored
+    two = inst + [{"pids": [{"scheme": "doi", "value": "10.2/b"}]}]
+    assert m.parse({"results": [item([], two)]})[0]["doi"] == ""  # ambiguous: no DOI
+    top = m.parse({"results": [item([{"scheme": "pmid", "value": "9"}, {"scheme": "doi", "value": "10.3/c"}],
+                                    two)]})[0]
+    assert top["doi"] == "10.3/c" and top["url"] == "https://pubmed.ncbi.nlm.nih.gov/9/"

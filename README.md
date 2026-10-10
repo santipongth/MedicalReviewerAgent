@@ -1,6 +1,6 @@
 # Medical Reviewer Agent
 
-Public literature-review agent: type a disease / drug / topic → the agent interprets and refines your question, searches PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ and OpenAIRE (PLOS is opt-in; via a self-hosted searxng-LDR-academic), screens ~60 candidates that have abstracts, analyses up to the 30 most relevant abstracts (no full-text fetching), and produces a comparison table of agreeing / conflicting findings with a GRADE-lite evidence rating. Backend: Python + LangGraph; LLMs via OpenRouter (models and presets in `backend/config/llm.yaml`). Exposed as a web app, a REST API and an MCP server.
+Public literature-review agent: type a disease / drug / topic → the agent interprets and refines your question, searches PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ and OpenAIRE (PLOS is opt-in through `SEARXNG_ENGINES`; the UI's source list shows the default engines; via a self-hosted searxng-LDR-academic), screens ~60 candidates that have abstracts, analyses up to the 30 most relevant abstracts (no full-text fetching), and produces a comparison table of agreeing / conflicting findings with a GRADE-lite evidence rating. Backend: Python + LangGraph; LLMs via OpenRouter (models and presets in `backend/config/llm.yaml`). Exposed as a web app, a REST API and an MCP server.
 
 **Reference for every route, event, limit, webhook and MCP tool: [`docs/api.md`](docs/api.md)** (live limits on any
 deployment: `GET /api/v1/status`; interactive OpenAPI at `/api/docs`).

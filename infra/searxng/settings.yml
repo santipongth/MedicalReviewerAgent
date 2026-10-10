@@ -28,7 +28,13 @@ server:
 # changes. Our modules live in infra/searxng/engines/ and are bind-mounted read-only, one file each,
 # into /usr/local/searxng/searx/engines/ (see docker-compose.yml). Optional API keys come from the
 # container environment (NCBI_API_KEY, OPENALEX_API_KEY, S2_API_KEY); with no key every engine works.
+# Every engine the backend requests must time out below its searxng_timeout_seconds (15 s): SearXNG waits
+# for the slowest engine, so one slower engine would time out the whole query on the backend side.
 engines:
+  - name: crossref
+    timeout: 10.0               # fork default is 30 s, beyond the backend's 15 s
+  - name: arxiv
+    timeout: 8.0                # fork default is outgoing.request_timeout (3 s)
   - name: pubmed
     engine: mra_pubmed          # fork module hard-coded a 3 s esearch timeout -> timeout + suspension
     timeout: 12.0
