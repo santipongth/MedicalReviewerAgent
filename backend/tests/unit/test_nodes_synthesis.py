@@ -284,7 +284,7 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
     assert r["papers"][0]["verification"]["numbers_total"] == 4
     assert r["stats"] == {"found": 40, "unique": 25, "with_abstract": 22, "candidates": 20, "screened": 20, "selected": 2,
                           "extracted": 2, "non_research": 0, "excluded_screening": {},
-                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 0}}
+                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 0, "study_design_relaxed": 0}}
     assert r["question"]["refined_question"] == "คำถาม?" and r["question"]["english"]["refined_question"] == "RQ?"
     assert r["question"]["pico"]["population"] == "adults" and r["question"]["original_topic"] == "เมตฟอร์มิน"
     assert r["question"]["ambiguities"] == ["b"] and r["question"]["refined"] is True

@@ -32,6 +32,9 @@ def test_synonyms_satisfy_the_canonical_name(study_type, designs):
 
 def test_non_randomized_does_not_satisfy_rct():
     assert not design_matches("RCT", ["non-randomised trial", "quasi-randomized study"])
+    assert not design_matches("RCT", ["quasi-RCT", "non-RCT", "meta-analysis of RCTs", "systematic review of RCTs"])
+    assert design_matches("RCT", ["randomised and non-randomised studies"])
+    assert design_matches("RCT", ["RCTs"]) and not design_matches("RCT", ["cohort", "ARCTIC study"])
     assert not design_matches("RCT", ["cohort"])
 
 
@@ -66,10 +69,10 @@ PLAN = {"population": "P", "inclusion_criteria": ["a"]}
 
 def test_screen_prompt_carries_the_constraint_only_when_ticked():
     plain = prompts.screen_user(english_topic="Q?", plan=PLAN, items=ITEMS)
-    assert "Study design constraint" not in plain
+    assert "Study design preference" not in plain
     ticked = prompts.screen_user(english_topic="Q?", plan=PLAN, items=ITEMS, study_types=["RCT"])
-    assert "only these designs are eligible: RCT" in ticked and "design_guess must be one of: rct." in ticked
-    assert 'exclusion_reason "study_design"' in ticked
+    assert "these designs: RCT, i.e. design_guess rct" in ticked
+    assert "Do not exclude a paper only because of its design" in ticked
     sr = prompts.screen_user(english_topic="Q?", plan=PLAN, items=[], study_types=["Systematic review"])
     assert "sr_ma_mixed, sr_ma_observational, sr_ma_rct" in sr
 
@@ -99,7 +102,7 @@ async def test_screen_batch_sends_the_constraint_to_the_model():
     d = deps(FakeStructuredLLM("g", respond))
     await make_screen_batch(d)({**payload(2), "study_types": ["RCT"]})
     await make_screen_batch(d)(payload(2))
-    assert "only these designs are eligible: RCT" in seen[0] and "Study design constraint" not in seen[1]
+    assert "these designs: RCT" in seen[0] and "Study design preference" not in seen[1]
 
 
 def _screened(candidates, designs):
@@ -146,3 +149,35 @@ async def test_select_top_ignores_other_entries_and_empty_selection():
         assert len(out["selected"]) == 3
     assert allowed_designs({"study_types": ["Other: x"]}) == frozenset()
     assert design_allowed("cohort", frozenset())
+
+
+async def test_narrative_and_scoping_do_not_enforce_study_types():
+    c = cands(4)
+    for rt in ("narrative", "scoping"):
+        out = await _select({"candidates": c, "screened": _screened(c, ["cohort", "cohort", "rct", "case_series"]),
+                             "options": {"review_type": rt, "study_types": ["RCT"]}})
+        assert len(out["selected"]) == 4 and out["selection_stats"]["excluded_screening"] == {}
+    state = {"candidates": c, "plan": {}, "topic": "t", "english_topic": "m", "language": "en",
+             "options": {"review_type": "scoping", "study_types": ["RCT"]}}
+    assert route_to_screening(state)[0].arg["study_types"] == []
+    assert route_to_screening({**state, "options": {"review_type": "meta_analysis", "study_types": ["RCT"]}}
+                              )[0].arg["study_types"] == ["RCT"]
+
+
+async def test_select_top_does_not_mutate_state_entries():
+    c = cands(3)
+    screened = _screened(c, ["cohort", "rct", "cohort"])
+    await _select({"candidates": c, "screened": screened, "options": {"study_types": ["RCT"]}})
+    assert all("design_mismatch" not in d for d in screened)
+
+
+async def test_relaxed_count_reaches_result_stats():
+    from app.graph.nodes.synthesis import make_finalize
+    from tests.unit.test_nodes_synthesis import deps as synth_deps
+    c = cands(4)
+    sel = await _select({"candidates": c, "screened": _screened(c, ["cohort", "rct", "cohort", "cohort"]),
+                         "options": {"study_types": ["RCT"]}})
+    state = {"topic": "t", "english_topic": "T", "language": "en", "papers": [], "question": None,
+             "synthesis": {"executive_summary": "none"}, "selection_stats": sel["selection_stats"]}
+    r = (await make_finalize(synth_deps())(state))["result"]
+    assert r["stats"]["excluded_selection"]["study_design_relaxed"] == 3

@@ -25,7 +25,8 @@ def route_to_screening(state: ReviewState, batch_size: int = 10) -> list[Send] |
               "language": state.get("language", "th"),
               "review_type": ReviewOptions.clamped(state.get("options")).review_type,
               "qualitative": wants_qualitative(state.get("options")),
-              "study_types": canonical_types(state.get("options"))}
+              "study_types": (canonical_types(state.get("options"))
+                              if ReviewOptions.clamped(state.get("options")).review_type in SLR_LIKE else [])}
     return [Send("screen_batch", {"batch": cands[i : i + batch_size], **common})
             for i in range(0, len(cands), batch_size)]
 
@@ -143,22 +144,21 @@ def make_select_top(deps):
                 best[d["key"]] = d
         by_key = {c["key"]: c for c in state.get("candidates") or []}
         included = [d for d in best.values() if d["include"] and d["key"] in by_key]
-        # Ticked study types are enforced: a paper whose design maps to none of them is excluded (PRISMA reason
+        # Ticked study types are enforced here only (the screener just labels designs): a paper whose design maps to none of them is excluded (PRISMA reason
         # study_design). Unknown designs stay. If fewer than MIN_MATCHING_DESIGNS remain, the mismatches are kept
         # after the matches (and flagged) rather than leaving the review empty.
-        allowed = allowed_designs(state.get("options"))
+        allowed = allowed_designs(state.get("options"), options.review_type)
         design_excluded = relaxed = 0
         if allowed:
-            fits = [d for d in included if design_allowed(d.get("design"), allowed)]
-            misfits = [d for d in included if d not in fits]
+            fit_keys = {d["key"] for d in included if design_allowed(d.get("design"), allowed)}
+            fits = [d for d in included if d["key"] in fit_keys]
+            misfits = [d for d in included if d["key"] not in fit_keys]
             if len(fits) >= MIN_MATCHING_DESIGNS or not misfits:
                 design_excluded = len(misfits)
                 included = fits
             else:
                 relaxed = len(misfits)
-                for d in misfits:
-                    d["design_mismatch"] = True
-                included = fits + misfits
+                included = fits + [{**d, "design_mismatch": True} for d in misfits]  # copies: state stays untouched
         primary = [d for d in included if d.get("design") != "narrative_review"]
         # Narrative reviews restate other studies: leave them out when enough original or pooled evidence exists.
         narrative_excluded = (len(included) - len(primary)

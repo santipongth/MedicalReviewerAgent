@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.schemas.review import STUDY_TYPES
@@ -52,10 +53,22 @@ def canonical_types(options: dict[str, Any] | None) -> list[str]:
     return [t for t in (options or {}).get("study_types") or [] if t in STUDY_TYPES]
 
 
+_NOT_RCT = re.compile(r"\b(?:non|quasi)[\s-]*(?:randomi[sz]ed|rcts?)\b", re.IGNORECASE)
+_REVIEW = re.compile(r"meta[\s-]*analy|systematic[\s-]*review", re.IGNORECASE)
+_RCT = re.compile(r"\brcts?\b|randomi[sz]ed", re.IGNORECASE)
+
+
+def _is_rct(design: str) -> bool:
+    """A randomised design. Non-/quasi-randomised and quasi-RCT do not count, and neither does a review of RCTs."""
+    if _REVIEW.search(design):
+        return False
+    return bool(_RCT.search(_NOT_RCT.sub(" ", design)))
+
+
 def design_matches(study_type: str, study_designs: list[str]) -> bool:
+    if study_type == "RCT":
+        return any(_is_rct(d) for d in study_designs)
     designs = loose(" ".join(study_designs))
-    if study_type == "RCT":  # "non-randomized trial" must not satisfy RCT
-        designs = designs.replace("nonrandomized", "").replace("quasirandomized", "")
     return any(s in designs for s in SYNONYMS[study_type])
 
 
@@ -63,8 +76,12 @@ def missing_study_types(options: dict[str, Any] | None, study_designs: list[str]
     return [t for t in canonical_types(options) if not design_matches(t, study_designs)]
 
 
-def allowed_designs(options: dict[str, Any] | None) -> frozenset[str]:
-    """DesignCategory values admitted by the ticked canonical types; empty when nothing is enforced."""
+def allowed_designs(options: dict[str, Any] | None, review_type: str = "slr") -> frozenset[str]:
+    """DesignCategory values admitted by the ticked canonical types; empty when nothing is enforced.
+
+    Narrative and scoping reviews cover every design, so ticked types are not enforced there."""
+    if review_type in ("narrative", "scoping"):
+        return frozenset()
     return frozenset().union(*(DESIGNS_FOR_TYPE[t] for t in canonical_types(options)))
 
 
