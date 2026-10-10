@@ -90,6 +90,16 @@ VERY_LOW = "Very low-certainty evidence: "
      "Metformin neither increases nor reduces mortality."),
     ("low", "It is unclear whether metformin prevents cancer.", "It is unclear whether metformin prevents cancer."),
     ("low", "The increases in weight were small.", "The increases in weight were small."),
+    # fix round 3 (N13): plural and base forms, a subject before a comma, and no lead when it already hedges
+    ("low", "SGLT2 inhibitors reduce heart failure hospitalisation.",
+     LOW + "SGLT2 inhibitors reduce heart failure hospitalisation."),
+    ("low", "Metformin lowers CRC incidence.", LOW + "Metformin lowers CRC incidence."),
+    ("low", "Metformin, compared with sulfonylureas, reduces CRC incidence.",
+     LOW + "Metformin, compared with sulfonylureas, reduces CRC incidence."),
+    ("very_low", "The evidence is very uncertain, but metformin reduces CRC incidence.",
+     "The evidence is very uncertain, but metformin reduces CRC incidence."),
+    ("low", "Metformin was associated with a lower CRC incidence.",
+     "Metformin was associated with a lower CRC incidence."),
 ])
 def test_strong_causal_claims_get_a_certainty_lead_and_stay_unchanged(strength, statement, expected):
     assert _certainty_lead(statement, strength)[0] == expected
@@ -144,8 +154,49 @@ def test_a_level_word_away_from_certainty_is_no_claim():
                            strength="low")
     assert text == "Metformin may lower risk in patients at high risk."  # "may" is the low wording; nothing rewritten
     from app.graph.nodes.synthesis import _named_levels
-    assert _named_levels("the certainty of the evidence for patients at high risk is low") == {"low"}
+    assert _named_levels("the certainty of the evidence is low for patients at high risk") == {"low"}
     assert _named_levels("patients at high risk") == set()
+
+
+@pytest.mark.parametrize(("answer", "strength"), [  # fix round 3, N10: never rewritten
+    ("Metformin may lower CRC risk; high-quality trials are needed.", "low"),
+    ("Metformin probably lowers CRC risk, but high-quality randomised evidence is lacking.", "moderate"),
+    ("Metformin may lower CRC risk, although study quality was high.", "low"),
+    ("Metformin probably lowers CRC risk; most studies were low-quality.", "moderate"),
+    ("No high-certainty evidence shows that metformin may lower CRC risk.", "low"),
+])
+def test_quality_phrases_and_negated_claims_are_not_rewritten(answer, strength):
+    text, _ = _bottom_line(answer, CTX, ALLOWED, no_pool=False, strength=strength)
+    assert text.startswith(answer)
+
+
+def test_grade_label_and_certainty_of_evidence_are_rewritten():
+    text, _ = _bottom_line("Metformin may lower CRC risk (GRADE: high).", CTX, ALLOWED, no_pool=False, strength="low")
+    assert text == "Metformin may lower CRC risk (GRADE: low)."
+    text, _ = _bottom_line("Metformin may lower CRC risk; the certainty of evidence was high.", CTX, ALLOWED,
+                           no_pool=False, strength="low")
+    assert text == "Metformin may lower CRC risk; the certainty of evidence was low."
+
+
+def test_a_high_certainty_answer_is_never_left_empty(monkeypatch):
+    from collections import Counter
+
+    from app.graph.nodes import synthesis as s
+
+    monkeypatch.setattr(s, "fix_statement", lambda text, prose, refs=None: ("", Counter(numbers_removed=1)))
+    assert s._bottom_line("Metformin lowered risk by 20%.", CTX, ALLOWED, no_pool=False, strength="high") == (
+        ANSWER_CERTAINTY["high"], 1)
+
+
+def test_a_restored_sentence_is_not_counted_as_removed(monkeypatch):  # N12
+    from collections import Counter
+
+    from app.graph.nodes import synthesis as s
+
+    monkeypatch.setattr(s, "fix_statement", lambda text, prose, refs=None: ("", Counter(population_removed=1)))
+    text, removed = s._bottom_line("Metformin lowers CRC risk in children.", CTX, ALLOWED, no_pool=False,
+                                   strength="low")
+    assert text.startswith("Metformin lowers CRC risk in children.") and removed == 0
 
 
 def test_an_answer_the_checks_would_empty_keeps_its_sentence(monkeypatch):
@@ -202,10 +253,12 @@ async def test_a_crash_of_the_answer_check_fails_closed(monkeypatch):
         raise RuntimeError("bug")
 
     monkeypatch.setattr(synth_mod, "_bottom_line", boom)
-    llm = FakeStructuredLLM("ds", lambda s, u: narrative("Metformin may lower CRC incidence.", [
+    llm = FakeStructuredLLM("ds", lambda s, u: narrative("Metformin may lower CRC incidence [P1]. The risk fell by "
+                                                         "20%.", [
         NarrativeFinding(outcome="CRC incidence", statement="Metformin may lower it.", refs=["P1"])]))
     out = await make_write_synthesis(deps(synthesizer=llm))(two_papers())
-    assert out["synthesis"]["answer"] == "" and out["synthesis"]["key_findings"] == []
+    # fix round 3 (N11): the model's answer without citations and without the numbered sentence, never ""
+    assert out["synthesis"]["answer"] == "Metformin may lower CRC incidence." and out["synthesis"]["key_findings"] == []
     assert "answer check failed: RuntimeError" in out["errors"]
     assert next(q for q in out["quality"] if q["stage"] == "prose_check")["check_failed"] is True
 

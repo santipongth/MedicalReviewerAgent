@@ -43,6 +43,7 @@ NOT_TRIAL_NAMES = frozenset({
     # outcomes, designs, scales, registries of data, bodies
     "OUTCOME", "OUTCOMES", "CVOT", "CVOTS", "RCT", "RCTS", "NYHA", "MACE", "KCCQ", "PRISMA", "GRADE", "NHANES",
     "SEER", "MIMIC", "NIH", "WHO", "FDA", "EMA", "NICE", "AHA", "ESC", "ADA", "EASD", "ACC", "KDIGO", "CONSORT",
+    "TIMI",  # the TIMI Study Group runs many trials; "DECLARE-TIMI 58" stays a name (its first part is not stoplisted)
     # bibliographic databases, registries and appraisal tools named in reviews
     "CENTRAL", "ICTRP", "MEDLINE", "EMBASE", "CINAHL", "PUBMED", "SCOPUS", "LILACS", "CDSR", "PROSPERO", "MMAT",
     "AMSTAR", "ROBINS", "ROBINS-I", "ROB", "ROB-2", "JBI", "CASP", "NOS", "STROBE", "QUADAS", "QUADAS-2",
@@ -89,6 +90,24 @@ def _mostly_caps(text: str) -> bool:
     return bool(letters) and sum(ch.isupper() for ch in letters) > 0.6 * len(letters)
 
 
+_CONNECTORS = frozenset({"of", "in", "on", "for", "with", "and", "to", "the", "a", "an", "&"})
+
+
+def _expansion(phrase: str) -> str:
+    """The acronym's expansion: the trailing run of title-case words (and connectors between them) right before the
+    bracket. "This randomized trial used the Hospital Anxiety and Depression Scale" gives "Hospital Anxiety and
+    Depression Scale"; "the Empagliflozin Outcome Trial in Patients With Chronic Heart Failure" keeps "Trial"."""
+    out: list[str] = []
+    for word in reversed(phrase.split()):
+        if word[:1].isupper() or (word.lower() in _CONNECTORS and out):
+            out.append(word)
+        else:
+            break
+    while out and out[-1].lower() in _CONNECTORS:
+        out.pop()
+    return " ".join(reversed(out))
+
+
 def _name_matches(text: str, own: bool = False) -> list[tuple[int, str]]:
     """(position, name) of every accepted trial name in `text` (see the rules above). `own` (linking, fix round 2,
     N3): a bracketed acronym after a title-case phrase counts only when the phrase names a trial or study ("...
@@ -111,8 +130,8 @@ def _name_matches(text: str, own: bool = False) -> list[tuple[int, str]]:
             found.append((m.start(1), _clean(m.group(1))))
     for m in _AFTER_TITLE_PHRASE.finditer(text):
         words = m.group(1).split()[-6:]
-        if own and not re.search(r"(?i)\b(trial|study)\b", m.group(1)):
-            continue
+        if own and not re.search(r"(?i)\b(trial|study)\b", _expansion(m.group(1))):
+            continue  # fix round 3 (N8): only the acronym's own expansion may name a trial
         if sum(w[:1].isupper() for w in words) >= 3 and not in_caps_run(m.start(2)):
             found.append((m.start(2), _clean(m.group(2))))
     return sorted(found)
@@ -151,6 +170,7 @@ _SELF = re.compile(
     r"\b(this|the present|the current) ((secondary|post[- ]?hoc|pre-?specified|exploratory|ancillary) )?"
     r"(analysis|substudy|sub-study|study|report|trial) (of|from|in|using|was)\b|"
     r"\bthe (aims?|objectives?|purpose) of this\b|\b(enrolled|randomi[sz]ed|participating) in the\b|"
+    r"\bthis (commentary|editorial|review|perspective|viewpoint) (of|on|about|discusses|summari[sz]es|reviews)\b|"
     r"\bin the [A-Z][\w-]+(?: [\w-]+){0,4} (trial|study)\s*,\s*we\b")
 
 
@@ -167,7 +187,9 @@ def own_trial_names(title: str | None, abstract: str | None = None) -> list[str]
     names += [name for _, name in _name_matches(title, own=True) if _is_name(name)]
     text = abstract or ""
     sentences = _SENTENCES.split(text.strip()) if text.strip() else []
-    places = sentences[:1] + [m.group(1) for m in _METHODS.finditer(text.strip())]
+    # fix round 3 (N9): the first sentence (or a Background section) is the paper's own only with a self pattern
+    # ("The DAPA-HF trial showed ..." opens many follow-up trials); the self sentences below include it then
+    places = [m.group(1) for m in _METHODS.finditer(text.strip())]
     places += [s for s in sentences if re.search(r"ClinicalTrials|\bNCT\d{8}|ISRCTN|registered", s)]
     places += [s for s in sentences if _SELF.search(s)]
     for place in places:
@@ -268,6 +290,33 @@ def _primary_score(paper: dict[str, Any]) -> tuple:
             estimates, n, -year, -(int(ref[1:]) if ref[1:].isdigit() else 10**6))
 
 
+# A report that is not a trial's primary results by its title or design text (fix round 3)
+_NOT_PRIMARY = re.compile(r"(?i)\b(post[- ]?hoc|secondary|sub-?group|sub-?stud(y|ies)|follow[- ]?up|extension|"
+                          r"long[- ]term|pre-?specified|exploratory|ancillary|according to|insights? from|"
+                          r"analys[ie]s (of|from)|results from|data from|participants (of|in|from)|"
+                          r"patients (of|in|from) the)\b")
+
+
+def is_secondary_report(paper: dict[str, Any]) -> bool:
+    """A secondary report, sub-study, follow-up or commentary (fix round 3 ruling): only these link to a trial by
+    its name alone."""
+    c = paper.get("candidate") or {}
+    card = paper.get("card") or {}
+    text = f"{c.get('title') or ''} || {card.get('study_design') or ''}"
+    return is_commentary(paper) or bool(SECONDARY_REPORT.search(c.get("title") or "")) or bool(
+        _NOT_PRIMARY.search(text))
+
+
+def _may_join(p: dict[str, Any], group: list[dict[str, Any]], regs: dict[str, set[str]]) -> bool:
+    """Whether `p` may join `group` by a shared trial name: when `p` or every primary-looking member is a secondary
+    report, or every primary-looking pair agrees on the reported n or a registry number."""
+    primaries = [q for q in group if not is_secondary_report(q)]
+    if is_secondary_report(p) or not primaries:
+        return True
+    return all((_sample(p) is not None and _sample(p) == _sample(q)) or bool(regs[p["ref"]] & regs[q["ref"]])
+               for q in primaries)
+
+
 def _sample(paper: dict[str, Any]) -> int | None:
     n = (paper.get("card") or {}).get("sample_size")
     return n if isinstance(n, int) and n > 0 else None
@@ -325,13 +374,22 @@ def related_reports(papers: list[dict[str, Any]],
             ids = registries if len(registries) == 1 else set()
         ids_of[p["ref"]] = ids
         regs[p["ref"]] = registries if len(registries) == 1 else set()
-    for p in eligible:
+    # primary-looking reports own the names first, the largest first (a landmark trial is larger than the trials
+    # that cite it), so a secondary report joins the trial it reports on
+    order = sorted(eligible, key=lambda p: (is_secondary_report(p), -(_sample(p) or 0)))
+    for p in order:
         for ident in sorted(ids_of[p["ref"]]):
-            if ident in owner:
-                if union(owner[ident], p["ref"]):
-                    reason.setdefault(frozenset({owner[ident], p["ref"]}), f"same trial ({_label(ident, spelled)})")
-            else:
+            if ident not in owner:
                 owner[ident] = p["ref"]
+                continue
+            # structural backstop (fix round 3, N8/N9): a name alone links only a secondary report, sub-study,
+            # follow-up or commentary of the named trial; two primary-looking reports also need the same reported n
+            # or a shared registry number (a registry ID always links)
+            if ident.startswith("name:") and not _may_join(p, [q for q in eligible if find(q["ref"])
+                                                                   == find(owner[ident])], regs):
+                continue
+            if union(owner[ident], p["ref"]):
+                reason.setdefault(frozenset({owner[ident], p["ref"]}), f"same trial ({_label(ident, spelled)})")
     for i, a in enumerate(eligible):
         for b in eligible[i + 1:]:
             ca, cb = a.get("candidate") or {}, b.get("candidate") or {}

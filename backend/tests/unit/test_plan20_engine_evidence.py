@@ -47,7 +47,8 @@ COMMENTARY = report("P2", "EMPEROR-Preserved: SGLT2 inhibitors breakthrough in t
                     outcomes=[out("HF hospitalization", "positive", "other")], authors=("Hussain A",),
                     pub_types=("discussion",))
 SUBGROUP = report("P7", "Efficacy of empagliflozin in heart failure with preserved ejection fraction according to "
-                        "frailty status", "In the EMPEROR-Preserved trial, frail patients ...",
+                        "frailty status", "Background: Frailty matters. The aims of this study were to evaluate "
+                                          "patients enrolled in the EMPEROR-Preserved trial by frailty status.",
                   outcomes=[out("HF hospitalization", "positive", "HR")], n=5988, year=2024)
 DAPA_HF = report("P3", "Dapagliflozin in Patients with Heart Failure and Reduced Ejection Fraction",
                  "In this phase 3, placebo-controlled trial ... (Funded by AstraZeneca; DAPA-HF ClinicalTrials.gov "

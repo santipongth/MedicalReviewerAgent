@@ -112,6 +112,58 @@ def test_explicit_self_sentences_and_titles_name_the_own_trial():
     assert own_trial_names("Early rehabilitation following stroke: the AVERT trial", "") == ["AVERT"]
 
 
+# ---- fix round 3: the structural backstop (N8, N9) ----------------------------------------------------------------
+@pytest.mark.parametrize("methods", [
+    "This randomized trial used the Hospital Anxiety and Depression Scale (HADS) to measure mood.",
+    "We conducted a randomised trial using the Hospital Anxiety and Depression Scale (HADS) to measure mood.",
+    "Study participants completed the Minnesota Living with Heart Failure Questionnaire (MLHFQ).",
+    "In this trial patients completed the Mini Mental State Examination (MMSE) at baseline.",
+    "Trial participants were drawn from the Korean National Health Insurance Service (NHIS) database.",
+    "Adults enrolled in the SNAP program were randomized to vouchers or usual care.",
+    "Adults in the PEPFAR program were randomized.",
+    "Adults were recruited from the ARIC study cohort and randomized.",
+    "This trial was run by the TIMI Study Group in 40 centres.",
+])
+def test_two_rcts_sharing_an_instrument_database_or_programme_stay_separate(methods):
+    a = report("P1", "Drug A for mood in heart failure: a randomized trial", f"Methods: {methods} Results: Better.",
+               n=200)
+    b = report("P2", "Drug B for mood after stroke: a randomized trial", f"Methods: {methods} Results: Better.",
+               n=300)
+    assert related_reports([a, b]) == {}
+
+
+@pytest.mark.parametrize("abstract", [
+    ("Background: The DAPA-HF trial showed that dapagliflozin reduced heart failure events. Methods: We randomized "
+     "120 patients to dapagliflozin or placebo. Results: Walking distance improved."),
+    ("The DAPA-HF trial showed that dapagliflozin reduced heart failure events. We randomized 120 patients to "
+     "dapagliflozin or placebo. Walking distance improved."),
+    "In the DAPA-HF trial, dapagliflozin reduced events. We randomized 120 patients. Walking distance improved.",
+])
+def test_a_trial_opening_with_a_landmark_trial_is_not_absorbed(abstract):
+    small = report("P1", "Dapagliflozin and walking distance in heart failure: a randomized trial", abstract, n=120)
+    assert related_reports([small, DAPA_HF]) == {}
+
+
+def test_secondary_reports_of_dapa_hf_and_emperor_still_link():
+    secondary = report("P5", "Dapagliflozin and kidney outcomes: a prespecified analysis of the DAPA-HF trial",
+                       "Methods: We analysed patients enrolled in the DAPA-HF trial.", n=4744, year=2020)
+    other_n = report("P6", "Effect of dapagliflozin by age: insights from DAPA-HF",
+                     "Methods: Patients enrolled in the DAPA-HF trial were grouped by age.", n=4500, year=2020)
+    links = related_reports([DAPA_HF, secondary, other_n])
+    assert links == {"P5": {"primary": "P3", "reason": "same trial (DAPA-HF)"},
+                     "P6": {"primary": "P3", "reason": "same trial (DAPA-HF)"}}
+    assert set(related_reports([PRIMARY, SUBGROUP])) == {"P7"}
+
+
+def test_two_primary_reports_of_one_name_need_the_same_n_or_registry():
+    a = report("P1", "Drug X in heart failure: the ALPHA-HF trial", "Methods: (ALPHA-HF ClinicalTrials.gov.)", n=900)
+    b = report("P2", "Drug X in kidney disease: the ALPHA-HF trial", "Methods: (ALPHA-HF ClinicalTrials.gov.)",
+               n=1200)
+    assert related_reports([a, b]) == {}
+    c = {**b, "card": {**b["card"], "sample_size": 900}}
+    assert set(related_reports([a, c])) == {"P2"}
+
+
 # ---- 2. a cited trial is not the paper's own -------------------------------------------------------------------
 def test_a_trial_that_cites_another_is_never_absorbed():
     small = report("P1", "Dapagliflozin and exercise capacity in heart failure: a randomized trial",
@@ -133,7 +185,8 @@ def test_a_non_evidence_paper_never_absorbs_a_trial_report():
                     "We studied a registry.", category="cohort")
     links = related_reports([cohort, SUBGROUP], evidence_refs={"P7"})
     assert "P7" not in links  # the RCT subgroup stays evidence
-    commentary = report("P2", "EMPEROR-Preserved and the future of HFpEF care", "On the EMPEROR-Preserved trial.",
+    commentary = report("P2", "EMPEROR-Preserved and the future of HFpEF care",
+                        "This commentary discusses the EMPEROR-Preserved trial.",
                         pub_types=("comment",))
     assert related_reports([commentary, SUBGROUP]) == {"P2": {"primary": "P7",
                                                               "reason": "same trial (EMPEROR-Preserved)"}}

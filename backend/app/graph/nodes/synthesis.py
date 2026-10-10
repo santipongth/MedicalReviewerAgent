@@ -755,7 +755,8 @@ _SAYS_NO_POOL = re.compile(
 _POOLED_CLAIM = re.compile(r"(?i)\b(?:pooled|pooling|overall effect|combined estimate)\b")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[])")
 _CITE_GROUP = re.compile(r"\s*\[\s*P\d+[^\]]*\]")
-ANSWER_CERTAINTY = {"moderate": "The certainty of the evidence is moderate.",
+ANSWER_CERTAINTY = {"high": "The certainty of the evidence is high.",
+                    "moderate": "The certainty of the evidence is moderate.",
                     "low": "The certainty of the evidence is low.",
                     "very_low": "The certainty of the evidence is very low."}
 
@@ -784,8 +785,10 @@ def _bottom_line(answer: str, prose: ProseContext, allowed: set[str], *, no_pool
         text = _rewrite_level(text, strength)
     if not text and original and not re.search(r"\d", original) and not (no_pool and _POOLED_CLAIM.search(original)):
         # the checks would empty the answer: the model's sentence stays (it has no number that could be
-        # unverified), with its level corrected; the certainty sentence follows (fix round 2, N1)
+        # unverified), with its level corrected; the certainty sentence follows (fix round 2, N1). It bypassed the
+        # population and measure checks, and it is shown, so it is not counted as removed (fix round 3, N12).
         text = _rewrite_level(original, strength) if strength else original
+        removed = 0
     if no_pool and not _SAYS_NO_POOL.search(text):
         text = f"{NO_POOL_ANSWER} {text}".strip()
     wording = CERTAINTY_WORDING.get(strength or "")
@@ -797,16 +800,43 @@ def _bottom_line(answer: str, prose: ProseContext, allowed: set[str], *, no_pool
     return text, removed
 
 
-# A level word is a certainty claim only next to certainty/quality/confidence/evidence (fix round 2, N1): "low-
-# certainty evidence", "the certainty of the evidence is low", "moderate-quality evidence"; never "patients at high
-# risk". "very low" and "very-low" are one level.
+def _fallback_answer(answer: str, allowed: set[str], *, no_pool: bool, strength: str | None) -> str:
+    """The answer when its check crashed (fix round 3, N11): the model's answer without citations and without any
+    sentence that carries a number (it could be unverified) or, with no pools, claims a pooled effect; the no-pool
+    sentence leads and, for a graded review, the fixed certainty sentence stands when nothing else is left."""
+    text = _CITE_GROUP.sub("", strip_unknown_citations(answer or "", allowed)).strip()
+    kept = [s for s in _SENTENCE_END.split(text) if s and not re.search(r"\d", s)
+            and not (no_pool and _POOLED_CLAIM.search(s) and not _SAYS_NO_POOL.search(s))] if text else []
+    text = " ".join(kept)
+    if no_pool and not _SAYS_NO_POOL.search(text):
+        text = f"{NO_POOL_ANSWER} {text}".strip()
+    if not text and strength in ANSWER_CERTAINTY:
+        text = ANSWER_CERTAINTY[strength]
+    return text
+
+
+# A level word is this review's certainty claim only in an explicit pattern (fix round 3, N10): "<level>-certainty
+# (evidence)", "<level> certainty evidence", "certainty of (the) evidence is/was <level>" or "GRADE: <level>". "very
+# low" and "very-low" are one level. Never a "quality" phrase about studies ("high-quality trials are needed",
+# "study quality was high"), and never a claim negated earlier in its clause ("no high-certainty evidence shows").
 _LEVEL = r"(?P<lvl>very[- ]low|low|moderate|high)"
 _LEVEL_CLAIMS = (
-    re.compile(rf"(?i)\b{_LEVEL}(?=[- ](?:certainty|quality|confidence|evidence)\b)"),
-    re.compile(rf"(?i)\b(?:certainty|quality|confidence)(?: of (?:the )?(?:evidence|findings))?"
-               rf"(?:\s+(?:for|in|on)\s+[^.;]{{0,50}}?)?\s+"
-               rf"(?:is|was|remains|are|were|rated(?: as)?)\s+(?:only\s+)?{_LEVEL}\b"),
+    re.compile(rf"(?i)\b{_LEVEL}(?=-certainty\b|[- ]certainty(?: of(?: the)?)? evidence\b)"),
+    re.compile(rf"(?i)\bcertainty of (?:the )?evidence (?:is|was) (?:only )?{_LEVEL}\b"),
+    re.compile(rf"(?i)\bGRADE:\s*{_LEVEL}\b"),
 )
+_CLAIM_NEGATED = re.compile(r"(?i)\b(no|not|lack of|lacking|without)\b")
+
+
+def _claim_matches(text: str) -> list[re.Match[str]]:
+    """The explicit certainty claims of a text, without the negated ones."""
+    out = []
+    for pattern in _LEVEL_CLAIMS:
+        for m in pattern.finditer(text or ""):
+            clause = re.split(r"[.;:,]", text[: m.start()])[-1]
+            if not _CLAIM_NEGATED.search(clause):
+                out.append(m)
+    return out
 _LEVEL_TEXT = {"very_low": "very low", "low": "low", "moderate": "moderate", "high": "high"}
 
 
@@ -816,7 +846,7 @@ def _level_key(word: str) -> str:
 
 def _named_levels(text: str) -> set[str]:
     """The GRADE levels a text claims for the certainty."""
-    return {_level_key(m.group("lvl")) for pattern in _LEVEL_CLAIMS for m in pattern.finditer(text or "")}
+    return {_level_key(m.group("lvl")) for m in _claim_matches(text)}
 
 
 def _named_level(text: str) -> str | None:
@@ -827,14 +857,11 @@ def _named_level(text: str) -> str | None:
 def _rewrite_level(text: str, strength: str) -> str:
     """Every certainty claim rewritten in place to the final level ("high-certainty" -> "moderate-certainty"),
     keeping the hyphen or space the text used and its capitalisation."""
-    def fix(m: re.Match[str]) -> str:
+    for m in sorted(_claim_matches(text), key=lambda m: -m.start("lvl")):  # from the end: offsets stay valid
         word = m.group("lvl")
         new = _LEVEL_TEXT[strength].replace(" ", "-" if "-" in word else " ")
         new = new[:1].upper() + new[1:] if word[:1].isupper() else new
-        return m.group(0)[: m.start("lvl") - m.start()] + new + m.group(0)[m.end("lvl") - m.start():]
-
-    for pattern in _LEVEL_CLAIMS:
-        text = pattern.sub(fix, text)
+        text = text[: m.start("lvl")] + new + text[m.end("lvl"):]
     return text
 
 
@@ -853,19 +880,28 @@ def _drop_pooled_claims(text: str) -> tuple[str, int]:
 # that makes one gets a fixed lead clause, and the statement follows unchanged. Conservative: a present-tense verb
 # after a subject word (not at the sentence start, not after a determiner or preposition: "Increases in HbA1c ..."),
 # in a clause without a hedge, negation, "whether" or "neither" before it.
-_STRONG_CAUSAL = re.compile(r"\b(reduces|increases|improves|prevents|causes)\b")
+# singular and base forms (fix round 3, N13): "SGLT2 inhibitors reduce", "metformin lowers"
+_STRONG_CAUSAL = re.compile(r"\b(reduces?|increases?|improves?|prevents?|causes?|lowers?|raises?|decreases?)\b")
 _NOT_A_SUBJECT = frozenset({"the", "these", "those", "this", "that", "a", "an", "in", "of", "no", "any", "such", "with",
-                            "and", "or", "for", "to", "on", "by", "from", "as"})
+                            "and", "or", "for", "to", "on", "by", "from", "as", "is", "are", "was", "were", "be",
+                            "been", "being", "has", "have", "had", "its", "their", "his", "her", "our", "much", "more",
+                            "less", "than", "at", "slightly", "significantly", "substantially", "markedly"})
+_ALREADY_UNCERTAIN = re.compile(r"(?i)\b(uncertain|may|might|possibly)\b")
 _CLAUSE_BLOCK = re.compile(r"(?i)\b(may|might|probably|likely|possibly|could|not|no|never|neither|nor|whether|"
                            r"unclear|uncertain|if)\b")
 CERTAINTY_LEAD = {"low": "Low-certainty evidence suggests: ", "very_low": "Very low-certainty evidence: "}
 
 
 def strong_causal_claim(statement: str) -> bool:
+    if _ALREADY_UNCERTAIN.search(statement or ""):
+        return False  # the statement already says it is uncertain (fix round 3, N13)
     for m in _STRONG_CAUSAL.finditer(statement or ""):
-        clause = re.split(r"[.;:,]", statement[: m.start()])[-1]
-        words = clause.split()
-        if not words or words[-1].lower() in _NOT_A_SUBJECT or _CLAUSE_BLOCK.search(clause):
+        sentence = re.split(r"[.;:]", statement[: m.start()])[-1]
+        # the subject may sit before a comma ("Metformin, compared with sulfonylureas, reduces ...")
+        words = sentence.replace(",", " ").split()
+        clause = sentence.split(",")[-1]
+        if not words or words[-1].lower() in _NOT_A_SUBJECT or _CLAUSE_BLOCK.search(sentence if not clause.strip()
+                                                                                      else clause):
             continue
         return True
     return False
@@ -1081,7 +1117,11 @@ def make_write_synthesis(deps):
         except Exception as exc:
             log.exception("answer/key-findings check failed")
             errors.append(f"answer check failed: {type(exc).__name__}")
-            answer, answer_removed = (NO_POOL_ANSWER if no_pool else ""), 0
+            try:  # the model's answer, minus anything that could be unverified (fix round 3, N11)
+                answer = _fallback_answer(narrative.answer, allowed, no_pool=no_pool, strength=strength)
+            except Exception:  # noqa: BLE001 - the last resort: the fixed sentences only
+                answer = NO_POOL_ANSWER if no_pool else ANSWER_CERTAINTY.get(strength or "", "")
+            answer_removed = 0
             key_findings, findings_dropped, findings_hedged = [], len(narrative.key_findings), 0
             prose_counts["check_failed"] += 1
         # coverage telemetry (audit I-22): analysed papers the summary never cites
