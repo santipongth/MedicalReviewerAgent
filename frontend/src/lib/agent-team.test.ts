@@ -199,16 +199,20 @@ describe("speech honesty", () => {
   });
 });
 
+// Mirrors LiveRun's derivation for a scoping review (no directions): the flag plus every slot direction nulled.
+const scoping = (scene: Scene): Scene => ({
+  ...scene, directionless: true, slots: scene.slots.map((sl) => (sl.direction ? { ...sl, direction: null } : sl)),
+});
+
 describe("scoping (directionless)", () => {
   it("never mentions a direction in any line, tally, label or summary", () => {
-    const base = upTo(17);
-    const s: Scene = { ...base, directionless: true };
+    const s = scoping(upTo(17));
     const all: string[] = [teamSummary(s)];
     for (const m of teamOf(s).members) all.push(m.line, memberLabel(m), m.tally ?? "");
     const banned = [AS_READ_TH, NO_DIRECTION_TH, ...Object.values(DIRECTION_LABEL.th)];
     for (const t of all) for (const b of banned) expect(t).not.toContain(b);
     // while a paper finished positive/negative the reader still reports progress and design only
-    const mid: Scene = { ...upTo(15), directionless: true };
+    const mid = scoping(upTo(15));
     const line = mem(mid, "reader").line;
     expect(line.startsWith("อ่านเสร็จ 1 จาก 3 ฉบับ")).toBe(true);
     for (const b of banned) expect(line).not.toContain(b);
@@ -223,7 +227,10 @@ describe("hand-offs", () => {
     expect(pairs).toContain("researcher>screener"); // enrich>screen
     expect(pairs).toContain("screener>reader");
     expect(pairs).toContain("reader>synthesizer");
-    expect(pairs.every((p) => p.split(">")[0] !== p.split(">")[1])).toBe(true);
+    expect(pairs).toEqual([
+      "planner>researcher", "researcher>screener", "screener>reader",
+      "reader>synthesizer", "reader>synthesizer", "reader>synthesizer", "reader>synthesizer",
+    ]);
     // guard>refine, refine>plan, search>enrich and synth>localize stay inside one member
     expect(handoffs(upTo(5))).toEqual([]);
     expect(handoffs(upTo(7))).toEqual([{ key: 6, from: "planner", to: "researcher", kind: "query", n: 3 }]);
@@ -246,5 +253,72 @@ describe("replay", () => {
     const again = run(WALK, a);
     expect(teamOf(again)).toEqual(teamOf(a));
     expect(handoffs(again)).toEqual(handoffs(a));
+  });
+});
+
+describe("fix round 1", () => {
+  const BOUNDARY = [...WALK.filter((e) => e.seq <= 7), ev(50, "cancelled")];
+  it("cancel at a step boundary stops the member owning the skipped step", () => {
+    const e = run(BOUNDARY);
+    expect(e.agents.enrich).toBe("skipped");
+    expect(e.agents.search).toBe("done");
+    expect(sig(e, "researcher")).toBe("stopped/act/think,plan");
+    expect(mem(e, "researcher").line).toBe("ถูกยกเลิกระหว่างดึงบทคัดย่อ");
+    expect(sig(e, "planner")).toBe("done/null/think,analyse,plan,act");
+    expect(mem(e, "screener").status).toBe("idle");
+  });
+  it("cancel in an English run stops the member, not the skipped localize", () => {
+    const en = (evs: ReviewEvent[]) => run(evs, initialScene({ language: "en" }));
+    const fin = en([...WALK.filter((e) => e.seq <= 22 && e.type !== "localizing"), ev(50, "cancelled")]);
+    expect(fin.agents.localize).toBe("skipped");
+    expect(mem(fin, "synthesizer").status).toBe("stopped");
+    expect(mem(fin, "synthesizer").line).toBe("ถูกยกเลิกระหว่างเรียบเรียงรายงาน");
+    const mid = en([...WALK.filter((e) => e.seq <= 15), ev(50, "cancelled")]);
+    expect(mem(mid, "synthesizer").status).toBe("idle");
+    expect(mem(mid, "reader").status).toBe("stopped");
+  });
+  it("speaking is null after error and rejected", () => {
+    expect(teamOf(run([...WALK.filter((e) => e.seq <= 15), ev(50, "error")])).speaking).toBeNull();
+    expect(teamOf(run([ev(1, "started"), ev(2, "checking_topic"), ev(3, "rejected")])).speaking).toBeNull();
+  });
+  it("PCC framework changes the planner refine line", () => {
+    const s = upTo(4);
+    expect(teamOf(s).members[0].line).toBe("แปลงคำถามให้ชัดแบบ PICO");
+    expect(teamOf(s, { framework: "PCC" }).members[0].line).toBe("แปลงคำถามให้ชัดแบบ PCC");
+  });
+  it("a failed external step fails the reader", () => {
+    // `error` fails the current agent; with the external node as the only live one that is the external step
+    const base = upTo(11);
+    const e: Scene = { ...base, status: "error", external: true, agents: { ...base.agents, screen: "done", read: "idle", external: "failed" } };
+    expect(sig(e, "reader")).toBe("failed/analyse/think");
+    expect(mem(e, "reader").line).toBe("ปรึกษาเครื่องมือภายนอก ไม่สำเร็จ");
+  });
+  it("external alone puts the reader in วิเคราะห์ with คิด passed", () => {
+    const ext = run([...WALK.filter((e) => e.seq <= 8), ev(30, "external_lookup")]);
+    expect(sig(ext, "reader")).toBe("working/analyse/think");
+  });
+  it("paused researcher and synthesizer", () => {
+    const r = run([...WALK.filter((e) => e.seq <= 7), ev(50, "interrupted")]);
+    expect(sig(r, "researcher")).toBe("paused/act/think,plan");
+    const y = run([...WALK.filter((e) => e.seq <= 20), ev(50, "interrupted")]);
+    expect(sig(y, "synthesizer")).toBe("paused/analyse/think");
+    expect(memberLabel(mem(y, "synthesizer"))).toBe("ผู้สังเคราะห์: หยุดชั่วคราว · ค่ารวม 1 ชุด");
+  });
+  it("a reader whose finished papers all failed has still acted (ลงมือ): it tried to verify them", () => {
+    const failed = [
+      ...WALK.filter((e) => e.seq <= 14),
+      ev(15, "extracted", { ref: "P1", ok: false }),
+    ];
+    const s = run(failed);
+    expect(s.counts.readOk).toBe(0);
+    expect(sig(s, "reader")).toBe("working/act/think,analyse");
+  });
+  it("handoff cap keeps cross-member pulses even after a burst of same-member ones", () => {
+    const pulses = [
+      { key: 1, edge: "plan>search" as const, kind: "query" as const, n: 1 },
+      ...Array.from({ length: 20 }, (_, i) => ({ key: 2 + i, edge: "search>enrich" as const, kind: "paper" as const, n: 1 })),
+    ];
+    const hs = handoffs({ ...upTo(1), pulses }, 0);
+    expect(hs.map((h) => h.key)).toEqual([1]);
   });
 });

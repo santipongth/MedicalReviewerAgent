@@ -5,8 +5,8 @@
 // papers or "กำลังอ่านหรือรอคิว"), a direction is always "ตามที่เอเจนต์อ่าน", and a scoping scene (`directionless`)
 // never mentions a direction at all.
 import {
-  type AgentId, type AgentStatus, type EdgeId, type PulseKind, type Scene,
-  AGENT_LABEL, PACKET_CAP, currentAgent, readDone, takeFreshPulses,
+  PIPELINE, type AgentId, type AgentStatus, type EdgeId, type PulseKind, type Scene,
+  AGENT_LABEL, PACKET_CAP, currentAgent, readDone,
 } from "./agent-scene";
 import { type ThoughtDetail, STEP_TITLE, latestFinished, paperLines } from "./agent-thought";
 import { READING_OR_QUEUED } from "./copy";
@@ -39,7 +39,7 @@ export const PHASE_NOTE = "ขั้นคิด/วิเคราะห์/ว
 
 export const TEAM: readonly TeamMember[] = [
   { id: "planner", name: "ผู้วางแผน", role: "ตรวจหัวข้อ ตีความคำถาม และวางคำค้น", steps: ["guard", "refine", "plan"] },
-  { id: "researcher", name: "นักค้นคว้า", role: "ค้น PubMed, Europe PMC และฐานข้อมูลอื่น แล้วเก็บเฉพาะงานที่มีบทคัดย่อพอให้อ่าน", steps: ["search", "enrich"] },
+  { id: "researcher", name: "นักค้นคว้า", role: "ค้นฐานข้อมูลงานวิจัยหลายแหล่ง แล้วเก็บเฉพาะงานที่มีบทคัดย่อพอให้อ่าน", steps: ["search", "enrich"] },
   { id: "screener", name: "ผู้คัดกรอง", role: "ให้คะแนนความตรงคำถาม ชุดละ 10 ฉบับ", steps: ["screen"] },
   { id: "reader", name: "ผู้อ่าน", role: "อ่านบทคัดย่อและตรวจตัวเลขกับต้นฉบับ", steps: ["read", "external"] },
   { id: "synthesizer", name: "ผู้สังเคราะห์", role: "เทียบผล เขียนสรุป และแปลรายงาน", steps: ["synth", "localize", "finish"] },
@@ -55,9 +55,8 @@ export function memberOf(id: AgentId): MemberId {
 }
 
 const RUNNING = new Set<AgentStatus>(["active", "working"]);
-const SEARCH_SOURCES = "PubMed, Europe PMC, OpenAlex และฐานข้อมูลอื่น";
 
-interface Ctx { s: Scene; steps: AgentId[]; sts: AgentStatus[]; framework?: "PICO" | "PCC" }
+interface Ctx { s: Scene; steps: AgentId[]; framework?: "PICO" | "PCC" }
 
 /** Steps the lane actually shows: localize only for Thai (or if it ran), external only when it was used. */
 function visibleSteps(s: Scene, steps: AgentId[]): AgentId[] {
@@ -68,10 +67,26 @@ function visibleSteps(s: Scene, steps: AgentId[]): AgentId[] {
   });
 }
 
+/**
+ * The step a cancel cut short: the last step that left idle, when it ended "skipped" (the reducer skips the current
+ * step on `cancelled`). Steps skipped earlier (English localize, a jump over idle steps) always have a later step that
+ * started, so they are never mistaken for it.
+ */
+function cancelledStep(s: Scene): AgentId | null {
+  if (s.status !== "cancelled") return null;
+  for (let i = PIPELINE.length - 1; i >= 0; i--) {
+    const st = s.agents[PIPELINE[i]];
+    if (st === "idle") continue;
+    if (st === "skipped") return PIPELINE[i];
+    break;
+  }
+  return s.agents.external === "skipped" ? "external" : null;
+}
+
 /** A step the member is on (or was on when the run stopped there). */
 function touched(s: Scene, id: AgentId): boolean {
   const st = s.agents[id];
-  return RUNNING.has(st) || st === "paused" || st === "failed" || (s.status === "cancelled" && st === "skipped");
+  return RUNNING.has(st) || st === "paused" || st === "failed" || cancelledStep(s) === id;
 }
 
 function statusOf(s: Scene, steps: AgentId[]): MemberStatus {
@@ -81,7 +96,8 @@ function statusOf(s: Scene, steps: AgentId[]): MemberStatus {
   if (sts.some((x) => RUNNING.has(x))) return "working";
   const someDone = sts.some((x) => x === "done");
   const allEnded = sts.length > 0 && sts.every((x) => x === "done" || x === "skipped");
-  if (s.status === "cancelled" && sts.some((x) => x === "skipped") && !(allEnded && someDone)) return "stopped";
+  const cut = cancelledStep(s);
+  if (cut && steps.includes(cut)) return "stopped";
   if (allEnded && someDone) return "done";
   // Between two of its steps (e.g. the planner after the question is refined, before the queries arrive).
   if (someDone && s.status === "running") return "working";
@@ -108,6 +124,7 @@ function phaseOf(id: MemberId, s: Scene): { phase: Phase | null; passed: Phase[]
       return s.counts.batches > 0 ? { phase: "analyse", passed: ["think"] } : { phase: "think", passed: [] };
     case "reader":
       if (!on("read") && !on("external") && !done("read")) return { phase: null, passed: [] };
+      // readDone counts failed reads too: a reader whose papers all failed has still acted (it tried to verify them).
       return readDone(s) > 0 ? { phase: "act", passed: ["think", "analyse"] } : { phase: "analyse", passed: ["think"] };
     case "synthesizer":
       if (on("localize") || on("finish") || done("synth")) return { phase: "act", passed: ["think", "analyse"] };
@@ -166,7 +183,7 @@ function lineFor(id: MemberId, status: MemberStatus, c: Ctx): string {
         const keep = k.candidates > 0 ? ` · มีบทคัดย่อพอให้อ่าน ${k.candidates}` : "";
         return k.found > 0 ? `พบ ${k.found} รายการ${keep}${fail}` : "ค้นเสร็จแล้ว";
       }
-      return k.queries > 0 ? `ค้นด้วย ${k.queries} คำค้นใน ${SEARCH_SOURCES}` : `ค้นใน ${SEARCH_SOURCES}`;
+      return k.queries > 0 ? `ค้นด้วย ${k.queries} คำค้น` : "ค้นฐานข้อมูลงานวิจัย";
     }
     case "screener":
       if (status === "idle") return member.role;
@@ -220,7 +237,7 @@ export function teamOf(s: Scene, opts: { framework?: "PICO" | "PCC" } = {}): Tea
   const members: MemberState[] = TEAM.map((m) => {
     const steps = visibleSteps(s, m.steps);
     const status = statusOf(s, steps);
-    const ctx: Ctx = { s, steps, sts: steps.map((x) => s.agents[x]), framework: opts.framework };
+    const ctx: Ctx = { s, steps, framework: opts.framework };
     let phase: Phase | null = null;
     let passed: Phase[] = [];
     if (status === "done") passed = [...PHASES];
@@ -237,26 +254,28 @@ export function teamOf(s: Scene, opts: { framework?: "PICO" | "PCC" } = {}): Tea
   return { members, speaking };
 }
 
-/** Pulses on an edge between steps of two different members, as member -> member packets (fresh ones only). */
+/**
+ * Pulses on an edge between steps of two different members, as member -> member packets. Only pulses newer than
+ * `seenKey` are returned; callers MUST pass the last key they drew (the default 0 returns the whole pulse history).
+ * Same-member edges are dropped first, then the newest PACKET_CAP remain.
+ */
 export function handoffs(s: Scene, seenKey = 0): Handoff[] {
   const out: Handoff[] = [];
-  for (const p of takeFreshPulses(s.pulses, seenKey, PACKET_CAP)) {
+  for (const p of s.pulses.filter((x) => x.key > seenKey)) {
     const [a, b] = (p.edge as EdgeId).split(">") as [AgentId, AgentId];
     const from = MEMBER_OF[a];
     const to = MEMBER_OF[b];
     if (from && to && from !== to) out.push({ key: p.key, from, to, kind: p.kind, n: p.n });
   }
-  return out;
+  return out.slice(-PACKET_CAP);
 }
-
-const PHASE_VERB: Record<Phase, string> = { think: "คิด", analyse: "วิเคราะห์", plan: "วางแผน", act: "ลงมือ" };
 
 /** Accessible name of one member, e.g. "ผู้อ่าน: กำลังลงมือ · อ่านเสร็จ 12 จาก 30". */
 export function memberLabel(m: MemberState): string {
   const name = (TEAM.find((x) => x.id === m.id) as TeamMember).name;
   let state: string;
   switch (m.status) {
-    case "working": state = m.phase ? `กำลัง${PHASE_VERB[m.phase]}` : "กำลังทำงาน"; break;
+    case "working": state = m.phase ? `กำลัง${PHASE_LABEL[m.phase]}` : "กำลังทำงาน"; break;
     case "done": state = "เสร็จแล้ว"; break;
     case "failed": state = "ไม่สำเร็จ"; break;
     case "paused": state = "หยุดชั่วคราว"; break;
