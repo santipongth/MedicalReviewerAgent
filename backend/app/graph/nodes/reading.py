@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any
 
@@ -19,6 +20,8 @@ from app.harness.design import (
 from app.harness.runner import HarnessResult
 from app.harness.verify import NUMERIC_FIELDS, card_problems, compare_cards, null_unverified_numbers
 from app.services.llm import LLMError
+
+log = logging.getLogger(__name__)
 
 
 def paper_text(cand: Candidate) -> str | None:
@@ -129,15 +132,26 @@ def make_read_paper(deps):
                 before = card
                 card, verified, total = null_unverified_numbers(card, text, threshold)
                 unverified = _blanked(before, card)
-            # an estimate of another comparison stays on the card, flagged, and never becomes evidence (Plan 19)
-            card, flipped = settle_comparisons(card, payload.get("question_detail"),
-                                               payload.get("review_type") or "slr")
+            # an estimate of another comparison stays on the card, flagged, and never becomes evidence (Plan 19).
+            # The deterministic post-checks are extras: a crash keeps the card as it was (the model's own flags and
+            # label) and is logged, never failing the paper or the review (final review finding 9).
+            try:
+                card, flipped = settle_comparisons(card, payload.get("question_detail"),
+                                                   payload.get("review_type") or "slr")
+            except Exception as exc:
+                log.exception("settle_comparisons failed for %s", paper["ref"])
+                errors.append(f"comparison check failed for {paper['ref']}: {type(exc).__name__}")
+                flipped = 0
             comparison_counts = {"other_comparisons": sum(1 for o in card.outcomes if not o.matches_question),
                                  "comparison_backstop": flipped}
             # after verification: a qualitative/mixed card never carries effect numbers or a direction
             settled = settle_design_category(card, pub_types)
             # a label the pub types, design text, title or abstract clearly contradict is corrected in code (I-7)
-            settled, design_correction = check_design_consistency(settled, pub_types, cand.title, text)
+            try:
+                settled, design_correction = check_design_consistency(settled, pub_types, cand.title, text)
+            except Exception as exc:
+                log.exception("check_design_consistency failed for %s", paper["ref"])
+                errors.append(f"design check failed for {paper['ref']}: {type(exc).__name__}")
             stripped = strip_non_quantitative(settled)
             if stripped is not settled:  # recount: only the numbers that remain (a verified sample size, if any)
                 kept = int(spec.verify_quotes and stripped.sample_size is not None)
@@ -149,6 +163,9 @@ def make_read_paper(deps):
         entry["verification"] = {"numbers_verified": verified, "numbers_total": total, "agreement": agreement,
                                  "escalated": escalated, "repaired": repaired, "uncertain": uncertain,
                                  "unverified": unverified}
+        if paper.get("design_mismatch"):  # kept although its design is outside the ticked study types (relaxed)
+            entry["verification"]["design_mismatch"] = True
+            entry["design_mismatch"] = True
         quality = {"stage": "read", "ref": paper["ref"], "source": "abstract",
                    **{k: v for k, v in entry["verification"].items() if k != "unverified"},
                    **comparison_counts, "seconds": round(time.perf_counter() - started, 3)}

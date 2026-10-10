@@ -307,7 +307,8 @@ async def test_write_synthesis_repairs_then_replaces_a_contradicting_rationale()
     st = state(papers, language="en", conflict_notes=[],
                matrix={"rows": [], "consensus": [], "conflicts": [], "grade": {"level": "moderate", "factors": factors}})
     res = await make_write_synthesis(deps(synthesizer=synth))(st)
-    assert len(synth.calls) == 2 and "starts at moderate" in synth.calls[1][1]  # one repair round
+    # reconciled in code, without a narrative round (final review finding 4: latency)
+    assert len(synth.calls) == 1
     s = res["synthesis"]
     assert s["evidence_rationale"] == "; ".join(factors)
     assert s["research_gaps"] == ["Longer trials"]  # never a "null" gap

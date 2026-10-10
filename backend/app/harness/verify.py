@@ -154,6 +154,13 @@ def _dec(value: float) -> Decimal | None:
         return None
 
 
+# Public names for other deterministic checks (app.harness.prose): the same tokenizer and conversions the verifier
+# uses, so prose numbers are compared exactly as card numbers were verified.
+tokens = _tokens
+to_decimal = _dec
+CI_LEVELS = frozenset(_CI_LEVELS)
+
+
 def numbers_in(text: str | None) -> list[float]:
     return [float(t.value) for t in _tokens(text) if not t.opaque] if text else []
 

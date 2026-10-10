@@ -136,7 +136,9 @@ async def test_select_top_keeps_mismatches_last_and_flagged_when_too_few_match()
     out = await _select({"candidates": c, "screened": _screened(c, ["cohort", "rct", "cohort", "cohort"]),
                          "options": {"study_types": ["RCT"]}})
     assert out["selected"][0]["candidate"]["key"] == c[1]["key"] and not out["selected"][0]["uncertain"]
-    assert all(s["uncertain"] for s in out["selected"][1:]) and len(out["selected"]) == 4
+    assert "design_mismatch" not in out["selected"][0]
+    # a design mismatch is its own flag, not "the models disagreed" (final review finding 11)
+    assert all(s["design_mismatch"] and not s["uncertain"] for s in out["selected"][1:]) and len(out["selected"]) == 4
     assert out["selection_stats"]["study_design_relaxed"] == 3
     assert out["selection_stats"]["excluded_screening"] == {}
 

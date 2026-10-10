@@ -140,7 +140,28 @@ def settle_comparisons(card: PaperCard, question: dict[str, Any] | None,
             o = o.model_copy(update={"matches_question": False})
             flipped += 1
         outcomes.append(o)
-    return (card.model_copy(update={"outcomes": outcomes}) if flipped else card), flipped
+    update: dict[str, Any] = {"outcomes": outcomes} if flipped else {}
+    direction = question_direction(outcomes, card.overall_direction)
+    if direction != card.overall_direction:
+        update["overall_direction"] = direction
+    return (card.model_copy(update=update) if update else card), flipped
+
+
+def question_direction(outcomes: list[Any], overall: str) -> str:
+    """The card's overall direction as evidence for the question (final review finding 3). A card with other
+    comparisons wrote its overall direction partly or wholly for them ("positive" for GLP-1RA vs insulin in a
+    metformin review), so it is derived again from the matching outcomes only: "unclear" when none matches, their
+    shared direction when they agree, "mixed" when they do not. A card without other comparisons keeps the model's
+    overall direction."""
+    matching = [o for o in outcomes if o.matches_question]
+    if len(matching) == len(outcomes):
+        return overall
+    if not matching:
+        return "unclear"
+    directions = {o.direction for o in matching} - {"unclear"}
+    if not directions:
+        return "unclear"
+    return directions.pop() if len(directions) == 1 else "mixed"
 
 
 def question_card(card: dict[str, Any]) -> dict[str, Any] | None:

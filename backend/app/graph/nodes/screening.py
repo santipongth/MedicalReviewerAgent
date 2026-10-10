@@ -185,8 +185,11 @@ def make_select_top(deps):
         if design_excluded:
             excluded_screening["study_design"] += design_excluded
         screening_failed = sum(1 for d in best.values() if d.get("screen_failed") and not d["include"])
+        # `uncertain` means only that the screening votes disagreed; a design kept despite the ticked study types is
+        # its own flag (final review finding 11)
         selected = [{"ref": f"P{i + 1}", "relevance": d["relevance"], "reason": d["reason"],
-                     "uncertain": d.get("uncertain", False) or bool(d.get("design_mismatch")),
+                     "uncertain": bool(d.get("uncertain", False)),
+                     **({"design_mismatch": True} if d.get("design_mismatch") else {}),
                      "candidate": by_key[d["key"]]}
                     for i, d in enumerate(chosen)]
         progress_writer()({"type": "screened", "kept": len(selected), "total": len(best)})

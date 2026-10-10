@@ -305,6 +305,43 @@ def test_a_count_above_the_paper_count_is_not_a_count():
     assert fix_prose("Seven cohorts with 3 sites [P1].", c)[1] == {"numbers_removed": 1}
 
 
+TWENTY = [paper(f"P{i}", card([outcome("Mortality", "HR", 0.79, 0.7, 0.9)], n=None)) for i in range(1, 21)]
+
+
+@pytest.mark.parametrize("text", [
+    # the final review's probes (20-paper context): an invented integer up to the paper count, or "percent" in words
+    "Metformin lowered HbA1c by 1 point and prevented 12 deaths [P1].",
+    "Over a 15-year follow-up, mortality fell [P1].",
+    "Mortality fell by 18 percent [P2].",
+    "Mortality fell by 18 per cent [P2].",
+    "Mortality fell by 3 percentage points [P2].",
+    "A hazard ratio of 0.81 was reported [P1].",  # a decimal was always removed
+])
+def test_invented_integers_and_spelled_percentages_are_removed(text):
+    assert fix_prose(text, ctx(TWENTY)) == ("", {"numbers_removed": 1})
+
+
+@pytest.mark.parametrize("text", [
+    "Twelve of the 20 included trials reported mortality [P1].",
+    "3 randomized controlled trials and 2 cohorts reported mortality [P1, P2].",
+    "2 of the 4 reviews reported mortality (HR 0.79) [P1].",
+    "Mortality fell in 18 studies [P2].",
+])
+def test_study_counts_written_as_counts_still_pass(text):
+    assert fix_prose(text, ctx(TWENTY)) == (text, {})
+
+
+def test_pipeline_counts_pass_only_as_counts():
+    c = prose_context(SLR_PAPERS[:2], counts=[3])
+    assert fix_prose("The matrix has 3 outcomes [P1].", c)[1] == {}
+    assert fix_prose("It prevented 3 deaths [P1].", c)[1] == {"numbers_removed": 1}
+
+
+def test_a_card_integer_passes_in_any_form():
+    c = ctx([paper("P1", card([outcome("Deaths", "HR", 0.79, 0.7, 0.9, result="12 deaths vs 20 deaths")], n=1200))])
+    assert fix_prose("It prevented 12 deaths among 1,200 patients [P1].", c)[1] == {}
+
+
 def test_nothing_is_invented_when_every_sentence_fails():
     assert fix_prose("A 37% reduction [P2].", ctx(SLR_PAPERS)) == ("", {"numbers_removed": 1})
 
@@ -444,7 +481,9 @@ async def test_narrative_repairs_then_fixes_numbers_measures_and_appends_certain
     out = await make_write_synthesis(deps(synthesizer=synth))(slr_state())
     assert len(synth.calls) == 2  # one repair with the prose problems
     repair = synth.calls[1][1]
-    assert 'names "odds ratios"' in repair and "states 37" in repair and "evidence_rationale" in repair
+    assert "states 37" in repair and "evidence_rationale" in repair
+    # a measure name code can rewrite is not worth a narrative round (final review finding 4): fixed in code below
+    assert 'names "odds ratios"' not in repair
     s = out["synthesis"]
     assert "pooled effect estimates ranging from 0.63 to 0.78" in s["executive_summary"]
     assert "37%" not in s["executive_summary"]

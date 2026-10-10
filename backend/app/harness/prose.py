@@ -8,12 +8,15 @@ checked against every paper. Sentences split at . ! ? before an uppercase letter
   - the scope's verified card numbers, taken from the outcomes that answer the question only (an other-comparison
     estimate is never support): surviving numeric fields, sample size, the numbers of their verified `result` and
     `effect_size` texts, and the `key_findings` numbers that are not other-comparison numbers;
-  - a pooled value (`ComputedNumber`) or a pipeline count (matrix row and pool sizes, the GRADE-lite factors, a CI
-    level written "95%", an integer count of studies up to the number of papers that is not a percentage);
+  - a pooled value (`ComputedNumber`), a CI level written "95%", or a count written as a count: an integer
+    followed by a study or outcome noun ("3 trials", "2 of the 4 included reviews") that is at most the number of
+    papers or a pipeline count (matrix rows and cells, consensus and pool sizes). Any other integer ("prevented 12
+    deaths", "a 15-year follow-up") must trace to a card like a decimal;
   - the search and selection counts, only in a sentence about the search (records, screened, included, ...);
   - context: the question and PICO text and the cited papers' titles, years, population, intervention, comparator,
     and matching outcome and comparison names. A context number admits a percentage only when the context wrote it as
-    one ("type 2" never admits "2%"; "ejection fraction of more than 40%" admits "40%").
+    one ("type 2" never admits "2%" or "2 percent"; "ejection fraction of more than 40%" admits "40%"). "percent",
+    "per cent" and "percentage points" count as "%".
   Anything else, e.g. a rounded, derived or invented number, fails.
 - Measure names. A named measure (odds ratio/OR, risk ratio/relative risk/RR, hazard ratio/HR, risk difference/RD,
   mean difference/MD, standardized mean difference/SMD; never "relative risk reduction") must be the card's
@@ -44,7 +47,9 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.harness.comparison import answers_question
-from app.harness.verify import _CI_LEVELS, NUMERIC_FIELDS, Tok, _dec, _tokens
+from app.harness.verify import CI_LEVELS, NUMERIC_FIELDS, Tok
+from app.harness.verify import to_decimal as _dec
+from app.harness.verify import tokens as _tokens
 
 # A sentence ends at . ! or ? followed by space and an uppercase letter or "[" (as in meta.strip_pooled_numbers),
 # but not after a common abbreviation ("vs. Placebo", "e.g. Smith", "Fig. 2").
@@ -99,8 +104,28 @@ _SUBGROUPS: tuple[tuple[str, re.Pattern[str], re.Pattern[str], str], ...] = tupl
 Key = Decimal | str
 
 
+# "18%", "18 percent", "18 per cent" and "18 percentage points" are all percentages ("type 2" never admits any).
+_PCT = re.compile(r"\s*(?:%|(?i:per\s?cent(?:age points?)?\b))")
+# A study count: the integer is followed by a study noun, at most two qualifiers apart ("3 randomised controlled
+# trials", "2 of the 4 included reviews"); "12 deaths" or "15-year follow-up" is no count.
+_QUALIFIER = (r"(?:included|eligible|randomi[sz]ed|controlled|clinical|observational|prospective|retrospective|"
+              r"population-based|placebo-controlled|primary|large|small|independent|separate|other|more|additional|"
+              r"further|systematic|published|individual|selected|relevant|cohort|case-control|cross-sectional|"
+              r"quantitative|qualitative|of|the|these|those|out|phase|I{1,3}|IV|\d+)")
+_COUNT_NOUN = re.compile(rf"\s+(?:{_QUALIFIER}\s+){{0,3}}?(?i:stud(?:y|ies)|trials?|rcts?|papers?|reviews?|"
+                         r"cohorts?|articles?|meta-analys[ie]s|analyses|reports?|publications?|outcomes?)\b",
+                         re.IGNORECASE)
+
+
+_LABEL_BEFORE = re.compile(r"(?i:\b(?:fig\.|figure|table|panel))\s*$")  # "Fig. 2" labels, it states no fact
+
+
 def _is_pct(t: Tok, text: str) -> bool:
-    return text[t.end:].lstrip().startswith("%")
+    return bool(_PCT.match(text, t.end))
+
+
+def _counts_studies(t: Tok, sentence: str) -> bool:
+    return bool(_COUNT_NOUN.match(sentence, t.end))
 
 
 @dataclass
@@ -131,10 +156,11 @@ class RefFacts:
 @dataclass
 class ProseContext:
     facts: dict[str, RefFacts]
-    allowed: set[Key] = field(default_factory=set)  # pooled values and pipeline counts, any form
+    allowed: set[Key] = field(default_factory=set)  # pooled values (and the year limit), any form
     context: ContextNumbers = field(default_factory=ContextNumbers)  # the review question's text
     search: set[Key] = field(default_factory=set)  # search/selection counts: only in a sentence about the search
-    max_count: int = 0  # integers 1..max_count (not percentages) are counts of studies
+    max_count: int = 0  # integers 1..max_count followed by a study noun ("3 trials") are counts of studies
+    counts: set[Key] = field(default_factory=set)  # pipeline counts (rows, cells, ...): only as a count ("3 outcomes")
 
 
 def _keys(text: str | None) -> set[Key]:
@@ -195,16 +221,17 @@ def _values(values: Iterable[Any]) -> set[Key]:
 
 
 def prose_context(papers: Iterable[dict[str, Any]], *, texts: Iterable[str | None] = (), values: Iterable[Any] = (),
-                  search: Iterable[Any] = (), max_count: int | None = None) -> ProseContext:
+                  search: Iterable[Any] = (), max_count: int | None = None,
+                  counts: Iterable[Any] = ()) -> ProseContext:
     """`texts`: the review's own text (question, PICO, GRADE-lite factors); `values`: pooled values (numbers or their
-    display strings) and pipeline counts; `search`: search and selection counts; `max_count`: defaults to the number
-    of papers."""
+    display strings), admitted in any form; `search`: search and selection counts; `max_count`: defaults to the
+    number of papers; `counts`: pipeline counts, admitted only as counts (followed by a study or outcome noun)."""
     facts = paper_facts(papers)
     context = ContextNumbers()
     for t in texts:
         context.add(t)
     return ProseContext(facts=facts, allowed=_values(values), context=context, search=_values(search),
-                        max_count=len(facts) if max_count is None else max_count)
+                        max_count=len(facts) if max_count is None else max_count, counts=_values(counts))
 
 
 @dataclass
@@ -220,8 +247,13 @@ def _scope(sentence: str, ctx: ProseContext) -> list[str]:
     return list(dict.fromkeys(cited)) or list(ctx.facts)
 
 
-def _is_count(t: Tok, sentence: str, max_count: int) -> bool:
-    return t.integer and not t.opaque and 0 < t.value <= max_count and not _is_pct(t, sentence)
+def _is_count(t: Tok, sentence: str, ctx: ProseContext) -> bool:
+    """An integer that counts studies or outcomes: written as a count ("3 trials", "2 of the 4 reviews") and either
+    at most the number of papers or a pipeline count. Any other integer ("12 deaths", "a 15-year follow-up") must
+    trace to a card like every other number."""
+    if not (t.integer and not t.opaque and t.value > 0) or _is_pct(t, sentence) or not _counts_studies(t, sentence):
+        return False
+    return t.value <= ctx.max_count or t.key in ctx.counts
 
 
 def _is_abbreviation(written: str) -> bool:
@@ -294,11 +326,13 @@ def _population_issues(sentence: str, refs: list[str], ctx: ProseContext, cited:
 
 
 def _admitted(t: Tok, sentence: str, refs: list[str], ctx: ProseContext, about_search: bool) -> bool:
-    if t.key in ctx.allowed or ctx.context.admits(t, sentence) or _is_count(t, sentence, ctx.max_count):
+    if t.key in ctx.allowed or ctx.context.admits(t, sentence) or _is_count(t, sentence, ctx):
         return True
     if about_search and t.key in ctx.search:
         return True
-    if t.value in _CI_LEVELS and sentence[t.end:t.end + 1] == "%":
+    if t.value in CI_LEVELS and _is_pct(t, sentence):
+        return True
+    if t.integer and _LABEL_BEFORE.search(sentence, 0, t.start):
         return True
     return any(t.key in ctx.facts[r].numbers or ctx.facts[r].context.admits(t, sentence) for r in refs)
 
@@ -323,8 +357,10 @@ def _short(sentence: str) -> str:
     return sentence if len(sentence) <= 120 else sentence[:117] + "..."
 
 
-def prose_problems(text: str, ctx: ProseContext, label: str = "text") -> list[str]:
-    """Repair messages for every sentence of `text` that fails a check."""
+def prose_problems(text: str, ctx: ProseContext, label: str = "text", *, fixable: bool = True) -> list[str]:
+    """Repair messages for every sentence of `text` that fails a check. `fixable=False` leaves out what `fix_prose`
+    corrects in code without losing the sentence (a wrong measure name before a number), so a repair round is spent
+    only on problems code could only fix by deleting (final review finding 4: latency)."""
     problems: list[str] = []
     for sentence in _sentences(text):
         issues = _analyse(sentence, ctx)
@@ -334,6 +370,8 @@ def prose_problems(text: str, ctx: ProseContext, label: str = "text") -> list[st
                             f"verified number of the cited papers ({refs}); use only numbers shown on their cards, "
                             "exactly as given, or leave the number out")
         for _, _, written, fix, mrefs in issues.measures:
+            if fix is not None and not fixable:
+                continue
             wording = f" (correct wording: \"{fix}\")" if fix else ""
             problems.append(f"{label}: \"{_short(sentence)}\" names \"{written}\", which is not the effect_measure on "
                             f"the cards of {mrefs}{wording}; name each measure exactly as its card's effect_measure")

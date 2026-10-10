@@ -171,7 +171,7 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
                           "extracted": 8, "non_research": 0, "year_excluded": 0, "no_abstract": 0,
                           "excluded_screening": {},
                           "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
-                                                 "low_relevance": 0}}
+                                                 "study_design_corrected": 0, "low_relevance": 0}}
     assert r["summary"] == to_thai(r["synthesis_en"]["executive_summary"])
     assert r["synthesis_en"]["executive_summary"].startswith("Metformin")
     assert r["synthesis"]["comparison"][0]["outcome"] == to_thai("Colorectal cancer incidence")

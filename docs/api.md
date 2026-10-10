@@ -96,7 +96,7 @@ Field rules:
   - Case, spacing, hyphens and common aliases are accepted, so `case control` and `quasi-experimental` both work.
   - Any other value becomes a single `"Other: <text>"` entry; several unknown values are joined into that one text. The text is capped at 60 characters and passed to the prompts only as data (a soft constraint: the refined question is never forced to repeat it). A bare `"Other"` is dropped, and `"Other: <canonical name>"` becomes that name.
   - An empty list means no restriction.
-  - Canonical names are enforced at selection only (SLR and meta-analysis; narrative and scoping cover every design). The screener only gets them as a preference and labels `design_guess`. A paper whose design matches none of them is excluded with PRISMA reason `study_design` (a systematic review or meta-analysis is admitted only when `Systematic review` or `Meta-analysis` is ticked; an unknown design stays). If fewer than 3 papers match, the mismatches are kept after the matches and flagged `uncertain` (`selection_stats.study_design_relaxed`). Refinement matches synonyms (`randomised controlled trials` satisfies `RCT`), adds any missing requested name in code, and reports it in `errors`.
+  - Canonical names are enforced at selection only (SLR and meta-analysis; narrative and scoping cover every design). The screener only gets them as a preference and labels `design_guess`. A paper whose design matches none of them is excluded with PRISMA reason `study_design` (a systematic review or meta-analysis is admitted only when `Systematic review` or `Meta-analysis` is ticked; an unknown design stays). If fewer than 3 papers match, the mismatches are kept after the matches and flagged `verification.design_mismatch: true` (not `uncertain`, which means only that two models disagreed; counted in `stats.excluded_selection.study_design_relaxed`). Since the screener's `design_guess` can be wrong, the ticked types are applied again to each card's `design_category` as read (and corrected) in reading: a paper selected as a match whose card design is none of the ticked types (an undecided `other` stays) is left out of the comparison table, consensus, conflicts, pools, grade and narrative, stays in `papers` with its card, and is counted in `stats.excluded_selection.study_design_corrected`. Refinement matches synonyms (`randomised controlled trials` satisfies `RCT`), adds any missing requested name in code, and reports it in `errors`.
   - `Qualitative` and `Mixed methods` have limited support. Such studies are screened in and summarised as themes from the abstract. They never get effect numbers, directions, forest-plot rows, pools or grade.
 - `callback_url`: needs an API key, and must use https on a public host. Otherwise the request gets 403 (no key) or 422 (bad URL).
 
@@ -159,7 +159,9 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   An outcome's `result` text may only use numbers of its quote's passage, never a blanked value (others are masked
   as `[unverified]` or the text is replaced by the quote); `key_findings` are checked against the whole abstract. `numbers_total` counts the outcomes that carry numbers plus the sample size;
   `numbers_verified` counts those whose estimate survived; `unverified` lists the rest
-  (`numbers_total - numbers_verified == len(unverified)`).
+  (`numbers_total - numbers_verified == len(unverified)`). `uncertain` is true only when two models disagreed
+  (screening votes or extraction directions); `design_mismatch: true` (absent otherwise) marks a paper kept although
+  its design is outside the ticked study types.
 - Narrative reviews are listed, but they never count as evidence, except in scoping reviews, which count them. A narrative-type review also gives them to the synthesis and can cite them, but keeps them out of the comparison table.
 - Other comparisons (Plan 19): each `card.outcomes[]` (and `card_en.outcomes[]`) item also has `comparison` (string
   or null: the two groups the estimate compares, e.g. `"metformin vs sulfonylureas"`; in the review language in
@@ -176,11 +178,14 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   sets the flag to true and needs a refined question. Scoping outcomes always have `matches_question: true`. Outcomes
   stored before Plan 19 have neither field and count as matching. Clients should label `matches_question: false`
   outcomes as other comparisons and keep them out of forest plots. When every quantitative paper reports only other
-  comparisons, the grade is `very_low` with a factor that says so.
+  comparisons, the grade is `very_low` with a factor that says so. A card with other comparisons has its
+  `overall_direction` (and the live `extracted` event's `direction`) derived again from its matching outcomes only:
+  `"unclear"` when none matches, their shared direction when they agree, `"mixed"` when they do not; a card without
+  other comparisons keeps the model's overall direction.
 
 **Citations.** `citations` is `{edges[], cited_by{}, cited_by_source{}, coverage{}, source_note, partial}` (null for results stored before Plan 14b and for reviews where the step did not run). `edges[]` is `{from, to}` (citing paper -> cited paper), only between papers of the same review, no self-loops, deduplicated. `cited_by[ref]` is the cited-by count over all literature (not just this review): OpenAlex's, else Europe PMC's `citedByCount`, else null. `cited_by_source[ref]` says which (`"openalex"`, `"europepmc"` or null); the two sources count differently, so do not compare across sources. On a timeout of the whole step the data gathered so far is kept, `partial` is `true` and `source_note` says so (`partial` is `false` otherwise, and is absent from results stored before it was added). OpenAlex gets at most half of the step budget and is not retried, so a slow OpenAlex still leaves time for the Europe PMC fallback. `coverage[ref]` is `"openalex"`, `"europepmc"` (reference list fallback) or null; null means no data, so a missing edge for such a paper does not mean it cites nothing. Metadata only (no full text); a failure gives null coverage and never fails the review; a timeout (about 20 s) keeps whatever arrived (coverage null for the rest, `partial: true`). Under `GRAPH_MODE=stub` the citation data is illustrative. Optional `OPENALEX_API_KEY` / `OPENALEX_MAILTO`.
 
-**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). Papers dropped at selection because their design matches no ticked study type are added to `excluded_screening.study_design`. `excluded_selection` is `{narrative_excluded, over_limit, study_design_relaxed, low_relevance}`; `study_design_relaxed` is the number of design mismatches kept (after the matches, flagged `uncertain`) because fewer than 3 papers matched the ticked types. `low_relevance` (Plan 19) counts papers the screener included with relevance below the lower edge of the borderline band (35 by default, `screen_borderline` in llm.yaml); they are not analysed, unless the two screening votes disagreed (kept for recall, flagged `uncertain`) or dropping them would leave fewer than 3 papers. Plan 19 also adds `year_excluded` (dropped by `year_from`) and `no_abstract` (no usable abstract), so that `unique = year_excluded + non_research + no_abstract + with_abstract`. Results stored before Plan 14a have none of these keys, and results stored before Plan 19 lack the Plan 19 ones.
+**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). Papers dropped at selection because their design matches no ticked study type are added to `excluded_screening.study_design`. `excluded_selection` is `{narrative_excluded, over_limit, study_design_relaxed, study_design_corrected, low_relevance}`; `study_design_relaxed` is the number of design mismatches kept (after the matches, flagged `verification.design_mismatch`) because fewer than 3 papers matched the ticked types; `study_design_corrected` (Plan 19 final review) is the number of selected papers whose design as read is outside the ticked types, kept in `papers` but not used as evidence (`stats.extracted` still counts them). `low_relevance` (Plan 19) counts papers the screener included with relevance below the lower edge of the borderline band (35 by default, `screen_borderline` in llm.yaml); they are not analysed, unless the two screening votes disagreed (kept for recall, flagged `uncertain`) or dropping them would leave fewer than 3 papers. Plan 19 also adds `year_excluded` (dropped by `year_from`) and `no_abstract` (no usable abstract), so that `unique = year_excluded + non_research + no_abstract + with_abstract`. Results stored before Plan 14a have none of these keys, and results stored before Plan 19 lack the Plan 19 ones.
 
 **Review type (Plan 14a).** `result.review_type` is `narrative`, `slr`, `scoping` or (Plan 14b) `meta_analysis`, which is graded like `slr`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
 - `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`; `null` when the question was not refined), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
@@ -188,7 +193,7 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. Since Plan 19 every `synthesis.comparison[].cells[].direction` of a scoping review is `"unclear"`. The cards still carry `overall_direction`, `risk_of_bias` and `outcomes[].direction` as raw agent extraction. The report and the CSV do not show them (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present these fields as findings.
 
 **Meta-analysis (Plan 14b).** `review_type: "meta_analysis"` behaves exactly like `slr` (PICO, screening, selection, PRISMA, conflicts, grading) and adds `result.meta_analysis`. For every other type, and for results stored before Plan 14b, `meta_analysis` is `null` or absent. It is also `null` for a meta-analysis whose pooling step failed, or was skipped because the study numbers were not verified against the abstracts (`verify_quotes` off or no verification records); either is listed in `errors` and never fails the review. Pooled numbers are computed by the system, DerSimonian-Laird random effects, from the abstract-verified effect estimates and 95% CIs. They are not a result reported by any single study.
-- Search (Plan 19, for recall): a meta-analysis reads 2 SearXNG pages per query instead of 1, the planner may use 5 queries (one naming the major trials), and, when RCTs are acceptable (no ticked study type, or `RCT` ticked), up to 3 extra Europe PMC searches restricted to randomized controlled trials with an abstract, most cited first. A query that is a list of trial names or acronyms is searched as alternatives (OR); other queries need all their words. Those hits join the round-robin as their own lists. At most 4 SearXNG requests per review run at once. The candidate cap is unchanged (`candidate_limit`).
+- Search (Plan 19, for recall): a meta-analysis reads 2 SearXNG pages per query instead of 1, the planner may use 5 queries (one naming the major trials), and, when RCTs are acceptable (no ticked study type, or `RCT` ticked), up to 3 extra Europe PMC searches restricted to randomized controlled trials with an abstract, most cited first (each with an 8 s timeout and one retry, so a slow Europe PMC delays the search by at most about 17 s). A query that is a list of trial names or acronyms is searched as alternatives (OR); other queries need all their words. Those hits join the round-robin as their own lists. At most 4 SearXNG requests per review run at once. The candidate cap is unchanged (`candidate_limit`).
 - Diagnostic test accuracy (sensitivity, specificity, AUC) is not supported as a measure: such results are shown as reported (`effect_measure` `other` or `none`) and are never pooled or plotted.
 - Shape: `{version: "meta-1", pools[], excluded[], reference[], grade: {primary_outcome, design_group, reasons[]}}`.
 - `pools[]`: `{outcome, outcome_display, measure, scale, design_group, k, studies[], pooled, tau2, i2, q, df, p_het, method, version, warnings[]}`.
@@ -275,24 +280,28 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   when its 95% CI includes no effect, or when it is non-significant and reports no CI.
 - Indirectness, publication bias and upgrades for observational evidence are not assessed (the factors say so).
 - The meta-analysis pooled-grade reasons (above) still apply once per domain on top of this baseline.
-- `synthesis.evidence_rationale` must agree with these factors: the narrative is sent back when it states another
-  starting level or omits a downgraded domain; if it still disagrees, a missing downgrade is appended from the
-  factors, and a contradicting starting level replaces the rationale with the factors.
+- `synthesis.evidence_rationale` must agree with these factors. It is reconciled in code, without a model round:
+  when it omits a downgraded domain, the missing downgrade is appended from the factors, and when it states another
+  starting level, the rationale is replaced with the factors.
   `result.quality.prose_check.rationale_fixed` is `"replaced"`, `"appended"` or `null`.
 
-**Grounded prose (Plan 19).** The executive summary, the evidence rationale (graded types) and each conflict
-explanation are checked sentence by sentence, in English before translation. A sentence's scope is the papers it
+**Grounded prose (Plan 19).** The executive summary, the evidence rationale (graded types), each research gap, each
+conflict explanation and each conflict `likely_reasons` item are checked sentence by sentence, in English before
+translation (gaps and likely reasons get the number and population checks, fixed in code only; an emptied gap or
+reason is dropped). A sentence's scope is the papers it
 cites, or every paper when it cites none. Sentences split at `.`, `!` or `?` before an uppercase letter or `[`, never
 after "vs.", "e.g.", "i.e.", "Fig.", "et al.", "approx." or "cf.".
 - Numbers: every number must be a verified number of the scope's cards, taken from the outcomes that answer the
   question only (surviving numeric fields, sample size, the numbers of their verified `result` and `effect_size`
-  texts, and `key_findings` numbers that are not other-comparison numbers); a pooled value; a pipeline count (matrix
-  row and pool sizes, the GRADE-lite factors, a `95%` CI level, or an integer count of studies up to the number of
-  papers that is not a percentage); a search or selection count, only in a sentence about the search (records,
-  screened, included, ...); or a number of the review's context (the question and PICO text, the cited papers'
-  titles, years, population, intervention, comparator, and matching outcome and comparison names). A context number
-  admits a percentage only when the context wrote it as one ("type 2" never admits "2%"). A derived, rounded or
-  invented number, or an estimate of an other comparison, fails.
+  texts, and `key_findings` numbers that are not other-comparison numbers); a pooled value; a `95%` CI level; a count
+  written as a count, i.e. an integer followed by a study or outcome noun ("3 trials", "2 of the 4 included reviews")
+  that is at most the number of papers or a pipeline count (matrix rows and cells, consensus and pool sizes); a search
+  or selection count, only in a sentence about the search (records, screened, included, ...); or a number of the
+  review's context (the question and PICO text, the GRADE-lite factors, the cited papers' titles, years, population,
+  intervention, comparator, and matching outcome and comparison names). Any other integer ("prevented 12 deaths", "a
+  15-year follow-up") must trace to a card like a decimal. "percent", "per cent" and "percentage points" count as
+  "%", and a context number admits a percentage only when the context wrote it as one ("type 2" never admits "2%" or
+  "2 percent"). A derived, rounded or invented number, or an estimate of an other comparison, fails.
 - Measure names: "odds ratio"/OR, "risk ratio"/"relative risk"/RR, "hazard ratio"/HR, "risk difference"/RD, "mean
   difference"/MD and "standardized mean difference"/SMD ("relative risk reduction" is not a measure name) must match
   the card's `effect_measure` of the estimates they introduce (else one of the scope's measures; a bare abbreviation
@@ -304,15 +313,25 @@ after "vs.", "e.g.", "i.e.", "Fig.", "et al.", "approx." or "cf.".
   subgroup and not the claimed one (a sentence naming both subgroups is not judged). The check is lexical and covers
   only these subgroups.
 
-Failures are first sent back to the model as repair problems; whatever still fails is fixed in code: measure names are
-corrected and failing sentences are removed (numbers are never replaced). An emptied summary, or one left with no
-`[Pn]` citation after the removals, becomes a fixed notice; an emptied rationale becomes the GRADE-lite factors; an
-emptied or uncited conflict explanation becomes the deterministic note.
+Only failures that code could fix only by deleting (numbers, populations, a wrong measure name with no number after
+it) are sent back to the model as repair problems; a wrong measure name before a number and a rationale that disagrees
+with the GRADE-lite factors are fixed in code without a model round (latency). Whatever still fails is fixed in code:
+measure names are corrected and failing sentences are removed (numbers are never replaced). An emptied summary, or one
+left with no `[Pn]` citation after the removals, becomes a fixed notice; an emptied rationale becomes the GRADE-lite
+factors; an emptied or uncited conflict explanation becomes the deterministic note. If the check itself fails
+unexpectedly it fails closed: the summary is withheld (the fixed notice), the rationale becomes the factors, the gaps
+are dropped, `prose_check.check_failed` is `true` and `errors` says so. The other deterministic steps (outcome matrix,
+GRADE-lite baseline, rationale reconciliation, the comparison backstop and the design check in reading) are also
+failure-isolated like pooling: an error is logged in `errors` and the step falls back (an empty matrix, a `very_low`
+grade with a factor that says so, the factors as rationale, or the card as extracted) without failing the review.
 Graded summaries use GRADE certainty wording (moderate "probably", low "may", very low "very uncertain"); when the
 summary lacks the wording for its final `evidence_strength`, a fixed certainty sentence is appended.
 `result.quality.prose_check` is `{numbers_removed, measures_fixed, measures_removed, population_removed,
 certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, conflict_repairs, rationale_fixed}` (absent for results
 stored before Plan 19); `repairs` and `conflict_repairs` count the model rounds the check sent back for repair.
+`check_failed: true` is added only when the check crashed and failed closed (summary or conflict explanation
+replaced by its fixed fallback). `numbers_removed` also counts removed research-gap sentences, and
+`conflict_sentences_removed` removed likely reasons.
 `result.quality.other_comparisons` counts the outcomes flagged as other comparisons and
 `result.quality.comparison_backstop` how many of them the deterministic backstop flagged.
 
@@ -322,7 +341,8 @@ are made: a respaced id (`[P 3]` → `[P3]`) and a single substitution (exactly 
 replaced in place); anything else keeps the item in English. A completeness check then finds translatable items that
 are still English (fewer than 40% Thai letters once citations, English-only parentheticals, proper names (runs of two or
 more capitalised words), abbreviations and identifiers are ignored; one-word names may stay English) and retries them
-once, in chunks of 5.
+once, in chunks of 5, at most 60 items. When more than half of the first-pass chunks failed outright (an outage or
+timeouts), the items of those chunks are not re-sent; the retry pass never fails the review.
 `result.quality.localize` is `{untranslated, retried, citations_restored}` over the cards and the synthesis (Thai
 reviews only; absent for English reviews and for results stored before Plan 19); `untranslated` counts the items still
 English after the retry. `result.quality.localization_kept_english` still counts the items that fell back to English.
@@ -343,8 +363,8 @@ The web app also serves the whole interactive report as one HTML file that works
 
 | Format | Contents |
 |---|---|
-| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
-| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
+| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). A paper with other comparisons (Plan 19) lists them on its line as "Other comparisons, not evidence for the question: …". `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
+| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty), then (Plan 19) `comparison` (the outcome's own comparison) and `matches_question` (`true`/`false`; `false` marks an other comparison, which is not evidence for the review question and whose `direction` is relative to its own comparison; outcomes stored before Plan 19 are `true`). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
 | `json` | `{review_id, topic, language, created_at, finished_at, result}` |
 
 ### `GET /api/v1/status`
@@ -385,7 +405,7 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 | `external_lookup` | `{}` | only when external MCP servers are configured |
 | `citations_fetched` | `{edges, covered, total}` | once, in parallel with reading; `covered` = papers with reference data. Always sent when the citation step runs, also when it soft-fails (`covered: 0`) |
 | `reading` | `{ref, title}` | once per paper; sent when the paper's read starts, and all arrive together at fan-out start (papers then wait for the LLM concurrency limit) |
-| `extracted` | `{ref, ok, verified, uncertain, direction, design}` | once per paper. `direction` is the reading model's overall direction (`positive\|negative\|null\|mixed\|unclear`; the string `"null"` means "no association"), a model judgement, not a pooled result. `design` is the design category (same enum as `card.design_category`). Both are JSON `null` when `ok` is false; events stored before this change lack both keys |
+| `extracted` | `{ref, ok, verified, uncertain, direction, design}` | once per paper. `direction` is the reading model's overall direction (`positive\|negative\|null\|mixed\|unclear`; the string `"null"` means "no association"), a model judgement, not a pooled result; for a card with other comparisons it is taken from the matching outcomes only (`"unclear"` when none matches). `uncertain` means only that two models disagreed (a design mismatch is not uncertain). `design` is the design category (same enum as `card.design_category`). Both are JSON `null` when `ok` is false; events stored before this change lack both keys |
 | `synthesizing` | `{papers}` | skipped when no paper was extracted |
 | `pooled` | `{pools, k_total}` | `meta_analysis` only, right after `synthesizing`. `pools` is the number of pooled analyses; `k_total` is the sum of `k` over them, so a study counts once per pool it is in. Skipped when no paper was extracted or pooling failed |
 | `localizing` | `{}` | Thai reviews only |
@@ -457,7 +477,7 @@ One review is one queue job, so requests never wait for a review to finish. Thes
 | Postgres | `DB_POOL_SIZE` + `DB_MAX_OVERFLOW` per process; `max_connections` is 300 in compose | |
 | Event streams | hold no database connection; one Redis connection each; capped per client | |
 
-A real review on the budget preset (Qwen3.5 Flash) takes about 1.5 minutes. Each worker slot therefore completes about 40 reviews per hour. With 2 replicas × 4 slots, the service handles about 320 reviews per hour, and the queue absorbs bursts of up to `MAX_QUEUED_REVIEWS`.
+A real review on the budget preset (Qwen3.5 Flash) took about 1.5 minutes before Plan 19. Plan 19 adds dual extraction, real escalations, the meta-analysis trial search and the Thai retry pass, and removes most narrative repair rounds (measure names and the rationale are fixed in code); its expected graph time, estimated but not yet measured live, is about 2–3 minutes: English SLR or meta-analysis ≈ 120–170 s, Thai SLR ≈ 140–190 s, Thai scoping with 30 papers ≈ 160–220 s, longer with two concurrent reviews on one worker (they share its `LLM_CONCURRENCY` slots). Each worker slot therefore completes about 20–30 reviews per hour. With 2 replicas × 4 slots, the service handles about 160–240 reviews per hour, and the queue absorbs bursts of up to `MAX_QUEUED_REVIEWS`.
 
 **Measured load test, 2026-10-05.** Setup:
 - `scripts/loadtest.py` through Caddy

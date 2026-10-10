@@ -63,6 +63,8 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
             # how the evidence rationale was made to agree with the GRADE-lite factors: "replaced", "appended" or null
             "rationale_fixed": last.get("rationale_fixed"),
         }
+        if last.get("check_failed") or any(e.get("prose_check_failed") for e in conflicts):
+            extra["prose_check"]["check_failed"] = True  # the check crashed and failed closed (final review 9)
     # Plan 19 localisation completeness (non-English reviews only; absent when nothing was localized): translatable
     # strings still not in the user's language after the retry pass, how many were retried, and how many had their
     # [Pn] citations restored. Counted over the cards and the synthesis.
