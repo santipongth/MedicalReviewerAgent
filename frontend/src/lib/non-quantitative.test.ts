@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directionTally, isNonQuantitative } from "./charts-data";
+import { directionTally, forestData, isNonQuantitative, studyPoints } from "./charts-data";
 import { litRows } from "./lit-matrix";
 import type { Paper } from "./types";
 
@@ -30,5 +30,24 @@ describe("qualitative and mixed-methods studies (Plan 17a)", () => {
     expect(rct.direction).toBe("positive");
     expect(qual.direction).toBeNull();
     expect(qual.findings).toContain("theme");
+  });
+  it("never get a forest row or a study-map point, even with a verified OR (defensive: the backend strips them)", () => {
+    const withOr = (ref: string, design: string): Paper => {
+      const p = paper(ref, design);
+      return {
+        ...p,
+        card: {
+          ...p.card!, sample_size: 120, sample_size_quote: "120 adults",
+          outcomes: [{ outcome: "uptake", result: "higher", evidence_quote: "OR 1.8 (95% CI 1.2-2.7)", effect_size: "OR 1.8",
+            effect_measure: "OR", effect_value: 1.8, ci_lower: 1.2, ci_upper: 2.7, p_value: null, direction: "positive" }],
+        },
+      } as Paper;
+    };
+    const papers = [withOr("P1", "rct"), withOr("P2", "mixed_methods"), withOr("P3", "qualitative")];
+    const rows = forestData(papers, "en").groups.flatMap((g) => g.rows.map((r) => r.ref));
+    expect(rows).toEqual(["P1"]);
+    const map = studyPoints(papers);
+    expect(map.points.map((pt) => pt.ref)).toEqual(["P1"]);
+    expect(map.missing).toBe(0); // left out by design, not counted as missing a year or sample size
   });
 });

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { ReviewScreen } from "@/components/review/review-screen";
 import { serverApiUrl } from "@/lib/server-api";
+import { clampTitle } from "@/lib/title";
 
 const FALLBACK_TITLE = "รายงานทบทวนงานวิจัย";
 
-/** Tab and link-preview title = the review's topic; any failure falls back to the generic title. */
+/** Tab and link-preview title = the review's topic (clamped); any failure falls back to the generic title. */
 export async function generateMetadata(props: PageProps<"/r/[id]">): Promise<Metadata> {
   const { id } = await props.params;
   try {
@@ -15,7 +16,8 @@ export async function generateMetadata(props: PageProps<"/r/[id]">): Promise<Met
     if (!res.ok) return { title: FALLBACK_TITLE };
     const { topic } = (await res.json()) as { topic?: unknown };
     if (typeof topic !== "string" || !topic.trim()) return { title: FALLBACK_TITLE };
-    return { title: topic, openGraph: { title: topic } };
+    const title = clampTitle(topic); // a topic can be a 600-character question
+    return { title, openGraph: { title } };
   } catch {
     return { title: FALLBACK_TITLE };
   }
