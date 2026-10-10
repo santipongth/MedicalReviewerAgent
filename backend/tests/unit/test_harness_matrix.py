@@ -70,8 +70,10 @@ def test_grade_baseline():
     m = build_matrix(PAPERS, CLUSTERS)
     g = grade_baseline(PAPERS, m)
     # GRADE rates from the best design with evidence on the primary outcome (methodology review #4): the one RCT
-    # (P2) starts high and is the graded body; the conflicting cohorts are reported, not graded
-    assert g["level"] == "high"
+    # (P2) starts high and is the graded body; the conflicting cohorts are reported, not graded. Plan 20 Task 10: a
+    # one-study body is not replicated, so its certainty is capped at moderate
+    assert g["level"] == "moderate"
+    assert any(f.startswith("imprecision: one study for the primary outcome") for f in g["factors"])
     assert g["factors"][0].startswith("start high: randomized evidence for the primary outcome Colorectal cancer "
                                       "incidence: 1 randomized trial(s)")
     assert any(f.startswith("inconsistency not assessable: one study") for f in g["factors"])
@@ -79,8 +81,10 @@ def test_grade_baseline():
     cohorts = [p for p in PAPERS if p["ref"] != "P2"]
     g = grade_baseline(cohorts, build_matrix(cohorts, fallback_clusters(cohorts)))
     assert g["level"] == "very_low" and any(f.startswith("inconsistency:") for f in g["factors"])
-    agreeing = [p for p in cohorts if p["ref"] != "P3"]
+    agreeing = [p for p in cohorts if p["ref"] != "P3"]  # one cohort keeps its tier (the single-study rule is a cap)
     assert grade_baseline(agreeing, build_matrix(agreeing, fallback_clusters(agreeing)))["level"] == "low"
+    two = [*agreeing, paper("P4", [("CRC incidence", "positive", 0.75)])]
+    assert grade_baseline(two, build_matrix(two, fallback_clusters(two)))["level"] == "low"
     rcts = [paper(f"P{i}", [("CRC", "positive", 0.8)], design="randomized controlled trial", rob="low", n=5000)
             for i in range(1, 4)]
     assert grade_baseline(rcts, build_matrix(rcts, fallback_clusters(rcts)))["level"] == "high"
@@ -149,13 +153,19 @@ def test_non_overlapping_cis_make_a_conflict_even_without_significance_on_one_si
 
 
 def test_pooled_cells_corroborate_and_are_not_counted_twice():
-    sr = _pooled("P1", "negative")  # an SR on the other side never makes a conflict with its own primary studies
     agree = _pooled("P4")
-    papers = [sr, agree, paper("P2", [("CRC", "positive", 0.8)]), paper("P3", [("CRC", "positive", 0.7)])]
+    papers = [agree, paper("P2", [("CRC", "positive", 0.8)]), paper("P3", [("CRC", "positive", 0.7)])]
     m = build_matrix(papers, fallback_clusters(papers))
     assert m["conflicts"] == []
     [c] = m["consensus"]
     assert c["refs"] == ["P2", "P3"] and c["corroborating"] == ["P4"]
+    # Plan 20 Task 10: a significant SR on the other side is no longer hidden behind the primary consensus; it is a
+    # conflict between evidence types (`review_discordant`), never counted as independent studies
+    sr = _pooled("P1", "negative")
+    m = build_matrix([sr, *papers], fallback_clusters([sr, *papers]))
+    assert m["consensus"] == []
+    [c] = m["conflicts"]
+    assert c["review_discordant"] is True and c["directions"] == {"positive": ["P2", "P3"], "negative": ["P1"]}
     only_reviews = [_pooled("P1"), _pooled("P2", "negative")]
     only_reviews[1]["card"]["outcomes"][0]["effect_value"] = 1.3
     assert build_matrix(only_reviews, fallback_clusters(only_reviews))["conflicts"]  # no primary study: they count

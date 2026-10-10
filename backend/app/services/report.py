@@ -5,6 +5,7 @@ import csv
 import io
 from typing import Any
 
+from app.harness.design import NON_QUANTITATIVE_CATEGORIES
 from app.harness.meta import DESIGN_GROUP_LABEL
 
 DIRECTION = {"positive": "supports", "negative": "opposite/harm", "null": "no association",
@@ -78,10 +79,15 @@ def _comparison(rows: list[dict[str, Any]], directions: bool = True) -> list[str
     if not rows or not refs:
         return []
     lines = ["| Outcome | " + " | ".join(refs) + " |", "|---|" + "---|" * len(refs)]
+    def text(c: dict[str, Any]) -> str:
+        # qualitative / mixed-methods themes never carry a direction (Task 2 review finding 5, as in the UI)
+        if not directions or c.get("design_category") in NON_QUANTITATIVE_CATEGORIES:
+            return _cell(c["finding"])
+        return f"{_cell(c['finding'])} ({DIRECTION.get(c['direction'], c['direction'])})"
+
     for row in rows:
         by_ref = {c["ref"]: c for c in row["cells"]}
-        cells = [(f"{_cell(by_ref[r]['finding'])} ({DIRECTION.get(by_ref[r]['direction'], by_ref[r]['direction'])})"
-                  if directions else _cell(by_ref[r]["finding"])) if r in by_ref else "" for r in refs]
+        cells = [text(by_ref[r]) if r in by_ref else "" for r in refs]
         lines.append(f"| {_cell(row['outcome'])} | " + " | ".join(cells) + " |")
     return lines
 
@@ -94,6 +100,28 @@ def _other_comparisons(card: dict[str, Any] | None) -> str:
     items = "; ".join(_cell(f"{o.get('outcome')} ({o['comparison']})" if o.get("comparison") else o.get("outcome"))
                       for o in others)
     return f" Other comparisons, not evidence for the question: {items}."
+
+
+def _methods_section(result: dict[str, Any]) -> list[str]:
+    """A short Methods block (Plan 20): search date, sources with their record counts, queries, models and the prompt
+    version. Absent when the result has none of them (results stored before Plan 20 still list queries and models)."""
+    methods = result.get("methods") or {}
+    lines: list[str] = []
+    if methods.get("searched_at"):
+        lines.append(f"- **Searched:** {methods['searched_at']}")
+    sources = methods.get("sources") or {}
+    if sources:
+        lines.append("- **Sources (records before deduplication):** "
+                     + ", ".join(f"{_cell(k)} {v}" for k, v in sorted(sources.items(), key=lambda kv: -kv[1])))
+    queries = result.get("queries") or []
+    if queries:
+        lines.append("- **Queries:** " + "; ".join(f"`{_cell(q)}`" for q in queries))
+    models = result.get("models") or {}
+    if models:
+        lines.append("- **Models:** " + ", ".join(f"{role} {_cell(m)}" for role, m in models.items() if m))
+    if result.get("prompt_version"):
+        lines.append(f"- **Prompt version:** {result['prompt_version']}")
+    return ["## Methods", "", *lines, ""] if lines else []
 
 
 def render_markdown(review) -> str:
@@ -109,6 +137,19 @@ def render_markdown(review) -> str:
     review_type = result.get("review_type")
     if review_type and review_type != "slr":  # SLR Markdown stays as before
         out += [f"**Review type:** {TYPE_LABEL.get(review_type, review_type)} (automated, abstracts only)", ""]
+    # Plan 20: the bottom line and the key findings lead (absent for results stored before Plan 20)
+    if s.get("answer"):
+        out += ["## Answer", "", s["answer"], ""]
+    findings = s.get("key_findings") or []
+    if findings:
+        out += ["## Key findings", ""]
+        for f in findings:
+            extra = f"k={f.get('k', len(f.get('refs') or []))}"
+            if f.get("certainty"):
+                extra += f", certainty {str(f['certainty']).replace('_', ' ')}"
+            out.append(f"- **{_cell(f.get('outcome'))}** — {f.get('statement')} [{', '.join(f.get('refs') or [])}] "
+                       f"({extra})")
+        out.append("")
     out += ["## Summary", "", result.get("summary") or s.get("executive_summary", ""), ""]
     if "evidence_strength" in s and s["evidence_strength"] is None:
         out += [f"**Evidence strength:** not assessed ({s.get('evidence_rationale', '')})", ""]
@@ -129,6 +170,7 @@ def render_markdown(review) -> str:
             out.append("")
     if s.get("research_gaps"):
         out += ["## Research gaps", "", *[f"- {g}" for g in s["research_gaps"]], ""]
+    out += _methods_section(result)
     papers = result.get("papers") or []
     if papers:
         out += ["## Papers", ""]
@@ -136,8 +178,11 @@ def render_markdown(review) -> str:
             card = p.get("card") or {}
             link = f" https://doi.org/{p['doi']}" if p.get("doi") else ""
             design = f" — {card.get('study_design')}, n={card.get('sample_size') or '?'}" if card else " — not extracted"
+            # Plan 20 Task 10: a further report of a trial counted once, under its primary report
+            related = (f" Related report of [{p['related_to']}] ({p.get('related_reason') or 'same trial'}), not "
+                       f"counted again." if p.get("related_to") else "")
             out.append(f"- [{p['ref']}] {p.get('title')} ({p.get('year') or 'n.d.'}, {p.get('journal') or ''})"
-                       f"{design}.{link}{_other_comparisons(p.get('card_en') or card)}")
+                       f"{design}.{link}{_other_comparisons(p.get('card_en') or card)}{related}")
         out.append("")
     quality = result.get("quality") or {}
     if quality:
@@ -195,5 +240,7 @@ def render_csv(result: dict[str, Any] | None) -> str:
                 row["matches_question"] = "false" if o.get("matches_question") is False else "true"
             if scoping:
                 row |= {"direction": None, "overall_direction": None, "risk_of_bias": None}
+            elif card.get("design_category") in NON_QUANTITATIVE_CATEGORIES:  # themes: no direction (Task 2 review)
+                row |= {"direction": None, "overall_direction": None}
             writer.writerow({k: _cell_value(v) for k, v in row.items()})
     return "\ufeff" + out.getvalue()  # BOM: spreadsheet apps then read Thai/unicode titles correctly

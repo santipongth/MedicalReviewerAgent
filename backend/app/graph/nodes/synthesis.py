@@ -71,6 +71,7 @@ from app.harness.prose import (
 )
 from app.harness.quality import summarize_quality
 from app.harness.study_types import allowed_designs, design_allowed
+from app.harness.trials import related_reports
 from app.harness.verify import check_citations, strip_unknown_citations
 from app.schemas.review import NON_QUANTITATIVE_TYPES, SLR_LIKE, ReviewOptions
 from app.services.llm import LLMError
@@ -165,9 +166,30 @@ def design_excluded(state: ReviewState) -> list[str]:
     return [p["ref"] for p in _with_cards(state) if _outside_study_types(state, p)]
 
 
+def related(state: ReviewState) -> dict[str, dict[str, str]]:
+    """Reports of the same trial (Plan 20 Task 10, app.harness.trials): {related ref: {"primary", "reason"}}. Only
+    the primary report of each trial is evidence; the others stay in the paper list, linked to it. A scoping review
+    maps every report, so it has none. A crash of the check leaves every paper independent (logged)."""
+    if _review_type(state) == "scoping":
+        return {}
+    try:
+        cards = _with_cards(state)
+        # only evidence may be a primary report (Task 10 review finding 4): in scope, direction evidence, answering
+        # the question
+        evidence = {p["ref"] for p in cards if not _outside_study_types(state, p)
+                    and p["card"].get("design_category") not in NO_DIRECTION_CATEGORIES
+                    and question_card(p["card"]) is not None}
+        return related_reports(cards, evidence)
+    except Exception:
+        log.exception("related_reports failed; every paper counts as its own study")
+        return {}
+
+
 def _scoped(state: ReviewState) -> list[dict[str, Any]]:
-    """The papers with a card whose design fits the ticked study types (all of them when nothing is ticked)."""
-    return [p for p in _with_cards(state) if not _outside_study_types(state, p)]
+    """The papers with a card whose design fits the ticked study types (all of them when nothing is ticked), without
+    the related reports of a trial whose primary report is analysed."""
+    linked = related(state)
+    return [p for p in _with_cards(state) if not _outside_study_types(state, p) and p["ref"] not in linked]
 
 
 def _direction_papers(state: ReviewState) -> list[dict[str, Any]]:
@@ -316,7 +338,9 @@ def make_normalize_outcomes(deps):
         # Like pooling, the matrix and the grade are deterministic extras: an unexpected card shape must not fail the
         # review; the papers and their cards still render (final review finding 9).
         try:
-            matrix = build_matrix(papers, clusters or preclustered(groups), directional=directional)
+            # scoping: cells only chart which paper covers which aspect, no free-text finding (Task 10 review 9)
+            matrix = build_matrix(papers, clusters or preclustered(groups), directional=directional,
+                                  charted=_review_type(state) == "scoping")
         except Exception as exc:
             log.exception("build_matrix failed")
             errors.append(f"comparison matrix failed: {type(exc).__name__}")
@@ -400,8 +424,10 @@ def route_conflicts(state: ReviewState) -> list[Send] | str:
 
 def _deterministic_note(conflict: dict[str, Any]) -> dict[str, Any]:
     parts = [f"{d}: {', '.join(f'[{r}]' for r in refs)}" for d, refs in conflict.get("directions", {}).items() if refs]
+    who = ("Systematic reviews and primary studies report" if conflict.get("review_discordant")
+           else "Studies report")
     return {"outcome": conflict["outcome"], "refs": conflict["refs"], "likely_reasons": [],
-            "explanation": f"Studies report different directions for {conflict['outcome']} ({'; '.join(parts)})."}
+            "explanation": f"{who} different directions for {conflict['outcome']} ({'; '.join(parts)})."}
 
 
 def make_explain_conflict(deps):
@@ -533,6 +559,11 @@ DIRECTION_TEXT_TH = {"positive": "ผลการศึกษาสนับส�
 DIRECTION_LABEL_TH = {"positive": "สนับสนุนผลที่คาดไว้", "negative": "ทางตรงข้ามหรือผลเสีย",
                       "null": "ไม่มีนัยสำคัญทางสถิติ"}
 CONFLICT_STATEMENT = {"en": "studies disagree", "th": "ผลการศึกษาไม่สอดคล้องกัน"}
+# Plan 20 Task 10: a split between systematic reviews and primary studies (matrix `review_discordant`)
+REVIEW_CONFLICT_STATEMENT = {"en": "systematic reviews and primary studies disagree",
+                             "th": "ผลของการทบทวนวรรณกรรมอย่างเป็นระบบและการศึกษาปฐมภูมิไม่สอดคล้องกัน"}
+REVIEW_DISSENT = {"en": "; systematic reviews disagree",
+                  "th": " แต่การทบทวนวรรณกรรมอย่างเป็นระบบให้ผลต่างออกไป"}
 
 
 def _th_for(outcome: str) -> str:
@@ -542,7 +573,13 @@ def _th_for(outcome: str) -> str:
 
 def _consensus_statement(c: dict[str, Any], outcome: str | None = None, language: str = "en") -> str:
     texts = DIRECTION_TEXT_TH if language == "th" else DIRECTION_TEXT
-    return f"{outcome or c['outcome']}: {texts.get(c['direction'], c['direction'])}"
+    flag = REVIEW_DISSENT["th" if language == "th" else "en"] if c.get("review_discordant") else ""
+    return f"{outcome or c['outcome']}: {texts.get(c['direction'], c['direction'])}{flag}"
+
+
+def _conflict_statement(c: dict[str, Any], outcome: str | None = None, language: str = "en") -> str:
+    texts = REVIEW_CONFLICT_STATEMENT if c.get("review_discordant") else CONFLICT_STATEMENT
+    return f"{outcome or c['outcome']}: {texts['th' if language == 'th' else 'en']}"
 
 
 def _consensus_explanation_th(c: dict[str, Any], outcome: str) -> str:
@@ -566,7 +603,9 @@ def _consensus_explanation_th(c: dict[str, Any], outcome: str) -> str:
 def _deterministic_explanation_th(conflict: dict[str, Any], outcome: str) -> str:
     parts = [f"{DIRECTION_LABEL_TH.get(d, d)}: {_cite(refs)}" for d, refs in conflict.get("directions", {}).items()
              if refs]
-    return f"การศึกษารายงานทิศทางของผลแตกต่างกัน{_th_for(outcome)} ({'; '.join(parts)})"
+    who = ("การทบทวนวรรณกรรมอย่างเป็นระบบและการศึกษาปฐมภูมิ" if conflict.get("review_discordant")
+           else "การศึกษา")
+    return f"{who}รายงานทิศทางของผลแตกต่างกัน{_th_for(outcome)} ({'; '.join(parts)})"
 
 
 def _consensus_explanation(c: dict[str, Any]) -> str:
@@ -601,7 +640,7 @@ def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list
     conflicts = []
     for c in matrix.get("conflicts", []):
         note = by_outcome.get(c["outcome"]) or _deterministic_note(c)
-        conflicts.append(EvidenceCluster(statement=f"{c['outcome']}: {CONFLICT_STATEMENT['en']}", refs=c["refs"],
+        conflicts.append(EvidenceCluster(statement=_conflict_statement(c), refs=c["refs"],
                                          explanation=note["explanation"], likely_reasons=note["likely_reasons"]))
     return consensus, conflicts
 
@@ -701,14 +740,38 @@ def _check_prose(narrative: SynthesisNarrative | NarrativeNoGrade, prose: ProseC
 MAX_KEY_FINDINGS = 5
 NO_POOL_ANSWER = ("Pooling was not possible: no outcome had enough comparable studies with verified estimates, so no "
                   "pooled estimate was computed.")
-# "could not be pooled", "no outcome could be pooled", "pooling was not possible" (a short word window, so "does not
-# reduce mortality in the pooled analysis" is no statement that pooling failed)
-_SAYS_NO_POOL = re.compile(r"(?i)\b(?:not|no|cannot|unable|insufficient)\b(?:\W+\w+){0,4}?\W+pool|"
-                           r"\bpool\w*\W+(?:\w+\W+){0,2}?(?:not |im)(?:possible|feasible)")
+# A statement that pooling failed: the negation must attach to the pooling verb or noun ("pooling was not possible",
+# "could not be pooled", "no outcome could be pooled", "unable to pool", "too few studies to pool"). Arbitrary
+# words in between are not allowed, so "does not reduce mortality in the pooled analysis" is no such statement
+# (Task 1 review finding 1).
+_SAYS_NO_POOL = re.compile(
+    r"(?i)\bpool(?:ing|ed analysis|ed estimate)?\s+(?:was|is|were)\s+(?:not\s+(?:possible|feasible|performed|done)"
+    r"|impossible|infeasible)"
+    r"|\b(?:could|can|cannot|can't|couldn't)\s*(?:not\s+)?be\s+pooled|\b(?:was|were)\s+not\s+pooled"
+    r"|\b(?:could|can)\s*not\s+pool\b|\bcannot\s+pool\b|\bunable\s+to\s+pool\b"
+    r"|\bno\s+(?:outcomes?|estimates?|results?|studies|data)\s+(?:could|can)\s+be\s+pooled"
+    r"|\b(?:not\s+enough|too\s+few|insufficient)\s+(?:\w+\s+){0,3}?(?:to|for)\s+pool(?:ing)?\b"
+    r"|\bno\s+pooled\s+(?:estimate|analysis)\s+(?:was|could)")
 _POOLED_CLAIM = re.compile(r"(?i)\b(?:pooled|pooling|overall effect|combined estimate)\b")
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[])")
+# A piece that ends in a common abbreviation or an initial does not end a sentence (fix round 5, N20): "vs.",
+# "e.g.", "i.e.", "et al.", "approx.", "Fig.", "No.", "cf." or a single capital letter ("J. Smith").
+_ABBREVIATION_END = re.compile(r"(?:\b(?:vs|Vs|et al|approx|Approx|Figs?|No|Nos|cf)|\b[eE]\.g|\b[iI]\.e"
+                               r"|(?<![\w.])[A-Z])\.$")
+
+
+def _split_sentences(text: str) -> list[str]:
+    """The sentences of a text, split after . ! ? before a capital or "[", never after an abbreviation."""
+    out: list[str] = []
+    for piece in _SENTENCE_END.split(text) if text else []:
+        if out and _ABBREVIATION_END.search(out[-1]):
+            out[-1] = f"{out[-1]} {piece}"
+        else:
+            out.append(piece)
+    return out
 _CITE_GROUP = re.compile(r"\s*\[\s*P\d+[^\]]*\]")
-ANSWER_CERTAINTY = {"moderate": "The certainty of the evidence is moderate.",
+ANSWER_CERTAINTY = {"high": "The certainty of the evidence is high.",
+                    "moderate": "The certainty of the evidence is moderate.",
                     "low": "The certainty of the evidence is low.",
                     "very_low": "The certainty of the evidence is very low."}
 
@@ -722,47 +785,222 @@ def _bottom_line(answer: str, prose: ProseContext, allowed: set[str], *, no_pool
                  strength: str | None) -> tuple[str, int]:
     """The checked direct answer: unknown citations stripped, then every sentence with a number (other than a
     context number), a wrong population or measure removed (fix_statement). A meta-analysis without pools states so
-    in a fixed sentence, and loses any sentence that claims a pooled effect. A graded answer without the GRADE
-    wording for its certainty gets a fixed certainty sentence. Returns (answer, sentences removed)."""
+    in a fixed sentence, and loses any sentence that claims a pooled effect. A graded answer loses the sentences that
+    claim another certainty level for this review (_drop_wrong_self_claims) and always ends with the fixed certainty
+    sentence of its final level (fix round 4, N10). Returns (answer, sentences removed)."""
+    # numbers and populations are checked against the cited papers first (fix round 2, N4), then the [Pn] go: the
+    # answer carries none (the report shows the cited cards beside it; Task 1 review finding 5)
+    original = _CITE_GROUP.sub("", strip_unknown_citations(answer or "", allowed)).strip()
     text, counts = fix_statement(strip_unknown_citations(answer or "", allowed), prose)
+    text = _CITE_GROUP.sub("", text).strip()
     removed = sum(counts[k] for k in ("numbers_removed", "population_removed", "measures_removed"))
     if no_pool:
-        kept = []
-        for sentence in _SENTENCE_END.split(text) if text else []:
-            if _POOLED_CLAIM.search(sentence) and not _SAYS_NO_POOL.search(sentence):
-                removed += 1
-                continue
-            kept.append(sentence)
-        text = " ".join(kept)
-        if not _SAYS_NO_POOL.search(text):
-            text = f"{NO_POOL_ANSWER} {text}".strip()
-    wording = CERTAINTY_WORDING.get(strength or "")
-    if text and wording and not wording.search(text) and not re.search(r"(?i)\bcertainty\b", text):
-        text = f"{text} {ANSWER_CERTAINTY[strength]}"
+        text, n = _drop_pooled_claims(text)
+        removed += n
+    text, n = _drop_wrong_self_claims(text, strength)
+    removed += n
+    if not text and original and not re.search(r"\d", original) and not (no_pool and _POOLED_CLAIM.search(original)):
+        # the checks would empty the answer: the model's sentences stay (they have no number that could be
+        # unverified), except a self-claim of another certainty level; the certainty sentence follows (fix round 2,
+        # N1; round 4). They bypassed the population and measure checks, and they are shown, so they are not counted
+        # as removed (fix round 3, N12).
+        text, _n = _drop_wrong_self_claims(original, strength)
+        removed = 0 if text else removed
+    if no_pool and not _SAYS_NO_POOL.search(text):
+        text = f"{NO_POOL_ANSWER} {text}".strip()
+    if original or text:  # a model answer whose every sentence went still gets the certainty sentence
+        text = _with_certainty(text, strength)
     return text, removed
 
 
+def _fallback_answer(answer: str, allowed: set[str], *, no_pool: bool, strength: str | None) -> str:
+    """The answer when its check crashed (fix round 3, N11): the model's answer without citations and without any
+    sentence that carries a number (it could be unverified) or, with no pools, claims a pooled effect; a self-claim of
+    another certainty level is removed as in _bottom_line; the no-pool sentence leads and, for a graded review, the
+    fixed certainty sentence always ends it (fix round 4, N16)."""
+    text = _CITE_GROUP.sub("", strip_unknown_citations(answer or "", allowed)).strip()
+    kept = [s for s in _split_sentences(text) if s and not re.search(r"\d", s)
+            and not (no_pool and _POOLED_CLAIM.search(s) and not _SAYS_NO_POOL.search(s))] if text else []
+    text, _n = _drop_wrong_self_claims(" ".join(kept), strength)
+    if no_pool and not _SAYS_NO_POOL.search(text):
+        text = f"{NO_POOL_ANSWER} {text}".strip()
+    return _with_certainty(text, strength)
+
+
+# Fix round 4 (N10, controller ruling): no certainty level is ever rewritten. The fixed certainty sentence is always
+# appended to a graded answer, and the only sentences removed for a level are explicit self-claims of this review's
+# overall certainty that name another level, in two narrow forms:
+# - "the certainty/quality of (the) evidence (overall / for this review / in this review) is/was <level>", opening the
+#   sentence or a clause (after ",", ";", ":" or "and"/"but"/"so"), with the level ending the clause;
+# - a sentence opening "<Level>-certainty evidence" or "<Level> certainty evidence" + shows/suggests/indicates/supports.
+# Everything else stays as written: negations ("is not high", "is lacking", "no high-certainty evidence"), needs,
+# per-outcome levels ("was high for incidence but low for mortality"), another source's claim ("Earlier reviews
+# reported ...", "In previous reviews, the certainty ..."). Since fix round 5 a wrong-level label ("(high-certainty
+# evidence)", "GRADE: high") is removed as a token (_drop_wrong_labels), never its sentence. Known residuals (N18,
+# N19): a removed self-claim takes its whole sentence with it, and an other-source word anywhere before the claim
+# keeps it (next to the appended sentence).
+_LEVEL = r"(?P<lvl>very[- ]low|low|moderate|high)"
+_SELF_CLAIMS = (
+    re.compile(rf"(?i)(?:^|[,;:]\s*|\b(?:and|but|so)\s+)the (?:certainty|quality) of (?:the )?evidence"
+               rf"(?: overall| for this review| in this review)? (?:is|was) {_LEVEL}(?=\s*(?:[.;,:!)]|$))"),
+    re.compile(rf"(?i)^\s*{_LEVEL}[- ]certainty evidence (?:shows|suggests|indicates|supports)\b"),
+)
+_OTHER_SOURCE = re.compile(r"(?i)\b(earlier|previous|prior|other|published|existing|reported|according to)\b")
+
+
+def _level_key(word: str) -> str:
+    return re.sub(r"[- ]", "_", word.lower())
+
+
+def _wrong_self_claim(sentence: str, strength: str) -> bool:
+    """An explicit self-claim of this review's certainty that names a level other than `strength`."""
+    for pattern in _SELF_CLAIMS:
+        for m in pattern.finditer(sentence):
+            if _OTHER_SOURCE.search(sentence[: m.start("lvl")]):
+                continue  # another source's certainty ("In earlier reviews, the certainty of the evidence was high")
+            if _level_key(m.group("lvl")) != strength:
+                return True
+    return False
+
+
+# Level labels (fix round 5, controller option): a wrong-level "(<level>-certainty evidence)" or "GRADE: <level>" is
+# removed as a token, with its brackets and its separator; the rest of the sentence stays as written.
+_LEVEL_LABELS = (
+    re.compile(rf"(?i)\s*\(\s*{_LEVEL}[- ]certainty(?: of(?: the)?)? evidence\s*\)"),
+    re.compile(rf"(?i)\s*\(\s*GRADE:\s*{_LEVEL}\s*\)"),
+    re.compile(rf"(?i)(?:\s*[;,]\s*|\s+|^)GRADE:\s*{_LEVEL}\b"),
+)
+
+
+def _drop_wrong_labels(sentence: str, strength: str) -> tuple[str, int]:
+    removed = 0
+
+    def drop(m: re.Match[str]) -> str:
+        nonlocal removed
+        if _level_key(m.group("lvl")) == strength:
+            return m.group(0)
+        removed += 1
+        return ""
+
+    for pattern in _LEVEL_LABELS:
+        sentence = pattern.sub(drop, sentence)
+    return sentence.strip(), removed
+
+
+def _drop_wrong_self_claims(text: str, strength: str | None) -> tuple[str, int]:
+    """Wrong-level labels removed as tokens, then the sentences that claim another certainty level for this review
+    removed (never rewritten). Ungraded: nothing. Returns (text, labels and sentences removed)."""
+    if not strength or not text:
+        return text, 0
+    kept, removed = [], 0
+    for sentence in _split_sentences(text):
+        sentence, n = _drop_wrong_labels(sentence, strength)
+        removed += n
+        if not re.search(r"\w", sentence):
+            continue  # nothing but the label was left ("GRADE: high.")
+        if _wrong_self_claim(sentence, strength):
+            removed += 1
+            continue
+        kept.append(sentence)
+    return " ".join(kept), removed
+
+
+def _with_certainty(text: str, strength: str | None) -> str:
+    """A graded answer ends with the fixed certainty sentence of its final level (once: not when it already holds
+    that exact sentence)."""
+    sentence = ANSWER_CERTAINTY.get(strength or "")
+    if not sentence or sentence.casefold() in text.casefold():
+        return text
+    return f"{text} {sentence}".strip()
+
+
+def _drop_pooled_claims(text: str) -> tuple[str, int]:
+    """Sentences that claim a pooled or overall effect, removed (a meta-analysis that pooled nothing)."""
+    kept, removed = [], 0
+    for sentence in _split_sentences(text):
+        if _POOLED_CLAIM.search(sentence) and not _SAYS_NO_POOL.search(sentence):
+            removed += 1
+            continue
+        kept.append(sentence)
+    return " ".join(kept), removed
+
+
+# Strong causal claims (fix round 2, N2): the statement is never rewritten; at low or very low certainty a statement
+# that makes one gets a fixed lead clause, and the statement follows unchanged. Conservative: a present-tense verb
+# after a subject word (not at the sentence start, not after a determiner or preposition: "Increases in HbA1c ..."),
+# in a clause without a hedge, negation, "whether" or "neither" before it.
+# singular and base forms (fix round 3, N13): "SGLT2 inhibitors reduce", "metformin lowers"
+_STRONG_CAUSAL = re.compile(r"\b(reduces?|increases?|improves?|prevents?|causes?|lowers?|raises?|decreases?)\b")
+_NOT_A_SUBJECT = frozenset({"the", "these", "those", "this", "that", "a", "an", "in", "of", "no", "any", "such", "with",
+                            "and", "or", "for", "to", "on", "by", "from", "as", "is", "are", "was", "were", "be",
+                            "been", "being", "has", "have", "had", "its", "their", "his", "her", "our", "much", "more",
+                            "less", "than", "at", "slightly", "significantly", "substantially", "markedly"})
+# A statement that already says the whole body of evidence is uncertain needs no lead (fix round 3, N13); any other
+# hedge counts only in the clause of the causal verb (fix round 4, N17)
+_EVIDENCE_UNCERTAIN = re.compile(r"(?i)\bvery uncertain\b|\b(evidence|certainty|findings|results) (is|are|was|were|"
+                                 r"remains?) (very |highly )?uncertain\b")
+_ALREADY_UNCERTAIN = re.compile(r"(?i)\b(uncertain|may|might|possibly)\b")
+_CLAUSE_BLOCK = re.compile(r"(?i)\b(may|might|probably|likely|possibly|could|not|no|never|neither|nor|whether|"
+                           r"unclear|uncertain|if)\b")
+CERTAINTY_LEAD = {"low": "Low-certainty evidence suggests: ", "very_low": "Very low-certainty evidence: "}
+
+
+def strong_causal_claim(statement: str) -> bool:
+    if _EVIDENCE_UNCERTAIN.search(statement or ""):
+        return False  # the statement already says the evidence is uncertain (fix round 3, N13)
+    for m in _STRONG_CAUSAL.finditer(statement or ""):
+        sentence = re.split(r"[.;:]", statement[: m.start()])[-1]
+        # the subject may sit before a comma ("Metformin, compared with sulfonylureas, reduces ...")
+        words = sentence.replace(",", " ").split()
+        clause = sentence.split(",")[-1]
+        rest = re.split(r"[.;:,]", statement[m.end():])[0]  # the verb's own clause after it
+        if (not words or words[-1].lower() in _NOT_A_SUBJECT
+                or _CLAUSE_BLOCK.search(sentence if not clause.strip() else clause)
+                or _ALREADY_UNCERTAIN.search(rest)):
+            continue
+        return True
+    return False
+
+
+def _certainty_lead(statement: str, strength: str | None) -> tuple[str, bool]:
+    """The statement, led by "Low-certainty evidence suggests: " or "Very low-certainty evidence: " when the final
+    certainty is low or very low and it makes a strong causal claim; otherwise as written."""
+    lead = CERTAINTY_LEAD.get(strength or "")
+    if not lead or not statement or statement.startswith(lead) or not strong_causal_claim(statement):
+        return statement, False
+    return f"{lead}{statement}", True
+
+
 def _key_findings(drafts: list[NarrativeFinding], prose: ProseContext, allowed: set[str],
-                  rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+                  rows: list[dict[str, Any]], *, no_pool: bool = False,
+                  strength: str | None = None) -> tuple[list[dict[str, Any]], int, int]:
     """The checked key findings: refs limited to the analysed papers (inline [Pn] citations are moved into refs),
     the statement made numberless (fix_statement, scoped to the refs), an outcome that names a comparison row
-    written exactly as that row, and k = the number of refs. A finding left without a statement, a ref or an outcome
-    is dropped; at most MAX_KEY_FINDINGS are kept. Returns (findings, dropped)."""
+    written exactly as that row, and k = the number of refs. A meta-analysis that pooled nothing loses every
+    statement sentence claiming a pooled effect; at low or very low certainty a strong causal claim gets a fixed
+    lead clause (_certainty_lead), the statement itself unchanged; `certainty` is the review's final
+    evidence_strength (null when not graded), set in code. A finding left without a statement, a ref or an outcome is
+    dropped; at most MAX_KEY_FINDINGS are kept. Returns (findings, dropped, led)."""
     names = {r["outcome"].strip().casefold(): r["outcome"] for r in rows}
     out: list[dict[str, Any]] = []
-    dropped = 0
+    dropped = hedged = 0
     for f in drafts:
         if len(out) == MAX_KEY_FINDINGS:
             break
         statement = strip_unknown_citations(f.statement or "", allowed)
         refs = sorted(({r.strip() for r in f.refs} | cited_refs(statement)) & allowed, key=_ref_num)
         text, _counts = fix_statement(_CITE_GROUP.sub("", statement).strip(), prose, refs)
+        if no_pool:
+            text, _n = _drop_pooled_claims(text)
+        text, was_hedged = _certainty_lead(text, strength)
         outcome = names.get((f.outcome or "").strip().casefold(), (f.outcome or "").strip())
         if not text.strip() or not refs or not outcome or is_placeholder(text) or is_placeholder(outcome):
             dropped += 1
             continue
-        out.append(KeyFinding(outcome=outcome, statement=text, refs=refs, k=len(refs)).model_dump())
-    return out, dropped
+        hedged += int(was_hedged)
+        out.append(KeyFinding(outcome=outcome, statement=text, refs=refs, k=len(refs),
+                              certainty=strength).model_dump())
+    return out, dropped, hedged
 
 
 def make_write_synthesis(deps):
@@ -850,8 +1088,10 @@ def make_write_synthesis(deps):
         narrative_call = harness_runner(deps).call(
             deps.llms.synthesizer, prompts.narrative_system(review_type if not no_quantitative else "narrative", _themes_only(papers)), user,
             schema=SynthesisNarrative if graded else NarrativeNoGrade, validate=validate, trigger="narrative")
-        outside = set(design_excluded(state))  # not evidence, but their cards are still shown in the user's language
-        shown = papers + [p for p in _with_cards(state) if p["ref"] in outside]
+        # outside the ticked designs or a related report of a trial: not evidence, but their cards are still shown in
+        # the user's language
+        outside = set(design_excluded(state)) | set(related(state))
+        shown = papers + [p for p in _with_cards(state) if p["ref"] in outside and p["ref"] not in allowed]
         res, cards = await asyncio.gather(narrative_call, _localize_cards(deps, shown, language),
                                           return_exceptions=True)
         cost, errors = 0.0, []
@@ -904,7 +1144,9 @@ def make_write_synthesis(deps):
         rationale_fix = None
         if graded and not entry["fallback"]:  # after every removal: what is shown must agree with the factors
             try:
-                text, rationale_fix = reconcile_rationale(narrative.evidence_rationale, factors)
+                grade = matrix.get("grade") or {}
+                text, rationale_fix = reconcile_rationale(narrative.evidence_rationale, factors,
+                                                          grade.get("k"), grade.get("studies"))
             except Exception as exc:
                 log.exception("reconcile_rationale failed")
                 errors.append(f"rationale reconciliation failed: {type(exc).__name__}")
@@ -919,15 +1161,23 @@ def make_write_synthesis(deps):
         if wording and not entry["fallback"] and summary != PROSE_REMOVED and not wording.search(summary):
             summary, certainty_added = f"{summary} {CERTAINTY_SENTENCE[strength]}", 1
         no_pool = _no_pool(review_type, meta)
+        if no_pool and not _SAYS_NO_POOL.search(summary):
+            # Plan 20 Task 10: a meta-analysis that pooled nothing says so in the summary too, not only in the answer
+            summary = f"{NO_POOL_ANSWER} {summary}"
+            entry["no_pool_stated"] = True
         try:  # Plan 20; a crash fails closed: no model-written answer or findings (the no-pool sentence stays)
             answer, answer_removed = _bottom_line(narrative.answer, prose, allowed, no_pool=no_pool, strength=strength)
-            key_findings, findings_dropped = _key_findings(narrative.key_findings, prose, allowed,
-                                                           matrix.get("rows") or [])
+            key_findings, findings_dropped, findings_hedged = _key_findings(
+                narrative.key_findings, prose, allowed, matrix.get("rows") or [], no_pool=no_pool, strength=strength)
         except Exception as exc:
             log.exception("answer/key-findings check failed")
             errors.append(f"answer check failed: {type(exc).__name__}")
-            answer, answer_removed = (NO_POOL_ANSWER if no_pool else ""), 0
-            key_findings, findings_dropped = [], len(narrative.key_findings)
+            try:  # the model's answer, minus anything that could be unverified (fix round 3, N11)
+                answer = _fallback_answer(narrative.answer, allowed, no_pool=no_pool, strength=strength)
+            except Exception:  # noqa: BLE001 - the last resort: the fixed sentences only
+                answer = NO_POOL_ANSWER if no_pool else ANSWER_CERTAINTY.get(strength or "", "")
+            answer_removed = 0
+            key_findings, findings_dropped, findings_hedged = [], len(narrative.key_findings), 0
             prose_counts["check_failed"] += 1
         # coverage telemetry (audit I-22): analysed papers the summary never cites
         # (None when there is no model-written summary to judge: withheld or failed)
@@ -940,6 +1190,8 @@ def make_write_synthesis(deps):
                         "certainty_added": certainty_added,
                         # Plan 20: answer sentences and key findings removed by the numberless check
                         "answer_removed": answer_removed, "key_findings_removed": findings_dropped,
+                        # statements given the fixed low/very-low certainty lead clause
+                        "key_findings_certainty_lead": findings_hedged,
                         **({"check_failed": True} if prose_counts["check_failed"] else {}),
                         "rationale_fixed": rationale_fix,  # "replaced" | "appended" | None (audit I-13e)
                         # narrative rounds the grounded-prose check sent back to the model (false positives show here)
@@ -1018,7 +1270,7 @@ def _templated(synthesis: dict[str, Any], matrix: dict[str, Any]) -> dict[str, t
             out[f"consensus.{i}.statement"] = ("consensus_statement", c)
             if item.get("explanation") == _consensus_explanation(c):
                 out[f"consensus.{i}.explanation"] = ("consensus_explanation", c)
-    conflicts = {f"{c['outcome']}: {CONFLICT_STATEMENT['en']}": c for c in matrix.get("conflicts") or []}
+    conflicts = {_conflict_statement(c): c for c in matrix.get("conflicts") or []}
     for i, item in enumerate(synthesis.get("conflicts") or []):
         c = conflicts.get(item.get("statement"))
         if c is not None:
@@ -1038,7 +1290,7 @@ def _render_th(templated: dict[str, tuple[str, dict[str, Any]]], names: dict[str
         elif kind == "consensus_explanation":
             out[key] = _consensus_explanation_th(c, outcome)
         elif kind == "conflict_statement":
-            out[key] = f"{outcome}: {CONFLICT_STATEMENT['th']}"
+            out[key] = _conflict_statement(c, outcome, "th")
         else:
             out[key] = _deterministic_explanation_th(c, outcome)
     return out
@@ -1139,7 +1391,11 @@ def _methods(state: ReviewState, deps, models: dict[str, str]) -> dict[str, Any]
     spec = harness_spec(deps)
     llms = deps.llms
     secondary = getattr(getattr(llms, "screener_secondary", None), "model", None)
-    second_vote = ("off" if secondary is None
+    # what the screening batches logged (Task 1 review finding 7); derived from the models when nothing was logged
+    logged = {q.get("second_vote") for q in state.get("quality") or []
+              if q.get("stage") == "screen" and q.get("second_vote")}
+    second_vote = (next(iter(logged)) if len(logged) == 1
+                   else "off" if secondary is None
                    else "same_model" if secondary == getattr(getattr(llms, "screener", None), "model", 0)
                    else "two_models")
     per_source = stats.get("per_source")
@@ -1174,15 +1430,22 @@ def make_finalize(deps):
         synthesis_en = state.get("synthesis") or _empty_synthesis(NO_PAPERS["en"], _review_type(state))
         synthesis = state.get("synthesis_display") or synthesis_en
         localized = state.get("localized_cards") or {}
+        linked = related(state)  # Plan 20 Task 10: reports of the same trial
+        reports: dict[str, list[str]] = {}
+        for ref, link in linked.items():
+            reports.setdefault(link["primary"], []).append(ref)
         out_papers = []
         for p in papers:
             c = p["candidate"]
+            link = linked.get(p["ref"]) or {}
             out_papers.append({
                 "ref": p["ref"], "title": c["title"], "authors": c.get("authors") or [], "year": c.get("year"),
                 "journal": c.get("journal"), "doi": c.get("doi"), "pmid": c.get("pmid"), "pmcid": c.get("pmcid"),
                 "url": c.get("url"), "relevance": p.get("relevance"), "screen_reason": p.get("screen_reason"),
                 "card": localized.get(p["ref"]) or p.get("card"), "card_en": p.get("card"),
                 "verification": p.get("verification"), "error": p.get("error"),
+                "related_to": link.get("primary"), "related_reason": link.get("reason"),
+                "related_reports": sorted(reports.get(p["ref"], []), key=_ref_num),
             })
         stats = state.get("search_stats") or {}
         selection = state.get("selection_stats") or {}
@@ -1211,7 +1474,12 @@ def make_finalize(deps):
                                        "study_design_relaxed": selection.get("study_design_relaxed", 0),
                                        # read as a design outside the ticked types after selection: not evidence
                                        "study_design_corrected": len(design_excluded(state)),
-                                       "low_relevance": selection.get("low_relevance", 0)},
+                                       "low_relevance": selection.get("low_relevance", 0),
+                                       # Plan 20 Task 10: themes reviews, papers that never name the focus
+                                       "off_focus": selection.get("off_focus", 0)},
+                # Plan 20 Task 10: analysed papers that are further reports of a trial already analysed (PRISMA
+                # 2020 counts studies and reports apart); they are linked to its primary report, not evidence
+                "related_reports": len(linked),
             },
             "quality": summarize_quality(state.get("quality") or [], state.get("started_at")),
             "errors": list(state.get("errors") or []), "prompt_version": deps.settings.prompt_version,

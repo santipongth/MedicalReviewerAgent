@@ -125,7 +125,7 @@ async def test_search_interleaves_queries_and_enrich_does_not_rank_by_citations(
     assert [x["doi"] for x in out["candidates"]] == ["10.1/q10", "10.1/q20", "10.1/q11", "10.1/q21"]
 
     class NoEpmc:
-        async def lookup(self, *, dois, pmids):
+        async def lookup(self, *, dois, pmids, failures=None):
             return []
 
     enriched = await make_enrich(deps(europepmc=NoEpmc()))({"candidates": out["candidates"],
@@ -161,4 +161,6 @@ def test_non_randomized_designs_start_low():
               for d in ("non-randomized controlled trial", "non-randomised cohort", "quasi-randomized trial")]
     assert grade_baseline(papers, {"conflicts": []})["level"] == "low"
     rct = [{"card": {"study_design": "randomized controlled trial", "risk_of_bias": "low", "sample_size": 5000}}]
-    assert grade_baseline(rct, {"conflicts": []})["level"] == "high"
+    # Plan 20 Task 10: one trial is not replicated (single-study imprecision), so high becomes moderate
+    assert grade_baseline(rct, {"conflicts": []})["level"] == "moderate"
+    assert grade_baseline(rct * 2, {"conflicts": []})["level"] == "high"

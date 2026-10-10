@@ -103,19 +103,20 @@ async def test_answer_and_key_findings_are_checked_and_k_is_counted():
     s = out["synthesis"]
     assert s["answer"] == "It is well tolerated. " + ANSWER_CERTAINTY["low"]  # no "may" left: certainty appended
     assert s["key_findings"] == [
-        {"outcome": "CRC incidence", "statement": "Metformin may lower CRC incidence.", "refs": ["P1", "P2"], "k": 2},
-        {"outcome": "Adherence", "statement": "Adherence was rarely reported.", "refs": ["P2"], "k": 1},
+        {"outcome": "CRC incidence", "statement": "Metformin may lower CRC incidence.", "refs": ["P1", "P2"], "k": 2, "certainty": "low"},
+        {"outcome": "Adherence", "statement": "Adherence was rarely reported.", "refs": ["P2"], "k": 1, "certainty": "low"},
     ]
     q = next(e for e in out["quality"] if e["stage"] == "prose_check")
     assert q["answer_removed"] == 1 and q["key_findings_removed"] == 2
     assert summarize_quality(out["quality"], None)["prose_check"]["key_findings_removed"] == 2
 
 
-async def test_at_most_five_key_findings_and_no_certainty_sentence_when_worded_or_ungraded():
+async def test_at_most_five_key_findings_and_no_certainty_sentence_when_ungraded():
     findings = [NarrativeFinding(outcome=f"Outcome {c}", statement="Reported.", refs=["P1"]) for c in "ABCDEFG"]
     out, _ = await run("Metformin may lower CRC incidence.", findings)
     assert len(out["synthesis"]["key_findings"]) == 5
-    assert out["synthesis"]["answer"] == "Metformin may lower CRC incidence."
+    # fix round 4 (N10 ruling): a graded answer always ends with the certainty sentence, worded or not
+    assert out["synthesis"]["answer"] == f"Metformin may lower CRC incidence. {ANSWER_CERTAINTY['low']}"
     st = two_papers(options={"review_type": "narrative"})
     synth = FakeStructuredLLM("ds", lambda s, u: NarrativeNoGrade(
         executive_summary="Themes [P1, P2].", research_gaps=[], answer="Metformin lowers CRC incidence.",
@@ -137,14 +138,16 @@ async def test_meta_without_pools_says_pooling_was_not_possible(meta):
     st = two_papers(options={"review_type": "meta_analysis"}, meta_analysis=meta)
     out, _ = await run("The pooled analysis suggests a lower risk. Metformin may lower CRC incidence.", [], st=st)
     answer = out["synthesis"]["answer"]
-    assert answer == f"{NO_POOL_ANSWER} Metformin may lower CRC incidence."
+    # fix round 4 (N10 ruling): the certainty sentence always ends a graded answer
+    assert answer == f"{NO_POOL_ANSWER} Metformin may lower CRC incidence. {ANSWER_CERTAINTY['low']}"
     assert "pooled analysis suggests" not in answer
 
 
 async def test_meta_answer_that_already_says_so_is_not_doubled_and_an_empty_one_gets_the_sentence():
     st = two_papers(options={"review_type": "meta_analysis"}, meta_analysis=None)
     out, _ = await run("No outcome could be pooled; metformin may lower CRC incidence.", [], st=st)
-    assert out["synthesis"]["answer"] == "No outcome could be pooled; metformin may lower CRC incidence."
+    assert out["synthesis"]["answer"] == (  # the certainty sentence always ends a graded answer (fix round 4)
+        f"No outcome could be pooled; metformin may lower CRC incidence. {ANSWER_CERTAINTY['low']}")
     out, _ = await run("", [], st=two_papers(options={"review_type": "meta_analysis"}, meta_analysis=None))
     assert out["synthesis"]["answer"].startswith(NO_POOL_ANSWER)
 
@@ -155,7 +158,7 @@ async def test_meta_with_pools_gets_no_no_pool_sentence():
             "pooled": {"est": 0.81, "ci_lower": 0.7, "ci_upper": 0.93}}
     st = two_papers(options={"review_type": "meta_analysis"}, meta_analysis={"pools": [pool]})
     out, _ = await run("Metformin may lower CRC incidence.", [], st=st)
-    assert out["synthesis"]["answer"] == "Metformin may lower CRC incidence."
+    assert out["synthesis"]["answer"] == f"Metformin may lower CRC incidence. {ANSWER_CERTAINTY['low']}"
 
 
 # ---- localization -------------------------------------------------------------------------------
@@ -168,14 +171,15 @@ async def test_answer_and_key_findings_are_localized_and_row_outcomes_follow_the
     loc = await make_localize(deps(localizer=FakeStructuredLLM("qwen", thai)))(
         two_papers(synthesis=english, language="th"))
     d = loc["synthesis_display"]
-    assert d["answer"] == to_thai("Metformin may lower CRC incidence.")
+    answer = f"Metformin may lower CRC incidence. {ANSWER_CERTAINTY['low']}"  # graded: the certainty sentence ends it
+    assert d["answer"] == to_thai(answer)
     assert [f["statement"] for f in d["key_findings"]] == [to_thai("Metformin may lower CRC incidence."),
                                                             to_thai("Adherence was rarely reported.")]
     # the row's own localized name (same text as the comparison table), and a translated free outcome
     assert d["key_findings"][0]["outcome"] == d["comparison"][0]["outcome"] == to_thai("CRC incidence")
     assert d["key_findings"][1]["outcome"] == to_thai("Adherence")
     assert [f["refs"] for f in d["key_findings"]] == [["P1", "P2"], ["P2"]] and d["key_findings"][0]["k"] == 2
-    assert english["answer"] == "Metformin may lower CRC incidence."  # synthesis_en keeps the English
+    assert english["answer"] == answer  # synthesis_en keeps the English
 
 
 # ---- methods payload ----------------------------------------------------------------------------

@@ -184,13 +184,18 @@ def classify_row(cells: list[dict[str, Any]]) -> dict[str, Any]:
     Systematic reviews/meta-analyses (`pooled`) usually contain the row's primary studies, so the primary studies
     decide first: when they alone reach a consensus or a conflict, the pooled cells only corroborate
     (`corroborating`) or are named as `discordant_reviews`; they are never counted twice and never a conflict
-    against their own studies. Only when the primary studies alone reach no verdict (too few, or imprecise) does each
-    SR/MA count as one study; a split that then runs exactly between SR/MA cells on one side and primary cells on the
-    other is the footprint of a review and its own trials disagreeing on abstracts, so it is `imprecise` with
-    `review_discordant`, never a conflict.
+    against their own studies as independent studies. Only when the primary studies alone reach no verdict (too few,
+    or imprecise) does each SR/MA count as one study; a split that then runs exactly between SR/MA cells on one side
+    and primary cells on the other is the footprint of a review and its own trials disagreeing on abstracts: it is
+    never decided by a majority, and is `imprecise` with `review_discordant`.
+    Plan 20 Task 10: such splits are shown. A real one (a significant study on each side, or non-overlapping CIs; HR,
+    RR and OR compared with each other) is a `conflict` flagged `review_discordant`, so the conflict explainer runs,
+    and so is a primary consensus that significant SR/MAs contradict (see _review_check); without a real split that
+    consensus stands, flagged `review_discordant`. GRADE-lite never downgrades for a `review_discordant` split.
     Verdicts:
     - `conflict`: studies on opposite sides of no effect, with a significant study on each side or with 95% CIs of
-      the two sides that do not overlap (same measure), and no >= 70 % majority of >= 3 studies;
+      the two sides that do not overlap (same measure), and no >= 70 % majority of >= 3 studies; or a real
+      review-vs-primary split (`review_discordant`);
     - `consensus`: agreement in direction: one side only (>= 2 studies, any of them may be non-significant), or a
       >= 70 % majority of >= 3 studies with the rest listed as dissent; or >= 2 studies that all show no effect;
     - `imprecise`: significant and non-significant findings without a real split: on the same side or without a side,
@@ -202,10 +207,46 @@ def classify_row(cells: list[dict[str, Any]]) -> dict[str, Any]:
     pooled = [c for c in usable if c.get("pooled")]
     if primary and pooled:
         first = _verdict(primary, pooled)
-        if first["verdict"] in ("consensus", "conflict"):
+        if first["verdict"] == "consensus":
+            return _review_check(first, primary, pooled)
+        if first["verdict"] == "conflict":
             return first
         return _verdict(usable, [], pooled_refs={c["ref"] for c in pooled})
     return _verdict(usable, [])
+
+
+def _review_check(consensus: dict[str, Any], primary: list[dict[str, Any]],
+                  pooled: list[dict[str, Any]]) -> dict[str, Any]:
+    """A primary-study consensus that statistically significant SR/MAs contradict (Plan 20 Task 10, the metformin
+    re-run: two non-significant cohorts were reported as a "no association" consensus while five SR/MAs reported a
+    significant benefit). The split runs between evidence types, so it is never counted as independent studies
+    disagreeing (the reviews may contain the very same studies) and never downgrades the grade, but it is shown:
+    - a real split, i.e. a significant review on the opposite side of a directional consensus, or a review's 95% CI
+      that does not overlap a consensus study's (ratio measures HR/RR/OR are compared with each other here, an
+      approximation for flagging, never for pooling), becomes a `conflict` with `review_discordant` (the conflict
+      explainer runs);
+    - otherwise the consensus stands, flagged `review_discordant`, with the reviews named in `discordant_reviews`.
+    Non-significant discordant reviews only stay named in `discordant_reviews`, as before."""
+    discordant = set(consensus.get("discordant_reviews") or [])
+    against = [c for c in pooled if c["ref"] in discordant and c["direction"] in ("positive", "negative")]
+    if not against:
+        return consensus
+    side = {"positive": 1, "negative": -1}.get(consensus["direction"], 0)
+    counted = [c for c in primary if c["ref"] in set(consensus["refs"])]
+    opposite = bool(side) and any((1 if c["direction"] == "positive" else -1) == -side for c in against)
+    real = opposite or _cis_apart(counted, against, cross_ratio=True)
+    if not real:
+        return {**consensus, "review_discordant": True}
+    review_dirs: dict[str, set[str]] = defaultdict(set)
+    for c in against:
+        review_dirs[c["direction"]].add(c["ref"])
+    directions = {consensus["direction"]: list(consensus["refs"])}
+    for d, refs in review_dirs.items():
+        directions[d] = sorted(set(directions.get(d, [])) | refs, key=_ref_num)
+    refs = sorted({*consensus["refs"], *(c["ref"] for c in against)}, key=_ref_num)
+    significant = {c["ref"] for c in [*counted, *against] if c["direction"] != "null"}
+    return {"verdict": "conflict", "refs": refs, "directions": directions,
+            "nonsignificant": sorted(set(refs) - significant, key=_ref_num), "review_discordant": True}
 
 
 def ci_includes_null(cell: dict[str, Any]) -> bool | None:
@@ -217,12 +258,17 @@ def ci_includes_null(cell: dict[str, Any]) -> bool | None:
     return None if null is None else lo <= null <= hi
 
 
-def _cis_apart(a: list[dict[str, Any]], b: list[dict[str, Any]]) -> bool:
-    """Some cell of `a` and some cell of `b` with the same measure have 95% CIs that do not overlap."""
+def _cis_apart(a: list[dict[str, Any]], b: list[dict[str, Any]], cross_ratio: bool = False) -> bool:
+    """Some cell of `a` and some cell of `b` with the same measure (with `cross_ratio`, any two of HR/RR/OR) have
+    95% CIs that do not overlap."""
     def ci(c):
         lo, hi = c.get("ci_lower"), c.get("ci_upper")
         return (lo, hi) if isinstance(lo, int | float) and isinstance(hi, int | float) else None
-    return any(c.get("effect_measure") == d.get("effect_measure") and ci(c) and ci(d)
+
+    def comparable(c, d):
+        m, n = c.get("effect_measure"), d.get("effect_measure")
+        return m == n or (cross_ratio and m in RATIO_MEASURES and n in RATIO_MEASURES)
+    return any(comparable(c, d) and ci(c) and ci(d)
                and (ci(c)[1] < ci(d)[0] or ci(d)[1] < ci(c)[0]) for c in a for d in b)
 
 
@@ -269,7 +315,11 @@ def _verdict(counted: list[dict[str, Any]], aside: list[dict[str, Any]],
                                               & aside_refs - agree)}
 
     if pos and neg:
-        if len(pos) != len(neg) and len(studies) >= CONSENSUS_MIN_STUDIES:
+        # SR/MAs on one side, primary studies on the other: the reviews may contain those very studies, so they are
+        # not counted against them (no majority) and the split never reads as independent studies disagreeing
+        review_split = pooled_refs is not None and any(
+            a <= pooled_refs and not b & pooled_refs for a, b in ((pos, neg), (neg, pos)))
+        if not review_split and len(pos) != len(neg) and len(studies) >= CONSENSUS_MIN_STUDIES:
             top, other, name, other_name = ((pos, neg, "positive", "negative") if len(pos) > len(neg)
                                             else (neg, pos, "negative", "positive"))
             # a study that also reports the majority direction (another outcome in this row) is not a dissenter
@@ -278,12 +328,12 @@ def _verdict(counted: list[dict[str, Any]], aside: list[dict[str, Any]],
         directions = {"positive": ordered(pos), "negative": ordered(neg)}
         pos_cells = [c for c in counted if c["ref"] in pos and lean(c) == 1]
         neg_cells = [c for c in counted if c["ref"] in neg and lean(c) == -1]
-        real = bool(pos & significant and neg & significant) or _cis_apart(pos_cells, neg_cells)
-        review_split = pooled_refs is not None and any(
-            a <= pooled_refs and not b & pooled_refs for a, b in ((pos, neg), (neg, pos)))
-        if real and not review_split:
+        real = bool(pos & significant and neg & significant) or _cis_apart(pos_cells, neg_cells,
+                                                                           cross_ratio=review_split)
+        if real:  # Plan 20 Task 10: a real review-vs-primary split is shown (and explained) as a conflict
             return {"verdict": "conflict", "refs": ordered(pos | neg), "directions": directions,
-                    "nonsignificant": ordered((pos | neg) - significant)}
+                    "nonsignificant": ordered((pos | neg) - significant),
+                    **({"review_discordant": True} if review_split else {})}
         return {"verdict": "imprecise", "refs": ordered(studies), "directions": {**directions, "null": ordered(zero)},
                 "opposite_sides": not review_split, "review_discordant": review_split}
     if pos or neg:
@@ -300,7 +350,11 @@ def _verdict(counted: list[dict[str, Any]], aside: list[dict[str, Any]],
     return {"verdict": "none"}
 
 
-def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters, directional: bool = True) -> dict[str, Any]:
+CHARTED = "✓"  # a scoping cell: the paper covers this aspect (no free-text finding, Task 10 review finding 9)
+
+
+def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters, directional: bool = True,
+                 charted: bool = False) -> dict[str, Any]:
     """The comparison rows, plus consensus and conflicts by `classify_row`. `directional` False (a scoping review, a
     themes review, a question with no effect direction): every cell's direction is `unclear` and there is no
     consensus, conflict or imprecision list. Cells whose finding is a literal placeholder ("null", "N/A") and that
@@ -315,7 +369,7 @@ def build_matrix(papers: list[dict[str, Any]], clusters: OutcomeClusters, direct
             if outcome is None or (is_placeholder(outcome["result"]) and outcome.get("effect_value") is None):
                 continue
             cells.append({
-                "ref": member.ref, "finding": outcome["result"],
+                "ref": member.ref, "finding": CHARTED if charted else outcome["result"],
                 "direction": outcome["direction"] if directional else "unclear",
                 "effect_measure": outcome.get("effect_measure"), "effect_value": outcome.get("effect_value"),
                 "ci_lower": outcome.get("ci_lower"), "ci_upper": outcome.get("ci_upper"),

@@ -67,8 +67,10 @@ _PARENS = re.compile(r"\(([^()]*)\)")
 # identifiers and abbreviations may stay in English: URLs, tokens with a digit (NCT01234567, DenseNet-169, 2-year)
 # and tokens with two or more capitals (HR, RCT, BI-RADS, DenseNet)
 _IDENTIFIER = re.compile(r"https?://\S+|[A-Za-z0-9.\-+]*\d[A-Za-z0-9.\-+]*|\b[A-Za-z]*[A-Z][A-Za-z]*[A-Z][A-Za-z\-]*\b")
-# proper names: runs of two or more Capitalised words ("Novo Nordisk", "Stockholm County Council", "Eli Lilly")
-_NAME_RUN = re.compile(r"\b[A-Z][a-z]+(?:[ \-][A-Z][a-z]+)+\b")
+# proper names: runs of two or more Capitalised words ("Novo Nordisk", "Stockholm County Council", "Eli Lilly",
+# "ScreenPoint Medical": inner capitals allowed since Plan 20 Task 10)
+_NAME_RUN = re.compile(r"\b[A-Z][a-z]+[A-Za-z]*(?:[ \-][A-Z][a-zA-Z]+)+\b")
+_CAPITALISED = re.compile(r"\b[A-Z][A-Za-z0-9\-]+\b")
 _LATIN_WORD = re.compile(r"[A-Za-z]{2,}")
 MIN_LATIN_WORDS = 2  # one English word is usually a name ("Metformin") and may stay
 MIN_THAI_SHARE = 0.4  # calibrated on the stored Thai audit runs: half-translated items sit at 0.17-0.42
@@ -87,8 +89,30 @@ def translatable(source: str) -> bool:
     return len(_LATIN_WORD.findall(_prose(source))) >= MIN_LATIN_WORDS
 
 
-def thai_share(text: str) -> float:
+# a sentence-initial capital on an ordinary English word ("Significantly", "Patients") is no name
+_WORDLIKE = re.compile(r"(ly|s|ed|ing|tion|sion|ment|ity|ness|ive|al|ous|ful|ic|er|est|ence|ance)$")
+
+
+def _source_names(source: str) -> set[str]:
+    """Capitalised words of the source that read as names: inside a sentence, or opening it without the ending of an
+    ordinary English word ("Transpara version ..." yes, "Patients undergoing ..." no)."""
+    out = set()
+    for m in _CAPITALISED.finditer(source):
+        before = source[: m.start()].rstrip()
+        initial = not before or before.endswith((".", "!", "?", ":", ";"))
+        if not initial or not _WORDLIKE.search(m.group(0).lower()):
+            out.add(m.group(0))
+    return out
+
+
+def thai_share(text: str, source: str | None = None) -> float:
+    """Share of Thai letters in the readable text. With `source`, a capitalised word the translation copied verbatim
+    from it is a name kept on purpose ("Transpara", Plan 20 Task 10: "Transpara version 1.7.0 ScreenPoint Medical"
+    became "Transpara รุ่น 1.7.0 ScreenPoint Medical" and was counted as untranslated) and is not counted."""
     prose = _prose(text)
+    if source:
+        names = _source_names(source)
+        prose = _CAPITALISED.sub(lambda m: " " if m.group(0) in names else m.group(0), prose)
     thai, latin = len(_THAI.findall(prose)), len(_LATIN.findall(prose))
     return thai / (thai + latin) if thai + latin else 1.0
 
@@ -99,7 +123,7 @@ def untranslated(source: str, text: str | None, language: str) -> bool:
         return False
     if not text or text.strip() == source.strip():
         return True
-    return thai_share(text) < MIN_THAI_SHARE
+    return thai_share(text, source) < MIN_THAI_SHARE
 
 
 # ---- citations (I-12) ---------------------------------------------------------------------------
@@ -189,10 +213,14 @@ async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], 
                     continue
                 if accept(chunk[k], t)[0] is None:
                     problems.append(f"item {k}: numbers or [Pn] citations changed in translation")
-                # only a plain echo (no Thai at all) is worth a repair round; partial translations are judged at the
-                # end, so a hopeless item (e.g. a list of names) does not burn max_repairs calls per chunk
-                elif retry and untranslated(chunk[k], t, language) and thai_share(t) == 0:
-                    problems.append(f"item {k} is still in English: translate it into {name}")
+                # retry pass only: an echo, and since Plan 20 Task 10 a half translation ("ผู้ป่วย undergoing
+                # mammography และ ..."), go back for a repair round; names copied verbatim no longer count as
+                # English (thai_share with the source), so a list of names is not a hopeless item
+                elif retry and untranslated(chunk[k], t, language):
+                    problems.append(f"item {k} is still in English: translate it into {name}"
+                                    if thai_share(t) == 0 else
+                                    f"item {k} is only partly translated: translate the remaining English words "
+                                    f"into {name}; keep in English only names and abbreviations")
             return problems
 
         return await runner.call(llm, system, user, schema=TranslationBatch, validate=validate, trigger="localize")
@@ -248,7 +276,7 @@ async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], 
         # prefer a complete translation; else the better of the partial ones; else the English source
         best = next((c for c in candidates if not untranslated(source, c[0], language)), None)
         if best is None and candidates:
-            best = max(candidates, key=lambda c: thai_share(c[0]))
+            best = max(candidates, key=lambda c: thai_share(c[0], source))
         if best is None:
             out.kept_english += 1
         else:

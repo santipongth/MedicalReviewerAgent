@@ -311,7 +311,8 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
                           "extracted": 2, "non_research": 0, "year_excluded": 0, "no_abstract": 0,
                           "excluded_screening": {},
                           "excluded_selection": {"narrative_excluded": 0, "over_limit": 0, "study_design_relaxed": 0,
-                                                 "study_design_corrected": 0, "low_relevance": 0}}
+                                                 "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
+                          "related_reports": 0}  # Plan 20 Task 10
     assert r["question"]["refined_question"] == "คำถาม?" and r["question"]["english"]["refined_question"] == "RQ?"
     assert r["question"]["pico"]["population"] == "adults" and r["question"]["original_topic"] == "เมตฟอร์มิน"
     assert r["question"]["ambiguities"] == ["b"] and r["question"]["refined"] is True

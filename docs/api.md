@@ -67,7 +67,7 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 |---|---|---|
 | `POST /reviews` | 202 `{review_id, status, cached, callback_scheduled}` | 401, 403, 422, 429, 503 |
 | `GET /reviews?recent=20` (1–50) | 200 recent finished reviews: `[{id, topic, language, status, created_at, finished_at, verification_rate}]` | 422 |
-| `GET /reviews/{id}` | 200 `ReviewOut` | 404, 422 |
+| `GET /reviews/{id}` | 200 `ReviewOut` (its top-level `verification_rate` is `result.quality.verification_rate`, null until done; filled since Plan 20 Task 10) | 404, 422 |
 | `GET /reviews/{id}/events` | 200 `text/event-stream` | 404, 422 (malformed id), 429 |
 | `GET /reviews/{id}/export?format=md\|csv\|json` | 200 file download | 404, 409 (not done), 422 |
 | `DELETE /reviews/{id}` (owner key or admin key) | 200 `{review_id, status: "cancelled"}` | 401, 403, 404, 409, 422 (malformed id) |
@@ -121,15 +121,64 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 `result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`.
 
 **Answer and key findings (Plan 20).** `synthesis` (and `synthesis_en`) also has:
-- `answer`: the bottom line, 1–2 sentences that answer the question directly. Graded types (`slr`, `meta_analysis`)
-  carry GRADE certainty wording; when the model's answer lacks the wording for the final `evidence_strength`
-  (moderate "probably"/"likely", low "may"/"might", very low "very uncertain") and does not name the certainty, a fixed
-  sentence is appended ("The certainty of the evidence is low."). A `meta_analysis` whose `meta_analysis` has no pools
+- `answer`: the bottom line, 1–2 sentences that answer the question directly. A graded answer (`slr`,
+  `meta_analysis`) always ends with the fixed certainty sentence of its final `evidence_strength` ("The certainty of
+  the evidence is low."; also "... is high."), unless it already holds that exact sentence. No certainty level in the
+  model's text is ever rewritten. The only sentences removed for a level are explicit self-claims of this review's
+  overall certainty that name a level other than the final one, in two forms: "the certainty/quality of (the)
+  evidence (overall / for this review / in this review) is/was <level>", opening the sentence or a clause (after a
+  comma, semicolon, colon, "and", "but" or "so") with the level ending the clause; and a sentence that opens
+  "<Level>-certainty evidence" or "<Level> certainty evidence" followed by shows/suggests/indicates/supports ("very-low"
+  and "very low" are one level). The whole sentence goes, including any other claim it makes: "Metformin may lower CRC
+  incidence; the certainty of the evidence is moderate." on a low review leaves only the certainty sentence, and a
+  per-outcome sentence in this form ("For mortality, the certainty of the evidence was high.") is removed too (known
+  limit, N18). A wrong-level label is removed as a token instead, with its brackets and its separator, and the rest
+  of its sentence stays: "(high-certainty evidence)", "(High certainty evidence)", "(GRADE: high)" or "; GRADE: high"
+  (a sentence left with only the label goes). Labels of the final level stay. Label and sentence removals count in
+  `prose_check.answer_removed`. Sentences are split after ".", "!" or "?" before a capital letter, but never after
+  "vs.", "e.g.", "i.e.", "et al.", "approx.", "Fig.", "No.", "cf." or a single capital letter ("J. Smith"); so a
+  sentence that really ends in a one-letter word ("vitamin D.") is joined with the next one.
+  Everything else stays as written: negations and needs ("is not high", "high-certainty evidence is lacking/needed",
+  "no high-certainty evidence", "in the absence of", "neither ... nor", "whether"), per-outcome levels ("was high for
+  incidence but low for mortality"), another source's claim (a sentence with "earlier", "previous", "prior", "other",
+  "published", "existing", "reported" or "according to" anywhere before the level), "quality" phrases about studies
+  and level words elsewhere ("patients at high risk"); the appended sentence carries the final level. Because the
+  other-source words are searched in the whole sentence before the claim, a real wrong self-claim can stay next to
+  the appended sentence, which then contradicts it ("... and other cancers, but the certainty of the evidence is high.
+  The certainty of the evidence is moderate."; known limit, N19); the appended sentence always comes last. Ungraded
+  answers lose nothing for a level and get no certainty sentence. The
+  answer carries no `[Pn]` citations: its numbers, populations and measures are checked
+  against the papers it cites, then the citations are stripped in code. When the checks would remove every sentence,
+  the model's answer stays, minus any self-claim of another level, unless it carries a number, which could be
+  unverified; it then bypassed the population and measure checks, and it is not counted in
+  `prose_check.answer_removed`. A graded answer left empty becomes the fixed certainty sentence alone.
+  When the check itself crashes, the answer is the model's answer without citations, without sentences that carry a
+  number, (no pools) without pooled claims and without self-claims of another level, led by the no-pool sentence when
+  needed and, graded, ended by the certainty sentence. A `meta_analysis` whose `meta_analysis` has no pools
   (null, or `pools: []`) always says so: a fixed sentence ("Pooling was not possible: ...") leads the answer unless it
   already states that pooling was not possible, and any answer sentence that claims a pooled or overall effect is
-  removed. `""` when the narrative step failed (or for results stored before Plan 20); a review with no papers repeats
-  its notice.
-- `key_findings[]`: at most 5 items `{outcome, statement, refs[], k}`, most important first.
+  removed. "States that pooling was not possible" means a negation attached to pooling ("pooling was not possible",
+  "could not be pooled", "no outcome could be pooled", "unable to pool", "too few ... to pool"); "does not reduce
+  mortality in the pooled analysis" is a pooled claim, not such a statement. `""` only in these cases: the narrative
+  step failed, or the model wrote no answer, for a review that is not a meta-analysis without pools (graded or not);
+  an ungraded review whose every answer sentence carried a number (also after a crash of the check); and results
+  stored before Plan 20. A review with no papers repeats
+  its notice. Since Plan 20 Task 10 the same fixed sentence also leads `executive_summary` (and so `summary`) of such a
+  meta-analysis when the summary does not already say that pooling was not possible.
+- `key_findings[]`: at most 5 items `{outcome, statement, refs[], k, certainty}`, most important first.
+  - `certainty` is set in code, never by the model: the review's final `evidence_strength` for graded types, null for
+    narrative and scoping reviews (and absent from results stored before Plan 20 Task 10's Task 1 fixes).
+  - Statements are never rewritten. At low or very low certainty a statement that makes a strong causal claim
+    (reduce(s), increase(s), improve(s), prevent(s), cause(s), lower(s), raise(s) or decrease(s) used as a verb after
+    its subject, also when the subject comes before a comma, in a clause with no hedge, negation, "whether" or
+    "neither" before it, and no "uncertain", "may", "might" or "possibly" after it in the same clause) is led by a
+    fixed clause, unless the statement says the evidence as a whole is uncertain ("very uncertain", "the evidence is
+    uncertain"); a hedge in another clause does not count ("Patients with a higher BMI may benefit; metformin reduces
+    CRC incidence" is led): "Low-certainty evidence suggests: "
+    or "Very low-certainty evidence: ", with the statement unchanged after the colon. The clause is part of
+    `statement`, so it is localized with it. `result.quality.prose_check.key_findings_certainty_lead` counts them.
+  - In a `meta_analysis` without pools, statement sentences that claim a pooled or overall effect are removed (a
+    finding left empty is dropped).
   - `outcome` is a `synthesis.comparison` row name when the finding is about a row (matched case-insensitively and
     written exactly as the row), else a short outcome name. In `synthesis` it is localized like the row, so it
     equals the localized row name; `synthesis_en.key_findings[i]` is the same finding in English (same order).
@@ -163,8 +212,9 @@ It is absent from results stored before Plan 20.
   planner's, in English).
 - `limits`: `{candidate_limit, max_papers, min_abstract_chars}`.
 - `screening`: `{model, second_model, second_vote, borderline: [low, high], relevance_floor}`. `second_vote` is
-  `two_models`, `same_model` (skipped: the secondary screener is the screener's model) or `off`; `second_model` is
-  null unless it is `two_models`.
+  `two_models`, `same_model` (skipped: the secondary screener is the screener's model) or `off`, as the screening
+  batches logged it (`quality` stage `screen`, `second_vote`), else derived from the configured models;
+  `second_model` is null unless it is `two_models`.
 - `extraction`: `{model, second_model, verify_quotes, quote_match_threshold, text: "abstract"}` (`second_model` null
   when dual extraction is off).
 - `synthesis`: `{model, pooling, grading}`: `pooling` is `"DerSimonian-Laird random effects"` for `meta_analysis`,
@@ -176,6 +226,8 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 - `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, qualitative, mixed_methods, other`.
 - `qualitative` and `mixed_methods` (Plan 17a) have themes as their outcomes:
   - `effect_measure` is `"none"`, the numbers are null and `direction` is `"unclear"`.
+  - A theme compares nothing (Plan 20 Task 10): `comparison` is null and `matches_question` true, set in code
+    whatever the extractor wrote.
   - Like narrative reviews, they add no matrix cells, conflicts, pools or grade.
 - Design-label consistency (Plan 19). After extraction the label is cross-checked in code against the Europe PMC
   publication types, the card's `study_design`, the title, the abstract and the sample-size quote, and corrected
@@ -190,7 +242,19 @@ Models are `provider:model` strings as in `result.models` (null when not configu
   - an `rct` label whose design or title names an observational design (cohort, case-control, cross-sectional,
     registry, retrospective) becomes that observational design, unless the design or title says randomised or names
     a trial (a target trial emulation does not count), the abstract says participants were randomised or allocated,
-    mentions a placebo or a trial registration (NCT, ISRCTN), or the publication types say RCT.
+    mentions a placebo or a trial registration (NCT, ISRCTN), or the publication types say RCT;
+  - (Plan 20 Task 10) an `rct` label whose design or title names a paired-reader, paired, single-arm, before-and-after
+    or non-randomised design becomes `non_randomized_trial` (single-arm, before-and-after, non-randomised) or
+    `cohort` (paired designs, or the observational design it names), unless the design or title says randomised,
+    the abstract says participants were randomised or randomly assigned, or the publication types say RCT (a
+    registry number or the word "trial" is not enough);
+  - (Plan 20 Task 10) an `sr_ma_rct` label needs randomised-trial wording ("randomised", "RCT", "trial(s)") in the
+    design, title, abstract or sample-size quote, outside sentences about future research ("randomized trials are
+    needed"). Without it the review becomes `sr_ma_observational` when it names diagnostic-accuracy or observational
+    evidence ("sensitivity and specificity", specificity, AUC, detection or recall rates, prospective programmes,
+    retrospective, observational studies, cohort studies, registries, ...; not "sensitivity analyses" or a bare
+    "cohort"), else `sr_ma_mixed`; with it, a design or title that also names such evidence makes it
+    `sr_ma_mixed`.
   A Randomized Controlled Trial publication type still wins over a non-randomised label. Each correction is listed
   in `result.quality.design_corrections` as `{ref, from, to, reason}` (`[]` when none; absent for results stored
   before Plan 19).
@@ -237,15 +301,17 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 
 **Citations.** `citations` is `{edges[], cited_by{}, cited_by_source{}, coverage{}, source_note, partial}` (null for results stored before Plan 14b and for reviews where the step did not run). `edges[]` is `{from, to}` (citing paper -> cited paper), only between papers of the same review, no self-loops, deduplicated. `cited_by[ref]` is the cited-by count over all literature (not just this review): OpenAlex's, else Europe PMC's `citedByCount`, else null. `cited_by_source[ref]` says which (`"openalex"`, `"europepmc"` or null); the two sources count differently, so do not compare across sources. On a timeout of the whole step the data gathered so far is kept, `partial` is `true` and `source_note` says so (`partial` is `false` otherwise, and is absent from results stored before it was added). OpenAlex gets at most half of the step budget and is not retried, so a slow OpenAlex still leaves time for the Europe PMC fallback. `coverage[ref]` is `"openalex"`, `"europepmc"` (reference list fallback) or null; null means no data, so a missing edge for such a paper does not mean it cites nothing. Metadata only (no full text); a failure gives null coverage and never fails the review; a timeout (about 20 s) keeps whatever arrived (coverage null for the rest, `partial: true`). Under `GRAPH_MODE=stub` the citation data is illustrative. Optional `OPENALEX_API_KEY` / `OPENALEX_MAILTO`.
 
-**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). Papers dropped at selection because their design matches no ticked study type are added to `excluded_screening.study_design`. `excluded_selection` is `{narrative_excluded, over_limit, study_design_relaxed, study_design_corrected, low_relevance}`; `study_design_relaxed` is the number of design mismatches kept (after the matches, flagged `verification.design_mismatch`) because fewer than 3 papers matched the ticked types; `study_design_corrected` (Plan 19 final review) is the number of selected papers whose design as read is outside the ticked types, kept in `papers` but not used as evidence (`stats.extracted` still counts them). `low_relevance` (Plan 19) counts papers the screener included with relevance below the lower edge of the borderline band (35 by default, `screen_borderline` in llm.yaml); they are not analysed, unless the two screening votes disagreed (kept for recall, flagged `uncertain`) or dropping them would leave fewer than 3 papers. Plan 19 also adds `year_excluded` (dropped by `year_from`) and `no_abstract` (no usable abstract), so that `unique = year_excluded + non_research + no_abstract + with_abstract`. Results stored before Plan 14a have none of these keys, and results stored before Plan 19 lack the Plan 19 ones.
+**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). Papers dropped at selection because their design matches no ticked study type are added to `excluded_screening.study_design`. `excluded_selection` is `{narrative_excluded, over_limit, study_design_relaxed, study_design_corrected, low_relevance}`; `study_design_relaxed` is the number of design mismatches kept (after the matches, flagged `verification.design_mismatch`) because fewer than 3 papers matched the ticked types; `study_design_corrected` (Plan 19 final review) is the number of selected papers whose design as read is outside the ticked types, kept in `papers` but not used as evidence (`stats.extracted` still counts them). `low_relevance` (Plan 19) counts papers the screener included with relevance below the lower edge of the borderline band (35 by default, `screen_borderline` in llm.yaml); they are not analysed, unless the two screening votes disagreed (kept for recall, flagged `uncertain`) or dropping them would leave fewer than 3 papers. Plan 19 also adds `year_excluded` (dropped by `year_from`) and `no_abstract` (no usable abstract), so that `unique = year_excluded + non_research + no_abstract + with_abstract`. Plan 20 Task 10 adds `excluded_selection.off_focus` (themes reviews only, every ticked study type Qualitative or Mixed methods: included papers whose title and abstract never name the question's intervention/exposure, by its words or the synonyms of a key term that shares one; not analysed unless dropping them would leave fewer than 3 papers; 0 otherwise) and `stats.related_reports` (see "Reports of the same trial"). Results stored before Plan 14a have none of these keys, and results stored before Plan 19 lack the Plan 19 ones.
 
 **Review type (Plan 14a).** `result.review_type` is `narrative`, `slr`, `scoping` or (Plan 14b) `meta_analysis`, which is graded like `slr`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
 - `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`; `null` when the question was not refined), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
 - `synthesis.evidence_strength` and `synthesis.grade_baseline` are nullable. They are `null` for `narrative` and `scoping`, which are not graded, and for an `slr`/`meta_analysis` with no quantitative studies (every paper qualitative or mixed-methods; `evidence_rationale` then says so). Clients must not read `null` as "very low".
-- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. Since Plan 19 every `synthesis.comparison[].cells[].direction` of a scoping review is `"unclear"`. The cards still carry `overall_direction`, `risk_of_bias` and `outcomes[].direction` as raw agent extraction. The report and the CSV do not show them (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present these fields as findings.
+- For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. Since Plan 19 every `synthesis.comparison[].cells[].direction` of a scoping review is `"unclear"`. Since Plan 20 Task 10 every scoping cell's `finding` is `"✓"` (the paper covers that aspect): no free-text finding such as a device name; the cell's verified numbers stay. Since Plan 20 Task 10 the scoping cards' `overall_direction` and `outcomes[].direction` are `"unclear"` too (set in code after extraction); results stored before then may still carry the raw agent values. The cards still carry `risk_of_bias` as raw agent extraction. The report and the CSV do not show these fields (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present them as findings.
 
 **Meta-analysis (Plan 14b).** `review_type: "meta_analysis"` behaves exactly like `slr` (PICO, screening, selection, PRISMA, conflicts, grading) and adds `result.meta_analysis`. For every other type, and for results stored before Plan 14b, `meta_analysis` is `null` or absent. It is also `null` for a meta-analysis whose pooling step failed, or was skipped because the study numbers were not verified against the abstracts (`verify_quotes` off or no verification records); either is listed in `errors` and never fails the review. Pooled numbers are computed by the system, DerSimonian-Laird random effects, from the abstract-verified effect estimates and 95% CIs. They are not a result reported by any single study.
-- Search (Plan 19, for recall): a meta-analysis reads 2 SearXNG pages per query instead of 1, the planner may use 5 queries (one naming the major trials), and, when RCTs are acceptable (no ticked study type, or `RCT` ticked), up to 3 extra Europe PMC searches restricted to randomized controlled trials with an abstract, most cited first (each with an 8 s timeout and one retry, so a slow Europe PMC delays the search by at most about 17 s). A query that is a list of trial names or acronyms is searched as alternatives (OR); other queries need all their words. Those hits join the round-robin as their own lists. At most 4 SearXNG requests per review run at once. The candidate cap is unchanged (`candidate_limit`).
+- Search (Plan 19, for recall): a meta-analysis reads 2 SearXNG pages per query instead of 1, the planner may use 5 queries (one naming the major trials), and, when RCTs are acceptable (no ticked study type, or `RCT` ticked), up to 3 extra Europe PMC searches restricted to randomized controlled trials with an abstract, most cited first (each with an 8 s timeout). A query that is a list of trial names or acronyms is searched as alternatives (OR); other queries need all their words. Those hits join the round-robin as their own lists. At most 4 SearXNG requests per review run at once. The candidate cap is unchanged (`candidate_limit`).
+  - Trial-name harvest (Plan 20 Task 10): after that first round, the trial names that at least 2 hits name in a trial context are searched once more. A name must look like a real one (Task 10 review): a hyphenated, digit-bearing or mixed-case name (DAPA-HF, EMPEROR-Reduced, EMPA-REG OUTCOME, DECLARE-TIMI 58) in any trial context ("the X trial/study/studies/programme", "X ClinicalTrials.gov number", "trial (X)", a title opening "X:"); a plain all-caps word (DELIVER, CANVAS) only right before trial(s)/study/investigators/program/programme/ClinicalTrials.gov, after "trial (" or "study (", or in brackets after a title-case phrase of at least 4 words. Nothing is taken from an all-caps title or an all-caps heading run (3+ words), and a stoplist excludes design and heading words (CONTROLLED, MULTICENTER, PILOT, REGISTRATION, ...), databases and appraisal tools (CENTRAL, ICTRP, MMAT, ...) and disease, drug-class, biomarker and gene abbreviations (COPD, ESKD, SGLT2, LDL-C, PCSK9, HFrEF, COVID-19, ...); a name needs at least 4 capitals. The names are searched in Europe PMC (RCTs with an abstract, most cited first), at most 12 names, OR-ed and ANDed with the review's intervention terms (the key terms, MeSH heading and synonyms that share a topic word with `intervention_or_exposure`; generic words such as "inhibitors", "therapy" or "standard" never link a key term). Acronyms such as DELIVER or CANVAS are ordinary words, so the intervention terms are required. The first 10 hits of this search lead the candidate list (they are the landmark trials of the question); the rest join the round-robin. It needs a refined question and runs only when the trial search runs.
+  - Europe PMC retries (Plan 20 Task 10): every Europe PMC request (trial searches, the enrichment lookup batches, reference lists) is retried after a 429/5xx answer at most twice, after 1 s and 2 s, and after a timeout or connection error once; the last attempt of a trial search drops the citation sort. A trial search or lookup batch that still fails is skipped and listed in `errors`; the review goes on (at most 3 attempts: a stalled Europe PMC delays a trial search by at most about 27 s, a timeout, a slow 5xx and another timeout plus the 3 s of backoff).
 - Diagnostic test accuracy (sensitivity, specificity, AUC) is not supported as a measure: such results are shown as reported (`effect_measure` `other` or `none`) and are never pooled or plotted.
 - Shape: `{version: "meta-1", pools[], excluded[], reference[], grade: {primary_outcome, design_group, reasons[]}}`.
 - `pools[]`: `{outcome, outcome_display, measure, scale, design_group, k, studies[], pooled, tau2, i2, q, df, p_het, method, version, warnings[]}`.
@@ -303,9 +369,76 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 - Systematic reviews/meta-analyses usually contain the row's primary studies: when the primary studies alone reach
   a consensus or a conflict, an SR/MA only corroborates (it is added to the consensus `refs` and named in the
   explanation) or, when it points elsewhere, is named in the explanation as a discordant review ("Systematic reviews
-  [P1] report a different direction."); it is never counted twice and never a conflict against them. Otherwise each
-  SR/MA counts as one study, except that a split running exactly between SR/MAs on one side and primary studies on
-  the other is "review discordant" (the review likely contains those trials): imprecision, never a conflict.
+  [P1] report a different direction."); it is never counted twice. Otherwise each SR/MA counts as one study, except
+  that a split running exactly between SR/MAs on one side and primary studies on the other is "review discordant"
+  (the review likely contains those trials) and is never decided by a majority.
+- Splits between reviews and primary studies (Plan 20 Task 10; the metformin re-run showed two non-significant
+  cohorts as a "no association" consensus while five SR/MAs reported a significant benefit). A review-discordant
+  split is a `synthesis.conflicts` entry when it is real: a statistically significant SR/MA on the side opposite a
+  directional primary consensus, a significant study on each side, or 95% CIs that do not overlap (HR, RR and OR
+  are compared with each other for this check only). Its statement reads "<outcome>: systematic reviews and primary
+  studies disagree" (fixed Thai in Thai reviews), the conflict explainer runs for it, and the matrix entry carries
+  `review_discordant: true`. Without a real split a primary consensus that significant SR/MAs contradict stays a
+  consensus, flagged `review_discordant: true` in the matrix, with "; systematic reviews disagree" added to its
+  statement and the reviews named in its explanation; a split in the fallback pass stays imprecision. None of these
+  downgrades the grade (below).
+- Reports of the same trial (Plan 20 Task 10). A trial's primary paper, commentaries on it and its subgroup or post
+  hoc analyses are one study. Any two papers that share a registry number (NCT, ISRCTN) are linked. A trial name
+  links only trials: papers with an RCT or non-randomised-trial design, or, when the design is unclassified (none,
+  `other` or a narrative/commentary label), a trial publication type or "trial" in the design or title. A classified
+  non-trial design wins over the publication type. Cohorts, case-control, cross-sectional, registry/database
+  studies and programme evaluations never link by name ("Korean NHIS", "the SNAP program" name data sources, not
+  studies); they link only by a shared registry number. The name (rules as for the trial-name harvest above, except
+  that a bracketed acronym counts only when its own expansion, the title-case words right before the bracket, names a
+  trial or study: "Outcome Trial in Patients With Chronic Heart Failure (EMPEROR-Reduced)" yes, "this trial used the
+  Hospital Anxiety and Depression Scale (HADS)" no; bare TIMI is stoplisted) must be the paper's own subject: in its
+  title (citing cues never apply there: "...: the DAPA-MI trial" is its own); or, in the abstract, its structured
+  Methods section ("Methods:", "METHODS" or "Methods" opening a
+  section; never the bare word "method"), its registration sentence ("DAPA-HF ClinicalTrials.gov number") or a sentence
+  with an explicit self pattern ("we conducted/performed/analysed/enrolled ...", "this secondary/post hoc/prespecified
+  analysis of", "the aims of this study", "patients enrolled in the X trial", "in the X trial, we", "this commentary
+  discusses"). The abstract's first sentence or Background section counts only through such a self pattern ("The
+  DAPA-HF trial showed ..." opens many follow-up trials and is no claim). Structural backstop (fix rounds 3 to 5): a
+  shared name alone links a paper only when it, or every primary-looking member of the trial's group, is a secondary
+  report, sub-study, follow-up or commentary. That means a commentary, or a report-type phrase in the title:
+  "secondary/post hoc/prespecified/exploratory/ancillary analysis", "substudy", "subgroup analysis", "follow-up of the
+  X", "extension (study) of the X", "insights from", "a report from the X", "an analysis from the X", "rationale and
+  design" or "baseline characteristics"; or "according to ... in (the) X" where X is a trial name (a distinctive name
+  such as "DAPA-HF", or a name followed by trial/study/program(me); never "in COPD", "in ICU patients", "in HIV" or
+  "in ARIC participants"). The design text counts only when it describes the paper itself as such a report: "this
+  (prespecified subgroup) analysis/substudy", "a secondary/post hoc/... analysis of the X trial" or "of a randomised
+  trial", "substudy of the X", "follow-up/extension of the X"; never "RCT with prespecified subgroup analyses",
+  "secondary analyses of quality of life" or "baseline characteristics balanced". Bare words that primary trials use
+  ("secondary prevention", "long-term", "12-month follow-up", "extension", "results from", "data from", "patients in
+  the") are no cue. A secondary report joins a primary-looking report only when its n is at most that report's n
+  (with an n unknown, only a shared registry number fits; a commentary reports no n and always fits) and that report
+  names the trial explicitly: in its title, its registration sentence, a non-"we" self pattern ("this analysis of",
+  "the aims of this", "this commentary discusses") or a we-sentence whose ownership verb is aimed at the trial ("we
+  conducted/designed/performed/report(ed) (the results of) the X trial", "in the X trial, we randomised/assigned").
+  Its Methods section, "patients enrolled in the X trial" and a we-sentence that only uses or cites the trial ("we
+  enrolled patients who met the X trial criteria", "we followed the X trial protocol") do not count.
+  A secondary report that no primary-looking report may take groups with the other secondary reports of that name.
+  Two primary-looking reports with the same name also need the same reported n or a shared registry number. Names
+  are owned by primary-looking reports first, the largest first. In the abstract a
+  name right after a citing cue never counts ("consistent with", "agrees with", "supports", "in line with",
+  "confirms", "comparable to", "extends", "unlike", "as in", "similar to", "compared with", "previous", "eligible
+  for", ...). These rules keep a citing trial out of the trial it cites in the cases they cover; a name in another
+  self-referential phrasing can still link (an over-merge), and a trial named only in its results section does not
+  (an over-count). Near-identical titles
+  (ratio ≥ 95) link papers only with the same first author, years at most one apart, the same reported sample size
+  or a shared registry number, and no population word or proper name between them (men/women, Korea/Japan). Papers
+  with different registry numbers are never one group, a paper naming several trials never links them together, and
+  SR/MAs and qualitative/mixed-methods papers are never grouped. The primary report is chosen only among the group's
+  evidence (in the ticked study types, direction evidence, answering the question), never a commentary: an RCT design
+  and publication type first, then a title that is not a subgroup/post hoc/design paper, more estimates with a CI, a
+  larger sample, the earlier year. A group with no evidence member links nothing. Only the primary is evidence: the others
+  are left out of the comparison, consensus, conflicts, pools, GRADE-lite, every k and (graded types) the narrative.
+  They stay in `papers` with `related_to` (the primary's ref) and `related_reason` ("same trial (EMPEROR-Preserved)",
+  "same trial (NCT03057951)", "near-identical title, same first author, same sample size" or "... same registry
+  number"); the primary lists them in
+  `related_reports[]`. The Markdown export ends such a paper's line with "Related report of [P1] (same trial
+  (...)), not counted again.". `stats.related_reports` counts them (PRISMA 2020 counts studies and reports apart). Scoping
+  reviews map every report and link none. Results stored before Plan 20 Task 10 have none of these keys.
 - No direction logic at all (empty consensus and conflicts, every cell `direction` `"unclear"`) for scoping reviews,
   for themes reviews (every ticked study type is Qualitative or Mixed methods), for `prevalence` and `diagnosis`
   questions, and for `other` questions with no evidence outcome measured as HR/OR/RR/RD/MD/SMD/r (with or without a
@@ -329,13 +462,25 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 - Imprecision: the primary outcome's sample size (the graded body's primary studies summed, or the largest
   same-tier SR/MA in that row, whichever is larger; participants outside the graded body never count) below 400, or
   not reported. With one study or one review in the body, also one level down (at most one level for the domain)
-  when its 95% CI includes no effect, or when it is non-significant and reports no CI.
+  when its 95% CI includes no effect, or when it is non-significant and reports no CI. Since Plan 20 Task 10 the
+  certainty of a body of one primary study is capped at moderate ("imprecision: one study for ... (k = 1): its
+  estimate is not replicated by another study, so the certainty is capped at moderate"): one trial per outcome is
+  never `high`. It is a cap, not a downgrade: one observational study keeps its tier (`low`), and a single SR/MA,
+  which already combines studies, is not capped.
+- A review-discordant split on the primary outcome (above) is recorded as "minor inconsistency: systematic reviews
+  and primary studies point different ways ..." without a downgrade.
+- The baseline handed to the narrative model (internal, not a result key) also carries `k` (the graded body on the
+  primary outcome) and `studies` (all graded cards).
 - Indirectness, publication bias and upgrades for observational evidence are not assessed (the factors say so).
 - The meta-analysis pooled-grade reasons (above) still apply once per domain on top of this baseline.
 - `synthesis.evidence_rationale` must agree with these factors. It is reconciled in code, without a model round:
   when it omits a downgraded domain, the missing downgrade is appended from the factors, and when it states another
-  starting level, the rationale is replaced with the factors.
-  `result.quality.prose_check.rationale_fixed` is `"replaced"`, `"appended"` or `null`.
+  starting level, the rationale is replaced with the factors. Since Plan 20 Task 10 a rationale sentence that claims
+  what the data do not show is removed first: a count of trials/studies that is neither `k` nor `studies`, or
+  consistency, agreement "across trials" or replication when the primary outcome has one study ("consistent with
+  ..." comparisons are allowed). A rationale left empty is replaced with the factors.
+  `result.quality.prose_check.rationale_fixed` is `"replaced"`, `"appended"`, `"trimmed"` (sentences removed, nothing
+  else needed) or `null`.
 
 **Grounded prose (Plan 19).** The executive summary, the evidence rationale (graded types), each research gap, each
 conflict explanation and each conflict `likely_reasons` item are checked sentence by sentence, in English before
@@ -378,8 +523,11 @@ failure-isolated like pooling: an error is logged in `errors` and the step falls
 grade with a factor that says so, the factors as rationale, or the card as extracted) without failing the review.
 Graded summaries use GRADE certainty wording (moderate "probably", low "may", very low "very uncertain"); when the
 summary lacks the wording for its final `evidence_strength`, a fixed certainty sentence is appended.
+Known gap: only numbers written in digits are checked; number words ("three trials", "half", "thirty-two percent")
+pass the prose and numberless checks.
 `result.quality.prose_check` is `{numbers_removed, measures_fixed, measures_removed, population_removed,
-certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, conflict_repairs, rationale_fixed}` (absent for results
+certainty_added, repairs, conflict_sentences_removed, conflict_measures_fixed, conflict_repairs, rationale_fixed}`, plus
+(Plan 20) `answer_removed`, `key_findings_removed` and `key_findings_certainty_lead` (absent for results
 stored before Plan 19); `repairs` and `conflict_repairs` count the model rounds the check sent back for repair.
 `check_failed: true` is added only when the check crashed and failed closed (summary or conflict explanation
 replaced by its fixed fallback). `numbers_removed` also counts removed research-gap sentences, and
@@ -394,7 +542,11 @@ replaced in place); anything else keeps the item in English. A completeness chec
 are still English (fewer than 40% Thai letters once citations, English-only parentheticals, proper names (runs of two or
 more capitalised words), abbreviations and identifiers are ignored; one-word names may stay English) and retries them
 once, in chunks of 5, at most 60 items. When more than half of the first-pass chunks failed outright (an outage or
-timeouts), the items of those chunks are not re-sent; the retry pass never fails the review.
+timeouts), the items of those chunks are not re-sent; the retry pass never fails the review. Since Plan 20 Task 10
+proper names also include capitalised runs with inner capitals ("ScreenPoint Medical"), a capitalised word the
+translation copies verbatim from its source is a name kept on purpose (not English left over; a sentence-initial
+word with an ordinary English ending, such as "Patients", is not), and in the retry pass a half-translated item gets
+the repair rounds (`max_repairs`) that only an echoed item got before.
 `result.quality.localize` is `{untranslated, retried, citations_restored}` over the cards and the synthesis (Thai
 reviews only; absent for English reviews and for results stored before Plan 19); `untranslated` counts the items still
 English after the retry. `result.quality.localization_kept_english` still counts the items that fell back to English.
@@ -404,7 +556,11 @@ Plan 19 Task 6 adds these `result.quality` keys. Each one is absent when its sta
 - `summary_uncited`: the number of analysed papers the executive summary never cites. Grouped (`[P1, P4]`) and ranged (`[P1-P3]`) citations count. It is `null` when there is no model-written summary (withheld or failed).
 - `second_vote_skipped`: `true` when the borderline second vote was skipped because `screener_secondary` is the screener's model.
 - `normalization_pairs`: `{pairs, sent}`, the (paper, outcome) pairs found and the representatives sent to the normaliser after deterministic pre-clustering.
-- `trial_search`: `{queries, hits}` for the meta-analysis Europe PMC RCT search.
+- `trial_search`: `{queries, hits}` for the meta-analysis Europe PMC RCT search. Since Plan 20 Task 10 it also has `failed` (trial searches that still failed after their retries, the trial-name search included), `names` (the harvested trial acronyms) and `name_hits` (hits of the trial-name search).
+
+Plan 20 Task 10 adds:
+- `europepmc_failures`: Europe PMC requests that still failed after their retries (trial searches plus enrichment lookup batches); absent when none failed.
+- `off_focus_demoted`: candidates whose title and abstract name none of the question's key terms (term, MeSH heading or synonym, as a phrase; plurals and "SGLT-2"/"SGLT2" spellings match) and fewer than 2 of their topic words in any order; a title in another script is never demoted. Before the `candidate_limit` cut they move behind the on-topic candidates, in their search order; none is dropped. 0 without a refined question. Measured on the four re-run questions (2026-10-10), 3-55 hits were demoted (unrelated arXiv papers on network admission control, robotics, programming languages) and no paper the re-runs had selected.
 - `localize_templated`: Thai reviews only. The consensus and conflict strings rendered from fixed Thai templates in code instead of being translated.
 
 ### Exports
@@ -415,8 +571,8 @@ The web app also serves the whole interactive report as one HTML file that works
 
 | Format | Contents |
 |---|---|
-| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). A paper with other comparisons (Plan 19) lists them on its line as "Other comparisons, not evidence for the question: …". `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
-| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty), then (Plan 19) `comparison` (the outcome's own comparison) and `matches_question` (`true`/`false`; `false` marks an other comparison, which is not evidence for the review question and whose `direction` is relative to its own comparison; outcomes stored before Plan 19 are `true`). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
+| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). Since Plan 20 it starts with "## Answer" (`synthesis.answer`) and "## Key findings" (one line per finding: outcome, statement, refs, k and certainty) before the summary; a "## Methods" block before the papers lists the search date (`methods.searched_at`), the sources with their record counts (`methods.sources`), the queries, the models and the prompt version. Qualitative and mixed-methods cells in the comparison table carry no direction word. A paper with other comparisons (Plan 19) lists them on its line as "Other comparisons, not evidence for the question: …". `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
+| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty; for qualitative and mixed-methods papers, `direction` and `overall_direction` are empty), then (Plan 19) `comparison` (the outcome's own comparison) and `matches_question` (`true`/`false`; `false` marks an other comparison, which is not evidence for the review question and whose `direction` is relative to its own comparison; outcomes stored before Plan 19 are `true`). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
 | `json` | `{review_id, topic, language, created_at, finished_at, result}` |
 
 ### `GET /api/v1/status`

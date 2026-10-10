@@ -15,6 +15,7 @@ from app.harness.design import (
     check_design_consistency,
     design_problems,
     settle_design_category,
+    strip_directions,
     strip_non_quantitative,
 )
 from app.harness.runner import HarnessResult
@@ -157,6 +158,10 @@ def make_read_paper(deps):
                 kept = int(spec.verify_quotes and stripped.sample_size is not None)
                 verified = total = kept
                 unverified = [u for u in unverified if u["field"] != "effect"]
+                # a theme compares nothing: no other comparisons are left on the card (Plan 20 Task 10)
+                comparison_counts["other_comparisons"] = sum(1 for o in stripped.outcomes if not o.matches_question)
+            if (payload.get("review_type") or "slr") == "scoping":  # charts, no claims of effect (Plan 20 Task 10)
+                stripped = strip_directions(stripped)
             entry["card"] = stripped.model_dump()
         if isinstance(primary, BaseException) and not isinstance(primary, LLMError):
             raise primary

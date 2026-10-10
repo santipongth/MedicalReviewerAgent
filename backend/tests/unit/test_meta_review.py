@@ -399,7 +399,8 @@ def test_markdown_pooled_section():
     assert "**Review type:** Meta-analysis" in md and POOLED_HEADING in md
     p = r["meta_analysis"]["pools"][0]
     est = p["pooled"]
-    line = next(x for x in md.splitlines() if x.startswith("- **Primary outcome**"))
+    pooled_part = md[md.index(POOLED_HEADING):]  # the key findings (Plan 20) also name the primary outcome
+    line = next(x for x in pooled_part.splitlines() if x.startswith("- **Primary outcome**"))
     assert line.startswith(f"- **Primary outcome** — HR, observational studies, k=3: {est['est']:.2f} "
                            f"(95% CI {est['ci_lower']:.2f} to {est['ci_upper']:.2f}) _(computed)_; "
                            f"I² {p['i2']:.0f}%, τ² {p['tau2']:.3f}. Inputs: P3 0.84 [0.72, 0.98] w ")
