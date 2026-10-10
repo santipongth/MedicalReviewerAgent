@@ -7,9 +7,11 @@ const LEVELS: EvidenceStrength[] = ["very_low", "low", "moderate", "high"];
 /**
  * GRADE-style certainty: four circles, the first n marked with a plus (⊕⊕◯◯ = low), drawn in ink (never a finding
  * colour), plus the level as text. The circles are decoration; the accessible name is the level's words.
+ * label: true = the level as visible text; false = screen-reader text only; "silent" = nothing (the level is already
+ * spoken by text next to it, so it is never announced twice).
  */
 export function CertaintyMark({ level, lang, label = true, className = "" }: {
-  level: EvidenceStrength; lang: Lang; label?: boolean; className?: string;
+  level: EvidenceStrength; lang: Lang; label?: boolean | "silent"; className?: string;
 }) {
   const n = LEVELS.indexOf(level) + 1;
   const name = L(lang, `ความแข็งแรงของหลักฐาน${STRENGTH_LABEL.th[level]}`, `${STRENGTH_LABEL.en[level]} certainty`);
@@ -24,7 +26,7 @@ export function CertaintyMark({ level, lang, label = true, className = "" }: {
           </g>
         ))}
       </svg>
-      {label ? <span>{STRENGTH_LABEL[lang][level]}</span> : <span className="sr-only">{name}</span>}
+      {label === true ? <span>{STRENGTH_LABEL[lang][level]}</span> : label === false ? <span className="sr-only">{name}</span> : null}
     </span>
   );
 }

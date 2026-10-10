@@ -72,7 +72,10 @@ describe("Report", () => {
   it("lists a paper whose extraction failed with its reason", () => {
     render(<Report review={reviewFixture} />);
     expect(screen.getByText(/Antidiabetic drugs and adenoma/)).toBeInTheDocument();
-    expect(screen.getByText(/อ่านไม่สำเร็จ/)).toBeInTheDocument();
+    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    expect(within(papers).getByText(/อ่านไม่สำเร็จ/)).toBeInTheDocument();
+    // the title block counts only the studies that were read, and names the one that was not
+    expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("4 ฉบับ (อ่านไม่สำเร็จอีก 1)");
   });
 
   it("filters by study-design category and shows the category with the paper's own description", async () => {
@@ -490,7 +493,8 @@ describe("Report per review type", () => {
     expect(screen.getByRole("heading", { name: "การวิเคราะห์อภิมาน: รวมผลไม่ได้" })).toBeInTheDocument();
     expect(screen.getByText(/อย่างน้อย 3 ฉบับต่อผลลัพธ์/)).toBeInTheDocument();
     expect(screen.queryByText(/ไม่ใช่ผลจากงานวิจัยฉบับใด/)).toBeNull();
-    expect(b.container.querySelector(".num-computed")).toBeNull();
+    // no pooled value (the SoF participant sums are the only computed numbers left)
+    expect([...b.container.querySelectorAll(".num-computed")].filter((el) => !el.closest("[data-participants]"))).toHaveLength(0);
     b.unmount();
     const slr = render(<Report review={{ ...metaReviewFixture, result: { ...metaReviewFixture.result!, review_type: "slr" as const } }} />);
     expect(slr.container.querySelector("#h-meta")).toBeNull();

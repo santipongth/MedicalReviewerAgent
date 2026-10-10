@@ -83,10 +83,42 @@ test("the bottom line and key findings: computed pool, verified range, the ratio
   await expect(answer.locator(".num-verified")).toHaveCount(0);
   const why = answer.getByText("เหตุผลของระดับหลักฐาน");
   await expect(why).toBeVisible();
+  // the safety outcome's cards report the primary outcome only, so its SoF effect shows no number
   const sof = page.getByRole("table", { name: /ตารางสรุปผลการศึกษาตามผลลัพธ์/ });
-  await sof.getByRole("button", { name: "0.84" }).click();
-  await expect(page.getByRole("complementary", { name: /ต้นฉบับ/ })).toContainText("Simulated study 3");
+  const safety = sof.locator("tbody", { has: page.getByRole("rowheader", { name: "ผลด้านความปลอดภัย" }) });
+  await expect(safety.locator(".num-verified")).toHaveCount(0);
   // Thai reading text at 17px / 1.75
   const size = await answer.locator("[data-prose]").evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight]);
   expect(size).toEqual(["17px", `${17 * 1.75}px`]);
 });
+
+test("SLR summary of findings: a verified range opens its sentence in the rail", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, P20_FIXTURES.slr);
+  const sof = page.getByRole("table", { name: /ตารางสรุปผลการศึกษาตามผลลัพธ์/ });
+  await sof.getByRole("button", { name: "0.86" }).click();
+  await expect(page.getByRole("complementary", { name: /ต้นฉบับ/ })).toContainText("Metformin and incident colorectal cancer");
+});
+
+for (const type of ["slr", "meta"] as const) {
+  test(`${type} summary of findings at 1440: every column, certainty included, is visible with no sideways scroll`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await open(page, P20_FIXTURES[type]);
+    const region = page.getByRole("region", { name: "ตารางสรุปผลการศึกษาตามผลลัพธ์" });
+    const fits = await region.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+    expect(fits).toBe(true);
+    const box = (await region.boundingBox())!;
+    const head = (await region.getByRole("columnheader", { name: "ความแข็งแรงของหลักฐาน" }).boundingBox())!;
+    expect(head.x + head.width).toBeLessThanOrEqual(box.x + box.width + 1);
+    await expect(region.locator("[data-sof-statement]").first()).toBeVisible();
+  });
+
+  test(`${type} summary of findings at 390: stacked cards, no sideways scroll`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, P20_FIXTURES[type]);
+    const region = page.getByRole("region", { name: "ตารางสรุปผลการศึกษาตามผลลัพธ์" });
+    expect(await region.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    expect(await region.locator("tbody").first().evaluate((el) => getComputedStyle(el).display)).toBe("block");
+    await expect(region.locator("[data-certainty]").first()).toBeVisible();
+  });
+}

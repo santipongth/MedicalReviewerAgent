@@ -566,6 +566,18 @@ export const narrativeP20ReviewFixture: Review = {
         { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "งานเชิงปริมาณงานเดียวพบความเสี่ยงต่ำลง", refs: ["P3"], k: 1 },
       ],
     },
+    // The English rows name the outcomes as the cards do, so P3's verified HR matches "CRC incidence" exactly.
+    synthesis_en: {
+      ...qualitativeReviewFixture.result!.synthesis!,
+      executive_summary: "Patients fear injections and stigma [P1, P2]; one quantitative study found a lower risk [P3].",
+      comparison: enRows(qualitativeReviewFixture.result!.synthesis!.comparison!, ["Fear of injections", "CRC incidence"]),
+      consensus: [], conflicts: [],
+      answer: "Patients fear injections and stigma, which hold back starting insulin.",
+      key_findings: [
+        { outcome: "Fear of injections", statement: "Qualitative and mixed-methods studies both found fear of needles and stigma.", refs: ["P1", "P2"], k: 2 },
+        { outcome: "CRC incidence", statement: "One quantitative study found a lower risk.", refs: ["P3"], k: 1 },
+      ],
+    },
     methods: methodsFixture({ synthesis: { model: DEEPSEEK, pooling: null, grading: null } }),
   },
 };

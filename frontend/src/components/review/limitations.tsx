@@ -76,6 +76,8 @@ export function Limitations({ result, type, lang }: { result: ReviewResult; type
   const fullTextEra = s.with_fulltext != null; // results stored before abstract-only reading
   const models = modelsUsed(result);
   const pooled = !!result.meta_analysis?.pools?.length;
+  // Only a review that was actually graded claims a GRADE-lite certainty (legacy results keep their "very low" fallback).
+  const graded = isGraded(type) && (type === "legacy" || result.synthesis?.evidence_strength != null);
   const items: [string, ReactNode][] = [
     ["text", fullTextEra
       ? L(lang, "รีวิวนี้ทำก่อนเปลี่ยนเป็นอ่านเฉพาะบทคัดย่อ บางงานอ่านจากฉบับเต็ม บางงานอ่านเฉพาะบทคัดย่อ", "This review predates abstract-only reading: some studies were read in full text, others from the abstract only")
@@ -97,9 +99,10 @@ export function Limitations({ result, type, lang }: { result: ReviewResult; type
     ["appraisal", type === "scoping"
       ? L(lang, "ไม่ได้ประเมินคุณภาพหรือความเสี่ยงอคติของงานวิจัย ตามแนวทางของการทบทวนขอบเขต", "Study quality and risk of bias were not appraised, as is usual for a scoping review")
       : L(lang, "ความเสี่ยงอคติประเมินโดยโมเดลจากบทคัดย่อ ไม่ได้ใช้เครื่องมือมาตรฐาน (เช่น RoB 2, ROBINS) แบบเต็ม", "Risk of bias was judged by the model from the abstract, not with a full standard tool (such as RoB 2 or ROBINS)")],
-    ["certainty", isGraded(type)
+    ["certainty", graded
       ? L(lang, "ระดับความแข็งแรงของหลักฐานเป็น GRADE-lite ที่โมเดลภาษาประเมิน ไม่ใช่การประเมิน GRADE โดยผู้เชี่ยวชาญ", "The certainty of evidence is a GRADE-lite judgement by a language model, not an expert GRADE assessment")
-      : L(lang, "ไม่ได้ประเมินความแข็งแรงของหลักฐาน", "The certainty of evidence was not assessed")],
+      : L(lang, "ไม่ได้ประเมินความแข็งแรงของหลักฐาน", "The certainty of evidence was not assessed")
+        + (isGraded(type) && result.synthesis?.evidence_rationale ? ` (${result.synthesis.evidence_rationale})` : "")],
     ["pooled", pooled ? L(lang, "ค่ารวมคำนวณจากตัวเลขในบทคัดย่อ (random effects) ซึ่งอาจปนค่าที่ปรับและไม่ปรับปัจจัยกวน",
       "Pooled values are computed from the abstracts' numbers (random effects), which may mix adjusted and unadjusted estimates") : null],
   ];

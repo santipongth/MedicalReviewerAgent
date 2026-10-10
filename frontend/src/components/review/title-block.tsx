@@ -53,7 +53,9 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
   const date = reportDate(result.methods?.searched_at ?? review.started_at ?? review.created_at, lang);
   const sources = sourceNames(result.methods?.sources);
   const queries = result.queries?.length ?? 0;
-  const included = result.papers?.length ?? 0;
+  // Studies actually read (a card was extracted); papers that could not be read are counted aside.
+  const included = (result.papers ?? []).filter((p) => p.card || p.card_en).length;
+  const unread = (result.papers?.length ?? 0) - included;
   return (
     <header aria-labelledby="h-title" className="grid gap-4">
       <h1 id="h-title" className="max-w-[44ch] text-[clamp(1.4rem,2.4vw,1.9rem)] leading-snug font-semibold break-words">
@@ -75,6 +77,11 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
         {date && <Meta label={L(lang, "ค้นเมื่อ", "Searched")}>{date}</Meta>}
         <Meta label={L(lang, "งานวิจัยที่รวม", "Studies included")}>
           <span className="tabular-nums">{included}</span> {L(lang, "ฉบับ", included === 1 ? "study" : "studies")}
+          {unread > 0 && (
+            <span className="text-[0.82rem] text-muted" data-unread>
+              {" "}{L(lang, `(อ่านไม่สำเร็จอีก ${unread})`, `(${unread} more could not be read)`)}
+            </span>
+          )}
         </Meta>
         {(sources.length > 0 || queries > 0) && (
           <Meta label={L(lang, "แหล่งข้อมูล", "Sources")}>

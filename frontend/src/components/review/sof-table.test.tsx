@@ -14,57 +14,94 @@ function rowsOf(review: Review, lang: "th" | "en" = "th"): SofRow[] {
   }, s.evidence_strength);
 }
 
+/** One outcome's group: its main row (studies and participants, effect, certainty) and its "what it means" line. */
+function outcome(name: RegExp) {
+  const group = screen.getByRole("rowheader", { name }).closest("tbody")!;
+  const [studies, effect, certainty] = within(group.querySelector("tr")!).getAllByRole("cell");
+  return { group, studies, effect, certainty, means: group.querySelector<HTMLElement>("[data-sof-statement]")! };
+}
+
 describe("SofTable", () => {
-  it("a captioned table with scoped headers and the LLM-judgement note", () => {
+  it("a captioned table with scoped headers and the LLM-judgement note, labelled as the review-level grade", () => {
     render(<SofTable rows={rowsOf(slrP20ReviewFixture)} lang="th" onSelect={() => {}} graded />);
     const table = screen.getByRole("table", { name: /ตารางสรุปผลการศึกษาตามผลลัพธ์.*ไม่ใช่ GRADE โดยผู้เชี่ยวชาญ/ });
     expect(table.querySelector("caption")).not.toBeNull();
     expect(within(table).getAllByRole("columnheader").every((th) => th.getAttribute("scope") === "col")).toBe(true);
     expect(within(table).getAllByRole("rowheader").every((th) => th.getAttribute("scope") === "row")).toBe(true);
+    expect(within(table).getAllByRole("columnheader").map((th) => th.textContent)).toEqual(["ผลลัพธ์", "การศึกษาและผู้เข้าร่วม", "ขนาดผล", "ความแข็งแรงของหลักฐาน"]);
     expect(screen.getByText(/ไม่ใช่การประเมิน GRADE โดยผู้เชี่ยวชาญ/)).toBeInTheDocument();
+    expect(screen.getByText(/ระดับเดียวกันทุกผลลัพธ์ \(ระดับของทั้งรีวิว/)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "ตารางสรุปผลการศึกษาตามผลลัพธ์" })).toHaveAttribute("tabindex", "0");
+    // no forced width: the table fits its column (the card layout takes over below md)
+    expect(table.className).not.toMatch(/min-w-/);
+    // every outcome group has a unique key-carrying tbody
+    expect(table.querySelectorAll("tbody[data-sof-row]")).toHaveLength(2);
   });
 
-  it("SLR row: k and designs, participants as a labelled count, the verified range, ⊕ certainty, the statement", async () => {
+  it("SLR row: k and designs, participants as a computed sum, the verified range, ⊕ certainty, the statement", async () => {
     const onSelect = vi.fn();
     render(<SofTable rows={rowsOf(slrP20ReviewFixture)} lang="th" onSelect={onSelect} graded />);
-    const row = screen.getByRole("row", { name: /^อุบัติการณ์มะเร็งลำไส้ใหญ่/ });
-    const cells = within(row).getAllByRole("cell");
-    expect(cells[0]).toHaveTextContent("4Cohort 2Case-control 1SR/MA ของงานเชิงสังเกต 1");
-    expect(cells[1]).toHaveTextContent("49,444");
-    expect(cells[1]).toHaveTextContent("รวมจากที่ตรวจได้ 2 จาก 3 การศึกษา · ไม่นับ SR/MA");
-    expect(cells[1].querySelector(".num-verified")).toBeNull(); // a sum is a count, never the verified face
-    const lo = within(cells[2]).getByRole("button", { name: "0.80" });
-    const hi = within(cells[2]).getByRole("button", { name: "0.86" });
+    const inc = outcome(/^อุบัติการณ์มะเร็งลำไส้ใหญ่/);
+    expect(inc.studies).toHaveTextContent(/^4 การศึกษาCohort 2Case-control 1SR\/MA ของงานเชิงสังเกต 1ผู้เข้าร่วม/);
+    const sum = within(inc.studies).getByRole("img", { name: /^49,444 \(คำนวณโดยระบบ/ });
+    expect(sum).toHaveClass("num-computed");
+    expect(inc.studies).toHaveTextContent("รวมจากที่ตรวจได้ 2 จาก 3 การศึกษา · ไม่นับ SR/MA");
+    expect(inc.studies.querySelector(".num-verified, .hole")).toBeNull();
+    const lo = within(inc.effect).getByRole("button", { name: "0.80" });
+    const hi = within(inc.effect).getByRole("button", { name: "0.86" });
     for (const el of [lo, hi]) expect(el).toHaveClass("num-verified");
-    expect(cells[2]).toHaveTextContent(/HR\s*0\.80\s*ถึง\s*0\.86/);
+    expect(inc.effect).toHaveTextContent(/HR\s*0\.80\s*ถึง\s*0\.86/);
     await userEvent.click(hi);
     expect(onSelect).toHaveBeenCalledWith("P1", "CRC incidence");
-    expect(cells[3].querySelector("[data-certainty='low']")).not.toBeNull();
-    expect(cells[3]).toHaveTextContent("ต่ำ");
-    expect(cells[4]).toHaveTextContent(/^งานเชิงสังเกตส่วนใหญ่/);
-    // a row whose study reports no number points to the studies; no invented value
-    const mort = screen.getByRole("row", { name: /^การเสียชีวิต/ });
-    expect(within(mort).getAllByRole("cell")[2]).toHaveTextContent("ดูรายงานแต่ละการศึกษา");
+    expect(inc.certainty.querySelector("[data-certainty='low']")).not.toBeNull();
+    expect(inc.certainty).toHaveTextContent("ต่ำระดับของทั้งรีวิว");
+    expect(inc.means).toHaveTextContent(/^ความหมายงานเชิงสังเกตส่วนใหญ่/);
+    // a one-study row with no effect size says so; no pointer, no invented value
+    const mort = outcome(/^การเสียชีวิต/);
+    expect(mort.effect).toHaveTextContent("ไม่ได้รายงานขนาดผล");
+    expect(mort.effect.querySelector(".num-verified, .num-computed, .hole")).toBeNull();
   });
 
-  it("meta-analysis row: the pooled value is computed (ComputedNumber), never the verified face", () => {
+  it("meta-analysis row: the pooled value is computed (ComputedNumber), never the verified face; the CI stays whole", () => {
     render(<SofTable rows={rowsOf(metaP20ReviewFixture)} lang="th" onSelect={() => {}} graded />);
-    const row = screen.getByRole("row", { name: /^ผลลัพธ์หลัก/ });
-    const effect = within(row).getAllByRole("cell")[2];
-    expect(within(effect).getByRole("img", { name: /^0\.96 \(คำนวณโดยระบบ/ })).toHaveClass("num-computed");
-    expect(effect.querySelector(".num-verified")).toBeNull();
-    expect(within(row).getAllByRole("cell")[3].querySelector("[data-certainty='very_low']")).not.toBeNull();
+    const primary = outcome(/^ผลลัพธ์หลัก/);
+    const est = within(primary.effect).getByRole("img", { name: /^0\.96 \(คำนวณโดยระบบ/ });
+    expect(est).toHaveClass("num-computed");
+    expect(primary.effect.querySelector(".num-verified")).toBeNull();
+    const ci = within(primary.effect).getByRole("img", { name: /^0\.78–1\.17/ });
+    expect(ci.closest(".whitespace-nowrap")).toHaveTextContent(/^\(95% CI\s*0\.78–1\.17\s*\)$/);
+    expect(primary.certainty.querySelector("[data-certainty='very_low']")).not.toBeNull();
+    // the safety outcome: its cards report the primary outcome only, so no number is shown under it
+    const safety = outcome(/^ผลด้านความปลอดภัย/);
+    expect(safety.effect.querySelector(".num-verified")).toBeNull();
+    expect(safety.effect).toHaveTextContent("ดูรายงานแต่ละการศึกษา");
   });
 
-  it("no verified participants is a not-verified gap; ungraded rows say so; English chrome", () => {
+  it("participants: not reported is plain text, SR/MA only is a dash, a verification failure is a gap", () => {
     const [row] = rowsOf(slrP20ReviewFixture, "en");
-    render(<SofTable rows={[{ ...row, participants: null, certainty: null }]} lang="en" onSelect={() => {}} graded={false} />);
-    const cells = within(screen.getByRole("row", { name: /^CRC incidence/ })).getAllByRole("cell");
-    expect(cells[1]).toHaveTextContent("not verified");
-    expect(cells[3]).toHaveTextContent("Not assessed");
-    expect(screen.getByRole("columnheader", { name: "Participants" })).toBeInTheDocument();
+    render(<SofTable rows={[
+      { ...row, key: "a", outcome: "A", participants: { kind: "not_reported" }, certainty: null, certaintySource: null },
+      { ...row, key: "b", outcome: "B", participants: { kind: "reviews_only", reviews: 2 } },
+      { ...row, key: "c", outcome: "C", participants: { kind: "blanked" } },
+    ]} lang="en" onSelect={() => {}} graded={false} />);
+    const a = outcome(/^A$/);
+    expect(a.studies).toHaveTextContent("Not reported");
+    expect(a.studies.querySelector(".hole, .num-computed")).toBeNull();
+    expect(a.certainty).toHaveTextContent("Not assessed");
+    expect(outcome(/^B$/).studies).toHaveTextContent(/—SR\/MA only/);
+    expect(within(outcome(/^C$/).studies).getByText("not verified")).toHaveClass("hole");
+    expect(screen.getByRole("columnheader", { name: "Studies and participants" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Summary of findings" })).toBeInTheDocument();
+  });
+
+  it("mixed measures are counted per measure, never ranged, and never print 'other' or 'none'", () => {
+    const [row] = rowsOf(slrP20ReviewFixture, "en");
+    render(<SofTable rows={[{ ...row, effect: { kind: "mixed", measures: [{ measure: "HR", count: 1 }, { measure: null, count: 2 }] } }]}
+      lang="en" onSelect={() => {}} graded />);
+    const r = outcome(/^CRC incidence/);
+    expect(r.effect).toHaveTextContent("Measures differ; no rangeHR 1 · unnamed measure 2 studies");
+    expect(r.effect).not.toHaveTextContent(/\bother\b|\bnone\b/);
+    expect(r.effect.querySelector(".num-verified")).toBeNull();
   });
 
   it("renders nothing with no rows", () => {

@@ -25,7 +25,8 @@ describe("TitleBlock", () => {
     const value = (label: string) => within(dl).getByText(label).nextElementSibling!;
     expect(value("ประเภท")).toHaveTextContent("การทบทวนวรรณกรรมอย่างเป็นระบบ");
     expect(value("ค้นเมื่อ")).toHaveTextContent("5 ตุลาคม 2569 (ค.ศ. 2026)");
-    expect(value("งานวิจัยที่รวม")).toHaveTextContent("5 ฉบับ");
+    // P5 could not be read: 4 studies read, the unread one counted aside
+    expect(value("งานวิจัยที่รวม")).toHaveTextContent("4 ฉบับ (อ่านไม่สำเร็จอีก 1)");
     expect(value("งานวิจัยที่รวม").querySelector(".tabular-nums")).not.toBeNull();
     expect(value("แหล่งข้อมูล")).toHaveTextContent("PubMed, Europe PMC, OpenAlex");
     expect(value("ภาษา")).toHaveTextContent("ภาษาไทย");
@@ -46,7 +47,7 @@ describe("TitleBlock", () => {
     const dl = screen.getByLabelText("Report details");
     expect(dl).toHaveTextContent("Systematic review");
     expect(dl).toHaveTextContent("5 October 2026");
-    expect(dl).toHaveTextContent("5 studies");
+    expect(dl).toHaveTextContent("4 studies (1 more could not be read)");
     expect(screen.getByText("Automated · abstracts only · not medical advice")).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Report language" })).toBeInTheDocument();
   });

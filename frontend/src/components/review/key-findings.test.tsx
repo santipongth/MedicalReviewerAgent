@@ -55,6 +55,20 @@ describe("KeyFindings", () => {
     expect(within(single).getByRole("button", { name: "0.71–0.90" })).toHaveClass("num-verified");
   });
 
+  it("a one-study finding with no effect size says 'no effect size reported', never a gap", () => {
+    render(<KeyFindings findings={views(slrP20ReviewFixture)} lang="th" onSelect={() => {}} />);
+    const [several, single] = items();
+    expect(single).toHaveTextContent("ไม่ได้รายงานขนาดผล");
+    expect(single.querySelector(".hole, .num-verified")).toBeNull();
+    expect(several).not.toHaveTextContent("ไม่ได้รายงานขนาดผล"); // k > 1: only the count
+  });
+
+  it("the pooled interval and its brackets never wrap apart", () => {
+    render(<KeyFindings findings={views(metaP20ReviewFixture)} lang="th" onSelect={() => {}} />);
+    const ci = within(items()[0]).getByRole("img", { name: /^0\.78–1\.17/ });
+    expect(ci.closest(".whitespace-nowrap")).toHaveTextContent(/^\(95% CI\s*0\.78–1\.17\s*\)$/);
+  });
+
   it("a blanked single-study number is a visible gap", () => {
     const f: FindingView = { outcome: "X", statement: "s", refs: ["P2"], k: 1, themes: false, pools: [],
       effect: { kind: "blanked", ref: "P2", outcomeKey: "CRC incidence" } };

@@ -30,7 +30,11 @@ describe("Plan 20 answer-first report, per review type", () => {
     const answer = answerSection();
     expect(within(answer).getByText(/^เมตฟอร์มินอาจลดอุบัติการณ์/)).toHaveClass("text-[17px]", "leading-[1.75]");
     // the certainty badge, with the rationale behind a disclosure
-    expect(answer.querySelector("[data-certainty='low']")).not.toBeNull();
+    const mark = answer.querySelector("[data-certainty='low']")!;
+    expect(mark).not.toBeNull();
+    // the level is spoken once: the visible "ต่ำ" next to the term, the ⊕ mark adds no screen-reader text
+    expect(mark.textContent).toBe("");
+    expect(mark.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     const why = within(answer).getByText("เหตุผลของระดับหลักฐาน").closest("details")!;
     expect(why).not.toHaveAttribute("open");
     expect(why).toHaveTextContent("การศึกษาเชิงสังเกตส่วนใหญ่และผลขัดแย้งกัน");
@@ -67,7 +71,8 @@ describe("Plan 20 answer-first report, per review type", () => {
     expect(within(answer).getByText("การวิเคราะห์อภิมาน (รวมผลไม่ได้)")).toBeInTheDocument();
     expect(within(answer).getByText(/^รวมผลไม่ได้:/)).toBeInTheDocument();
     expect(answer.querySelector("[data-bottom-pools]")).toBeNull();
-    expect(container.querySelector(".num-computed")).toBeNull();
+    // no pooled value anywhere (the only computed numbers are the SoF participant sums)
+    expect([...container.querySelectorAll(".num-computed")].filter((el) => !el.closest("[data-participants]"))).toHaveLength(0);
     expect(tocIds()).toContain("h-sof");
   });
 

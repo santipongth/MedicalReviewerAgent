@@ -24,11 +24,20 @@ export function PooledValue({ pool, lang }: { pool: PooledText; lang: Lang }) {
     <span className="inline-flex flex-wrap items-baseline gap-x-1.5" data-pooled>
       <span className="font-display">{L(lang, "ค่ารวม", "Pooled")} {pool.measure}</span>
       <ComputedNumber value={pool.est} lang={lang} />
-      <span className="font-display text-muted">(95% CI</span>
-      <ComputedNumber value={pool.ci} lang={lang} tag={false} />
-      <span className="font-display text-muted">) · {pool.group} · k = <span className="tabular-nums">{pool.k}</span></span>
+      {/* the interval and its brackets never break apart */}
+      <span className="whitespace-nowrap">
+        <span className="font-display text-muted">(95% CI </span>
+        <ComputedNumber value={pool.ci} lang={lang} tag={false} />
+        <span className="font-display text-muted">)</span>
+      </span>
+      <span className="font-display text-muted">{pool.group} · k = <span className="tabular-nums">{pool.k}</span></span>
     </span>
   );
+}
+
+/** A one-study outcome with no effect size for it: plain text, never a gap (nothing failed verification). */
+export function NoEffectText({ lang }: { lang: Lang }) {
+  return <span className="text-[0.88rem] text-muted" data-no-effect>{L(lang, "ไม่ได้รายงานขนาดผล", "No effect size reported")}</span>;
 }
 
 /** One study's number: verified (tape, opens its sentence in the rail) or a not-verified gap. */
@@ -64,6 +73,7 @@ export function KeyFindings({ findings, lang, onSelect }: { findings: FindingVie
               <StudyCount k={f.k} lang={lang} themes={f.themes} />
               {f.pools.map((p) => <PooledValue key={p.key} pool={p} lang={lang} />)}
               {!f.pools.length && f.effect && <StudyEffectValue state={f.effect} lang={lang} onSelect={onSelect} />}
+              {!f.pools.length && !f.effect && f.k === 1 && !f.themes && <NoEffectText lang={lang} />}
               {f.refs.length > 0 && <RefButtons refs={f.refs} onSelect={onSelect} lang={lang} />}
             </div>
           </li>

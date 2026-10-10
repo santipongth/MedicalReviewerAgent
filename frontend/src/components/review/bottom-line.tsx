@@ -30,9 +30,11 @@ export function PooledLine({ pool, lang, english }: { pool: Pool; lang: Lang; en
       <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
         <span className="font-display">{pool.measure}</span>
         <ComputedNumber value={fixed(pool.pooled.est, 2)} lang={lang} />
-        <span className="font-display text-muted">(95% CI</span>
-        <ComputedNumber value={`${fixed(pool.pooled.ci_lower, 2)}–${fixed(pool.pooled.ci_upper, 2)}`} lang={lang} tag={false} />
-        <span className="font-display text-muted">)</span>
+        <span className="whitespace-nowrap">
+          <span className="font-display text-muted">(95% CI </span>
+          <ComputedNumber value={`${fixed(pool.pooled.ci_lower, 2)}–${fixed(pool.pooled.ci_upper, 2)}`} lang={lang} tag={false} />
+          <span className="font-display text-muted">)</span>
+        </span>
       </span>
     </li>
   );

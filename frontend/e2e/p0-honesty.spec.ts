@@ -74,7 +74,8 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(section.getByText(/อย่างน้อย 3 ฉบับต่อผลลัพธ์/)).toBeVisible();
     await expect(section.getByText(/ไม่ใช่ผลจากงานวิจัยฉบับใด/)).toHaveCount(0);
     await expect(section.getByText(/ค่ารวมข้างบน/)).toHaveCount(0);
-    await expect(page.locator("[data-computed=true]")).toHaveCount(0);
+    // no pooled value anywhere: the only computed numbers are the summary-of-findings participant sums
+    await expect(page.locator("[data-computed=true]:not([data-participants] [data-computed=true])")).toHaveCount(0);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
     // the whole page: the title-block chip, the bottom-line warn chip and the section

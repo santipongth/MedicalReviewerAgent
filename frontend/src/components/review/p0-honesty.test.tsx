@@ -128,7 +128,8 @@ describe("(e) a meta-analysis that pooled nothing says so", () => {
     expect(section).not.toHaveTextContent("ค่ารวมข้างบน");
     expect(within(section).getByRole("heading", { name: /งานทบทวนอย่างเป็นระบบที่พบ/ })).toBeInTheDocument();
     expect(within(section).getByRole("heading", { name: "ผลที่ไม่ได้นำมารวม" })).toBeInTheDocument();
-    expect(container.querySelector(".num-computed")).toBeNull();
+    // no pooled value anywhere (the only computed numbers are the SoF participant sums)
+    expect([...container.querySelectorAll(".num-computed")].filter((el) => !el.closest("[data-participants]"))).toHaveLength(0);
     // the results group holds the not-pooled meta block; its heading says so (the nav names the group)
     expect(section.closest("section[aria-labelledby='h-results']")).not.toBeNull();
   });

@@ -55,4 +55,12 @@ describe("Limitations", () => {
     const b = renderLim(legacyReviewFixture);
     expect(item(b.container, "text")).toHaveTextContent(/บางงานอ่านจากฉบับเต็ม/);
   });
+
+  it("an SLR left ungraded makes no GRADE-lite claim and says why", () => {
+    const why = "ไม่มีงานวิจัยเชิงปริมาณ";
+    const r = slrP20ReviewFixture.result!;
+    const { container } = renderLim({ ...slrP20ReviewFixture, result: { ...r, synthesis: { ...r.synthesis!, evidence_strength: null, evidence_rationale: why } } });
+    expect(item(container, "certainty")).toHaveTextContent(`ไม่ได้ประเมินความแข็งแรงของหลักฐาน (${why})`);
+    expect(item(container, "certainty")).not.toHaveTextContent("GRADE-lite");
+  });
 });

@@ -129,7 +129,7 @@ export function StrengthLine({ synthesis, lang, quality, type = "legacy", bar = 
         ) : (
         <p className="flex flex-wrap items-center gap-2 font-display font-semibold">
           <Term k="evidenceStrength" lang={lang}>{L(lang, "ความแข็งแรงของหลักฐาน", "Evidence strength")}</Term>: <b>{STRENGTH_LABEL[lang][level]}</b>
-          {bar ? <CertaintyMark level={level} lang={lang} label={false} />
+          {bar ? <CertaintyMark level={level} lang={lang} label="silent" />
             : <span className="font-normal text-muted" data-no-bar>{L(lang, "(จากงานแต่ละฉบับ ไม่มีค่ารวม)", "(from single studies; nothing pooled)")}</span>}
         </p>
         )}
