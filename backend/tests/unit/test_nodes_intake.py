@@ -3,7 +3,7 @@ from langgraph.graph import END
 from app.config import Settings
 from app.graph.graph import GraphDeps
 from app.graph.nodes.intake import make_plan_queries, make_topic_guard, route_after_guard
-from app.graph.prompts import DATA_NOTICE, language_instruction
+from app.graph.prompts import DATA_NOTICE
 from app.graph.schemas import QueryPlan, TopicVerdict
 from app.services.llm import LLMRefusal, LLMs
 from tests.fakes import FakeStructuredLLM
@@ -66,8 +66,9 @@ async def test_plan_queries_dedupes_caps_and_passes_options():
     assert "2015" in user and "RCT" in user and "metformin and CRC" in user
 
 
-def test_language_instruction():
-    assert "Thai" in language_instruction("th") and "English" in language_instruction("en")
+def test_language_instruction_is_gone():  # audit I-18: dead code removed (translation happens last, in localize)
+    from app.graph import prompts
+    assert not hasattr(prompts, "language_instruction")
 
 
 async def test_guard_repairs_a_malformed_answer_instead_of_failing_the_review():

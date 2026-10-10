@@ -18,10 +18,13 @@ def sha(text: str) -> str:
 
 
 SYSTEM_HASHES = {
-    "refine_system": (prompts.refine_system, "c98080d63c4f2c0e1da703789486dad2de1ec2907bb6d7cd9a857da9f9ddfe7c"),
-    "critique_system": (prompts.critique_system, "20dcf2409037bf9ae5854d99b6f9e870af67ac11f80060fe90edc460f86d02d4"),
+    # Plan 19 (prompt_version 2026-10-10.5, audit I-15): refine and critique stay within the user's scope (harm/safety
+    # only for an unrestricted therapy/prevention effect question; the critic removes unrequested sub-questions instead
+    # of asking for safety), and the screener excludes an already-diagnosed population for an incidence question.
+    "refine_system": (prompts.refine_system, "f99a1d12f460a02c1007b06f1b026315be1b14e474d5076866210b8834b5084f"),
+    "critique_system": (prompts.critique_system, "9ac2baeaa7cfc551d12d82a877851b4993d8f6b9b0ecfab116fc156aadc1be04"),
     "plan_system": (prompts.plan_system, "4511213da99591cdf2d72fa93f128ca7fde79a50495585e8689cca18bf71bd58"),
-    "screen_system": (prompts.screen_system, "b5c17e3a4db2afe4da614f31d2bc63613f25b142392f5b2b90840c6dd3fadfb2"),
+    "screen_system": (prompts.screen_system, "83b5e1624088c25bcebe4bc40a4144370ccbcd9311d5a971bcf22adfa9bc3d29"),
     # Plan 19 (prompt_version 2026-10-10.3): extraction states each outcome's comparison and matches_question
     # (audit I-2a); the narrative gets the other-comparison, number/measure, population and GRADE certainty-wording
     # rules (audit I-2b/c, I-14).

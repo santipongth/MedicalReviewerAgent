@@ -49,6 +49,12 @@ class FakeSearxng:
 
 
 class FakeEpmc:
+    trial_queries: list[str]
+
+    async def search_trials(self, query, *, page_size=25):  # meta-analysis RCT search (audit I-9)
+        self.trial_queries = [*getattr(self, "trial_queries", []), query]
+        return []
+
     async def lookup(self, *, dois, pmids):
         return [Candidate(title="Paper 0 about metformin and colorectal cancer", doi="10.1/0", pmcid="PMC0",
                           is_open_access=True, abstract="enriched abstract", engines=["europepmc"])]
@@ -162,8 +168,10 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
     assert r["papers"][0]["card_en"]["population"] == "adults with type 2 diabetes"
     assert r["papers"][0]["verification"]["numbers_verified"] == 2
     assert r["stats"] == {"found": 20, "unique": 10, "with_abstract": 10, "candidates": 10, "screened": 10, "selected": 8,
-                          "extracted": 8, "non_research": 0, "excluded_screening": {},
-                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0}}
+                          "extracted": 8, "non_research": 0, "year_excluded": 0, "no_abstract": 0,
+                          "excluded_screening": {},
+                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
+                                                 "low_relevance": 0}}
     assert r["summary"] == to_thai(r["synthesis_en"]["executive_summary"])
     assert r["synthesis_en"]["executive_summary"].startswith("Metformin")
     assert r["synthesis"]["comparison"][0]["outcome"] == to_thai("Colorectal cancer incidence")

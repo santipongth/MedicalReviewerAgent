@@ -259,8 +259,10 @@ export interface Stats {
   with_fulltext?: number; // legacy
   extracted?: number;
   non_research?: number;
+  year_excluded?: number; // Plan 19: before the year filter's cut-off
+  no_abstract?: number; // Plan 19: no usable abstract (abstract-only review)
   excluded_screening?: Partial<Record<ExclusionReason, number>>;
-  excluded_selection?: { narrative_excluded: number; over_limit: number };
+  excluded_selection?: { narrative_excluded: number; over_limit: number; low_relevance?: number };
 }
 
 export interface ExternalNote {

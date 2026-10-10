@@ -79,7 +79,7 @@ def test_screen_prompt_carries_the_constraint_only_when_ticked():
 
 def test_slr_pins_unchanged_when_nothing_is_ticked():
     assert hashlib.sha256(prompts.screen_system("slr").encode()).hexdigest() == \
-        "b5c17e3a4db2afe4da614f31d2bc63613f25b142392f5b2b90840c6dd3fadfb2"
+        "83b5e1624088c25bcebe4bc40a4144370ccbcd9311d5a971bcf22adfa9bc3d29"  # 2026-10-10.5: incidence vs prognosis
     same = prompts.screen_user(english_topic="Q?", plan=PLAN, items=ITEMS)
     assert prompts.screen_user(english_topic="Q?", plan=PLAN, items=ITEMS, study_types=[]) == same
     assert prompts.screen_user(english_topic="Q?", plan=PLAN, items=ITEMS, study_types=None) == same

@@ -84,6 +84,9 @@ def make_screen_batch(deps):
         low, high = spec.screen_borderline
         borderline = [r for r in refs if r in decisions and low <= decisions[r]["relevance"] <= high]
         secondary = getattr(deps.llms, "screener_secondary", None)
+        if secondary is not None and getattr(secondary, "model", None) == getattr(deps.llms.screener, "model", 0):
+            secondary = None  # the same model at temperature 0 is no second opinion, only a second bill (audit I-10)
+            quality["second_vote"] = "same_model"
         if borderline and secondary is not None:
             quality["borderline"] = len(borderline)
             try:
@@ -105,7 +108,8 @@ def make_screen_batch(deps):
             quality["disagreements"] = len(disputed)
             if disputed:
                 esc = await runner.escalate(system, user_for(disputed), schema=ScreenBatch,
-                                            validate=_coverage(disputed), reason="disagreement")
+                                            validate=_coverage(disputed), reason="disagreement",
+                                            already_asked=(deps.llms.screener, secondary))
                 resolved = _decisions(esc.value, disputed) if esc and esc.ok else {}
                 if esc:
                     cost += esc.cost
@@ -132,6 +136,7 @@ def make_screen_batch(deps):
 
 MIN_PRIMARY_FOR_NO_REVIEWS = 3
 MIN_MATCHING_DESIGNS = 3
+MIN_INCLUDE_RELEVANCE = 50
 
 
 def make_select_top(deps):
@@ -144,6 +149,12 @@ def make_select_top(deps):
                 best[d["key"]] = d
         by_key = {c["key"]: c for c in state.get("candidates") or []}
         included = [d for d in best.values() if d["include"] and d["key"] in by_key]
+        # Relevance floor (audit I-21): an "include" at relevance 10 contradicts itself. Disputed papers kept for
+        # recall (uncertain) are exempt, and the floor never leaves fewer than MIN_MATCHING_DESIGNS papers.
+        above = [d for d in included if d["relevance"] >= MIN_INCLUDE_RELEVANCE or d.get("uncertain")]
+        low_relevance = 0
+        if len(above) >= MIN_MATCHING_DESIGNS:
+            low_relevance, included = len(included) - len(above), above
         # Ticked study types are enforced here only (the screener just labels designs): a paper whose design maps to none of them is excluded (PRISMA reason
         # study_design). Unknown designs stay. If fewer than MIN_MATCHING_DESIGNS remain, the mismatches are kept
         # after the matches (and flagged) rather than leaving the review empty.
@@ -183,9 +194,12 @@ def make_select_top(deps):
             stats["study_design_relaxed"] = relaxed
         if screening_failed:
             stats["screening_failed"] = screening_failed
+        if low_relevance:
+            stats["low_relevance"] = low_relevance
         return {"selected": selected, "selection_stats": stats,
                 "quality": [{"stage": "select", "narrative_excluded": narrative_excluded,
-                             "study_design_excluded": design_excluded, "study_design_relaxed": relaxed}]}
+                             "study_design_excluded": design_excluded, "study_design_relaxed": relaxed,
+                             "low_relevance": low_relevance}]}
 
     return select_top
 

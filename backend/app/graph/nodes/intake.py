@@ -19,6 +19,7 @@ from app.services.llm import LLMError, LLMOutputError, LLMRefusal
 from app.services.llm_config import HarnessSpec
 
 MAX_QUERIES = 4
+MAX_QUERIES_META = 5  # meta-analysis: one more query (trial names / acronyms) for recall (audit I-9)
 NO_DESIGN_QUERY = {"narrative", "scoping"}  # these want breadth; every other type keeps the design query
 
 
@@ -167,7 +168,8 @@ def _is_primary_design_query(query: str) -> bool:
     return bool(PRIMARY_DESIGN_TERMS.search(query)) and not REVIEW_TERMS.search(query)
 
 
-def ensure_design_query(queries: list[str], question: dict[str, Any] | None) -> list[str]:
+def ensure_design_query(queries: list[str], question: dict[str, Any] | None,
+                        max_queries: int = MAX_QUERIES) -> list[str]:
     """Search engines rank reviews highly; one query naming the right primary design makes sure original studies
     are found too (a review query does not count). Added in code (replacing the last query when the cap is
     reached) if the planner left it out; kept short like the planner's own keyword queries."""
@@ -177,7 +179,7 @@ def ensure_design_query(queries: list[str], question: dict[str, Any] | None) -> 
     intervention = " ".join((question.get("intervention_or_exposure") or "").split()[:4])
     population = " ".join((question.get("population") or "").split()[:3])
     query = " ".join(f"{intervention} {population} {design}".split())
-    return [*queries[: MAX_QUERIES - 1], query] if len(queries) >= MAX_QUERIES else [*queries, query]
+    return [*queries[: max_queries - 1], query] if len(queries) >= max_queries else [*queries, query]
 
 
 def make_plan_queries(deps):
@@ -211,9 +213,10 @@ def make_plan_queries(deps):
             q = " ".join(q.split())
             if q and q.lower() not in seen:
                 seen[q.lower()] = q
-        plan["queries"] = list(seen.values())[:MAX_QUERIES]
+        max_queries = MAX_QUERIES_META if review_type == "meta_analysis" else MAX_QUERIES
+        plan["queries"] = list(seen.values())[:max_queries]
         if review_type not in NO_DESIGN_QUERY:  # narrative/scoping reviews want breadth, not a design query
-            plan["queries"] = ensure_design_query(plan["queries"], question)
+            plan["queries"] = ensure_design_query(plan["queries"], question, max_queries)
         if question:  # PICO comes from the refined question so every stage judges against the same criteria
             for key in ("population", "intervention_or_exposure", "comparator", "outcomes"):
                 plan[key] = question[key]

@@ -39,9 +39,11 @@ from app.harness.localize import Localized, localize_strings, untranslated
 from app.harness.matrix import (
     build_matrix,
     effect_side,
-    fallback_clusters,
+    expand_clusters,
     is_placeholder,
     outcome_pairs,
+    precluster,
+    preclustered,
     repair_clusters,
     validate_clusters,
 )
@@ -79,6 +81,7 @@ DIRECTION_TEXT = {"positive": "findings support the hypothesised effect",
                   "negative": "findings show the opposite effect or harm",
                   "null": "findings show no significant association"}
 _CITED = re.compile(r"\[P\d+")
+_CITE_GROUPS = re.compile(r"\[([^\]]*)\]")
 NO_QUANTITATIVE_RATIONALE = ("Certainty of evidence is not graded: no quantitative studies (qualitative themes are "
                              "summarised only).")
 QUALITATIVE_ONLY_FACTOR = ("no quantitative studies: the included qualitative/mixed-methods studies are summarised "
@@ -217,23 +220,32 @@ def make_normalize_outcomes(deps):
         if papers:
             progress_writer()({"type": "synthesizing", "papers": len(papers)})
         normalizer = getattr(deps.llms, "normalizer", None)
-        if normalizer is not None and len(pairs) > 1:
+        # Identical or spelling-variant names are grouped in code first; the model only sees one representative pair
+        # per group, so it has far fewer pairs to copy back (audit I-17).
+        groups = precluster(pairs)
+        reps = [g[0] for g in groups]
+        entry |= {"pairs": len(pairs), "sent": 0}
+        if normalizer is not None and len(pairs) > 1:  # even one group: the model names it ("CRC incidence" →
+            # "Colorectal cancer incidence"), a one-pair call
+            entry["sent"] = len(reps)
             try:
                 res = await harness_runner(deps).call(
                     normalizer, prompts.NORMALIZE_SYSTEM,
-                    prompts.normalize_user(question=review_question(state), pairs=pairs),
-                    schema=OutcomeClusters, validate=lambda c: validate_clusters(c, papers), trigger="normalize")
+                    prompts.normalize_user(question=review_question(state), pairs=reps),
+                    schema=OutcomeClusters, validate=lambda c: validate_clusters(c, papers, reps),
+                    trigger="normalize")
                 cost += res.cost
                 entry["repaired"] = res.repaired
                 if res.value is not None:  # a near miss is corrected in code, not thrown away
-                    fixed, corrections, kept = repair_clusters(res.value, papers)
+                    fixed, corrections, kept = repair_clusters(res.value, papers, reps)
                     entry["corrections"] = corrections
-                    clusters = fixed if kept else None
+                    clusters = expand_clusters(fixed, groups) if kept else None
             except LLMError as exc:
                 errors.append(f"outcome normalization failed: {type(exc).__name__}")
             entry["fallback"] = clusters is None
         directional = _directional(state, papers)
-        matrix = build_matrix(papers, clusters or fallback_clusters(papers), directional=directional)
+        # without the model (none configured, one group, or a failure) the pre-clusters are the clustering
+        matrix = build_matrix(papers, clusters or preclustered(groups), directional=directional)
         matrix["grade"] = grade_baseline(papers, matrix, (state.get("question") or {}).get("outcomes"),
                                          directional=directional)
         if not papers and _direction_papers(state):  # every quantitative paper reports only other comparisons
@@ -413,6 +425,48 @@ def _cite(refs: list[str]) -> str:
     return ", ".join(f"[{r}]" for r in refs)
 
 
+# Thai renderings of the code-generated consensus/conflict text (audit I-16): fixed academic Thai instead of an LLM
+# translation of an English template, which came out stiff and inconsistent.
+DIRECTION_TEXT_TH = {"positive": "ผลการศึกษาสนับสนุนผลตามที่ตั้งสมมติฐานไว้",
+                     "negative": "ผลการศึกษาชี้ไปในทางตรงข้ามหรือพบผลเสีย",
+                     "null": "ไม่พบความสัมพันธ์อย่างมีนัยสำคัญทางสถิติ"}
+DIRECTION_LABEL_TH = {"positive": "สนับสนุนผลที่คาดไว้", "negative": "ทางตรงข้ามหรือผลเสีย",
+                      "null": "ไม่มีนัยสำคัญทางสถิติ"}
+CONFLICT_STATEMENT = {"en": "studies disagree", "th": "ผลการศึกษาไม่สอดคล้องกัน"}
+
+
+def _th_for(outcome: str) -> str:
+    """"สำหรับ" + the outcome, spaced only before a Latin-script name."""
+    return f"สำหรับ{' ' if outcome[:1].isascii() else ''}{outcome}"
+
+
+def _consensus_statement(c: dict[str, Any], outcome: str | None = None, language: str = "en") -> str:
+    texts = DIRECTION_TEXT_TH if language == "th" else DIRECTION_TEXT
+    return f"{outcome or c['outcome']}: {texts.get(c['direction'], c['direction'])}"
+
+
+def _consensus_explanation_th(c: dict[str, Any], outcome: str) -> str:
+    dissent = c.get("dissent") or {}
+    extra = ""
+    if c.get("nonsignificant"):
+        extra += f" {_cite(c['nonsignificant'])} ชี้ไปในทิศทางเดียวกันแต่ไม่มีนัยสำคัญทางสถิติ"
+    if c.get("corroborating"):
+        extra += f" การทบทวนวรรณกรรมอย่างเป็นระบบ {_cite(c['corroborating'])} ให้ผลสอดคล้องกัน"
+    if not dissent:
+        return f"การศึกษา {len(c['refs'])} เรื่องรายงานผลไปในทิศทางเดียวกัน{_th_for(outcome)}{extra}"
+    total = len(c["refs"]) + sum(len(refs) for refs in dissent.values())
+    others = " และ ".join(f"{_cite(refs)} {DIRECTION_TEXT_TH.get(d, d).replace('ผลการศึกษา', '', 1)}"
+                          for d, refs in dissent.items())
+    return (f"การศึกษา {len(c['refs'])} จาก {total} เรื่องรายงานผลไปในทิศทางเดียวกัน{_th_for(outcome)} "
+            f"ส่วน {others}{extra}")
+
+
+def _deterministic_explanation_th(conflict: dict[str, Any], outcome: str) -> str:
+    parts = [f"{DIRECTION_LABEL_TH.get(d, d)}: {_cite(refs)}" for d, refs in conflict.get("directions", {}).items()
+             if refs]
+    return f"การศึกษารายงานทิศทางของผลแตกต่างกัน{_th_for(outcome)} ({'; '.join(parts)})"
+
+
 def _consensus_explanation(c: dict[str, Any]) -> str:
     dissent = c.get("dissent") or {}
     extra = ""
@@ -435,7 +489,7 @@ def _consensus_explanation(c: dict[str, Any]) -> str:
 
 def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list, list]:
     consensus = [EvidenceCluster(
-        statement=f"{c['outcome']}: {DIRECTION_TEXT.get(c['direction'], c['direction'])}",
+        statement=_consensus_statement(c),
         refs=sorted({*c["refs"], *(c.get("corroborating") or [])}, key=_ref_num),
         explanation=_consensus_explanation(c))
         for c in matrix.get("consensus", [])]
@@ -443,7 +497,7 @@ def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list
     conflicts = []
     for c in matrix.get("conflicts", []):
         note = by_outcome.get(c["outcome"]) or _deterministic_note(c)
-        conflicts.append(EvidenceCluster(statement=f"{c['outcome']}: studies disagree", refs=c["refs"],
+        conflicts.append(EvidenceCluster(statement=f"{c['outcome']}: {CONFLICT_STATEMENT['en']}", refs=c["refs"],
                                          explanation=note["explanation"], likely_reasons=note["likely_reasons"]))
     return consensus, conflicts
 
@@ -645,6 +699,8 @@ def make_write_synthesis(deps):
         wording = CERTAINTY_WORDING.get(strength or "")
         if wording and not entry["fallback"] and summary != PROSE_REMOVED and not wording.search(summary):
             summary, certainty_added = f"{summary} {CERTAINTY_SENTENCE[strength]}", 1
+        # coverage telemetry (audit I-22): analysed papers the summary never cites
+        entry["uncited"] = len(allowed - set(re.findall(r"\bP\d+\b", " ".join(_CITE_GROUPS.findall(summary)))))
         quality.append({"stage": "prose_check", "numbers_removed": prose_counts["numbers_removed"],
                         "measures_fixed": prose_counts["measures_fixed"],
                         "measures_removed": prose_counts["measures_removed"],
@@ -699,6 +755,44 @@ def _apply_synthesis_strings(s: dict[str, Any], strings: dict[str, str], finding
     return out
 
 
+def _templated(synthesis: dict[str, Any], matrix: dict[str, Any]) -> dict[str, tuple[str, dict[str, Any]]]:
+    """Synthesis string keys whose English text is a code template, mapped to (template kind, matrix entry), so the
+    Thai text is rendered in code instead of translated (audit I-16). LLM-written text (conflict explanations)
+    is not templated and still goes to the localizer."""
+    out: dict[str, tuple[str, dict[str, Any]]] = {}
+    consensus = {_consensus_statement(c): c for c in matrix.get("consensus") or []}
+    for i, item in enumerate(synthesis.get("consensus") or []):
+        c = consensus.get(item.get("statement"))
+        if c is not None:
+            out[f"consensus.{i}.statement"] = ("consensus_statement", c)
+            if item.get("explanation") == _consensus_explanation(c):
+                out[f"consensus.{i}.explanation"] = ("consensus_explanation", c)
+    conflicts = {f"{c['outcome']}: {CONFLICT_STATEMENT['en']}": c for c in matrix.get("conflicts") or []}
+    for i, item in enumerate(synthesis.get("conflicts") or []):
+        c = conflicts.get(item.get("statement"))
+        if c is not None:
+            out[f"conflicts.{i}.statement"] = ("conflict_statement", c)
+            if item.get("explanation") == _deterministic_note(c)["explanation"]:
+                out[f"conflicts.{i}.explanation"] = ("conflict_explanation", c)
+    return out
+
+
+def _render_th(templated: dict[str, tuple[str, dict[str, Any]]], names: dict[str, str]) -> dict[str, str]:
+    """The Thai text of each templated key; `names` maps English outcome names to their localized row names."""
+    out = {}
+    for key, (kind, c) in templated.items():
+        outcome = names.get(c["outcome"], c["outcome"])
+        if kind == "consensus_statement":
+            out[key] = _consensus_statement(c, outcome, "th")
+        elif kind == "consensus_explanation":
+            out[key] = _consensus_explanation_th(c, outcome)
+        elif kind == "conflict_statement":
+            out[key] = f"{outcome}: {CONFLICT_STATEMENT['th']}"
+        else:
+            out[key] = _deterministic_explanation_th(c, outcome)
+    return out
+
+
 def _finding_map(state: ReviewState) -> dict[tuple[str, str], str]:
     """(ref, English finding) → localized finding, from the cards localized in parallel with the narrative."""
     localized = state.get("localized_cards") or {}
@@ -723,7 +817,8 @@ def make_localize(deps):
         if language == "en" or not harness_spec(deps).localize or llm is None:
             return {"synthesis_display": synthesis}
         progress_writer()({"type": "localizing"})
-        strings = _synthesis_strings(synthesis)
+        templated = _templated(synthesis, state.get("matrix") or {}) if language == "th" else {}
+        strings = {k: v for k, v in _synthesis_strings(synthesis).items() if k not in templated}
         errors: list[str] = []
         try:
             res = await localize_strings(llm, harness_runner(deps), strings, language)
@@ -731,10 +826,13 @@ def make_localize(deps):
             res = Localized(strings, kept_english=len(strings),
                             untranslated=sum(1 for v in strings.values() if untranslated(v, v, language)))
             errors.append(f"localization failed: {type(exc).__name__}")
-        display = _apply_synthesis_strings(synthesis, res.strings, _finding_map(state))
+        names = {row["outcome"]: res.strings.get(f"comparison.{j}.outcome", row["outcome"])
+                 for j, row in enumerate(synthesis.get("comparison") or [])}
+        localized = {**res.strings, **_render_th(templated, names)}
+        display = _apply_synthesis_strings(synthesis, localized, _finding_map(state))
         return {"synthesis_display": display, "cost_usd": res.cost, "errors": errors,
-                "quality": [{"stage": "localize", "items": len(strings), **res.telemetry(),
-                             "seconds": round(time.perf_counter() - started, 3)}]}
+                "quality": [{"stage": "localize", "items": len(strings), "templated": len(templated),
+                             **res.telemetry(), "seconds": round(time.perf_counter() - started, 3)}]}
 
     return localize
 
@@ -812,10 +910,12 @@ def make_finalize(deps):
                 "selected": len(state.get("selected") or []),
                 "extracted": sum(1 for p in papers if p.get("card")),
                 "non_research": stats.get("non_research", 0),
+                "year_excluded": stats.get("year_excluded", 0), "no_abstract": stats.get("no_abstract", 0),
                 "excluded_screening": dict(selection.get("excluded_screening") or {}),
                 "excluded_selection": {"narrative_excluded": selection.get("narrative_excluded", 0),
                                        "over_limit": selection.get("over_limit", 0),
-                                       "study_design_relaxed": selection.get("study_design_relaxed", 0)},
+                                       "study_design_relaxed": selection.get("study_design_relaxed", 0),
+                                       "low_relevance": selection.get("low_relevance", 0)},
             },
             "quality": summarize_quality(state.get("quality") or [], state.get("started_at")),
             "errors": list(state.get("errors") or []), "prompt_version": deps.settings.prompt_version,

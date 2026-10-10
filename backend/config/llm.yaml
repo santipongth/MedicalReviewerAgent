@@ -45,10 +45,13 @@ providers:
     require_parameters: false
 
 presets:
-  # Every role on Qwen3.5 Flash (user decision 2026-10-05, replacing Gemini 2.5 Flash). One model for all roles: the secondary extractor and
-  # escalation are the same model, so the dual-model cross-check no longer compares two vendors.
-  # reasoning_effort none on every role: with reasoning on, Qwen3.5 Flash (Alibaba) returns a bare number instead of
-  # the requested JSON (measured 2026-10-05); with an explicit none it returns valid JSON.
+  # Qwen3.5 Flash on every primary role (user decision 2026-10-05, replacing Gemini 2.5 Flash).
+  # reasoning_effort none on the Qwen roles: with reasoning on, Qwen3.5 Flash (Alibaba) returns a bare number instead
+  # of the requested JSON (measured 2026-10-05); with an explicit none it returns valid JSON.
+  # Plan 19 (audit I-10): the second screening vote and the cross-check extraction run on a different model family
+  # (Gemini 2.5 Flash Lite, $0.10/$0.40 per 1M, structured outputs; listed in the OpenRouter catalog 2026-10-10), so
+  # "two models vote on borderline papers" is true, and escalation goes to Gemini 3.1 Flash Lite, a third model, so
+  # it never re-asks a model that already answered (the runner also skips an escalation to the same model).
   budget:
     guard:       {model: qwen/qwen3.5-flash-02-23, max_tokens: 1024,  temperature: 0, reasoning_effort: none, timeout_seconds: 60}
     planner:     {model: qwen/qwen3.5-flash-02-23, max_tokens: 4096,  reasoning_effort: none, timeout_seconds: 90}
@@ -56,13 +59,12 @@ presets:
     extractor:   {model: qwen/qwen3.5-flash-02-23, max_tokens: 8192,  temperature: 0, reasoning_effort: none, timeout_seconds: 90}
     synthesizer: {model: qwen/qwen3.5-flash-02-23, max_tokens: 16000, reasoning_effort: none, timeout_seconds: 180}
     refiner:             {model: qwen/qwen3.5-flash-02-23, max_tokens: 4096, reasoning_effort: none, timeout_seconds: 90}
-    screener_secondary:  {model: qwen/qwen3.5-flash-02-23, max_tokens: 4096, temperature: 0, reasoning_effort: none, timeout_seconds: 90}
-    extractor_secondary: {model: qwen/qwen3.5-flash-02-23, max_tokens: 8192, temperature: 0, reasoning_effort: none, timeout_seconds: 90}
+    screener_secondary:  {model: google/gemini-2.5-flash-lite, max_tokens: 4096, temperature: 0, timeout_seconds: 90}
+    extractor_secondary: {model: google/gemini-2.5-flash-lite, max_tokens: 8192, temperature: 0, timeout_seconds: 90}
     normalizer:          {model: qwen/qwen3.5-flash-02-23, max_tokens: 4096, temperature: 0, reasoning_effort: none, timeout_seconds: 90}
     conflict_explainer:  {model: qwen/qwen3.5-flash-02-23, max_tokens: 2048, reasoning_effort: none, timeout_seconds: 90}
     localizer:           {model: qwen/qwen3.5-flash-02-23, max_tokens: 8192, temperature: 0, reasoning_effort: none, timeout_seconds: 90}
-    escalation:          {model: qwen/qwen3.5-flash-02-23, max_tokens: 8192, reasoning_effort: none,
-                          timeout_seconds: 120}
+    escalation:          {model: google/gemini-3.1-flash-lite, max_tokens: 8192, temperature: 0, timeout_seconds: 120}
 
   # Higher quality reading and synthesis with Claude, cheap screening with Gemini.
   balanced:
@@ -85,7 +87,7 @@ presets:
     screener:    {model: anthropic/claude-haiku-4.5,  max_tokens: 4096}
     extractor:   {model: anthropic/claude-sonnet-5.5, max_tokens: 8192, reasoning_effort: medium}
     synthesizer: {model: anthropic/claude-opus-5.5,   max_tokens: 20000, reasoning_effort: high, timeout_seconds: 600}
-    screener_secondary:  {model: anthropic/claude-haiku-4.5,  max_tokens: 4096}
+    screener_secondary:  {model: google/gemini-3.1-flash-lite, max_tokens: 4096, temperature: 0}  # another family
     extractor_secondary: {model: google/gemini-3.5-flash,     max_tokens: 8192, reasoning_effort: low}
     normalizer:          {model: anthropic/claude-haiku-4.5,  max_tokens: 4096}
     conflict_explainer:  {model: anthropic/claude-sonnet-5.5, max_tokens: 2048}
@@ -131,7 +133,7 @@ harness:
   quote_match_threshold: 90       # rapidfuzz partial_ratio for "quote found in source"
   escalate_on: [repair_failed, verification_failed, disagreement]
   localize: true                  # reason in English; translate user-facing text last (numbers checked)
-  extraction_chars: 30000         # paper text budget per extraction call (sections weighted: Results 40%, Methods 23%, ...)
+  extraction_chars: 30000         # paper text budget per extraction call (title + abstract only; a cap, rarely reached)
 
 # Per-role tweaks applied on top of whichever preset is active, e.g.
 #   synthesizer: {model: anthropic/claude-opus-5.5, reasoning_effort: high}

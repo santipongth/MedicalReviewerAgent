@@ -105,7 +105,8 @@ def make_read_paper(deps):
         if p_card is not None and s_card is not None:
             agreement, disagreements = compare_cards(p_card, s_card)
             if any("direction" in d for d in disagreements):
-                esc = await runner.escalate(system, user, schema=PaperCard, validate=validate, reason="disagreement")
+                esc = await runner.escalate(system, user, schema=PaperCard, validate=validate, reason="disagreement",
+                                            already_asked=(deps.llms.extractor, secondary_llm))
                 if esc is not None:
                     cost += esc.cost
                 if esc is not None and esc.ok and esc.value is not None:

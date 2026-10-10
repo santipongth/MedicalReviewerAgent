@@ -308,8 +308,10 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
     assert r["papers"][0]["card_en"]["population"] == "adults with T2D"
     assert r["papers"][0]["verification"]["numbers_total"] == 4
     assert r["stats"] == {"found": 40, "unique": 25, "with_abstract": 22, "candidates": 20, "screened": 20, "selected": 2,
-                          "extracted": 2, "non_research": 0, "excluded_screening": {},
-                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 0, "study_design_relaxed": 0}}
+                          "extracted": 2, "non_research": 0, "year_excluded": 0, "no_abstract": 0,
+                          "excluded_screening": {},
+                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 0, "study_design_relaxed": 0,
+                                                 "low_relevance": 0}}
     assert r["question"]["refined_question"] == "คำถาม?" and r["question"]["english"]["refined_question"] == "RQ?"
     assert r["question"]["pico"]["population"] == "adults" and r["question"]["original_topic"] == "เมตฟอร์มิน"
     assert r["question"]["ambiguities"] == ["b"] and r["question"]["refined"] is True
@@ -387,12 +389,14 @@ async def test_normalize_keeps_a_repaired_llm_clustering():
     papers = [paper("P1", card("CRC incidence")), paper("P2", card("incident colorectal cancer")),
               paper("P3", card("crc incidence"))]
     partial = OutcomeClusters(clusters=[OutcomeCluster(canonical="Colorectal cancer incidence", members=[
-        OutcomeMember(ref="P1", outcome="CRC incidence"), OutcomeMember(ref="P2", outcome="incident colorectal cancer")])])
-    norm = FakeStructuredLLM("qwen", lambda s, u: partial)  # P3 always missing → validation never passes
+        OutcomeMember(ref="P1", outcome="CRC incidence")])])
+    norm = FakeStructuredLLM("qwen", lambda s, u: partial)  # P2 always missing → validation never passes
     out = await make_normalize_outcomes(deps(normalizer=norm))(state(papers))
     q = out["quality"][0]
-    assert q["fallback"] is False and q["corrections"] == 1
-    assert [len(r["cells"]) for r in out["matrix"]["rows"]] == [3]
+    # P3's "crc incidence" is pre-clustered with P1 in code, so the model sees 2 pairs; the missing P2 is repaired
+    assert q["fallback"] is False and q["corrections"] == 1 and q["pairs"] == 3 and q["sent"] == 2
+    rows = {r["outcome"]: sorted(c["ref"] for c in r["cells"]) for r in out["matrix"]["rows"]}
+    assert rows == {"Colorectal cancer incidence": ["P1", "P3"], "incident colorectal cancer": ["P2"]}
 
 
 def test_quality_reports_normalization_corrections():

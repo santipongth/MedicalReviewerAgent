@@ -59,15 +59,21 @@ def test_meta_is_a_review_type():
 
 
 # ---- prompts: SLR pins are in test_prompts_by_type; meta only appends blocks ---------------------------
-def test_meta_prompts_equal_slr_except_extract_and_narrative():
-    for builder in (prompts.refine_system, prompts.critique_system, prompts.plan_system, prompts.screen_system):
+def test_meta_prompts_equal_slr_except_plan_extract_and_narrative():
+    for builder in (prompts.refine_system, prompts.critique_system, prompts.screen_system):
         assert builder("meta_analysis") == builder("slr")
     for builder, base in ((prompts.extract_system, prompts.EXTRACT_SYSTEM),
-                          (prompts.narrative_system, prompts.NARRATIVE_SYSTEM)):
+                          (prompts.narrative_system, prompts.NARRATIVE_SYSTEM),
+                          (prompts.plan_system, prompts.PLAN_SYSTEM)):
         system = builder("meta_analysis")
         assert system.startswith(base) and system[len(base):].startswith(prompts.OVERRIDE_LEAD)
     assert "adjusted" in prompts.extract_system("meta_analysis")
-    assert "do not state pooled numbers" in prompts.narrative_system("meta_analysis")
+    # audit I-24: only the system's pooled_analysis numbers are withheld; SR cards' own estimates may be stated
+    narrative = prompts.narrative_system("meta_analysis")
+    assert "do not state the numbers of pooled_analysis" in narrative and "systematic-review card" in narrative
+    # audit I-9: the planner is asked for more queries and the major trial names
+    assert "acronyms" in prompts.plan_system("meta_analysis") and "never invent a trial name" in prompts.plan_system(
+        "meta_analysis")
 
 
 def test_meta_narrative_user_is_graded_and_carries_pools():
@@ -77,7 +83,7 @@ def test_meta_narrative_user_is_graded_and_carries_pools():
     assert prompts.narrative_user(**kwargs, pooled_analysis=[{"x": 1}]) == slr  # ignored outside meta
     meta = prompts.narrative_user(**kwargs, review_type="meta_analysis", pooled_analysis=[{"estimate": 0.8}])
     assert '"pooled_analysis": [{"estimate": 0.8}]' in meta and "GRADE-lite baseline: low" in meta
-    assert "no pooled estimate" in meta
+    assert "no pooled_analysis estimate" in meta
 
 
 # ---- graph ---------------------------------------------------------------------------------
@@ -100,7 +106,7 @@ async def test_meta_run_pools_grades_and_strips_pooled_numbers():
     assert types.index("synthesizing") < types.index("pooled") < types.index("finalizing")
     # the synthesizer saw the pools as rounded data and the meta block
     system, user = deps.llms.synthesizer.calls[0][:2]
-    assert "do not state pooled numbers" in system
+    assert "do not state the numbers of pooled_analysis" in system
     assert '"pooled_analysis": [{"outcome": "Colorectal cancer incidence"' in user and '"estimate": 0.8' in user
     # the post-check removed every sentence restating a pooled number, and counted them
     s = r["synthesis_en"]

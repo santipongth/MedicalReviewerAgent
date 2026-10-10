@@ -50,10 +50,15 @@ class Settings(BaseSettings):
 
     graph_mode: str = "real"  # "stub" = Plan 1 placeholder graph (plumbing tests without Claude)
     stub_delay_seconds: float = 0.0  # stub graph only: simulated review duration for load tests
-    prompt_version: str = "2026-10-10.4"
+    prompt_version: str = "2026-10-10.5"
 
     searxng_engines: str = "pubmed,europe pmc,openalex,semantic scholar,crossref,arxiv,doaj,openaire"
     searxng_pages: int = 1
+    # Meta-analysis needs k >= 3 trials per outcome, so it searches deeper (audit I-9): more SearXNG pages per query
+    # plus a most-cited-first Europe PMC search restricted to randomized controlled trials.
+    searxng_pages_meta: int = 2
+    trial_search_queries: int = 3  # Europe PMC RCT searches per meta-analysis review (0 = off)
+    trial_search_page_size: int = 25
     # Must exceed every requested engine's SearXNG timeout (infra/searxng/settings.yml: pubmed 12 s, crossref 10 s,
     # the rest 8 s): SearXNG waits for the slowest engine. SearXNG took up to 7.4 s under load.
     searxng_timeout_seconds: float = 15.0

@@ -626,6 +626,20 @@ def number_tokens(text: str | None) -> list[str]:
     return [(m.group(1) or "") + m.group(2).replace(",", "") for m in _NUM.finditer(text.translate(_DASHES))]
 
 
+# "T2DM" / "T1D" carry the type number inside a word (not a number token); Thai spells it out as "ชนิดที่ 2" (I-23).
+_GLUED_DIABETES_TYPE = re.compile(r"\bT([12])DM?\b")
+_THAI_TYPE_NUMBER = re.compile(r"ชนิดที่\s*([12])(?![\d.,])")
+
+
 def numbers_preserved(source: str, translated: str) -> bool:
-    """Translation must keep every number exactly as written ("0.80" may not become "0.8")."""
-    return Counter(number_tokens(source)) == Counter(number_tokens(translated))
+    """Translation must keep every number exactly as written ("0.80" may not become "0.8"). The one allowed
+    addition: a diabetes type spelled out ("T2DM" → "เบาหวานชนิดที่ 2"), only for a digit the source carries inside
+    such an abbreviation, at most as often as the source has it. Nothing may be dropped or changed."""
+    src, dst = Counter(number_tokens(source)), Counter(number_tokens(translated))
+    if src == dst:
+        return True
+    if src - dst:
+        return False
+    glued = Counter(_GLUED_DIABETES_TYPE.findall(source))
+    spelled = Counter(_THAI_TYPE_NUMBER.findall(translated))
+    return all(n <= min(glued[k], spelled[k]) for k, n in (dst - src).items())

@@ -24,8 +24,63 @@ def outcome_pairs(papers: list[dict[str, Any]]) -> list[tuple[str, str]]:
     return [(p["ref"], o["outcome"]) for p in papers if p.get("card") for o in p["card"]["outcomes"]]
 
 
-def validate_clusters(clusters: OutcomeClusters, papers: list[dict[str, Any]]) -> list[str]:
-    expected = Counter(outcome_pairs(papers))
+# ---- deterministic pre-clustering (audit I-17: the LLM normaliser over ~100 pairs took 71 s) -----------------
+_STOPWORDS = frozenset({"of", "the", "in", "a", "an", "for", "at", "on"})
+# Words that make order meaningful ("cancer after diabetes" is not "diabetes after cancer"): keep the word order.
+_RELATIONAL = frozenset({"after", "before", "vs", "versus", "than", "from", "to", "between", "during", "within"})
+_SPELLING = ((re.compile(r"isation"), "ization"), (re.compile(r"ise\b"), "ize"), (re.compile(r"ae"), "e"),
+             (re.compile(r"oe"), "e"), (re.compile(r"our\b"), "or"))
+
+
+def _word(w: str) -> str:
+    for pattern, repl in _SPELLING:  # British vs American spelling: haemorrhage/hemorrhage, tumour/tumor
+        w = pattern.sub(repl, w)
+    return w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w  # plural
+
+
+def outcome_key(name: str) -> str:
+    """Identity of an outcome name up to case, punctuation, British/American spelling, plurals, filler words and
+    (when no relational word is present) word order: "Incidence of colorectal cancer" == "colorectal cancer
+    incidence", "HF hospitalisations" == "hf hospitalization". Different words never share a key, so "LDL
+    cholesterol" and "HDL cholesterol" stay apart."""
+    words = [_word(w) for w in (normalize_title(name) or name.strip().lower()).split()]
+    if any(w in _RELATIONAL for w in words):
+        return " ".join(words)
+    return " ".join(sorted({w for w in words if w not in _STOPWORDS}) or words)
+
+
+def precluster(pairs: list[tuple[str, str]]) -> list[list[tuple[str, str]]]:
+    """Group (ref, outcome) pairs whose names share an outcome_key, in first-seen order."""
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for pair in pairs:
+        groups.setdefault(outcome_key(pair[1]), []).append(pair)
+    return list(groups.values())
+
+
+def expand_clusters(clusters: OutcomeClusters, groups: list[list[tuple[str, str]]]) -> OutcomeClusters:
+    """The LLM clustered one representative pair per pre-cluster: give each representative's cluster the whole
+    pre-cluster. Members that are not representatives are kept as they are."""
+    by_rep = {g[0]: g for g in groups}
+    out = []
+    for c in clusters.clusters:
+        members = []
+        for m in c.members:
+            for ref, outcome in by_rep.get((m.ref, m.outcome), [(m.ref, m.outcome)]):
+                members.append(OutcomeMember(ref=ref, outcome=outcome))
+        out.append(OutcomeCluster(canonical=c.canonical, members=members))
+    return OutcomeClusters(clusters=out)
+
+
+def preclustered(groups: list[list[tuple[str, str]]]) -> OutcomeClusters:
+    """The pre-clusters as the final clustering (when there is nothing left for the LLM to group)."""
+    return OutcomeClusters(clusters=[OutcomeCluster(canonical=g[0][1], members=[OutcomeMember(ref=r, outcome=o)
+                                                                                 for r, o in g]) for g in groups])
+
+
+def validate_clusters(clusters: OutcomeClusters, papers: list[dict[str, Any]],
+                      pairs: list[tuple[str, str]] | None = None) -> list[str]:
+    """`pairs`: the pairs the model was given (the pre-cluster representatives); default all of the papers'."""
+    expected = Counter(outcome_pairs(papers) if pairs is None else pairs)
     seen = Counter((m.ref, m.outcome) for c in clusters.clusters for m in c.members)
     problems = [f"missing outcome {ref}: {outcome}" for (ref, outcome) in expected if (ref, outcome) not in seen]
     problems += [f"{ref}: {outcome} is assigned more than once" for (ref, outcome), n in seen.items() if n > 1]
@@ -36,12 +91,13 @@ def validate_clusters(clusters: OutcomeClusters, papers: list[dict[str, Any]]) -
     return problems
 
 
-def repair_clusters(clusters: OutcomeClusters, papers: list[dict[str, Any]]) -> tuple[OutcomeClusters, int, int]:
+def repair_clusters(clusters: OutcomeClusters, papers: list[dict[str, Any]],
+                    pairs: list[tuple[str, str]] | None = None) -> tuple[OutcomeClusters, int, int]:
     """Deterministically fix a near-miss clustering instead of discarding it: drop unknown members, keep the first
     of duplicate assignments, name unnamed clusters after their first member, and put missing outcomes into the
     cluster whose name (or a member) matches their normalized name, else into their own cluster.
     Returns (clusters, corrections, members kept from the model)."""
-    expected = outcome_pairs(papers)
+    expected = outcome_pairs(papers) if pairs is None else pairs
     valid = set(expected)
     seen: set[tuple[str, str]] = set()
     fixed: list[OutcomeCluster] = []

@@ -201,7 +201,10 @@ export function exclusionRows(stats: Stats | undefined, lang: Lang): { reasons: 
   const add = (key: string, th: string, en: string, value: number | undefined) => {
     if (typeof value === "number" && value > 0) extra.push({ key, label: lang === "th" ? th : en, value });
   };
+  add("year_excluded", "ตีพิมพ์ก่อนปีที่กำหนด", "Published before the start year", stats.year_excluded);
   add("non_research", "ไม่ใช่งานวิจัย", "Not research", stats.non_research);
+  add("no_abstract", "ไม่มีบทคัดย่อที่ใช้ได้", "No usable abstract", stats.no_abstract);
+  add("low_relevance", "คะแนนความเกี่ยวข้องต่ำ", "Low relevance score", stats.excluded_selection?.low_relevance);
   add("over_limit", "เกินจำนวนที่วิเคราะห์", "Over the analysis limit", stats.excluded_selection?.over_limit);
   add("narrative_excluded", "บทความทบทวนแบบไม่เป็นระบบ", "Narrative reviews", stats.excluded_selection?.narrative_excluded);
   return reasons.length || extra.length ? { reasons, extra } : null;

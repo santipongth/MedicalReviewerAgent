@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -94,6 +95,27 @@ class EuropePmcClient:
             *(self._batch(terms[i : i + self.BATCH], gate) for i in range(0, len(terms), self.BATCH))
         )
         return [c for batch in batches for c in batch]  # batch order kept
+
+    async def search_trials(self, query: str, *, page_size: int = 25) -> list[Candidate]:
+        """Randomized controlled trials with an abstract that match the keyword query, most cited first (meta-analysis
+        recall, audit I-9: the landmark trials of a topic are its most cited RCTs; measured 2026-10-10, "SGLT2
+        inhibitors heart failure hospitalization" returns DAPA-HF, EMPEROR-Reduced, DELIVER, SOLOIST and EMPULSE in
+        the first 20, while the default order is newest first). The hits carry the SearXNG engine name "europe pmc"
+        so they are treated as search hits, not as lookup records. Words only: the query never carries user syntax."""
+        words = " ".join(re.sub(r"[^\w\s-]", " ", query).split())
+        if not words:
+            return []
+        resp = await self.http.get(
+            f"{self.base_url}/search",
+            params={"query": f'({words}) AND PUB_TYPE:"Randomized Controlled Trial" AND HAS_ABSTRACT:y',
+                    "format": "json", "resultType": "core", "pageSize": page_size, "sort": "CITED desc"},
+        )
+        resp.raise_for_status()
+        out = []
+        for r in resp.json().get("resultList", {}).get("result", []):
+            c = parse_epmc_result(r)
+            out.append(c.model_copy(update={"engines": ["europe pmc"]}))
+        return out
 
     REF_PAGE = 1000
     REF_MAX_PAGES = 3

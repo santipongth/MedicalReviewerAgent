@@ -84,6 +84,14 @@ describe("exclusionRows", () => {
     expect(r.extra.map((x) => [x.label, x.value])).toEqual([["ไม่ใช่งานวิจัย", 3], ["เกินจำนวนที่วิเคราะห์", 4]]);
   });
 
+  it("lists year, abstract and relevance exclusions when the result records them (Plan 19)", () => {
+    const r = exclusionRows({ ...stats, year_excluded: 5, no_abstract: 9,
+      excluded_selection: { narrative_excluded: 0, over_limit: 4, low_relevance: 2 } }, "en")!;
+    expect(r.extra.map((x) => [x.key, x.value])).toEqual([
+      ["year_excluded", 5], ["non_research", 3], ["no_abstract", 9], ["low_relevance", 2], ["over_limit", 4],
+    ]);
+  });
+
   it("has a Thai and English label for every reason", () => {
     for (const v of Object.values(EXCLUSION_REASON_LABEL)) { expect(v.th.trim()).not.toBe(""); expect(v.en.trim()).not.toBe(""); }
     expect(Object.keys(EXCLUSION_REASON_LABEL)).toHaveLength(7);
