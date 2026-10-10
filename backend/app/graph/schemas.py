@@ -15,7 +15,7 @@ Direction = Literal["positive", "negative", "null", "mixed", "unclear"]
 EffectMeasure = Literal["HR", "OR", "RR", "RD", "MD", "SMD", "r", "other", "none"]
 DesignCategory = Literal["rct", "non_randomized_trial", "cohort", "case_control", "cross_sectional", "case_series",
                          "mendelian_randomization", "sr_ma_rct", "sr_ma_observational", "sr_ma_mixed",
-                         "narrative_review", "other"]
+                         "narrative_review", "qualitative", "mixed_methods", "other"]
 DESIGN_CATEGORIES: tuple[str, ...] = DesignCategory.__args__
 
 

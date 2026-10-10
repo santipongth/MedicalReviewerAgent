@@ -20,7 +20,7 @@ export interface OutcomeResult {
 
 export type DesignCategory =
   | "rct" | "non_randomized_trial" | "cohort" | "case_control" | "cross_sectional" | "case_series"
-  | "mendelian_randomization" | "sr_ma_rct" | "sr_ma_observational" | "sr_ma_mixed" | "narrative_review" | "other";
+  | "mendelian_randomization" | "sr_ma_rct" | "sr_ma_observational" | "sr_ma_mixed" | "narrative_review" | "qualitative" | "mixed_methods" | "other";
 
 export interface PaperCard {
   study_design: string;

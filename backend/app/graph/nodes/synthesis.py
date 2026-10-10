@@ -24,6 +24,7 @@ from app.graph.schemas import (
     SynthesisNarrative,
 )
 from app.graph.state import ReviewState
+from app.harness.design import NO_DIRECTION_CATEGORIES
 from app.harness.grade import (
     LEVELS,
     analyse_meta,
@@ -91,11 +92,12 @@ def _with_cards(state: ReviewState) -> list[dict[str, Any]]:
 
 
 def _evidence(state: ReviewState) -> list[dict[str, Any]]:
-    """Papers that count as evidence: narrative reviews stay in the paper list but add no matrix cells, conflicts
-    or grade (they restate other studies). A scoping review maps everything, so it counts them."""
+    """Papers that count as direction evidence: narrative reviews (they restate other studies) and qualitative or
+    mixed-methods studies (themes, no effect numbers) stay in the paper list but add no matrix cells, conflicts,
+    pools or grade. A scoping review maps everything, so it counts them."""
     if _review_type(state) == "scoping":
         return _with_cards(state)
-    return [p for p in _with_cards(state) if p["card"].get("design_category") != "narrative_review"]
+    return [p for p in _with_cards(state) if p["card"].get("design_category") not in NO_DIRECTION_CATEGORIES]
 
 
 def _review_type(state: ReviewState) -> str:

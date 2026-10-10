@@ -15,7 +15,8 @@ curl ${api}/api/v1/status
 # 1) ส่งคำถาม (ไม่ต้องมี key; ถ้าคิวเต็มหรือโควตารายวันหมดจะได้ 503 พร้อม reason และ Retry-After)
 curl -X POST ${api}/api/v1/reviews \\
   -H "Content-Type: application/json" \\
-  -d '{"topic": "metformin and colorectal cancer", "language": "en", "options": {"max_papers": 30}}'
+  -d '{"topic": "metformin and colorectal cancer", "language": "en",
+       "options": {"review_type": "slr", "max_papers": 30, "study_types": ["RCT", "Cohort"], "year_from": 2015}}'
 
 # 2) ติดตามความคืบหน้าแบบสด (Server-Sent Events)
 curl -N ${api}/api/v1/reviews/<review_id>/events
@@ -61,11 +62,30 @@ export default async function AboutPage() {
       <header className="grid gap-3">
         <h1 className="text-[clamp(2rem,4vw,2.75rem)] font-bold">ใช้งานผ่าน API และ MCP</h1>
         <p className="max-w-[65ch] text-[1.05rem] text-muted">
-          ระบบอื่นและ AI agent ใช้ Medical Reviewer Agent ได้เหมือนหน้าเว็บนี้ ผ่าน REST API หรือ Model Context Protocol (MCP)
+          ระบบอื่นและ AI agent ใช้ Medical Reviewer Agent ได้ครบทุกความสามารถเหมือนหน้าเว็บนี้ ผ่าน REST API หรือ Model Context Protocol (MCP)
           ทุกช่องทางใช้ข้อจำกัดอัตราและแคชผลลัพธ์ชุดเดียวกัน หัวข้อ ภาษา และตัวเลือกเดิมภายใน 24 ชั่วโมง (หรือที่ยังทำอยู่)
           จะได้รีวิวเดิมกลับไปโดยไม่นับโควตา เอกสารอ้างอิงฉบับเต็มอยู่ที่ docs/api.md ในโค้ดของโปรเจกต์
         </p>
       </header>
+
+      <section aria-labelledby="h-how" className="grid gap-4">
+        <h2 id="h-how" className="text-2xl font-bold">ระบบทำอะไรให้</h2>
+        <ol className="grid max-w-[65ch] list-decimal gap-2 pl-5">
+          <li>รับหัวข้อหรือคำถาม (ไม่เกิน 600 ตัวอักษร) แล้วตีความเป็นคำถามวิจัยแบบ PICO หรือ PCC สำหรับการทบทวนขอบเขต</li>
+          <li>ค้น 8 แหล่ง: PubMed, Europe PMC (รวม preprint จาก medRxiv/bioRxiv), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ และ OpenAIRE ผ่าน SearXNG ของระบบเอง แล้วตัดงานซ้ำ</li>
+          <li>คัดกรองงานที่มีบทคัดย่อราว 60 ฉบับตามเกณฑ์ของรูปแบบการทบทวน พร้อมเหตุผลที่คัดออกแบบ PRISMA</li>
+          <li>อ่านบทคัดย่อสูงสุด 30 ฉบับ สกัดผล ตัวเลข และความเสี่ยงอคติ ตรวจตัวเลขทุกตัวกับประโยคต้นฉบับ</li>
+          <li>เทียบผลข้ามงานวิจัย อธิบายจุดที่ขัดกัน สรุปพร้อมระดับความแข็งแรงของหลักฐาน และแปลเป็นภาษาไทยโดยตัวเลขไม่เปลี่ยน</li>
+        </ol>
+        <dl className="grid max-w-[65ch] gap-2">
+          <div><dt className="font-display font-semibold">รูปแบบการทบทวน (<code className="font-code">review_type</code>)</dt>
+            <dd className="text-muted"><code className="font-code">slr</code> อย่างเป็นระบบ (ค่าเริ่มต้น) · <code className="font-code">meta_analysis</code> อย่างเป็นระบบพร้อมค่ารวมที่ระบบคำนวณ · <code className="font-code">scoping</code> สำรวจขอบเขต · <code className="font-code">narrative</code> แบบบรรยาย</dd></div>
+          <div><dt className="font-display font-semibold">ชนิดงานวิจัย (<code className="font-code">study_types</code>)</dt>
+            <dd className="text-muted">RCT, Cohort, Case-control, Cross-sectional, Non-randomized trial, Qualitative, Mixed methods หรือ <code className="font-code">&quot;Other: …&quot;</code> (ไม่เกิน 60 ตัวอักษร) · ไม่ระบุ = ไม่จำกัด</dd></div>
+          <div><dt className="font-display font-semibold">สิ่งที่อยู่ในผลลัพธ์</dt>
+            <dd className="text-muted">ตารางเทียบผล ตารางงานวิจัย (literature matrix) แผนที่ความรู้ แผนภาพ PRISMA และ forest plot เครือข่ายการอ้างอิง (<code className="font-code">result.citations</code>) และค่ารวมของ meta-analysis (<code className="font-code">result.meta_analysis</code>) ส่งออกได้เป็น Markdown, CSV, JSON และ HTML ที่เปิดได้ออฟไลน์</dd></div>
+        </dl>
+      </section>
 
       <section aria-labelledby="h-live" className="grid gap-3">
         <h2 id="h-live" className="text-2xl font-bold">ขีดจำกัดตอนนี้</h2>
@@ -108,7 +128,8 @@ export default async function AboutPage() {
           เครื่องมือ: <b>search_papers</b>, <b>start_review</b>, <b>get_review_status</b>, <b>get_review_result</b> ·
           resources: <code className="font-code">review://&lt;id&gt;</code> และ <code className="font-code">review://&lt;id&gt;/report.md</code> ·
           prompt: <b>literature_review</b> · รอสถานะจนเป็น done, error, rejected หรือ cancelled (ปกติ 1–3 นาที)
-          max_papers ถูกปรับให้อยู่ในช่วง 5–30 และเมื่อระบบเต็มเครื่องมือจะบอกเหตุผลและเวลาที่ควรลองใหม่
+          <code className="font-code">start_review</code> รับ topic, language, max_papers (ปรับให้อยู่ในช่วง 5–30), review_type, study_types และ year_from
+          เหมือน REST และเมื่อระบบเต็มเครื่องมือจะบอกเหตุผลและเวลาที่ควรลองใหม่
         </p>
         <CodeBlock label="Claude Code" code={s.claudeCode} />
         <CodeBlock label="MCP client ทั่วไป (JSON)" code={s.mcpJson} />
@@ -117,12 +138,13 @@ export default async function AboutPage() {
       <section aria-labelledby="h-limits" className="grid gap-3">
         <h2 id="h-limits" className="text-2xl font-bold">ขอบเขตและข้อจำกัด</h2>
         <ul className="grid max-w-[65ch] list-disc gap-2 pl-5">
-          <li>เป็นการทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่ systematic review และไม่ใช่คำแนะนำทางการแพทย์</li>
+          <li>เป็นการทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติจากบทคัดย่อ แม้เลือกรูปแบบ systematic review ก็ไม่แทน systematic review ที่ผู้เชี่ยวชาญทำตามมาตรฐานเต็ม และไม่ใช่คำแนะนำทางการแพทย์</li>
           <li>ใช้เฉพาะบทคัดย่อ ไม่ดาวน์โหลดฉบับเต็ม: ค่าเริ่มต้นคัดกรองงานที่มีบทคัดย่อ 60 ฉบับ (ปรับได้ 20–100) แล้ววิเคราะห์สูงสุด 30 ฉบับ (ปรับได้ 5–30) รายละเอียดที่มีแต่ในฉบับเต็มจึงอาจไม่ปรากฏ</li>
           <li>ระบบรับรีวิวใหม่วันละจำนวนจำกัดและจำกัดค่าใช้จ่ายต่อวันและต่อรีวิว เมื่อคิวเต็มหรือครบกำหนดวันจะได้ 503 พร้อมเหตุผลและเวลาที่เปิดรับอีกครั้ง (รีวิวที่เคยทำยังเปิดดูได้)</li>
           <li>ตัวเลขที่ตรวจกับประโยคในบทคัดย่อไม่ผ่านจะถูกเว้นว่างและแสดงเป็น “ไม่ยืนยัน” ไม่มีการเดาค่า</li>
           <li>ความแข็งแรงของหลักฐานเป็นแบบ GRADE-lite ที่คำนวณจากรูปแบบการศึกษา ความเสี่ยงอคติ ความสอดคล้อง และขนาดตัวอย่าง</li>
           <li>เครือข่ายการอ้างอิงใช้ข้อมูลเมทาดาทาจาก OpenAlex (สำรองด้วย Europe PMC) เฉพาะระหว่างงานวิจัยในรีวิวเดียวกัน ถ้าไม่มีข้อมูลจะแสดงว่า “ไม่มีข้อมูล” ไม่ใช่ “ไม่อ้างอิง”</li>
+          <li>งานเชิงคุณภาพและแบบผสมผสาน (Qualitative, Mixed methods) รองรับแบบจำกัด: สรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข ไม่นับในทิศทางผล แผนภาพ หรือค่ารวม</li>
           <li>ชนิด meta-analysis รวมผลด้วยวิธี DerSimonian–Laird (random effects) เฉพาะงานวิจัยปฐมภูมิที่มีผลและช่วงเชื่อมั่น 95% ผ่านการตรวจกับบทคัดย่อ อย่างน้อย 3 ฉบับ ค่ารวมเป็นตัวเลขที่ระบบคำนวณเอง ไม่ใช่ผลจากงานวิจัยฉบับใด</li>
         </ul>
       </section>

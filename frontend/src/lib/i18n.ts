@@ -20,13 +20,14 @@ export const DESIGN_LABEL: Record<Lang, Record<DesignCategory, string>> = {
     rct: "RCT", non_randomized_trial: "การทดลองแบบไม่สุ่ม", cohort: "Cohort", case_control: "Case-control",
     cross_sectional: "ภาคตัดขวาง", case_series: "รายงานกลุ่มผู้ป่วย", mendelian_randomization: "Mendelian randomization",
     sr_ma_rct: "SR/MA ของ RCT", sr_ma_observational: "SR/MA ของงานเชิงสังเกต", sr_ma_mixed: "SR/MA",
-    narrative_review: "บทความทบทวน (ไม่เป็นระบบ)", other: "อื่น ๆ",
+    narrative_review: "บทความทบทวน (ไม่เป็นระบบ)", qualitative: "เชิงคุณภาพ", mixed_methods: "ผสมผสาน (Mixed methods)",
+    other: "อื่น ๆ",
   },
   en: {
     rct: "RCT", non_randomized_trial: "Non-randomised trial", cohort: "Cohort", case_control: "Case-control",
     cross_sectional: "Cross-sectional", case_series: "Case series", mendelian_randomization: "Mendelian randomization",
     sr_ma_rct: "SR/MA of RCTs", sr_ma_observational: "SR/MA of observational studies", sr_ma_mixed: "SR/MA",
-    narrative_review: "Narrative review", other: "Other",
+    narrative_review: "Narrative review", qualitative: "Qualitative", mixed_methods: "Mixed methods", other: "Other",
   },
 };
 

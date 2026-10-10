@@ -60,7 +60,7 @@ def make_read_paper(deps):
         text = source_text[: spec.extraction_chars]
         outcomes = ((payload.get("question_detail") or {}).get("outcomes")
                     or (payload.get("plan") or {}).get("outcomes") or [])
-        system = prompts.extract_system(payload.get("review_type") or "slr")
+        system = prompts.extract_system(payload.get("review_type") or "slr", bool(payload.get("qualitative")))
         user = prompts.extract_user(question=payload["question"], outcomes=outcomes, candidate=paper["candidate"],
                                     source="abstract", text=text)
         threshold = spec.quote_match_threshold

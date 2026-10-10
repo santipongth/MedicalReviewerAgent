@@ -14,6 +14,54 @@ REVIEW_TYPES: tuple[str, ...] = ("narrative", "slr", "scoping", "meta_analysis")
 # PICO, conflicts, grading, PRISMA) unless a step says otherwise.
 SLR_LIKE: frozenset[str] = frozenset({"slr", "meta_analysis"})
 
+# Study designs the user can ask for (the scope form's step 3). Aliases map older or differently spelled values onto
+# these; anything else becomes one "Other: ..." entry (data for the prompts, never an instruction).
+STUDY_TYPES: tuple[str, ...] = ("RCT", "Cohort", "Case-control", "Cross-sectional", "Non-randomized trial",
+                                "Qualitative", "Mixed methods", "Systematic review", "Meta-analysis")
+NON_QUANTITATIVE_TYPES: frozenset[str] = frozenset({"Qualitative", "Mixed methods"})
+OTHER_PREFIX = "Other: "
+OTHER_MAX = 60
+_STUDY_KEY = {"".join(ch for ch in t.lower() if ch.isalnum()): t for t in STUDY_TYPES} | {
+    "randomizedcontrolledtrial": "RCT", "randomisedcontrolledtrial": "RCT", "rcts": "RCT",
+    "casecontrolstudy": "Case-control", "cohortstudy": "Cohort", "crosssectionalstudy": "Cross-sectional",
+    "nonrandomisedtrial": "Non-randomized trial", "nonrandomized": "Non-randomized trial", "quasiexperimental":
+    "Non-randomized trial", "qualitativestudy": "Qualitative", "mixedmethod": "Mixed methods",
+    "mixedmethodsstudy": "Mixed methods", "systematicreviews": "Systematic review", "metaanalyses": "Meta-analysis",
+}
+
+
+def _clean_other(text: str) -> str:
+    cleaned = " ".join("".join(ch for ch in text if ch.isprintable()).split())
+    return cleaned.replace("<", "").replace(">", "")[:OTHER_MAX].strip()
+
+
+def normalize_study_types(values: list[str]) -> list[str]:
+    """Canonical study-design names, deduplicated, at most one free-text "Other: ..." entry."""
+    out: list[str] = []
+    other: str | None = None
+    for raw in values or []:
+        text = str(raw).strip()
+        if not text:
+            continue
+        if text.lower().startswith(OTHER_PREFIX.lower().strip()):
+            text = text.split(":", 1)[1] if ":" in text else ""
+            other = other or (_clean_other(text) or None)
+            continue
+        canonical = _STUDY_KEY.get("".join(ch for ch in text.lower() if ch.isalnum()))
+        if canonical:
+            if canonical not in out:
+                out.append(canonical)
+        else:
+            other = other or (_clean_other(text) or None)
+    if other:
+        out.append(OTHER_PREFIX + other)
+    return out[:10]
+
+
+def wants_qualitative(options: dict[str, Any] | None) -> bool:
+    """True when the user asked for qualitative or mixed-methods studies (limited support: themes, no numbers)."""
+    return any(t in NON_QUANTITATIVE_TYPES for t in (options or {}).get("study_types") or [])
+
 
 class ReviewOptions(BaseModel):
     review_type: ReviewType = "slr"
@@ -22,6 +70,11 @@ class ReviewOptions(BaseModel):
     candidate_limit: int = Field(60, ge=20, le=100)
     year_from: int | None = Field(None, ge=1950, le=2100)
     study_types: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("study_types")
+    @classmethod
+    def canonical_study_types(cls, value: list[str]) -> list[str]:
+        return normalize_study_types(value)
 
     @model_validator(mode="after")
     def enough_candidates(self) -> ReviewOptions:
@@ -49,7 +102,7 @@ class ReviewOptions(BaseModel):
 
 
 class CreateReviewRequest(BaseModel):
-    topic: str = Field(min_length=3, max_length=300)
+    topic: str = Field(min_length=3, max_length=600)  # a topic or a full question/objective (the scope form's step 1)
     language: Literal["th", "en"] = "th"
     options: ReviewOptions = Field(default_factory=ReviewOptions)
     callback_url: HttpUrl | None = None

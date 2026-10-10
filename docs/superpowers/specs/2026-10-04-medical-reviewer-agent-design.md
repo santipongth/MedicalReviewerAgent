@@ -302,3 +302,16 @@ D:\MedicalReviewerAgent\
   - node `fetch_citations` ทำงานขนานกับการอ่าน มี timeout และ soft-fail: ล้มเหลวแล้วได้ coverage เป็น null และไม่ทำให้รีวิวล้ม; "ไม่มีข้อมูล" ไม่เท่ากับ "ไม่อ้างอิง"
 - **ข้อยกเว้นที่ผู้ใช้อนุมัติ:** ชนิด `meta_analysis` คำนวณค่ารวม (pooled estimate) เอง ซึ่งผิดจากหลัก "ไม่คำนวณตัวเลขที่แสดงเสมือนมาจากงานวิจัย" โดยแสดงผ่าน `ComputedNumber` เท่านั้น (ไม่มี tape ตรวจ, ป้าย "คำนวณ", แบนเนอร์คงที่, ค่ารวมเป็นสี่เหลี่ยมขนมเปียกปูนแบบเส้นขอบ) และเปิดเผยอินพุตทุกตัวใน "วิธีคำนวณ"
 - **กติกาการรวมผล (สรุป):** DerSimonian–Laird random effects; รวมเฉพาะงานปฐมภูมิ (SR/MA เป็นแถวอ้างอิง); measure เดียวกันและกลุ่มการออกแบบเดียวกัน (RCT แยกจาก observational); k ≥ 3; ใช้เฉพาะผลและ CI ที่ผ่านการตรวจกับบทคัดย่อ; HR/OR/RR รวมบนสเกล log, MD/RD บนสเกลดิบ, SMD เมื่อเป็น SMD ทั้งหมด; ไม่รวม r/other/none; ข้ามงานที่ซ้ำ cohort; เตือนเมื่อ k < 5, I² ≥ 50% และปรับ/ไม่ปรับไม่ทราบจากบทคัดย่อ; เนื้อสรุปไม่ทวนตัวเลขค่ารวม
+
+## Revision 2026-10-10: scope form and qualitative studies (Plan 17a)
+
+- The landing request is a three-step scope form: question or objective (`topic`, now up to 600 characters), review type
+  (a select with the type's description shown), and study designs (canonical `study_types`, plus one free-text
+  `Other: …` capped at 60 characters and passed to prompts only as data). Report language, number of papers and start year
+  are folded options. The same options are available through REST and the MCP `start_review` tool.
+- Qualitative and mixed-methods studies have limited support. They are new design categories (`qualitative`,
+  `mixed_methods`). They are screened in and summarised as themes from the abstract, never with effect numbers. They are
+  excluded from direction evidence, forest plots, meta-analysis pools and grading, like narrative reviews. Their prompt
+  blocks are appended only when the user asks for them, so SLR prompts stay byte-identical.
+- Umbrella reviews (reviews of systematic reviews) were considered and deferred: they need review-level extraction, overlap
+  handling and quality appraisal that the pipeline does not have yet.

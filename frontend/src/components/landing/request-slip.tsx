@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ApiError, createReview, getStatus } from "@/lib/api";
 import { TYPICAL_DURATION_TH } from "@/lib/copy";
 import type { ReviewType, ServiceStatus } from "@/lib/types";
+import { Term } from "../ui/term";
 import { ReviewTypePicker } from "./review-type-picker";
 
 type Turnstile = { render: (el: HTMLElement, opts: Record<string, unknown>) => string; reset: (id?: string) => void };
@@ -29,14 +30,19 @@ export function capacityText(reason: string | null | undefined, retryAfter?: num
   return "ระบบไม่ว่างชั่วคราว ลองส่งใหม่อีกครั้งในไม่กี่วินาที";
 }
 
-// [value sent to the API, label shown]
-const STUDY_TYPES: [string, string][] = [
-  ["RCT", "การทดลองแบบสุ่ม (RCT)"],
-  ["Cohort", "การศึกษาติดตามกลุ่ม (Cohort)"],
-  ["Case-control", "การศึกษาย้อนหลังแบบมีกลุ่มเปรียบเทียบ (Case-control)"],
-  ["Meta-analysis", "การวิเคราะห์อภิมาน (Meta-analysis)"],
-  ["Systematic review", "การทบทวนวรรณกรรมอย่างเป็นระบบ (Systematic review)"],
+// [value sent to the API (backend canonical names), label shown]
+export const STUDY_TYPES: [string, string][] = [
+  ["RCT", "RCT"],
+  ["Cohort", "Cohort"],
+  ["Case-control", "Case-control"],
+  ["Cross-sectional", "Cross-sectional"],
+  ["Non-randomized trial", "ทดลองไม่สุ่ม"],
+  ["Qualitative", "เชิงคุณภาพ (Qualitative)"],
+  ["Mixed methods", "ผสมผสาน (Mixed methods)"],
 ];
+const NON_QUANTITATIVE = ["Qualitative", "Mixed methods"];
+const OTHER_MAX = 60;
+const TOPIC_MAX = 600;
 const EXAMPLES = ["เมตฟอร์มินกับมะเร็งลำไส้ใหญ่", "statins and dementia", "SGLT2 inhibitors and heart failure"];
 
 function waitText(seconds?: number): string {
@@ -57,7 +63,12 @@ function errorMessage(e: unknown): string {
   return "ส่งไม่สำเร็จ ลองใหม่อีกครั้ง";
 }
 
-/** The review request, styled as a lab request slip (ใบส่งตรวจ). */
+function StepNo({ n }: { n: number }) {
+  return <span className="mr-2 font-display tabular-nums text-muted">{n}</span>;
+}
+
+/** The review request: "กำหนดขอบเขตการทบทวน", three numbered steps (question, review type, study designs) plus folded
+ * extras (report language, number of papers, start year). */
 export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
   const router = useRouter();
   const id = useId();
@@ -66,6 +77,8 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
   const [maxPapers, setMaxPapers] = useState(30);
   const [yearFrom, setYearFrom] = useState("");
   const [types, setTypes] = useState<string[]>([]);
+  const [otherOn, setOtherOn] = useState(false);
+  const [other, setOther] = useState("");
   const [reviewType, setReviewType] = useState<ReviewType>("slr");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,10 +117,13 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
 
   const tokenPending = !!siteKey && !token && !widgetFailed;
   const summary = [
-    types.length ? STUDY_TYPES.filter(([v]) => types.includes(v)).map(([, l]) => l).join(", ") : "ทุกชนิดงานวิจัย",
+    language === "th" ? "ภาษาไทย" : "English",
     `สูงสุด ${maxPapers} ฉบับ`,
     yearFrom ? `ตั้งแต่ปี ${yearFrom}` : "ทุกปี",
   ].join(" · ");
+  const otherText = otherOn ? other.trim().slice(0, OTHER_MAX) : "";
+  const studyTypes = [...types, ...(otherText ? [`Other: ${otherText}`] : [])];
+  const qualitativeNote = types.some((t) => NON_QUANTITATIVE.includes(t));
   const closed = status !== null && !status.accepting;
 
   async function submit(e: FormEvent) {
@@ -117,7 +133,7 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
     try {
       const options: Record<string, unknown> = { max_papers: maxPapers, review_type: reviewType };
       if (yearFrom) options.year_from = Number(yearFrom);
-      if (types.length) options.study_types = types;
+      if (studyTypes.length) options.study_types = studyTypes;
       const body = { topic: topic.trim(), language, options };
       const created = token ? await createReview(body, { turnstileToken: token }) : await createReview(body);
       router.push(`/r/${created.review_id}`);
@@ -137,39 +153,66 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
 
   return (
     <div>
-      <form id="request" onSubmit={submit} aria-label="ใบส่งคำถาม" className="rounded-sm border border-rule bg-surface">
-        <div className="flex flex-wrap justify-between gap-3 border-b border-rule px-4 py-2.5">
-          <span className="label">ใบส่งคำถาม</span>
+      <form id="request" onSubmit={submit} aria-label="กำหนดขอบเขตการทบทวน" className="rounded-sm border border-rule bg-surface">
+        <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-rule px-4 py-3">
+          <h2 className="font-display text-[1.15rem] font-semibold">กำหนดขอบเขตการทบทวน</h2>
           <span className="label">ฟรี · ไม่ต้องสมัคร</span>
         </div>
-        <div className="grid gap-4 p-4">
+        <div className="grid gap-5 p-4">
           <div className="grid gap-1.5">
-            <label className="label" htmlFor={`${id}-topic`}>หัวข้อ: โรค ยา หรือสาร (ไทยหรืออังกฤษ)</label>
-            <input
+            <label className="font-display font-medium" htmlFor={`${id}-topic`}>
+              <StepNo n={1} />คำถามหรือวัตถุประสงค์ <span aria-hidden className="text-err">*</span>
+            </label>
+            <textarea
               id={`${id}-topic`} name="topic" value={topic} onChange={(e) => setTopic(e.target.value)} required minLength={3}
-              maxLength={300} autoComplete="off" placeholder="เช่น เมตฟอร์มินกับมะเร็งลำไส้ใหญ่"
-              className="w-full rounded-sm border border-rule bg-ground px-3 py-2.5 text-[1.05rem] text-ink outline-none focus:border-primary"
+              maxLength={TOPIC_MAX} rows={3} autoComplete="off" aria-describedby={`${id}-topic-hint`}
+              placeholder="ต้องการทบทวนเรื่องใด เพื่อหาคำตอบอะไร? เช่น เมตฟอร์มินกับมะเร็งลำไส้ใหญ่"
+              className="w-full resize-y rounded-sm border border-rule bg-ground px-3 py-2.5 text-[1.05rem] text-ink outline-none focus:border-primary"
             />
+            <p id={`${id}-topic-hint`} className="flex flex-wrap justify-between gap-x-3 text-sm text-muted">
+              <span>ใส่ได้ทั้งหัวข้อสั้น ๆ หรือคำถามเต็ม · ใช้ <Term k="pico">PICO</Term> ช่วยได้เมื่อถามถึงผลของการรักษาหรือสิ่งที่สัมผัส</span>
+              {topic.length > TOPIC_MAX - 100 && <span className="font-display tabular-nums">{topic.length}/{TOPIC_MAX}</span>}
+            </p>
           </div>
-          <fieldset className="flex flex-wrap gap-x-5 gap-y-2 text-[0.92rem]">
-            <legend className="label mb-1.5">ภาษาของรายงาน</legend>
-            <label className="flex items-center gap-1.5"><input type="radio" name="lang" checked={language === "th"}
-              onChange={() => setLanguage("th")} className="size-4 accent-primary" />ภาษาไทย</label>
-            <label className="flex items-center gap-1.5"><input type="radio" name="lang" checked={language === "en"}
-              onChange={() => setLanguage("en")} className="size-4 accent-primary" />English</label>
+          <div className="grid gap-1.5">
+            <label className="font-display font-medium" htmlFor={`${id}-type`}><StepNo n={2} />รูปแบบการทบทวน</label>
+            <ReviewTypePicker id={`${id}-type`} value={reviewType} onChange={setReviewType} available={status?.limits?.review_types} />
+          </div>
+          <fieldset className="grid gap-2">
+            <legend className="mb-1.5 font-display font-medium"><StepNo n={3} />หลักฐานและเกณฑ์คัดเลือก</legend>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[0.95rem] sm:grid-cols-3">
+              {STUDY_TYPES.map(([value, label]) => (
+                <label key={value} className="flex min-h-11 items-center gap-2">
+                  <input type="checkbox" checked={types.includes(value)} onChange={() => toggleType(value)} className="size-4 flex-none accent-primary" />
+                  {label}
+                </label>
+              ))}
+              <label className="flex min-h-11 items-center gap-2">
+                <input type="checkbox" checked={otherOn} onChange={() => setOtherOn((v) => !v)} className="size-4 flex-none accent-primary" />
+                อื่น ๆ — ระบุ
+              </label>
+            </div>
+            {otherOn && (
+              <input
+                aria-label="ระบุชนิดงานวิจัยอื่น" value={other} maxLength={OTHER_MAX} onChange={(e) => setOther(e.target.value)}
+                placeholder="เช่น Delphi study"
+                className="min-h-11 w-full max-w-sm rounded-sm border border-rule bg-ground px-3 py-2 text-ink outline-none focus:border-primary"
+              />
+            )}
+            <p className="text-sm text-muted">เลือกได้หลายแบบ · ไม่เลือก = ไม่จำกัดชนิดงานวิจัย</p>
+            {qualitativeNote && (
+              <p className="text-sm text-ink">งานเชิงคุณภาพและแบบผสมผสานจะสรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข และไม่นับในทิศทางผล</p>
+            )}
           </fieldset>
-          <ReviewTypePicker value={reviewType} onChange={setReviewType} available={status?.limits?.review_types} />
           <details className="grid gap-4 border-t border-rule pt-3">
             <summary className="cursor-pointer text-[0.92rem]"><span className="font-display font-medium">ตัวเลือกเพิ่มเติม</span> <span className="text-muted">{summary}</span></summary>
             <div className="mt-4 grid gap-4">
             <fieldset className="flex flex-wrap gap-x-5 gap-y-2 text-[0.92rem]">
-              <legend className="label mb-1.5">ชนิดงานวิจัยที่จะรวม (ไม่เลือก = ทุกชนิด)</legend>
-              {STUDY_TYPES.map(([value, label]) => (
-                <label key={value} className="flex items-center gap-1.5">
-                  <input type="checkbox" checked={types.includes(value)} onChange={() => toggleType(value)} className="size-4 accent-primary" />
-                  {label}
-                </label>
-              ))}
+              <legend className="label mb-1.5">ภาษาของรายงาน</legend>
+              <label className="flex items-center gap-1.5"><input type="radio" name="lang" checked={language === "th"}
+                onChange={() => setLanguage("th")} className="size-4 accent-primary" />ภาษาไทย</label>
+              <label className="flex items-center gap-1.5"><input type="radio" name="lang" checked={language === "en"}
+                onChange={() => setLanguage("en")} className="size-4 accent-primary" />English</label>
             </fieldset>
             <div className="flex flex-wrap gap-6">
               <div className="grid gap-1.5">

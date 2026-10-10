@@ -2,10 +2,10 @@ import Link from "next/link";
 import { CodeBlock } from "../code-block";
 
 const TOOLS: [string, string][] = [
-  ["search_papers", "ค้นงานวิจัยที่ตีพิมพ์แล้ว ได้ชื่อเรื่อง บทคัดย่อ และตัวระบุ"],
-  ["start_review", "เริ่มรีวิว ภาษาไทยหรืออังกฤษ 5–30 บทคัดย่อ"],
+  ["search_papers", "ค้นงานวิจัยจาก 8 แหล่งในครั้งเดียว ได้ชื่อเรื่อง บทคัดย่อ และตัวระบุ"],
+  ["start_review", "เริ่มรีวิว 4 รูปแบบ (systematic, meta-analysis, scoping, narrative) เลือกชนิดงานวิจัยและปีได้ ไทยหรืออังกฤษ"],
   ["get_review_status", "สถานะ queued, running, done, error, rejected หรือ cancelled"],
-  ["get_review_result", "คำถามวิจัย ตารางเทียบ ข้อขัดแย้ง ระดับหลักฐาน พร้อมประโยคต้นฉบับของทุกตัวเลข"],
+  ["get_review_result", "คำถามวิจัย ตารางเทียบ ข้อขัดแย้ง ระดับหลักฐาน เครือข่ายการอ้างอิง ค่ารวม meta-analysis พร้อมประโยคต้นฉบับของทุกตัวเลข"],
 ];
 
 /** MCP and REST give agents the same receipts as the web page. `api` is the public API origin. */

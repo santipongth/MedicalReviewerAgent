@@ -12,7 +12,7 @@ from app.graph.nodes.intake import harness_runner, harness_spec, review_question
 from app.graph.progress import progress_writer
 from app.graph.schemas import ScreenBatch
 from app.graph.state import ReviewState
-from app.schemas.review import SLR_LIKE, ReviewOptions
+from app.schemas.review import SLR_LIKE, ReviewOptions, wants_qualitative
 from app.services.llm import LLMError
 
 
@@ -22,7 +22,8 @@ def route_to_screening(state: ReviewState, batch_size: int = 10) -> list[Send] |
         return "normalize_outcomes"
     common = {"plan": state.get("plan") or {}, "question": review_question(state),
               "language": state.get("language", "th"),
-              "review_type": ReviewOptions.clamped(state.get("options")).review_type}
+              "review_type": ReviewOptions.clamped(state.get("options")).review_type,
+              "qualitative": wants_qualitative(state.get("options"))}
     return [Send("screen_batch", {"batch": cands[i : i + batch_size], **common})
             for i in range(0, len(cands), batch_size)]
 
@@ -52,7 +53,7 @@ def make_screen_batch(deps):
         started = time.perf_counter()
         batch = payload["batch"]
         spec, runner = harness_spec(deps), harness_runner(deps)
-        system = prompts.screen_system(payload.get("review_type") or "slr")
+        system = prompts.screen_system(payload.get("review_type") or "slr", bool(payload.get("qualitative")))
         writer = progress_writer()
         writer({"type": "screening", "batch": len(batch)})
         items = {f"C{i + 1}": c for i, c in enumerate(batch)}
@@ -171,7 +172,8 @@ def route_to_reading(state: ReviewState, external_enabled=None, citations_enable
         return "normalize_outcomes"
     common = {"plan": state.get("plan") or {}, "question": review_question(state),
               "question_detail": state.get("question"), "language": state.get("language", "th"),
-              "review_type": ReviewOptions.clamped(state.get("options")).review_type}
+              "review_type": ReviewOptions.clamped(state.get("options")).review_type,
+              "qualitative": wants_qualitative(state.get("options"))}
     sends = [Send("read_paper", {"paper": s, **common}) for s in selected]
     if external_enabled is not None and external_enabled():
         sends.append(Send("external_enrich", {"question": common["question"], "plan": common["plan"]}))

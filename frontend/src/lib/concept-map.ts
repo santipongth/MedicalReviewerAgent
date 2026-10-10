@@ -1,7 +1,7 @@
 // Concept map (Plan 14a): the question's elements, its outcomes/aspects, and the papers that report each, as a tree.
 // Pure and deterministic. The links come only from the synthesis `comparison` rows and their cells; nothing here reads
 // or computes a number from a paper, and no mediator or causal path is inferred. Counts are counts of papers.
-import { designKey, designLabel } from "./charts-data";
+import { designKey, designLabel, NON_QUANTITATIVE_DESIGNS } from "./charts-data";
 import { DESIGN_LABEL, DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "./i18n";
 import { showsDirection, type ReviewTypeOrLegacy } from "./review-type";
 import type { Direction, Paper, ReviewResult } from "./types";
@@ -136,7 +136,7 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
       if (!paper || seen.has(cell.ref)) continue;
       seen.add(cell.ref);
       const design = designOf(paper, cell.design_category ?? undefined);
-      if (byDirection && design === NARRATIVE) continue;
+      if (byDirection && (design === NARRATIVE || NON_QUANTITATIVE_DESIGNS.includes(design))) continue;
       const key = byDirection ? (DIRECTION_ORDER.includes(cell.direction) ? cell.direction : "unclear") : design;
       buckets.set(key, [...(buckets.get(key) ?? []), cell.ref]);
     }

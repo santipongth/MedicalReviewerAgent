@@ -47,7 +47,7 @@ test("landing: receipt from a real verified number, then submit opens the live r
   await noSeriousA11y(page);
   await page.emulateMedia({ colorScheme: "light" });
 
-  await page.getByLabel(/^หัวข้อ/).fill("metformin colorectal cancer");
+  await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("metformin colorectal cancer");
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
   await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
   await expect(page.getByRole("heading", { level: 1 })).toContainText("ในผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2", { timeout: 15_000 });
@@ -192,7 +192,7 @@ test("submit errors: rate limit shows the wait time", async ({ page }) => {
     "POST /api/v1/reviews": (route) => json(route, 429, { detail: "rate limit exceeded" }, { "retry-after": "1800", "access-control-expose-headers": "Retry-After" }),
   });
   await page.goto("/");
-  await page.getByLabel(/^หัวข้อ/).fill("statins and dementia");
+  await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("statins and dementia");
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "นาที" })).toContainText("30 นาที");
 });
@@ -225,9 +225,9 @@ test("about page renders the deployment's API address in every snippet", async (
 test("landing: ?q= pre-fills the request slip", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?q=statins");
-  await expect(page.getByLabel(/^หัวข้อ/)).toHaveValue("statins");
+  await expect(page.getByLabel(/คำถามหรือวัตถุประสงค์/)).toHaveValue("statins");
   await page.goto("/");
-  await expect(page.getByLabel(/^หัวข้อ/)).toHaveValue("");
+  await expect(page.getByLabel(/คำถามหรือวัตถุประสงค์/)).toHaveValue("");
 });
 
 test("live run: a queued review shows the รอคิว step as current", async ({ page }) => {
@@ -304,7 +304,7 @@ test("axe: landing at 375px in light and dark", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await mockApi(page);
   await page.goto("/");
-  await expect(page.getByLabel(/^หัวข้อ/)).toBeVisible();
+  await expect(page.getByLabel(/คำถามหรือวัตถุประสงค์/)).toBeVisible();
   await noSeriousA11y(page);
   // Reduced motion switches the colour transitions off, so axe never samples mid-fade colours.
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
@@ -348,16 +348,17 @@ async function openReport(page: Page, fixture: typeof reviewFixture) {
   await expect(page.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
 }
 
-test("landing: the request slip sends the chosen review_type", async ({ page }) => {
+test("landing: the scope form sends the chosen review_type", async ({ page }) => {
   let body: { options?: { review_type?: string } } = {};
   await mockApi(page, {
     "POST /api/v1/reviews": (route) => { body = route.request().postDataJSON(); return json(route, 202, { review_id: RID, status: "queued", cached: false }); },
   });
   await page.goto("/");
-  const group = page.getByRole("group", { name: "รูปแบบการทบทวน" });
-  await expect(group.getByRole("radio", { name: "การทบทวนวรรณกรรมอย่างเป็นระบบ" })).toBeChecked();
-  await group.getByRole("radio", { name: "การทบทวนขอบเขต" }).check();
-  await page.getByLabel(/^หัวข้อ/).fill("metformin colorectal cancer");
+  const select = page.getByRole("combobox", { name: /รูปแบบการทบทวน/ });
+  await expect(select).toHaveValue("slr");
+  await select.selectOption("scoping");
+  await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" }).getByText(/ด้วยกรอบ PCC/)).toBeVisible();
+  await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("metformin colorectal cancer");
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
   await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
   expect(body.options?.review_type).toBe("scoping");
@@ -369,8 +370,8 @@ test("landing: choosing the meta-analysis type sends review_type=meta_analysis",
     "POST /api/v1/reviews": (route) => { body = route.request().postDataJSON(); return json(route, 202, { review_id: RID, status: "queued", cached: false }); },
   });
   await page.goto("/");
-  await page.getByRole("group", { name: "รูปแบบการทบทวน" }).getByRole("radio", { name: "การวิเคราะห์อภิมาน" }).check();
-  await page.getByLabel(/^หัวข้อ/).fill("metformin colorectal cancer");
+  await page.getByRole("combobox", { name: /รูปแบบการทบทวน/ }).selectOption("meta_analysis");
+  await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("metformin colorectal cancer");
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
   await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
   expect(body.options?.review_type).toBe("meta_analysis");
@@ -437,11 +438,31 @@ test("axe: landing with the review-type picker at 1440 and 390, light and dark",
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
-    await expect(page.getByRole("group", { name: "รูปแบบการทบทวน" })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: /รูปแบบการทบทวน/ })).toBeVisible();
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await noSeriousA11y(page);
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(20, 39, 31)");
     await noSeriousA11y(page);
   }
+});
+
+test("landing: scope form sends study types incl. other text, qualitative note, fits 390px", async ({ page }) => {
+  let body: { options?: { study_types?: string[] } } = {};
+  await mockApi(page, {
+    "POST /api/v1/reviews": (route) => { body = route.request().postDataJSON(); return json(route, 202, { review_id: RID, status: "queued", cached: false }); },
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" })).toBeVisible();
+  await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("ประสบการณ์ของผู้ป่วยเบาหวานต่อการใช้อินซูลิน");
+  await page.getByLabel("Cohort", { exact: true }).check();
+  await page.getByLabel(/Qualitative/).check();
+  await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" }).getByText(/สรุปเป็นประเด็นจากบทคัดย่อ/)).toBeVisible();
+  await page.getByLabel(/อื่น ๆ — ระบุ/).check();
+  await page.getByLabel("ระบุชนิดงานวิจัยอื่น").fill("Delphi study");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
+  await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
+  expect(body.options?.study_types).toEqual(["Cohort", "Qualitative", "Other: Delphi study"]);
 });

@@ -1,11 +1,19 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-10.1`, API/MCP version 0.7.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-10.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
-- It refines your question, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.
-- Every number it shows is checked against the abstract it came from. A number that cannot be checked is left empty, never estimated.
+- It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.
+- Four review types: systematic review (`slr`, default), meta-analysis (`meta_analysis`), scoping review (`scoping`) and narrative review (`narrative`).
+- Every number it shows is checked against the abstract it came from. A number that cannot be checked is left empty, never estimated. The only numbers the system computes itself are meta-analysis pooled estimates, and they are always labelled as computed.
 - Results are not medical advice.
+
+**Data sources.**
+- **Search:** the service's own SearXNG with eight engines: PubMed, Europe PMC (incl. medRxiv/bioRxiv preprints), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ and OpenAIRE. PLOS is available but opt-in (`SEARXNG_ENGINES`).
+- **Metadata enrichment:** Europe PMC (abstracts, identifiers, publication types, open-access flag, cited-by count).
+- **Citation metadata (reference lists, cited-by counts):** OpenAlex, with Europe PMC as the fallback.
+- **Optional API keys** in `.env`: `NCBI_API_KEY`, `OPENALEX_API_KEY`, `S2_API_KEY` and `CORE_API_KEY`. Empty keys work at lower rate limits. They are never logged.
+- **Survey of other open sources:** `docs/superpowers/notes/2026-10-10-open-scholarly-sources-survey.md`.
 
 ## Base URLs
 
@@ -76,13 +84,18 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 ```
 
 Field rules:
-- `topic`: 3–300 characters, with at least one letter or digit.
+- `topic`: 3–600 characters, with at least one letter or digit. A short topic ("metformin and colorectal cancer") or a full question or objective; the agent turns either into a structured question.
 - `language`: `th` (default) or `en`.
 - `review_type`: `slr` (default, systematic review), `narrative`, `scoping` or `meta_analysis` (Plan 14b: a systematic review plus pooled effects). Anything else gets 422. It is part of the cache key. The allowed values are in `GET /api/v1/status → limits.review_types`.
 - `max_papers`: 5–30, default 30.
 - `candidate_limit`: 20–100, default 60. Must be at least `max_papers`.
 - `year_from`: 1950–2100.
-- `study_types`: up to 10 entries.
+- `study_types`: up to 10 entries, normalised to canonical names:
+  - The canonical names are `RCT`, `Cohort`, `Case-control`, `Cross-sectional`, `Non-randomized trial`, `Qualitative`, `Mixed methods`, `Systematic review` and `Meta-analysis`.
+  - Case, spacing, hyphens and common aliases are accepted, so `case control` and `quasi-experimental` both work.
+  - Any other value becomes a single `"Other: <text>"` entry. That text is capped at 60 characters and passed to the prompts only as data.
+  - An empty list means no restriction.
+  - `Qualitative` and `Mixed methods` have limited support. Such studies are screened in and summarised as themes from the abstract. They never get effect numbers, directions, forest-plot rows, pools or grade.
 - `callback_url`: needs an API key, and must use https on a public host. Otherwise the request gets 403 (no key) or 422 (bad URL).
 
 Checks run in this order:
@@ -106,7 +119,11 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 `result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis`.
 
 **Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`.
-- `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, other`.
+- `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, qualitative, mixed_methods, other`.
+- `qualitative` and `mixed_methods` (Plan 17a) have themes as their outcomes:
+  - `effect_measure` is `"none"`, the numbers are null and `direction` is `"unclear"`.
+  - Like narrative reviews, they add no matrix cells, conflicts, pools or grade.
+  - Scoping reviews still map them.
 - Narrative reviews are listed, but they never count as evidence, except in scoping reviews, which count them. A narrative-type review also gives them to the synthesis and can cite them, but keeps them out of the comparison table.
 
 **Citations.** `citations` is `{edges[], cited_by{}, cited_by_source{}, coverage{}, source_note, partial}` (null for results stored before Plan 14b and for reviews where the step did not run). `edges[]` is `{from, to}` (citing paper -> cited paper), only between papers of the same review, no self-loops, deduplicated. `cited_by[ref]` is the cited-by count over all literature (not just this review): OpenAlex's, else Europe PMC's `citedByCount`, else null. `cited_by_source[ref]` says which (`"openalex"`, `"europepmc"` or null); the two sources count differently, so do not compare across sources. On a timeout of the whole step the data gathered so far is kept, `partial` is `true` and `source_note` says so (`partial` is `false` otherwise, and is absent from results stored before it was added). OpenAlex gets at most half of the step budget and is not retried, so a slow OpenAlex still leaves time for the Europe PMC fallback. `coverage[ref]` is `"openalex"`, `"europepmc"` (reference list fallback) or null; null means no data, so a missing edge for such a paper does not mean it cites nothing. Metadata only (no full text); a failure gives null coverage and never fails the review; a timeout (about 20 s) keeps whatever arrived (coverage null for the rest, `partial: true`). Under `GRAPH_MODE=stub` the citation data is illustrative. Optional `OPENALEX_API_KEY` / `OPENALEX_MAILTO`.
@@ -246,14 +263,14 @@ Delivery rules:
 
 ## MCP server
 
-The server name is `medical-reviewer-agent`, version 0.7.0. The `Host` header must be in `MCP_ALLOWED_HOSTS`. API keys work through the same headers and limits as REST. MCP calls are never challenged by Turnstile and cannot set `callback_url`.
+The server name is `medical-reviewer-agent`, version 0.8.0. The `Host` header must be in `MCP_ALLOWED_HOSTS`. API keys work through the same headers and limits as REST. MCP calls are never challenged by Turnstile and cannot set `callback_url`.
 
 | Tool | Returns | Notes |
 |---|---|---|
-| `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | `limit` is clamped to 1–25; shares the paper-search limit |
-| `start_review(topic, language="th", max_papers=30, review_type="slr")` | `{review_id, status, cached, status_url}` | `max_papers` is clamped to 5–30; `review_type` is `narrative`, `slr`, `scoping` or `meta_analysis` (an unknown value is a tool error; for `meta_analysis`, `get_review_result` includes `result.meta_analysis`); capacity errors include the reason and the wait time |
+| `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | Searches the same eight engines as reviews. `limit` is clamped to 1–25. Shares the paper-search limit |
+| `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None)` | `{review_id, status, cached, status_url}` | `topic`: up to 600 characters. `max_papers`: clamped to 5–30. `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. Capacity errors include the reason and the wait time |
 | `get_review_status(review_id)` | `{review_id, status, error, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled` |
-| `get_review_result(review_id)` | `{review_id, status, result}` | if the review is not done: `{…, result: null, message, error}` |
+| `get_review_result(review_id)` | `{review_id, status, result}` | The `result` shape is the same as REST: `citations` and, for `meta_analysis`, `meta_analysis`. If the review is not done: `{…, result: null, message, error}` |
 
 The server also exposes these resources and one prompt:
 

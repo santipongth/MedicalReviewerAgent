@@ -40,13 +40,23 @@ export function filterPapers(papers: Paper[], f: Filters): Paper[] {
   });
 }
 
+/** Qualitative and mixed-methods studies (Plan 17a): summarised as themes from the abstract, never a direction of
+ * effect, a forest-plot row or a pooled input. */
+export const NON_QUANTITATIVE_DESIGNS: readonly string[] = ["qualitative", "mixed_methods"];
+
+export function isNonQuantitative(card: { design_category?: string | null } | null | undefined): boolean {
+  return !!card?.design_category && NON_QUANTITATIVE_DESIGNS.includes(card.design_category);
+}
+
 /** Papers that have a card, counted by the card's overall direction. A count of papers, not a number from a paper.
- * `skipReviews` leaves narrative-review articles out (they restate other studies; the matrix and map skip them too). */
+ * `skipReviews` leaves narrative-review articles out (they restate other studies; the matrix and map skip them too).
+ * Qualitative and mixed-methods studies are never counted (they report themes, not a direction). */
 export function directionTally(papers: Paper[], skipReviews = false): Record<Direction, number> {
   const tally: Record<Direction, number> = { positive: 0, negative: 0, null: 0, mixed: 0, unclear: 0 };
   for (const p of papers) {
     const card = p.card_en ?? p.card;
     if (skipReviews && card?.design_category === "narrative_review") continue;
+    if (isNonQuantitative(card)) continue;
     if (card && card.overall_direction in tally) tally[card.overall_direction] += 1;
   }
   return tally;

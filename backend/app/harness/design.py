@@ -8,6 +8,10 @@ from app.graph.schemas import PaperCard
 
 RANDOMIZED_CATEGORIES = frozenset({"rct", "sr_ma_rct"})
 POOLED_CATEGORIES = frozenset({"sr_ma_rct", "sr_ma_observational", "sr_ma_mixed"})
+# Qualitative and mixed-methods studies are summarised as themes: never direction cells, forest plots, pools or grade.
+NON_QUANTITATIVE_CATEGORIES = frozenset({"qualitative", "mixed_methods"})
+# Designs that add no direction evidence (they restate other studies or report no effect).
+NO_DIRECTION_CATEGORIES = frozenset({"narrative_review"}) | NON_QUANTITATIVE_CATEGORIES
 
 # Ordered: the first matching rule wins. Pooled designs come before the primary designs they mention, and every
 # design that merely *mentions* a trial (a cohort nested in one, a post hoc analysis, a non-systematic review of
@@ -21,6 +25,9 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
     ("narrative_review", re.compile(
         r"^\s*(narrative |literature |scoping )?review(\s+article)?\s*$|narrative review|literature review|^\s*review of\b",
         re.IGNORECASE)),
+    ("mixed_methods", re.compile(r"mixed[- ]methods?", re.IGNORECASE)),
+    ("qualitative", re.compile(r"qualitative|focus groups?|semi-?structured interviews?|in-depth interviews?|"
+                               r"thematic analysis|phenomenolog|grounded theory|ethnograph", re.IGNORECASE)),
     ("non_randomized_trial", re.compile(r"non-?randomi[sz]ed|single[- ]arm|quasi-?experimental", re.IGNORECASE)),
     ("case_control", re.compile(r"case-?control", re.IGNORECASE)),
     ("cohort", re.compile(r"cohort|observational analysis|secondary analysis|post[- ]hoc|target trial emulation|"
