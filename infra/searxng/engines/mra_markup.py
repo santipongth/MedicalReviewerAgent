@@ -8,9 +8,9 @@ Only known tag names are treated as markup (HTML block/inline tags, JATS and Mat
 optional ``jats:``/``mml:`` prefix, and a strict attribute grammar), so clinical notation such
 as "ALT <ULN in 40 patients and >3xULN in 12" or "p<0.001" survives intact.
 
-Inline sub/superscript and font tags are joined with no space, as a plain-text reader (or a
-copy-paste of the rendered page) sees them: "CO<sub>2</sub>" -> "CO2",
-"10<jats:sup>9</jats:sup>/L" -> "109/L". Every other known tag becomes a space. Tags are
+A superscript opens with "^" so a power never reads as a different number:
+"10<jats:sup>9</jats:sup>/L" -> "10^9/L" (not "109/L"). Other inline tags join with no space:
+"CO<sub>2</sub>" -> "CO2". Every other known tag becomes a space. Tags are
 removed before entities are unescaped, so "&lt;" stays a literal "<".
 """
 
@@ -34,6 +34,7 @@ def _tag(names: str) -> re.Pattern[str]:
                       re.IGNORECASE)
 
 
+SUP_OPEN = re.compile(rf"<(?:(?:jats|mml):)?sup{_ATTRS}>", re.IGNORECASE)
 INLINE_TAG = _tag(_INLINE_NAMES)
 BLOCK_TAG = _tag(_BLOCK_NAMES)
 
@@ -43,5 +44,5 @@ def clean_markup(value: object) -> str:
         return ""
     if isinstance(value, list):
         value = " ".join(str(v) for v in value)
-    text = BLOCK_TAG.sub(" ", INLINE_TAG.sub("", str(value)))
+    text = BLOCK_TAG.sub(" ", INLINE_TAG.sub("", SUP_OPEN.sub("^", str(value))))
     return " ".join(html.unescape(text).split())

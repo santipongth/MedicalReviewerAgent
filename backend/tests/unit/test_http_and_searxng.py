@@ -152,7 +152,7 @@ def test_europe_pmc_med_urls_give_a_pmid():
     ("HR<1 and >0.5", "HR<1 and >0.5"),
     ("a < b > c", "a < b > c"),
     ("CO<sub>2</sub> rose", "CO2 rose"),
-    ("10<sup>-3</sup> mol", "10-3 mol"),
+    ("10<sup>-3</sup> mol", "10^-3 mol"),
     ("<i>In vitro</i> and <b>in vivo</b>", "In vitro and in vivo"),
     ("<p>Methods</p><p>Results</p>", "Methods Results"),
     ("<jats:p>Background</jats:p>", "Background"),
@@ -163,7 +163,7 @@ def test_europe_pmc_med_urls_give_a_pmid():
     ("levels <LOD in 30% and >LOQ in 70%", "levels <LOD in 30% and >LOQ in 70%"),
     ("<b in 40 > ok", "<b in 40 > ok"),
     # JATS/MathML-prefixed inline tags join like plain HTML ones (what a plain-text reader sees)
-    ("10<jats:sup>9</jats:sup>/L", "109/L"),
+    ("10<jats:sup>9</jats:sup>/L", "10^9/L"),
     ("CO<jats:sub>2</jats:sub>", "CO2"),
     ("<jats:italic>E. coli</jats:italic> grew", "E. coli grew"),
     ('<jats:sec id="s1"><jats:title>Aims</jats:title>To test</jats:sec>', "Aims To test"),

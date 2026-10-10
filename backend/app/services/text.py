@@ -4,9 +4,9 @@ import html
 import re
 
 # Known tag names only (HTML, JATS, MathML; optional "jats:"/"mml:" prefix; strict attribute grammar), so clinical
-# notation survives: "p<0.001", "aged >65", "ALT <ULN in 40 patients and >3xULN in 12". Inline sub/superscript and
-# font tags join with no space, as a plain-text reader sees them ("CO<sub>2</sub>" -> "CO2",
-# "10<jats:sup>9</jats:sup>/L" -> "109/L"); every other known tag becomes a space. Tags are removed before entities
+# notation survives: "p<0.001", "aged >65", "ALT <ULN in 40 patients and >3xULN in 12". A superscript opens with "^"
+# so a power never reads as a different number ("10<jats:sup>9</jats:sup>/L" -> "10^9/L", not "109/L"); other inline
+# tags join with no space ("CO<sub>2</sub>" -> "CO2"); every other known tag becomes a space. Tags are removed before entities
 # are unescaped, so "&lt;" stays a literal "<". Same rules as infra/searxng/engines/mra_markup.py (keep in step).
 _INLINE_NAMES = r"sub|sup|i|b|em|strong|span|u|small|italic|bold|sc|underline|monospace"
 _BLOCK_NAMES = (
@@ -23,6 +23,7 @@ def _tag(names: str) -> re.Pattern[str]:
                       re.IGNORECASE)
 
 
+_SUP_OPEN = re.compile(rf"<(?:(?:jats|mml):)?sup{_ATTRS}>", re.IGNORECASE)
 _INLINE_TAG = _tag(_INLINE_NAMES)
 _TAG = _tag(_BLOCK_NAMES)
 _WS = re.compile(r"\s+")
@@ -34,7 +35,7 @@ _DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", re.IGNOREC
 def strip_markup(value: str | None) -> str:
     if not value:
         return ""
-    return _WS.sub(" ", html.unescape(_TAG.sub(" ", _INLINE_TAG.sub("", value)))).strip()
+    return _WS.sub(" ", html.unescape(_TAG.sub(" ", _INLINE_TAG.sub("", _SUP_OPEN.sub("^", value))))).strip()
 
 
 def normalize_doi(value: str | None) -> str | None:

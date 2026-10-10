@@ -331,7 +331,7 @@ MARKUP_CASES = [
     ("ALT <ULN in 40 patients and >3xULN in 12", "ALT <ULN in 40 patients and >3xULN in 12"),
     ("levels <LOD in 30% and >LOQ in 70%", "levels <LOD in 30% and >LOQ in 70%"),
     ("p<0.001 in patients aged >65", "p<0.001 in patients aged >65"),
-    ("10<jats:sup>9</jats:sup>/L", "109/L"),
+    ("10<jats:sup>9</jats:sup>/L", "10^9/L"),
     ("CO<jats:sub>2</jats:sub> and CO<sub>2</sub>", "CO2 and CO2"),
     ('<jats:p>Background</jats:p><jats:p>Methods <jats:italic>in vitro</jats:italic></jats:p>',
      "Background Methods in vitro"),
