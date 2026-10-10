@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Any
 
 from app.graph.schemas import Candidate
@@ -40,6 +41,33 @@ def parse_epmc_result(r: dict[str, Any]) -> Candidate:
     )
 
 
+@dataclass(frozen=True)
+class EpmcReference:
+    source: str | None
+    id: str | None
+    doi: str | None = None
+    pmid: str | None = None
+    title: str | None = None
+    year: int | None = None
+
+
+def parse_epmc_reference(r: Any) -> EpmcReference | None:
+    if not isinstance(r, dict):
+        return None
+    source = str(r["source"]).upper() if r.get("source") else None
+    rid = str(r["id"]) if r.get("id") else None
+    doi = normalize_doi(r.get("doi"))
+    if not (rid or doi):
+        return None
+    year = r.get("pubYear")
+    return EpmcReference(
+        source=source, id=rid, doi=doi,
+        pmid=rid if source == "MED" and rid and rid.isdigit() else None,
+        title=strip_markup(r.get("title")).rstrip(".") or None,
+        year=int(year) if str(year).isdigit() else None,
+    )
+
+
 class EuropePmcClient:
     BATCH = 40
     CONCURRENCY = 3  # batches in flight; HttpClient's per-host spacing still applies
@@ -66,3 +94,24 @@ class EuropePmcClient:
             *(self._batch(terms[i : i + self.BATCH], gate) for i in range(0, len(terms), self.BATCH))
         )
         return [c for batch in batches for c in batch]  # batch order kept
+
+    REF_PAGE = 1000
+    REF_MAX_PAGES = 3
+
+    async def references(self, source: str, id: str) -> list[EpmcReference]:
+        """Reference list (metadata only) of one Europe PMC record; [] when it has none or is unknown."""
+        out: list[EpmcReference] = []
+        for page in range(1, self.REF_MAX_PAGES + 1):
+            resp = await self.http.get(
+                f"{self.base_url}/{source}/{id}/references",
+                params={"format": "json", "pageSize": self.REF_PAGE, "page": page},
+            )
+            if resp.status_code == 404:
+                return out
+            resp.raise_for_status()
+            data = resp.json()
+            items = (data.get("referenceList") or {}).get("reference") or []
+            out += [ref for ref in map(parse_epmc_reference, items) if ref]
+            if len(items) < self.REF_PAGE or len(out) >= (data.get("hitCount") or 0):
+                break
+        return out

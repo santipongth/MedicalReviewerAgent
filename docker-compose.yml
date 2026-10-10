@@ -83,6 +83,9 @@ services:
   api:
     image: mra/backend:dev
     env_file: .env
+    environment:
+      OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+      OPENALEX_MAILTO: ${OPENALEX_MAILTO:-}
     # Stateless: rate limits, capacity counters, SSE slots and event streams live in Redis, so N processes
     # (or replicas behind a proxy) behave like one.
     command: ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers --workers ${API_WORKERS:-2}"]
@@ -108,6 +111,9 @@ services:
   worker:
     image: mra/backend:dev
     env_file: .env
+    environment:
+      OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+      OPENALEX_MAILTO: ${OPENALEX_MAILTO:-}
     command: ["arq", "app.worker.settings.WorkerSettings"]
     # Each replica runs MAX_CONCURRENT_REVIEWS_PER_WORKER reviews at once; scale with WORKER_REPLICAS.
     deploy:

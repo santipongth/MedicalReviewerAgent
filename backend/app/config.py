@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # the rest 8 s): SearXNG waits for the slowest engine. SearXNG took up to 7.4 s under load.
     searxng_timeout_seconds: float = 15.0
     europepmc_url: str = "https://www.ebi.ac.uk/europepmc/webservices/rest"
+    openalex_url: str = "https://api.openalex.org"
+    openalex_api_key: str = ""  # optional; never logged
+    openalex_mailto: str = ""  # optional; never logged
+    openalex_timeout_seconds: float = 15.0
     http_timeout_seconds: float = 30.0
     screen_batch_size: int = 10
 

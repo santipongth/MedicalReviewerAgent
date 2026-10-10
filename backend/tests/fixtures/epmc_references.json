@@ -1,0 +1,110 @@
+{
+ "version": "6.9",
+ "hitCount": 40,
+ "request": {
+  "id": "42434155",
+  "source": "MED",
+  "offSet": 1,
+  "pageSize": 1000
+ },
+ "referenceList": {
+  "reference": [
+   {
+    "source": "MED",
+    "id": "16378901",
+    "citationType": "JOURNAL ARTICLE",
+    "title": "Biologic basis for combining drugs with radiation.",
+    "authorString": "Wilson GD, Bentzen SM, Harari PM.",
+    "journalAbbreviation": "Semin Radiat Oncol",
+    "issue": "1",
+    "pubYear": 2006,
+    "volume": "16",
+    "pageInfo": "2-9",
+    "citedOrder": 1,
+    "match": "Y",
+    "essn": "1532-9461",
+    "issn": "1053-4296"
+   },
+   {
+    "source": "MED",
+    "id": "29566109",
+    "citationType": "JOURNAL ARTICLE",
+    "title": "Adoption of Total Neoadjuvant Therapy for Locally Advanced Rectal Cancer.",
+    "authorString": "Cercek A, Roxburgh CSD, Strombom P, Smith JJ, Temple LKF, Nash GM, Guillem JG, Paty PB, Yaeger R, Stadler ZK, Seier K, Gonen M, Segal NH, Reidy DL, Varghese A, Shia J, Vakiani E, Wu AJ, Crane CH, Gollub MJ, Garcia-Aguilar J, Saltz LB, Weiser MR.",
+    "journalAbbreviation": "JAMA Oncol",
+    "issue": "6",
+    "pubYear": 2018,
+    "volume": "4",
+    "pageInfo": "e180071",
+    "citedOrder": 2,
+    "match": "Y",
+    "essn": "2374-2445",
+    "issn": "2374-2437"
+   },
+   {
+    "source": "MED",
+    "id": "3773947",
+    "citationType": "JOURNAL ARTICLE",
+    "title": "Survival after postoperative combination treatment of rectal cancer.",
+    "authorString": "Douglass HO Jr, Moertel CG, Mayer RJ, Thomas PR, Lindblad AS, Mittleman A, Stablein DM, Bruckner HW; Gastrointestinal Tumor Study Group.",
+    "journalAbbreviation": "N Engl J Med",
+    "issue": "20",
+    "pubYear": 1986,
+    "volume": "315",
+    "pageInfo": "1294-1295",
+    "citedOrder": 3,
+    "match": "Y",
+    "essn": "1533-4406",
+    "issn": "0028-4793"
+   },
+   {
+    "source": "MED",
+    "id": "21391217",
+    "citationType": "JOURNAL ARTICLE",
+    "title": "Synergistic anti-tumor activity of isochaihulactone and paclitaxel on human lung cancer cells.",
+    "authorString": "Yu YL, Su KJ, Chen CJ, Wei CW, Lin CJ, Yiang GT, Lin SZ, Harn HJ, Chen YL.",
+    "journalAbbreviation": "J Cell Physiol",
+    "issue": "1",
+    "pubYear": 2012,
+    "volume": "227",
+    "pageInfo": "213-222",
+    "citedOrder": 4,
+    "match": "Y",
+    "essn": "1097-4652",
+    "issn": "0021-9541"
+   },
+   {
+    "source": "MED",
+    "id": "26383681",
+    "citationType": "JOURNAL ARTICLE",
+    "title": "Metformin: A Novel Biological Modifier of Tumor Response to Radiation Therapy.",
+    "authorString": "Koritzinsky M.",
+    "journalAbbreviation": "Int J Radiat Oncol Biol Phys",
+    "issue": "2",
+    "pubYear": 2015,
+    "volume": "93",
+    "pageInfo": "454-464",
+    "citedOrder": 5,
+    "match": "Y",
+    "essn": "1879-355X",
+    "issn": "0360-3016"
+   },
+   {
+    "source": "MED",
+    "id": "31203527",
+    "citationType": "JOURNAL ARTICLE",
+    "title": "Japanese Society for Cancer of the Colon and Rectum (JSCCR) guidelines 2019 for the treatment of colorectal cancer.",
+    "authorString": "Hashiguchi Y, Muro K, Saito Y, Ito Y, Ajioka Y, Hamaguchi T, Hasegawa K, Hotta K, Ishida H, Ishiguro M, Ishihara S, Kanemitsu Y, Kinugasa Y, Murofushi K, Nakajima TE, Oka S, Tanaka T, Taniguchi H, Tsuji A, Uehara K, Ueno H, Yamanaka T, Yamazaki K, Yoshida M, Yoshino T, Itabashi M, Sakamaki K, Sano K, Shimada Y, Tanaka S, Uetake H, Yamaguchi S, Yamaguchi N, Kobayashi H, Matsuda K, Kotake K, Sugihara K; Japanese Society for Cancer of the Colon and Rectum.",
+    "journalAbbreviation": "Int J Clin Oncol",
+    "issue": "1",
+    "pubYear": 2019,
+    "volume": "25",
+    "pageInfo": "1-42",
+    "citedOrder": 6,
+    "match": "Y",
+    "essn": "1437-7772",
+    "issn": "1341-9625"
+   }
+  ]
+ }
+}
