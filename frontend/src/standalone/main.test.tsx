@@ -1,6 +1,8 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { reviewFixture } from "@/test/fixtures";
+import { within } from "@testing-library/react";
+import { buildStandaloneHtml } from "@/lib/standalone-html";
+import { reviewFixture, slrP20ReviewFixture } from "@/test/fixtures";
 
 vi.mock("@/components/review/charts", () => ({ Charts: () => <div data-testid="charts" /> }));
 
@@ -21,7 +23,7 @@ describe("standalone report", () => {
     const el = document.createElement("div");
     const slot = document.createElement("div");
     document.body.append(el, slot);
-    await act(async () => { mountStandalone(el, reviewFixture, slot); });
+    await act(async () => { mountStandalone(el, reviewFixture, { theme: slot }); });
     const button = slot.querySelector("button")!;
     expect(button).toHaveAccessibleName("ใช้ธีมมืด");
     await act(async () => { button.click(); });
@@ -35,5 +37,23 @@ describe("standalone report", () => {
     localStorage.clear();
     el.remove();
     slot.remove();
+  });
+
+  it("the header line and the metadata follow a switch of the report language (fix round 1)", async () => {
+    const review = { ...slrP20ReviewFixture, result: { ...slrP20ReviewFixture.result!, prompt_version: "2026-10-10.7" } };
+    const html = buildStandaloneHtml(review, { js: "", css: "" }, new Date("2026-10-11T08:30:00Z"));
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const header = document.importNode(doc.querySelector("header")!, true);
+    const el = document.createElement("div");
+    document.body.append(header, el);
+    await act(async () => { mountStandalone(el, review, { header }); });
+    expect(header.querySelector("[data-offline-line]")).toHaveTextContent(/^รายงานแบบออฟไลน์/);
+    await act(async () => { within(el).getByRole("button", { name: "English" }).click(); });
+    expect(header.querySelector("[data-offline-line]")).toHaveTextContent(/^Offline report · downloaded 11 October 2026 08:30 UTC/);
+    expect(header.querySelector("[data-offline-meta]")).toHaveTextContent("Prompt version:2026-10-10.7");
+    expect(header.textContent).not.toMatch(/สร้างไฟล์เมื่อ/);
+    el.remove();
+    header.remove();
+    document.documentElement.lang = "th";
   });
 });

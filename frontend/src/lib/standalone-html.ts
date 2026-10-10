@@ -2,7 +2,7 @@
 // and can be shared. It asks the network for nothing (Plan 20 Task 8): Martian Mono, the verified-number face, is
 // embedded in the CSS (src/standalone/fonts.css); the other faces fall back to the system fonts. The header carries
 // a metadata line and a theme toggle (mounted by src/standalone/main.tsx), in the report's language.
-import { offlineMeta, reportLanguage, utcStamp } from "./offline-meta";
+import { offlineLine, offlineMeta, reportLanguage } from "./offline-meta";
 import { RC } from "./i18n-report";
 import type { Review } from "./types";
 
@@ -35,11 +35,9 @@ function scriptCode(code: string): string {
   return code.replace(/<\/script/gi, "<\\/script");
 }
 
-/** The offline header line, in the report's language (Plan 20 Task 7). */
-const OFFLINE_LINE = {
-  th: (when: string) => `รายงานแบบออฟไลน์ · ดาวน์โหลดเมื่อ ${when} · การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์`,
-  en: (when: string) => `Offline report · downloaded ${when} · automated rapid literature review, not medical advice`,
-};
+/** Class names of the metadata items, shared with the React re-render in src/standalone/main.tsx. */
+export const META_ITEM = "flex gap-1";
+export const META_VALUE = "text-ink";
 
 export function buildStandaloneHtml(review: Review, assets: StandaloneAssets, downloadedAt = new Date()): string {
   const title = `${escapeHtml(review.topic)} · Medical Reviewer Agent`;
@@ -47,8 +45,9 @@ export function buildStandaloneHtml(review: Review, assets: StandaloneAssets, do
   const meta = offlineMeta(review, downloadedAt);
   const details = RC.offline.details[lang === "th" ? 0 : 1];
   const items = meta.items.map((i) => {
-    const value = i.key === "id" ? `<span class="font-code">${escapeHtml(i.value)}</span>` : escapeHtml(i.value);
-    return `<div class="flex gap-1"><dt>${escapeHtml(i.label)}:</dt><dd class="text-ink">${value}</dd></div>`;
+    const value = i.key === "id" ? `<span class="font-code">${escapeHtml(i.value)}</span>`
+      : i.key === "language" ? `<span lang="${lang}">${escapeHtml(i.value)}</span>` : escapeHtml(i.value);
+    return `<div class="${META_ITEM}"><dt>${escapeHtml(i.label)}:</dt><dd class="${META_VALUE}">${value}</dd></div>`;
   }).join("");
   return `<!doctype html>
 <html lang="${lang}">
@@ -61,11 +60,11 @@ export function buildStandaloneHtml(review: Review, assets: StandaloneAssets, do
 <style>${assets.css.replace(/<\/style/gi, "<\\/style")}</style>
 </head>
 <body class="min-h-dvh">
-<header class="border-b border-rule" data-offline-header>
+<header class="border-b border-rule" data-offline-header data-generated="${downloadedAt.toISOString()}">
 <div class="mx-auto grid w-full max-w-[1240px] gap-1.5 px-4 py-3 text-[0.85rem] text-muted">
 <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 <span class="font-display font-bold text-ink">Medical Reviewer Agent</span>
-<span class="min-w-0 flex-1">${OFFLINE_LINE[lang](utcStamp(downloadedAt))}</span>
+<span class="min-w-0 flex-1" data-offline-line>${escapeHtml(offlineLine(review, downloadedAt))}</span>
 <div id="mra-theme" class="print:hidden"></div>
 </div>
 <dl data-offline-meta aria-label="${escapeHtml(details)}" class="flex flex-wrap gap-x-4 gap-y-0.5 text-[0.8rem]">${items}</dl>

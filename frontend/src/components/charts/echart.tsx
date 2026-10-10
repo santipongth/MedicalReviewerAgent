@@ -2,6 +2,7 @@
 
 import type { ECharts, EChartsCoreOption } from "echarts/core";
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { fitChartForPrint } from "@/lib/print";
 import { usePrinting } from "../review/print-mode";
 
 export type EChartsOption = EChartsCoreOption;
@@ -39,6 +40,9 @@ export function EChart({
   const chart = useRef<ECharts | null>(null);
   const clickRef = useRef(onItemClick);
   const optionRef = useRef(option);
+  // drawn at the print size (between beforeprint and afterprint), and the print fitting to undo afterwards
+  const printed = useRef(false);
+  const unViewBox = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     clickRef.current = onItemClick;
@@ -53,7 +57,8 @@ export function EChart({
       chart.current = c;
       c.on("click", (params) => clickRef.current?.((params as { data?: unknown }).data));
       c.setOption(optionRef.current, { notMerge: true }); // whatever option is current once the runtime arrives
-      ro = new ResizeObserver(() => c.resize());
+      // while printing the drawing keeps its print size: the page box resizing must not redraw it (fix round 1)
+      ro = new ResizeObserver(() => { if (!printed.current) c.resize(); });
       ro.observe(el.current);
     }).catch((e: unknown) => {
       // The box stays empty at its reserved height; every figure also has a table view with the same numbers.
@@ -71,20 +76,24 @@ export function EChart({
   // print, right after `beforeprint`. setOption draws synchronously; with no animation the printout never catches a
   // half-way transition (the colours switch to the light theme at the same time).
   const printing = usePrinting();
-  const printed = useRef(false);
   useLayoutEffect(() => {
     optionRef.current = option;
     const c = chart.current;
     if (!c) return;
+    unViewBox.current?.();
+    unViewBox.current = null;
     if (printing) {
-      c.resize({ width: PRINT_CHART_WIDTH, animation: { duration: 0 } });
+      c.resize({ width: PRINT_CHART_WIDTH, height, animation: { duration: 0 } });
       printed.current = true;
     } else if (printed.current) {
-      c.resize({ animation: { duration: 0 } }); // back to the container's width
+      // back to the container's width (explicit: the drawing still has its print width at this point)
+      c.resize({ width: el.current?.clientWidth || undefined, height, animation: { duration: 0 } });
       printed.current = false;
     }
     c.setOption(printing ? { ...option, animation: false } : option, { notMerge: true });
-  }, [option, printing]);
+    // fix round 1: the drawing scales to the width the page has, in proportion (never clipped)
+    if (printing && el.current) unViewBox.current = fitChartForPrint(el.current, PRINT_CHART_WIDTH, height);
+  }, [option, printing, height]);
 
   // Tabular figures for every tick, count and label. font-feature-settings (unlike font-variant-numeric) survives the
   // `font` shorthand the SVG renderer writes on each text node, so it inherits into the chart's text.

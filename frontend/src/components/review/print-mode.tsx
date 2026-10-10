@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
-import { forceLightTheme, openAllDetails } from "@/lib/print";
+import { forceLightTheme, markTallFigures, openAllDetails } from "@/lib/print";
 
 /**
  * True while the browser prints the report (Plan 20 Task 8): between `beforeprint` and `afterprint`. Components that
@@ -30,7 +30,10 @@ export function usePrintSetup(root: RefObject<HTMLElement | null>): boolean {
       const theme = forceLightTheme(document.documentElement);
       flushSync(() => setPrinting(true));
       const details = openAllDetails(root.current ?? document);
+      // measured with every disclosure open: a figure taller than a page may break (fix round 1)
+      const tall = markTallFigures(root.current ?? document);
       restore = () => {
+        tall();
         details();
         theme();
       };

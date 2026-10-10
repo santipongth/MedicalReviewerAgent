@@ -475,8 +475,56 @@ h4 {
   [data-report] > div {
     display: block !important;
   }
+  /* Block flow on paper (fix round 1). Chromium does not grow a grid when page breaking pushes one of its items to
+     the next page, so the items after it, and the footer, were drawn over it (and a grid disclosure, the appendix,
+     left a blank page after the report). The report's structural grids (the page, its sections, figures, lists,
+     disclosures and their wrappers) flow as blocks, the gap turned into a top margin. Small
+     units keep their grid: a cell's stacked lines, a list entry, a button, a two-column list (dl), a PRISMA stage. */
+  [data-report].grid,
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid:not([data-flow-stage], .print\:hidden, .hidden, :is(td, th, li, button, span, p, dd, dt, label) *) {
+    display: block !important;
+  }
+  [data-report].grid > * + *,
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid:not([data-flow-stage], :is(td, th, li, button, span, p, dd, dt, label) *) > * + * {
+    margin-top: 0.5rem;
+  }
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid:is(.gap-0\.5, .gap-1, .gap-1\.5):not([data-flow-stage], :is(td, th, li, button, span, p, dd, dt, label) *) > * + * {
+    margin-top: 0.25rem;
+  }
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid:is(.gap-3, .gap-4):not([data-flow-stage], :is(td, th, li, button, span, p, dd, dt, label) *) > * + * {
+    margin-top: 0.75rem;
+  }
+  [data-report].gap-6 > * + *,
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid.gap-6:not(:is(td, th, li, button, span, p, dd, dt, label) *) > * + * {
+    margin-top: 1.25rem;
+  }
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid.gap-10 > * + * {
+    margin-top: 1.75rem;
+  }
+  /* body and main end with the report: no viewport-high minimum that can add a blank last page */
+  body {
+    min-height: 0 !important;
+  }
+  /* the site footer (its disclaimer) prints whole at the end, in block flow: a grid footer pushed to a new page
+     left a blank page after the report */
+  body > footer .grid:not(.print\:hidden) {
+    display: block !important;
+  }
+  body > footer .grid > * + * {
+    margin-top: 0.75rem;
+  }
   [data-report] .sticky {
     position: static !important;
+  }
+  /* screen-reader-only text is for screen readers: on paper its 1px box printed as a stray dot (and, placed outside
+     the flow, could add a blank last page) */
+  [data-report] .sr-only {
+    display: none !important;
+  }
+  /* Thai marks above the letters stand higher than a tight heading line (1.2): on the first line of a page they
+     were painted at the foot of the page before, as stray dots. On paper headings get room for them */
+  [data-report] :is(h1, h2, h3, h4, figcaption, .label) {
+    line-height: 1.6 !important;
   }
   /* touch targets mean nothing on paper */
   [data-report] button {
@@ -498,11 +546,22 @@ h4 {
   [data-report] thead {
     display: table-header-group;
   }
+  /* small units stay whole (a row, a list entry, a card, a PRISMA stage); big tables and lists break between them,
+     the table header repeated */
   [data-report] tr,
   [data-report] tbody[data-sof-row],
   [data-report] li,
   [data-report] [data-claim] {
     break-inside: avoid;
+  }
+  /* a scroll region's frame would be split into an empty box at a page foot: the rows carry the rules */
+  [data-report] [data-scroll-region] > [role="region"] {
+    border: 0 !important;
+  }
+  /* a scroll box cannot break across pages: on paper every one shows its content in flow */
+  [data-report] .overflow-x-auto,
+  [data-report] .overflow-auto {
+    overflow: visible !important;
   }
 
   /* clamped cells print in full (SoF "what it means", literature-matrix outcomes and fields) */
@@ -530,12 +589,34 @@ h4 {
   summary {
     break-after: avoid;
   }
-  [data-report] figure {
+  /* a figure with its caption stays whole, unless it is taller than a page (marked by print mode); the PRISMA flow
+     breaks between its stages */
+  [data-report] figure:not([data-print-tall]):not([data-prisma-flow]):not(:has([data-echart])) {
     break-inside: avoid;
   }
-  [data-echart] {
-    max-width: 100%;
-    overflow: hidden;
+  /* a chart figure: the drawing stays whole and its title and notes stay with it (a whole-figure "avoid" around an
+     echarts drawing made Chromium open a blank page at the end of the report) */
+  [data-report] figure:has([data-echart]) [data-echart] {
+    break-inside: avoid;
+  }
+  [data-report] figure > :first-child,
+  [data-report] figcaption {
+    break-after: avoid;
+  }
+  [data-report] [data-echart] + * {
+    break-before: avoid;
+  }
+  /* charts scale down as vectors to the width there is, in proportion, never clipped: print mode fits each drawing
+     (lib/print.ts fitChartForPrint: aspect-ratio box, viewBox). The drawing sits in flow: echarts positions its SVG
+     absolutely, and an absolute box inside a figure that page breaking moved opened a blank page after the report. */
+  [data-echart] svg {
+    position: static !important;
+    display: block;
+  }
+  /* the appendix's source sentences at the table size */
+  [data-appendix] .font-quote {
+    font-size: 9pt;
+    line-height: 1.35;
   }
 
   /* verified numbers: a solid underline and a check mark (the striped tape prints as a smudge) */
@@ -554,6 +635,9 @@ h4 {
     background: none;
     font-family: var(--font-display);
     font-size: 0.85em;
+  }
+  .num-verified[data-pending="true"] {
+    text-decoration: none;
   }
   .num-verified[data-pending="true"]::after {
     content: none;

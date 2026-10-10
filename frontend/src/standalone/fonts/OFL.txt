@@ -1,7 +1,8 @@
 martian-mono-latin.woff2: the Latin subset of Martian Mono (variable weight and width), as served by Google Fonts.
 It is embedded in the offline report file so verified numbers keep their face without a network (Plan 20 Task 8).
 
-Copyright 2021 The Martian Mono Project Authors (https://github.com/evilmartians/mono)
+Copyright 2020 The Martian Mono Project Authors (https://github.com/evilmartians/mono)
+(copied verbatim from the font's own name table, name ID 0)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

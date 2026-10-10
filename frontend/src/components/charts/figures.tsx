@@ -196,6 +196,10 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
   const option = useMemo<EChartsOption>(() => {
     const years = points.map((p) => p.year);
     const axisName = { color: tokens.ink, fontFamily: tokens.fontDisplay, fontSize: 12, fontWeight: 600 };
+    // the y-axis title clears its widest tick label ("100,000"), which the log axis puts at the next power of ten
+    // (Task 8 fix round 1: at 40px it ran through "10,000")
+    const top = 10 ** Math.ceil(Math.log10(Math.max(10, ...points.map((p) => p.n))));
+    const yNameGap = Math.round(top.toLocaleString("en-US").length * 6.6) + 14;
     return {
       animation: !tokens.reducedMotion,
       aria: { enabled: false },
@@ -213,7 +217,7 @@ export function StudyMapFigure({ points, missing, tokens, lang, onSelect }: {
         axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11, formatter: (v: number) => String(v) },
         axisLine: { lineStyle: { color: tokens.rule } }, splitLine: { show: false } },
       yAxis: { type: "log", logBase: 10,
-        name: L(lang, G.sampleSize), nameLocation: "middle", nameGap: 40, nameTextStyle: axisName,
+        name: L(lang, G.sampleSize), nameLocation: "middle", nameGap: yNameGap, nameTextStyle: axisName,
         axisLabel: { color: tokens.muted, fontFamily: tokens.fontDisplay, fontSize: 11 }, splitLine: { lineStyle: { color: tokens.rule, opacity: 0.6, type: "dashed" } } },
       series: [{
         type: "scatter", symbolSize: 14, symbolKeepAspect: true, cursor: "pointer",

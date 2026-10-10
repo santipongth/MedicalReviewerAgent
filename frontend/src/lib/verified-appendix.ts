@@ -3,7 +3,7 @@
 // system's computed (pooled) numbers apart, with the inputs they were computed from. Numbers are only the ones the rail
 // and the literature matrix show (verified, never blanked, never on a theme); nothing here is computed from a paper.
 import { isNonQuantitative } from "./charts-data";
-import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, type Reported } from "./evidence";
+import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, type Reported } from "./evidence";
 import type { Lang } from "./i18n";
 import { metaView } from "./meta-view";
 import type { ComparisonRow, MetaAnalysis, Paper } from "./types";
@@ -27,15 +27,31 @@ export interface VerifiedEntry {
   mark: Reported | null;
 }
 
-/** Every verified number of every card, in the report's paper order: the sample size first, then each outcome. */
+/**
+ * The appendix rows (fix round 1): every number of every card that passed verification AND has its verification
+ * quote stored, in the report's paper order (the sample size first, then each outcome). A number with no stored quote
+ * cannot show where it comes from, so it is never listed as verified; `omitted` counts them for a note.
+ */
+export function appendixEntries(papers: Paper[], lang: Lang): { entries: VerifiedEntry[]; omitted: number } {
+  const all = collect(papers, lang);
+  const entries = all.filter((e) => !!e.quote?.trim());
+  return { entries, omitted: all.length - entries.length };
+}
+
+/** The listed rows only (see appendixEntries). */
 export function verifiedEntries(papers: Paper[], lang: Lang): VerifiedEntry[] {
+  return appendixEntries(papers, lang).entries;
+}
+
+function collect(papers: Paper[], lang: Lang): VerifiedEntry[] {
   const out: VerifiedEntry[] = [];
   for (const paper of papers) {
     const card = lang === "en" ? paper.card_en ?? paper.card : paper.card;
     const en = paper.card_en ?? paper.card;
     if (!card || !en) continue;
     const n = card.sample_size;
-    if (n != null) {
+    // a sample size the verifier blanked is no verified number, whatever value the card still holds (as lit-matrix.ts)
+    if (n != null && !isBlankedSampleSize(paper)) {
       const quote = en.sample_size_quote ?? card.sample_size_quote ?? null;
       out.push({ ref: paper.ref, kind: "sample_size", outcome: null, outcomeKey: null, otherComparison: false, value: asReported(n, quote), ci: null,
         quote, mark: findReported(n, quote) });

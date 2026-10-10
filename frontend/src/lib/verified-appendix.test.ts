@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { metaReviewFixture, qualitativeReviewFixture, resultFixture } from "@/test/fixtures";
 import type { Paper } from "./types";
-import { computedEntries, verifiedEntries } from "./verified-appendix";
+import { appendixEntries, computedEntries, verifiedEntries } from "./verified-appendix";
 
 const papers = resultFixture.papers!;
 
@@ -31,6 +31,23 @@ describe("verifiedEntries (Plan 20 Task 8 appendix)", () => {
     const blankedN: Paper = { ...papers[0], verification: { ...papers[0].verification!, unverified: [{ field: "sample_size", outcome: null }] },
       card: { ...papers[0].card!, sample_size: null }, card_en: { ...papers[0].card_en!, sample_size: null } };
     expect(verifiedEntries([blankedN], "th").map((r) => r.kind)).toEqual(["effect"]);
+  });
+
+  it("a number with no stored verification quote is never listed as verified; it is counted as left out (fix round 1)", () => {
+    const noQuote: Paper = { ...papers[2],
+      card: { ...papers[2].card!, sample_size_quote: null, outcomes: papers[2].card!.outcomes.map((o) => ({ ...o, evidence_quote: null })) },
+      card_en: { ...papers[2].card_en!, sample_size_quote: null, outcomes: papers[2].card_en!.outcomes.map((o) => ({ ...o, evidence_quote: null })) } };
+    const { entries, omitted } = appendixEntries([noQuote, papers[0]], "th");
+    expect(entries.map((e) => e.ref)).toEqual(["P1", "P1"]);
+    expect(entries.every((e) => !!e.quote)).toBe(true);
+    expect(omitted).toBe(2); // P3's sample size and its HR
+  });
+
+  it("a sample size the verifier blanked is never listed, even when a value is still on the card", () => {
+    const blanked: Paper = { ...papers[0], verification: { ...papers[0].verification!, unverified: [{ field: "sample_size", outcome: null }] } };
+    const { entries, omitted } = appendixEntries([blanked], "th");
+    expect(entries.map((e) => e.kind)).toEqual(["effect"]);
+    expect(omitted).toBe(0); // blanked is not "left out": it is not a verified number at all
   });
 
   it("themes (qualitative and mixed-methods cards) carry no numbers", () => {

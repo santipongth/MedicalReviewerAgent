@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import type { Lang } from "@/lib/i18n";
 import { fieldLang, RC } from "@/lib/i18n-report";
 import type { ComparisonRow, MetaAnalysis, Paper } from "@/lib/types";
-import { computedEntries, verifiedEntries, type VerifiedEntry } from "@/lib/verified-appendix";
+import { appendixEntries, computedEntries, type VerifiedEntry } from "@/lib/verified-appendix";
 import { ComputedNumber, VerifiedNumber } from "../ui/evidence";
 import { HighlightedQuote } from "../ui/quote";
 import { SECTION_H2 as H2 } from "./report-nav";
@@ -32,10 +32,15 @@ function NumberCell({ e }: { e: VerifiedEntry }) {
  * computed from. Collapsed on screen; open in print (print mode opens every disclosure), so a printed report keeps the
  * trail from each number to its source.
  */
-export function VerifiedAppendix({ papers, meta, metaRows, lang, onSelect }: {
+export function VerifiedAppendix({ papers, meta, metaRows, lang, onSelect, verifyQuotes = true }: {
   papers: Paper[]; meta?: MetaAnalysis | null; metaRows: ComparisonRow[]; lang: Lang; onSelect: Select;
+  /** result.methods.extraction.verify_quotes: false when the numbers were never checked against the abstracts */
+  verifyQuotes?: boolean;
 }) {
-  const verified = useMemo(() => verifiedEntries(papers, lang), [papers, lang]);
+  const { entries, omitted } = useMemo(() => appendixEntries(papers, lang), [papers, lang]);
+  // fix round 1: unchecked numbers are listed as nothing; a table only of numbers with their sentence
+  const unchecked = !verifyQuotes || (entries.length === 0 && omitted > 0);
+  const verified = unchecked ? [] : entries;
   const computed = useMemo(() => computedEntries(meta, papers, metaRows, lang), [meta, papers, metaRows, lang]);
   const caption = L(lang, A.verifiedCaption);
   const computedCaption = L(lang, A.computedCaption);
@@ -48,7 +53,9 @@ export function VerifiedAppendix({ papers, meta, metaRows, lang, onSelect }: {
         </summary>
         <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
           <p className="max-w-[70ch] text-[0.85rem] text-muted">{L(lang, A.note)}</p>
-          {verified.length ? (
+          {unchecked ? (
+            <p className="max-w-[70ch] text-[0.9rem]" data-appendix-unchecked>{L(lang, A.unchecked)}</p>
+          ) : verified.length ? (
             <ScrollRegion lang={lang} label={L(lang, RC.parts.scrollable(caption))}>
               <table className="w-full min-w-[40rem] border-collapse text-[0.85rem]" data-appendix-verified>
                 <caption className="sr-only">{caption}</caption>
@@ -65,6 +72,7 @@ export function VerifiedAppendix({ papers, meta, metaRows, lang, onSelect }: {
                     <tr key={`${e.ref}-${e.kind}-${i}`} className="border-t border-rule">
                       <th scope="row" className={`${TD} text-left font-display font-semibold`}>
                         <button type="button" onClick={() => onSelect(e.ref, e.outcomeKey ?? undefined)}
+                          aria-label={`${e.ref}: ${L(lang, RC.parts.showSources)}`}
                           className="inline-flex min-h-11 min-w-11 items-center text-primary underline underline-offset-2 md:min-h-0 md:min-w-0">
                           {e.ref}
                         </button>
@@ -75,11 +83,9 @@ export function VerifiedAppendix({ papers, meta, metaRows, lang, onSelect }: {
                       </td>
                       <td className={TD}><NumberCell e={e} /></td>
                       <td className={`${TD} break-words`}>
-                        {e.quote ? (
-                          <span className="font-quote text-[0.95rem] leading-relaxed" lang={fieldLang(e.quote, lang)}>
-                            <HighlightedQuote quote={e.quote} number={e.mark} />
-                          </span>
-                        ) : <span className="text-muted">{L(lang, A.noQuote)}</span>}
+                        <span className="font-quote text-[0.95rem] leading-relaxed" lang={fieldLang(e.quote, lang)}>
+                          <HighlightedQuote quote={e.quote ?? ""} number={e.mark} />
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -87,6 +93,9 @@ export function VerifiedAppendix({ papers, meta, metaRows, lang, onSelect }: {
               </table>
             </ScrollRegion>
           ) : <p className="text-muted">{L(lang, A.noVerified)}</p>}
+          {!unchecked && omitted > 0 && (
+            <p className="max-w-[70ch] text-[0.85rem] text-muted" data-appendix-omitted>{L(lang, A.omitted(omitted))}</p>
+          )}
           {computed.length > 0 && (
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
               <p className="max-w-[70ch] text-[0.85rem] text-muted">{L(lang, A.computedNote)}</p>

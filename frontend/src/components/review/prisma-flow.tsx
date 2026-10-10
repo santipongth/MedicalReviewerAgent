@@ -118,7 +118,8 @@ export function PrismaFlow({ stats, methods, options, type, lang }: {
           </li>
         ))}
       </ol>
-      <details className="text-[0.88rem]">
+      {/* the boxes above are the printed flow; the table twin would print it twice (Plan 20 Task 8 fix round 1) */}
+      <details className="text-[0.88rem] print:hidden">
         <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold md:min-h-0">
           {L(lang, F.asTable)}
         </summary>

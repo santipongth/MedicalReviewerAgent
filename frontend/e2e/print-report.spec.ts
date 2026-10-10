@@ -2,9 +2,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { buildStandaloneHtml } from "../src/lib/standalone-html";
-import { metaP20ReviewFixture, P20_FIXTURES_EN, resultFixture, slrP20ReviewFixture } from "../src/test/fixtures";
+import { metaP20ReviewFixture, P20_FIXTURES, P20_FIXTURES_EN, resultFixture, slrP20ReviewFixture } from "../src/test/fixtures";
 import type { Review } from "../src/lib/types";
 import { json, mockApi } from "./mock-api";
+import { blankPagesInside, overlappingText, pdfTextRuns } from "./pdf-layout";
 
 // Plan 20 Task 8: the report prints as a report-grade PDF (controls hidden, every disclosure open, clamps removed,
 // tables whole, the verified tape as an underline plus ✓, light theme), ends with the verified-numbers appendix, and the
@@ -92,6 +93,8 @@ for (const [name, review, lang] of CASES) {
     });
     expect(s.tapeAfter).toBe('"✓"');
     expect(s.tapeFace).toMatch(/Martian Mono/);
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => [...document.fonts].some((f) => f.family.replace(/"/g, "") === "Martian Mono" && f.status === "loaded"))).toBe(true);
     if (s.hole !== null) expect(s.hole).toBe(lang === "th" ? '"[ไม่ได้ตรวจ]"' : '"[unverified]"');
     if (name.startsWith("meta")) expect(s.computedTag).toBe(true); // ComputedNumber keeps its own marking
     await expect(page.locator("[data-print-key]")).toBeVisible(); // the key to the printed marks, on paper only
@@ -123,7 +126,55 @@ for (const [name, review, lang] of CASES) {
     const pdf = await page.pdf({ ...PRINT, path: out(`${name}.pdf`) });
     expect(pdf.byteLength).toBeGreaterThan(20_000);
     expect(await report.getAttribute("data-printing")).toBeNull(); // back on screen afterwards
+    // read back from the paper (fix round 1): no two blocks drawn over each other, no stray empty page
+    const pages = pdfTextRuns(out(`${name}.pdf`));
+    expect(overlappingText(pages)).toEqual([]);
+    expect(blankPagesInside(pages)).toEqual([]);
   });
+
+  test(`print ${name} at A4 width: the blocks of every section and every figure follow each other, none overlaps`, async ({ page }) => {
+    await page.setViewportSize({ width: 688, height: 1000 }); // the A4 text block (182mm)
+    await open(page, review);
+    await page.emulateMedia({ media: "print" });
+    await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+    const overlaps = await page.evaluate(() => {
+      const found: string[] = [];
+      const name = (el: Element) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${el.className && typeof el.className === "string" ? `.${el.className.split(" ")[0]}` : ""}`;
+      const parents = new Set<Element>([document.querySelector("main")!, ...document.querySelectorAll("[data-report], [data-report] section, [data-report] figure, [data-report] figure > *")]);
+      for (const parent of parents) {
+        const kids = [...parent.children].filter((k) => {
+          const r = k.getBoundingClientRect();
+          return getComputedStyle(k).display !== "none" && r.height > 0 && getComputedStyle(k).position !== "absolute";
+        });
+        for (let i = 1; i < kids.length; i++) {
+          const a = kids[i - 1].getBoundingClientRect();
+          const b = kids[i].getBoundingClientRect();
+          // stacked blocks: each starts at or below the end of the one before (side by side would share no columns)
+          const sideBySide = b.left >= a.right - 1 || b.right <= a.left + 1;
+          if (!sideBySide && b.top < a.bottom - 1) found.push(`${name(parent)}: ${name(kids[i - 1])} × ${name(kids[i])}`);
+        }
+      }
+      return found;
+    });
+    expect(overlaps).toEqual([]);
+  });
+}
+
+// fix round 1: every review type, in both languages, reads back from paper with no block drawn over another and no
+// blank page (the layout bugs the review found showed up only in some page geometries)
+for (const lang of ["th", "en"] as const) {
+  for (const type of ["slr", "meta", "metaNoPool", "scoping", "narrative", "legacy"] as const) {
+    test(`paper layout ${type} ${lang}: no overlapping text, no blank page inside`, async ({ page }) => {
+      const review = (lang === "th" ? P20_FIXTURES : P20_FIXTURES_EN)[type];
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await open(page, review);
+      const file = out(`layout-${type}-${lang}.pdf`);
+      await page.pdf({ ...PRINT, path: file });
+      const pages = pdfTextRuns(file);
+      expect(overlappingText(pages)).toEqual([]);
+      expect(blankPagesInside(pages)).toEqual([]);
+    });
+  }
 }
 
 test("print in the dark screen theme: the paper is light, and the dark theme comes back", async ({ page }) => {
@@ -148,6 +199,29 @@ test("print in the dark screen theme: the paper is light, and the dark theme com
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.pdf({ ...PRINT, path: out("meta-th-dark-screen.pdf") });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(overlappingText(pdfTextRuns(out("meta-th-dark-screen.pdf")))).toEqual([]);
+});
+
+test("print: a chart scales down to a narrower page as a vector, never clipped (fix round 1)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, metaP20ReviewFixture);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  await page.setViewportSize({ width: 480, height: 1000 }); // a text block much narrower than the 660px drawing
+  const sizes = await page.locator("[data-report] [data-echart]").evaluateAll((charts) => charts.map((c) => {
+    const svg = c.querySelector("svg")!;
+    const box = svg.getBoundingClientRect();
+    const [, , w, h] = (svg.getAttribute("viewBox") ?? "0 0 0 0").split(" ").map(Number);
+    return { container: c.getBoundingClientRect().width, svg: box.width, ratio: box.height / box.width, drawn: h / w,
+      clipped: box.right > c.getBoundingClientRect().right + 1 || getComputedStyle(c).overflow === "hidden" && box.height > c.getBoundingClientRect().height + 1 };
+  }));
+  expect(sizes.length).toBeGreaterThan(0);
+  for (const s of sizes) {
+    expect(s.svg).toBeLessThanOrEqual(s.container + 1);
+    expect(s.svg).toBeLessThan(660); // scaled down
+    expect(Math.abs(s.ratio - s.drawn)).toBeLessThan(0.02); // in proportion: a vector scale, not a crop
+    expect(s.clipped).toBe(false);
+  }
 });
 
 test("print at phone width: the summary of findings and the literature matrix print as tables", async ({ page }) => {
@@ -161,6 +235,9 @@ test("print at phone width: the summary of findings and the literature matrix pr
   expect(await sof.evaluate((t) => getComputedStyle(t).display)).toBe("table");
   expect(await sof.locator("thead").evaluate((t) => getComputedStyle(t).display)).toBe("table-header-group");
   await page.pdf({ ...PRINT, path: out("slr-th-phone.pdf") });
+  const pages = pdfTextRuns(out("slr-th-phone.pdf"));
+  expect(overlappingText(pages)).toEqual([]);
+  expect(blankPagesInside(pages)).toEqual([]);
 });
 
 /** The downloaded file, opened with every request refused. */
@@ -184,12 +261,11 @@ for (const [name, review, lang] of [["slr-th", slrP20ReviewFixture, "th"], ["met
     const meta = page.locator("[data-offline-meta]");
     await expect(meta).toContainText(withPrompt.id);
     await expect(meta).toContainText("2026-10-10.7");
-    await expect(meta).toContainText("2026-10-11 08:30 UTC");
+    await expect(meta).toContainText(lang === "th" ? "11 ตุลาคม 2569 (ค.ศ. 2026) 08:30 UTC" : "11 October 2026 08:30 UTC");
     if (lang === "en") await expect(page.locator("[data-offline-header]")).not.toContainText(/[฀-๿]/);
     await expect(page.locator("section[data-appendix]")).toBeVisible();
-    // Martian Mono is embedded: verified numbers keep their face offline
+    // Martian Mono is embedded: the face itself is loaded (a check() alone passes when no face matches at all)
     await page.evaluate(() => document.fonts.ready);
-    expect(await page.evaluate(() => document.fonts.check('500 14px "Martian Mono"', "0.80"))).toBe(true);
     expect(await page.evaluate(() => [...document.fonts].some((f) => f.family.replace(/"/g, "") === "Martian Mono" && f.status === "loaded"))).toBe(true);
     // the theme toggle switches and survives storage that throws (a file opened with storage blocked)
     const toggle = page.locator("#mra-theme button");
@@ -208,9 +284,24 @@ for (const [name, review, lang] of [["slr-th", slrP20ReviewFixture, "th"], ["met
     await expect(toggle).toBeHidden();
     await page.emulateMedia({ media: null }); // "screen" would also make page.pdf() print the screen media
     await page.pdf({ ...PRINT, path: out(`offline-${name}.pdf`) });
+    const pages = pdfTextRuns(out(`offline-${name}.pdf`));
+    expect(overlappingText(pages)).toEqual([]);
+    expect(blankPagesInside(pages)).toEqual([]);
     expect(requests).toEqual([]); // nothing was even attempted
   });
 }
+
+test("offline: the header line and metadata follow a switch to English", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openOffline(page, { ...slrP20ReviewFixture, result: { ...slrP20ReviewFixture.result!, prompt_version: "2026-10-10.7" } });
+  const header = page.locator("[data-offline-header]");
+  await expect(header).toContainText("รายงานแบบออฟไลน์");
+  await page.getByRole("button", { name: "English" }).click();
+  await expect(header.locator("[data-offline-line]")).toHaveText(/^Offline report · downloaded 11 October 2026 08:30 UTC/);
+  await expect(header.locator("[data-offline-meta]")).toContainText("Prompt version:");
+  await expect(header.locator("[data-offline-meta]")).toHaveAttribute("aria-label", "Report file details");
+  await expect(header.locator("#mra-theme button")).toHaveAccessibleName("Use the dark theme");
+});
 
 test("offline: the remembered theme applies before the first paint", async ({ page }) => {
   await page.goto("about:blank");

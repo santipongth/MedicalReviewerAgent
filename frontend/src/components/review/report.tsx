@@ -285,7 +285,8 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
         return <DownloadsAndCite review={review} result={result} type={type} lang={lang} offline={offline} />;
       case "appendix":
         // Plan 20 Task 8: every verified number with its source sentence (collapsed on screen, open in print)
-        return hasPapers ? <VerifiedAppendix papers={papers} meta={result.meta_analysis} metaRows={metaRows} lang={lang} onSelect={select} /> : null;
+        return hasPapers ? <VerifiedAppendix papers={papers} meta={result.meta_analysis} metaRows={metaRows} lang={lang} onSelect={select}
+          verifyQuotes={result.methods?.extraction?.verify_quotes !== false} /> : null;
       default:
         return null;
     }

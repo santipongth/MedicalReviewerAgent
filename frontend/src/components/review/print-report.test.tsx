@@ -66,6 +66,30 @@ describe("verified-numbers appendix (Plan 20 Task 8)", () => {
     expect(row).toHaveTextContent("81%");
   });
 
+  it("each study code says it opens the source sentences (fix round 1)", () => {
+    stubViewport(true);
+    render(<Report review={slrP20ReviewFixture} />);
+    const section = screen.getByRole("region", { name: "ภาคผนวก: ตัวเลขที่ตรวจแล้ว" });
+    expect(within(section).getAllByRole("button", { name: "P3: ดูประโยคต้นฉบับ" }).length).toBeGreaterThan(0);
+  });
+
+  it("numbers with no stored quote are left out and counted; unchecked numbers get a note, not a table (fix round 1)", () => {
+    stubViewport(true);
+    const papers = slrP20ReviewFixture.result!.papers!.map((p) => (p.ref === "P1" && p.card && p.card_en ? {
+      ...p, card: { ...p.card, sample_size_quote: null }, card_en: { ...p.card_en, sample_size_quote: null } } : p));
+    const { unmount } = render(<Report review={{ ...slrP20ReviewFixture, result: { ...slrP20ReviewFixture.result!, papers } }} />);
+    const section = screen.getByRole("region", { name: "ภาคผนวก: ตัวเลขที่ตรวจแล้ว" });
+    expect(section.querySelector("[data-appendix-omitted]")).toHaveTextContent("1");
+    expect(within(section).getByRole("table", { name: "ตัวเลขจากงานวิจัยที่ตรวจกับบทคัดย่อแล้ว" }).textContent).not.toContain("48,210");
+    unmount();
+    const off = { ...slrP20ReviewFixture, result: { ...slrP20ReviewFixture.result!, methods: {
+      ...slrP20ReviewFixture.result!.methods!, extraction: { ...slrP20ReviewFixture.result!.methods!.extraction, verify_quotes: false } } } };
+    render(<Report review={off} />);
+    const s2 = screen.getByRole("region", { name: "ภาคผนวก: ตัวเลขที่ตรวจแล้ว" });
+    expect(within(s2).queryByRole("table", { name: "ตัวเลขจากงานวิจัยที่ตรวจกับบทคัดย่อแล้ว" })).toBeNull();
+    expect(s2.querySelector("[data-appendix-unchecked]")).not.toBeNull();
+  });
+
   it("is English in an English report", () => {
     stubViewport(true);
     render(<Report review={P20_FIXTURES_EN.meta} />);
@@ -144,6 +168,8 @@ describe("print mode (Plan 20 Task 8)", () => {
     hidden(screen.getByRole("button", { name: "พิมพ์" }));
     for (const el of container.querySelectorAll("[data-scroll-hint]")) hidden(el);
     // and the other way round: a key to the printed marks shows only on paper
+    // the PRISMA flow prints as its boxes; its table twin would print the same flow twice (fix round 1)
+    expect(container.querySelector("[data-prisma-flow] details")).toHaveClass("print:hidden");
     const key = container.querySelector("[data-print-key]")!;
     expect(key).toHaveClass("hidden", "print:block");
     expect(key).toHaveTextContent("[ไม่ได้ตรวจ]");
