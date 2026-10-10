@@ -1,0 +1,37 @@
+{
+ "meta": {
+  "count": 2,
+  "page": 1,
+  "per_page": 50,
+  "cost_usd": 0.0001
+ },
+ "results": [
+  {
+   "id": "https://openalex.org/W7165013733",
+   "doi": "https://doi.org/10.20524/aog.2026.1078",
+   "ids": {
+    "openalex": "https://openalex.org/W7165013733",
+    "doi": "https://doi.org/10.20524/aog.2026.1078",
+    "pmid": "https://pubmed.ncbi.nlm.nih.gov/42434155"
+   },
+   "publication_year": 2026,
+   "referenced_works": [],
+   "cited_by_count": 0
+  },
+  {
+   "id": "https://openalex.org/W2000000001",
+   "doi": "https://doi.org/10.1000/Example.2",
+   "ids": {
+    "openalex": "https://openalex.org/W2000000001",
+    "doi": "https://doi.org/10.1000/example.2",
+    "pmid": "https://pubmed.ncbi.nlm.nih.gov/11111111"
+   },
+   "publication_year": 2019,
+   "referenced_works": [
+    "https://openalex.org/W1000000001",
+    "https://openalex.org/W1000000002"
+   ],
+   "cited_by_count": 87
+  }
+ ]
+}

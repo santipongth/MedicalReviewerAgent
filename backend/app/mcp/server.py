@@ -103,7 +103,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
     @mcp.tool()
     async def start_review(topic: str, ctx: Context, language: Literal["th", "en"] = "th",
                            max_papers: int = 30,
-                           review_type: Literal["narrative", "slr", "scoping"] = "slr") -> dict[str, Any]:
+                           review_type: Literal["narrative", "slr", "scoping", "meta_analysis"] = "slr"
+                           ) -> dict[str, Any]:
         """Start a literature review of a disease, drug or chemical (e.g. "metformin and colorectal cancer").
         The agent refines the question, screens ~60 papers that have abstracts, analyses the abstracts of the best
         `max_papers` (clamped into 5-30, default 30) and compares their findings.
@@ -111,6 +112,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
         - "slr" (default): systematic review, PICO question, PRISMA flow and an evidence-strength grade.
         - "narrative": thematic overview across study types including narrative reviews; no evidence grade.
         - "scoping": maps what research exists (types, years) with a PCC question; no quality or effect judgement.
+        - "meta_analysis": a systematic review plus DerSimonian-Laird random-effects pools of the verified effect
+          estimates (result.meta_analysis); pooled numbers are computed by the system, not reported by any study.
         Returns review_id, status, cached
         and status_url. The same topic, language and options within 24 hours (or still running) return that review
         (cached=true). Fails with a reason and a wait time when the service is busy."""
@@ -136,7 +139,7 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
     @mcp.tool()
     async def get_review_result(review_id: str) -> dict[str, Any]:
         """Full result of a finished review: refined question, summary, comparison table, consensus, conflicts,
-        evidence strength, per-paper extractions and quality metrics."""
+        evidence strength, per-paper extractions and quality metrics (plus meta_analysis for a meta-analysis)."""
         r = await review_or_error(review_id)
         if r.result is None:
             message = ("review is still in progress; poll get_review_status" if r.status in ("queued", "running")

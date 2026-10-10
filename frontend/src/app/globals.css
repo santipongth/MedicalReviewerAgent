@@ -189,6 +189,27 @@ h4 {
   opacity: 0;
 }
 
+/* Computed numbers (pooled analysis): display-face tabular figures, no tape, a small outlined "คำนวณ" tag.
+   Never Martian Mono, which means "checked against the paper". */
+.num-computed {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.computed-tag {
+  font: 600 0.68rem/1.3 var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0 4px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  align-self: center;
+}
+
 .hole {
   display: inline-flex;
   align-items: center;

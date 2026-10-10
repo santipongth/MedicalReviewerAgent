@@ -39,7 +39,16 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
     agreements = [e["agreement"] for e in read if e.get("agreement") is not None]
     screen = by_stage.get("screen", [])
     refine = (by_stage.get("refine") or [{}])[-1]
+    # meta_analysis only: sentences the pooled-number post-check removed / kept as single-study quotes. Absent for
+    # other types (no stage logged), so their result.quality keeps its shape.
+    pooled = by_stage.get("pooled_numbers")
+    extra: dict[str, Any] = {}
+    if pooled:
+        last = pooled[-1]  # a resumed run may log the stage again; the latest narrative is the one in the result
+        extra["pooled_numbers"] = {"removed": int(last.get("removed", 0)),
+                                   "kept_single_study": int(last.get("kept_single_study", 0))}
     return {
+        **extra,
         "numbers_verified": verified,
         "numbers_total": total,
         "verification_rate": _r(verified / total) if total else None,

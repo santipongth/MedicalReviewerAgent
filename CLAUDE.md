@@ -33,3 +33,4 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
   charged in `LimitedLLM` (`app/services/budget.py`). Public limits come from `GET /api/v1/status`; never hard-code them
   in docs or UI. Reference docs: `docs/api.md` (keep it in step with routes, events, MCP tools and limits).
 - Load test: `scripts/loadtest.py` against the Caddy front (`:8088`) with `GRAPH_MODE=stub STUB_DELAY_SECONDS=20` (the stub now emits ~80 events per review).
+- Plan 14b: `meta_analysis` is a review type that behaves like `slr` and adds `result.meta_analysis` (DerSimonian-Laird in `app/harness/meta.py`, node `pool_effects`). Pooled numbers are computed, so the UI shows them only through `ComputedNumber` (never `VerifiedNumber`) and the narrative never restates them. Citations (`fetch_citations`, OpenAlex with Europe PMC fallback) are metadata only, soft-fail with null coverage, and never fail a review.

@@ -363,6 +363,19 @@ test("landing: the request slip sends the chosen review_type", async ({ page }) 
   expect(body.options?.review_type).toBe("scoping");
 });
 
+test("landing: choosing the meta-analysis type sends review_type=meta_analysis", async ({ page }) => {
+  let body: { options?: { review_type?: string } } = {};
+  await mockApi(page, {
+    "POST /api/v1/reviews": (route) => { body = route.request().postDataJSON(); return json(route, 202, { review_id: RID, status: "queued", cached: false }); },
+  });
+  await page.goto("/");
+  await page.getByRole("group", { name: "รูปแบบการทบทวน" }).getByRole("radio", { name: "การวิเคราะห์อภิมาน" }).check();
+  await page.getByLabel(/^หัวข้อ/).fill("metformin colorectal cancer");
+  await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
+  await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
+  expect(body.options?.review_type).toBe("meta_analysis");
+});
+
 test("report per review type: badge, sections and nav", async ({ page }) => {
   const nav = () => page.getByRole("navigation", { name: "ในรายงานนี้" });
   await openReport(page, scopingReviewFixture);

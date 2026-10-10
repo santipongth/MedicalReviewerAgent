@@ -1,5 +1,5 @@
 // Realistic result shaped exactly like the backend's finalize output (sample data for tests and e2e mocks).
-import type { Paper, PaperCard, Review, ReviewResult } from "@/lib/types";
+import type { ComparisonCell as Cell, Paper, PaperCard, Review, ReviewResult } from "@/lib/types";
 
 const q3 = "Metformin use was associated with a lower risk of colorectal cancer (HR 0.80, 95% CI 0.71–0.90; p = 0.003).";
 const q1 = "Users of metformin had a lower incidence of colorectal cancer than users of sulfonylureas (HR 0.86, 95% CI 0.77–0.96).";
@@ -190,8 +190,156 @@ export const narrativeReviewFixture: Review = {
   },
 };
 
+/**
+ * result.citations as build_citations (backend app/harness/citations.py) shapes it: later papers cite earlier ones, P3
+ * has only a Europe PMC reference list, and P5 has no data at all (null coverage: not "cites nothing").
+ */
+export const citationsFixture: NonNullable<ReviewResult["citations"]> = {
+  edges: [{ from: "P1", to: "P2" }, { from: "P3", to: "P1" }, { from: "P3", to: "P2" }, { from: "P4", to: "P1" }],
+  cited_by: { P1: 312, P2: 1187, P3: 46, P4: 89, P5: null },
+  cited_by_source: { P1: "openalex", P2: "openalex", P3: "europepmc", P4: "openalex", P5: null },
+  coverage: { P1: "openalex", P2: "openalex", P3: "europepmc", P4: "openalex", P5: null },
+  source_note: "Reference lists and citation counts from OpenAlex; Europe PMC reference lists for papers OpenAlex lacked",
+};
+
 /** An explicit Plan 14a systematic review (the plain reviewFixture has no review_type, so it renders as legacy). */
 export const slrReviewFixture: Review = {
   ...reviewFixture,
-  result: { ...resultFixture, review_type: "slr" },
+  result: { ...resultFixture, review_type: "slr", citations: citationsFixture },
+};
+
+// --- Plan 14b meta-analysis -----------------------------------------------------------------------------------------
+// The backend stub (app/graph/nodes/stub_result.py, review_type meta_analysis): seven papers, the observational HR pool
+// of P3, P4, P7 computed by meta.py (pasted verbatim), P1/P2 left out as too few RCTs, the SR/MA P5 as a reference row.
+// Two edits for the UI: outcome_display is in Thai (the real localize step does this), and P5 carries a verified HR
+// for the safety outcome so the reference row shows numbers (the stub's P5 has none).
+
+const metaQuote = (hr: string, lo: string, hi: string) => `HR ${hr} (95% CI ${lo}-${hi})`;
+
+function metaPaper(ref: string, year: number, design: string, category: PaperCard["design_category"], n: number | null,
+  rob: PaperCard["risk_of_bias"], direction: PaperCard["overall_direction"], hr: [string, string, string] | null,
+  outcome = "Primary outcome"): Paper {
+  const c: PaperCard = {
+    study_design: design, design_category: category, population: "Adults studied in the context of metformin and colorectal cancer",
+    sample_size: n, sample_size_quote: n ? `A total of ${n} participants were enrolled.` : null,
+    intervention_or_exposure: "Index intervention", comparator: null,
+    outcomes: [{
+      outcome, result: `Reported ${direction} association for metformin and colorectal cancer.`,
+      evidence_quote: hr ? metaQuote(...hr) : null, effect_size: null, effect_measure: hr ? "HR" : null,
+      effect_value: hr ? Number(hr[0]) : null, ci_lower: hr ? Number(hr[1]) : null, ci_upper: hr ? Number(hr[2]) : null,
+      p_value: null, direction,
+    }],
+    key_findings: [`Simulated finding for metformin and colorectal cancer.`], limitations: ["Illustrative stub data; abstract-only reading."],
+    funding_or_conflicts: null, risk_of_bias: rob, overall_direction: direction,
+  };
+  const numbers = hr ? 4 : 0;
+  return {
+    ref, title: `Simulated study ${ref.slice(1)}: metformin and colorectal cancer`, authors: ["Stub A", "Stub B"], year,
+    journal: "Journal of Simulated Evidence", doi: null, pmid: null, pmcid: null, url: null, relevance: 0.85,
+    screen_reason: "Relevant to the question", card: c, card_en: c,
+    verification: { numbers_verified: numbers, numbers_total: numbers, agreement: null, escalated: false, repaired: false, uncertain: false, unverified: [] },
+    error: null,
+  };
+}
+
+const metaPapers: Paper[] = [
+  metaPaper("P1", 2021, "Randomized controlled trial", "rct", 412, "low", "positive", ["0.78", "0.63", "0.96"]),
+  metaPaper("P2", 2019, "Randomized controlled trial", "rct", 230, "moderate", "null", ["0.97", "0.74", "1.27"]),
+  metaPaper("P3", 2020, "Prospective cohort study", "cohort", 5120, "moderate", "positive", ["0.84", "0.72", "0.98"]),
+  metaPaper("P4", 2018, "Retrospective cohort study", "cohort", 1893, "high", "negative", ["1.22", "1.01", "1.47"]),
+  metaPaper("P5", 2022, "Systematic review and meta-analysis of RCTs", "sr_ma_rct", null, "low", "mixed", ["0.81", "0.70", "0.94"], "Safety outcome"),
+  metaPaper("P6", 2017, "Narrative review", "narrative_review", null, "unclear", "unclear", null),
+  metaPaper("P7", 2016, "Population-based cohort study", "cohort", 3410, "moderate", "positive", ["0.88", "0.79", "0.99"]),
+];
+
+const metaCell = (ref: string, outcome: string, direction: Cell["direction"], hr: [number, number, number] | null, design: string, pooled = false): Cell => ({
+  ref, finding: `${outcome}: ${direction} in simulated study ${ref.slice(1)}.`, direction, effect_measure: hr ? "HR" : null,
+  effect_value: hr?.[0] ?? null, ci_lower: hr?.[1] ?? null, ci_upper: hr?.[2] ?? null, design_category: design, pooled,
+});
+const metaComparison = (primary: string, safety: string) => [
+  { outcome: primary, cells: [
+    metaCell("P1", primary, "positive", [0.78, 0.63, 0.96], "rct"), metaCell("P2", primary, "null", [0.97, 0.74, 1.27], "rct"),
+    metaCell("P3", primary, "positive", [0.84, 0.72, 0.98], "cohort"), metaCell("P4", primary, "negative", [1.22, 1.01, 1.47], "cohort"),
+    metaCell("P7", primary, "positive", [0.88, 0.79, 0.99], "cohort"),
+  ] },
+  { outcome: safety, cells: [
+    metaCell("P1", safety, "positive", [0.78, 0.63, 0.96], "rct"), metaCell("P3", safety, "positive", [0.84, 0.72, 0.98], "cohort"),
+    metaCell("P5", safety, "mixed", [0.81, 0.7, 0.94], "sr_ma_rct", true),
+  ] },
+];
+
+/** result.meta_analysis exactly as the stub computes it (meta.py), outcome_display localized. */
+export const metaAnalysisFixture: NonNullable<ReviewResult["meta_analysis"]> = {
+  version: "meta-1",
+  pools: [{
+    outcome: "Primary outcome", outcome_display: "ผลลัพธ์หลัก", measure: "HR", scale: "log", design_group: "observational", k: 3,
+    studies: [
+      { ref: "P3", effect: 0.84, ci_lower: 0.72, ci_upper: 0.98, y: -0.1743533871447778, se: 0.07864975062157178, variance: 0.006185783272835432, weight: 33.17465652084898 },
+      { ref: "P4", effect: 1.22, ci_lower: 1.01, ci_upper: 1.47, y: 0.19885085874516517, se: 0.0957446335589523, variance: 0.009167034855338055, weight: 30.264230947749734 },
+      { ref: "P7", effect: 0.88, ci_lower: 0.79, ci_upper: 0.99, y: -0.12783337150988489, se: 0.05757044457642293, variance: 0.003314356088726984, weight: 36.5611125314013 },
+    ],
+    pooled: {
+      est: 0.9565733980317777, ci_lower: 0.7841448529486756, ci_upper: 1.1669179009225137,
+      y: -0.044397756995939, y_ci_lower: -0.24316151428389007, y_ci_upper: 0.15436600029201206, se: 0.10141194291729393,
+    },
+    tau2: 0.024814936085923115, i2: 81.15150309882412, q: 10.610925690712394, df: 2, p_het: 0.0049643999471426,
+    method: "DerSimonian-Laird random effects", version: "meta-1",
+    warnings: ["abstract_only", "ci_assumed_95", "adjustment_unknown", "small_k", "high_heterogeneity"],
+  }],
+  excluded: [
+    { outcome: "Primary outcome", outcome_display: "ผลลัพธ์หลัก", ref: "P1", measure: "HR", design_category: "rct", reason: "too_few_studies", k: 2, design_group: "rct" },
+    { outcome: "Primary outcome", outcome_display: "ผลลัพธ์หลัก", ref: "P2", measure: "HR", design_category: "rct", reason: "too_few_studies", k: 2, design_group: "rct" },
+    { outcome: "Safety outcome", outcome_display: "ผลด้านความปลอดภัย", ref: "P1", measure: "HR", design_category: "rct", reason: "too_few_studies", k: 1, design_group: "rct" },
+    { outcome: "Safety outcome", outcome_display: "ผลด้านความปลอดภัย", ref: "P3", measure: "HR", design_category: "cohort", reason: "too_few_studies", k: 1, design_group: "observational" },
+  ],
+  reference: [
+    { outcome: "Safety outcome", outcome_display: "ผลด้านความปลอดภัย", ref: "P5", design_category: "sr_ma_rct", measure: "HR", effect: 0.81, ci_lower: 0.7, ci_upper: 0.94 },
+  ],
+  grade: {
+    primary_outcome: "Primary outcome", design_group: "observational",
+    reasons: [
+      "inconsistency: substantial heterogeneity (I2 >= 50%) in the pooled analysis of Primary outcome (observational studies)",
+      "imprecision: the pooled 95% CI for Primary outcome (observational studies) includes no effect",
+    ],
+  },
+};
+
+export const metaReviewFixture: Review = {
+  ...reviewFixture,
+  id: "66666666-7777-8888-9999-000000000000",
+  result: {
+    ...resultFixture,
+    review_type: "meta_analysis",
+    summary: "งานวิจัยเชิงสังเกตส่วนใหญ่พบความเสี่ยงต่ำลง [P3, P7] แต่หนึ่งงานพบทิศทางตรงข้าม [P4] ดูค่ารวมในส่วนการวิเคราะห์อภิมาน",
+    synthesis: {
+      ...resultFixture.synthesis!,
+      executive_summary: "งานวิจัยเชิงสังเกตส่วนใหญ่พบความเสี่ยงต่ำลง [P3, P7] แต่หนึ่งงานพบทิศทางตรงข้าม [P4] ดูค่ารวมในส่วนการวิเคราะห์อภิมาน",
+      comparison: metaComparison("ผลลัพธ์หลัก", "ผลด้านความปลอดภัย"),
+      consensus: [{ statement: "งานวิจัยส่วนใหญ่ชี้ทางเดียวกัน", refs: ["P1", "P3"], explanation: "ตัวอย่าง" }],
+      conflicts: [{ statement: "หนึ่งงานเห็นต่าง", refs: ["P4"], explanation: "ตัวอย่าง", likely_reasons: ["กลุ่มประชากรต่างกัน"] }],
+      evidence_strength: "very_low", grade_baseline: "very_low",
+    },
+    synthesis_en: {
+      ...resultFixture.synthesis_en!,
+      comparison: metaComparison("Primary outcome", "Safety outcome"), evidence_strength: "very_low", grade_baseline: "very_low",
+    },
+    papers: metaPapers,
+    stats: { found: 87, unique: 70, with_abstract: 64, candidates: 60, screened: 60, selected: 7, extracted: 7,
+      excluded_screening: { off_topic: 20, population: 5, publication_type: 3 }, non_research: 4,
+      excluded_selection: { narrative_excluded: 0, over_limit: 2 } },
+    quality: { ...resultFixture.quality, pooled_numbers: { removed: 1, kept_single_study: 0 } },
+    errors: [],
+    meta_analysis: metaAnalysisFixture,
+    // The SR/MA (P5) and the narrative review (P6) cite the primary studies; P6 has no reference data.
+    citations: {
+      edges: [
+        { from: "P5", to: "P1" }, { from: "P5", to: "P2" }, { from: "P1", to: "P7" }, { from: "P3", to: "P4" },
+        { from: "P3", to: "P7" },
+      ],
+      cited_by: { P1: 140, P2: 64, P3: 221, P4: 97, P5: 38, P6: null, P7: 410 },
+      cited_by_source: { P1: "openalex", P2: "openalex", P3: "openalex", P4: "europepmc", P5: "openalex", P6: null, P7: "openalex" },
+      coverage: { P1: "openalex", P2: "openalex", P3: "openalex", P4: "europepmc", P5: "openalex", P6: null, P7: "openalex" },
+      source_note: "Reference lists and citation counts from OpenAlex; Europe PMC reference lists for papers OpenAlex lacked",
+    },
+  },
 };

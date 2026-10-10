@@ -10,7 +10,7 @@ export function ReviewTypePicker({ value, onChange, available }: {
 }) {
   const id = useId();
   const offered = REVIEW_TYPES.filter((t) => (available ?? []).includes(t));
-  const options = offered.length ? offered : REVIEW_TYPES; // unknown status or an empty list: the static three
+  const options = offered.length ? offered : REVIEW_TYPES; // unknown status or an empty list: the static four
   return (
     <fieldset className="grid gap-2 text-[0.92rem]">
       <legend className="label mb-1.5">รูปแบบการทบทวน</legend>

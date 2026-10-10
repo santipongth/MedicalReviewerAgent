@@ -5,6 +5,10 @@ import structlog
 
 def configure_logging(level: str = "INFO") -> None:
     logging.basicConfig(level=level, format="%(message)s")
+    # httpx logs every request URL at INFO, query string included: that would write API keys (OpenAlex api_key,
+    # mailto) into the logs. Keep the HTTP client loggers quiet whatever the app level is.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

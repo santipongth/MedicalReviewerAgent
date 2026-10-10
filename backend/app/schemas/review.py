@@ -8,8 +8,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
-ReviewType = Literal["narrative", "slr", "scoping"]
-REVIEW_TYPES: tuple[str, ...] = ("narrative", "slr", "scoping")
+ReviewType = Literal["narrative", "slr", "scoping", "meta_analysis"]
+REVIEW_TYPES: tuple[str, ...] = ("narrative", "slr", "scoping", "meta_analysis")
+# A meta-analysis is a systematic review plus pooled effects: it behaves exactly like "slr" (screening, selection,
+# PICO, conflicts, grading, PRISMA) unless a step says otherwise.
+SLR_LIKE: frozenset[str] = frozenset({"slr", "meta_analysis"})
 
 
 class ReviewOptions(BaseModel):

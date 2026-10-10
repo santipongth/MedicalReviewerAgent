@@ -78,7 +78,7 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 Field rules:
 - `topic`: 3–300 characters, with at least one letter or digit.
 - `language`: `th` (default) or `en`.
-- `review_type`: `slr` (default, systematic review), `narrative` or `scoping`. Anything else gets 422. It is part of the cache key. The allowed values are in `GET /api/v1/status → limits.review_types`.
+- `review_type`: `slr` (default, systematic review), `narrative`, `scoping` or `meta_analysis` (Plan 14b: a systematic review plus pooled effects). Anything else gets 422. It is part of the cache key. The allowed values are in `GET /api/v1/status → limits.review_types`.
 - `max_papers`: 5–30, default 30.
 - `candidate_limit`: 20–100, default 60. Must be at least `max_papers`.
 - `year_from`: 1950–2100.
@@ -103,18 +103,61 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `progress` is reserved and always `null`. Live progress comes from the event stream.
 - `status` is one of `queued`, `running`, `done`, `error`, `rejected` or `cancelled`.
 
-`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context`.
+`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis`.
 
 **Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`.
 - `card.design_category` is one of `rct, non_randomized_trial, cohort, case_control, cross_sectional, case_series, mendelian_randomization, sr_ma_rct, sr_ma_observational, sr_ma_mixed, narrative_review, other`.
 - Narrative reviews are listed, but they never count as evidence, except in scoping reviews, which count them. A narrative-type review also gives them to the synthesis and can cite them, but keeps them out of the comparison table.
 
+**Citations.** `citations` is `{edges[], cited_by{}, cited_by_source{}, coverage{}, source_note, partial}` (null for results stored before Plan 14b and for reviews where the step did not run). `edges[]` is `{from, to}` (citing paper -> cited paper), only between papers of the same review, no self-loops, deduplicated. `cited_by[ref]` is the cited-by count over all literature (not just this review): OpenAlex's, else Europe PMC's `citedByCount`, else null. `cited_by_source[ref]` says which (`"openalex"`, `"europepmc"` or null); the two sources count differently, so do not compare across sources. On a timeout of the whole step the data gathered so far is kept, `partial` is `true` and `source_note` says so (`partial` is `false` otherwise, and is absent from results stored before it was added). OpenAlex gets at most half of the step budget and is not retried, so a slow OpenAlex still leaves time for the Europe PMC fallback. `coverage[ref]` is `"openalex"`, `"europepmc"` (reference list fallback) or null; null means no data, so a missing edge for such a paper does not mean it cites nothing. Metadata only (no full text); a failure gives null coverage and never fails the review; a timeout (about 20 s) keeps whatever arrived (coverage null for the rest, `partial: true`). Under `GRAPH_MODE=stub` the citation data is illustrative. Optional `OPENALEX_API_KEY` / `OPENALEX_MAILTO`.
+
 **Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). `excluded_selection` is `{narrative_excluded, over_limit}`. Results stored before Plan 14a have none of these keys.
 
-**Review type (Plan 14a).** `result.review_type` is `narrative`, `slr` or `scoping`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
+**Review type (Plan 14a).** `result.review_type` is `narrative`, `slr`, `scoping` or (Plan 14b) `meta_analysis`, which is graded like `slr`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
 - `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`; `null` when the question was not refined), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
 - `synthesis.evidence_strength` and `synthesis.grade_baseline` are nullable. They are `null` for `narrative` and `scoping`, which are not graded; clients must not read `null` as "very low".
 - For `scoping`, `synthesis.consensus` and `synthesis.conflicts` are always `[]`, and no direction or risk of bias is shown as a finding. The cards still carry `overall_direction`, `risk_of_bias`, `outcomes[].direction` and `synthesis.comparison[].cells[].direction` as raw agent extraction. The report and the CSV do not show them (the CSV leaves those columns empty), and the live `extracted` event has no `direction`. Clients should not present these fields as findings.
+
+**Meta-analysis (Plan 14b).** `review_type: "meta_analysis"` behaves exactly like `slr` (PICO, screening, selection, PRISMA, conflicts, grading) and adds `result.meta_analysis`. For every other type, and for results stored before Plan 14b, `meta_analysis` is `null` or absent. It is also `null` for a meta-analysis whose pooling step failed, or was skipped because the study numbers were not verified against the abstracts (`verify_quotes` off or no verification records); either is listed in `errors` and never fails the review. Pooled numbers are computed by the system, DerSimonian-Laird random effects, from the abstract-verified effect estimates and 95% CIs. They are not a result reported by any single study.
+- Shape: `{version: "meta-1", pools[], excluded[], reference[], grade: {primary_outcome, design_group, reasons[]}}`.
+- `pools[]`: `{outcome, outcome_display, measure, scale, design_group, k, studies[], pooled, tau2, i2, q, df, p_het, method, version, warnings[]}`.
+  - `outcome` is the English matrix row name. `outcome_display` is the same row in the review language.
+  - `measure` is one of `HR, OR, RR, RD, MD, SMD`. `scale` is `log` for HR/OR/RR and `raw` otherwise.
+  - `design_group` is `rct` or `observational`. `observational` covers cohort, case-control, cross-sectional and non-randomised trials.
+  - `k` is at least 3.
+- `studies[]`: `{ref, effect, ci_lower, ci_upper, y, se, variance, weight}`.
+  - `effect`, `ci_lower` and `ci_upper` are as reported.
+  - `y`, `se` and `variance` are on the analysis scale, which is ln for ratio measures.
+  - `weight` is the random-effects weight in percent; the weights sum to 100.
+- `pooled`: `{est, ci_lower, ci_upper, y, y_ci_lower, y_ci_upper, se}`.
+  - `est`, `ci_lower` and `ci_upper` are on the display scale (exp applied for ratios).
+  - `y*` and `se` are on the analysis scale.
+- `tau2` is on the analysis scale. `i2` is a percentage (0–100). `q`, `df` and `p_het` are Cochran's heterogeneity test.
+- `warnings[]` are codes:
+  - always: `abstract_only`, `ci_assumed_95` and `adjustment_unknown`;
+  - when they apply: `small_k` (k < 5), `high_heterogeneity` (I² ≥ 50%), `md_units_assumed_equal`, `other_measures_not_pooled` and `duplicate_cohort_skipped`.
+- `excluded[]`: `{outcome, outcome_display, ref, measure, design_category, reason, [duplicate_of], [k, design_group]}`. `reason` is one of:
+  - `design_not_poolable`, `measure_not_poolable`;
+  - `missing_numbers` (including numbers blanked by verification), `invalid_numbers`, `non_positive_ratio`, `invalid_ci`, `effect_outside_ci`;
+  - `duplicate_study`, `duplicate_cohort`;
+  - `too_few_studies`.
+- `reference[]`: systematic reviews and meta-analyses found by the search. They are shown for reference and never pooled: `{outcome, outcome_display, ref, design_category, measure, effect, ci_lower, ci_upper}`.
+- Pooling rules:
+  - only primary studies are pooled;
+  - each pool has one effect measure and one design group;
+  - r, other and none are never pooled;
+  - a study whose first author (surname and first initial), year and n match another study in the same pool is skipped.
+- `grade` is `{primary_outcome, design_group, reasons[]}`. `primary_outcome` is the pooled outcome that matches the question's first outcome, or else the one with the most studies. GRADE-lite judges only that outcome's pools of the best design group: its RCT pools when any exist, otherwise its observational pools. That group is `design_group`. `reasons` lists the downgrades from those pools:
+  - inconsistency when any of them has I² ≥ 50%;
+  - imprecision when any pooled 95% CI includes no effect (1 for ratios, 0 for differences).
+
+  Each domain is downgraded at most once. These reasons also feed `synthesis.grade_baseline` through the normal baseline and clamp.
+- The narrative never states pooled numbers. A post-check looks for pooled estimates and CI bounds in the summary, rationale and research gaps, at 2 or 3 decimals and in trimmed forms (`0.8`, `.80`), and for a pooled risk difference (and its CI bounds) restated as a percent. A sentence containing one is removed when any of these holds:
+  - it cites no paper;
+  - it cites two or more papers;
+  - it uses pooled wording (pooled, overall, combined, meta-analysis, aggregate).
+
+  A sentence that cites exactly one paper and has no pooled wording is a single-study quote, so it is kept. I² and τ² values are removed whatever the sentence cites, but only when written right after an I², τ²/tau or heterogeneity label. Sentences split only before an uppercase letter or `[`, so "et al." and "vs." do not split a sentence. The `quality` stage `pooled_numbers` reports `{removed, kept_single_study}`, and the result carries it as `result.quality.pooled_numbers` (meta_analysis only; absent for other types).
 
 **Synthesis.** `synthesis.consensus` explanations name any dissenting minority. Consensus needs at least 70 % of at least 3 studies to agree. `synthesis.conflicts` lists real splits, each with its likely reasons.
 
@@ -126,8 +169,8 @@ The web app also serves the whole interactive report as one HTML file that works
 
 | Format | Contents |
 |---|---|
-| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). This is the same file as the MCP resource `review://{id}/report.md`. |
-| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty). Only verified numbers appear; blanked values are empty. The file starts with a UTF-8 BOM for spreadsheets. |
+| `md` | The Markdown report (non-SLR types add a "Review type" line under the title). `meta_analysis` adds a "Pooled analysis (computed by the system from abstract-verified numbers — not a result of any single study)" section after the comparison. For each pool it lists the measure, design group, k, the estimate with its 95% CI, I², τ², the input refs (effect and CI printed as reported, not rounded) with their weights, and its warnings as fixed English labels (for example "small number of studies (k<5)" or "substantial heterogeneity (I² ≥ 50%)"). This is the same file as the MCP resource `review://{id}/report.md`. |
+| `csv` | One row per paper × outcome: `ref, title, year, journal, doi, pmid, design_category, study_design, sample_size, outcome, direction, effect_measure, effect_value, ci_lower, ci_upper, p_value, evidence_quote, error`, then the literature-matrix columns `population, intervention_or_exposure, comparator, risk_of_bias, overall_direction, key_findings, limitations` (for `scoping`, `direction`, `risk_of_bias` and `overall_direction` are empty). Only verified numbers appear; blanked values are empty. Pooled (meta-analysis) values are not per paper, so they are not in the CSV; use `md` or `json`. The file starts with a UTF-8 BOM for spreadsheets. |
 | `json` | `{review_id, topic, language, created_at, finished_at, result}` |
 
 ### `GET /api/v1/status`
@@ -136,7 +179,7 @@ The web app also serves the whole interactive report as one HTML file that works
 {"accepting": true, "reason": null, "retry_after": null, "queue_depth": 0, "running": 3, "reviews_today": 41,
  "turnstile_site_key": null,
  "limits": {"review_rate_limit": "5/hour", "api_key_rate_limit": "60/hour", "paper_search_rate_limit": "30/minute",
-            "review_types": ["narrative", "slr", "scoping"],
+            "review_types": ["narrative", "slr", "scoping", "meta_analysis"],
             "max_papers": {"min": 5, "max": 30, "default": 30}, "candidate_limit": {"min": 20, "max": 100, "default": 60},
             "max_queued_reviews": 50, "sse_max_per_ip": 5}}
 ```
@@ -166,9 +209,11 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 | `screening` | `{batch}` | once per batch of 10 |
 | `screened` | `{kept, total}` | marks the end of screening |
 | `external_lookup` | `{}` | only when external MCP servers are configured |
+| `citations_fetched` | `{edges, covered, total}` | once, in parallel with reading; `covered` = papers with reference data. Always sent when the citation step runs, also when it soft-fails (`covered: 0`) |
 | `reading` | `{ref, title}` | once per paper; sent when the paper's read starts, and all arrive together at fan-out start (papers then wait for the LLM concurrency limit) |
 | `extracted` | `{ref, ok, verified, uncertain, direction, design}` | once per paper. `direction` is the reading model's overall direction (`positive\|negative\|null\|mixed\|unclear`; the string `"null"` means "no association"), a model judgement, not a pooled result. `design` is the design category (same enum as `card.design_category`). Both are JSON `null` when `ok` is false; events stored before this change lack both keys |
 | `synthesizing` | `{papers}` | skipped when no paper was extracted |
+| `pooled` | `{pools, k_total}` | `meta_analysis` only, right after `synthesizing`. `pools` is the number of pooled analyses; `k_total` is the sum of `k` over them, so a study counts once per pool it is in. Skipped when no paper was extracted or pooling failed |
 | `localizing` | `{}` | Thai reviews only |
 | `finalizing` | `{}` | |
 | `interrupted` | `{will_resume: true}` | the worker stopped and the review went back to the queue; not terminal |
@@ -206,7 +251,7 @@ The server name is `medical-reviewer-agent`, version 0.7.0. The `Host` header mu
 | Tool | Returns | Notes |
 |---|---|---|
 | `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | `limit` is clamped to 1–25; shares the paper-search limit |
-| `start_review(topic, language="th", max_papers=30, review_type="slr")` | `{review_id, status, cached, status_url}` | `max_papers` is clamped to 5–30; `review_type` is `narrative`, `slr` or `scoping` (an unknown value is a tool error); capacity errors include the reason and the wait time |
+| `start_review(topic, language="th", max_papers=30, review_type="slr")` | `{review_id, status, cached, status_url}` | `max_papers` is clamped to 5–30; `review_type` is `narrative`, `slr`, `scoping` or `meta_analysis` (an unknown value is a tool error; for `meta_analysis`, `get_review_result` includes `result.meta_analysis`); capacity errors include the reason and the wait time |
 | `get_review_status(review_id)` | `{review_id, status, error, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled` |
 | `get_review_result(review_id)` | `{review_id, status, result}` | if the review is not done: `{…, result: null, message, error}` |
 

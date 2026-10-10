@@ -31,7 +31,11 @@ export function stepSummary(s: Scene, id: AgentId): string | null {
       const unc = c.uncertain > 0 ? ` · สองโมเดลอ่านต่างกัน ${c.uncertain}` : "";
       return `อ่านเสร็จ ${readDone(s)}/${s.slots.length}${fail}${unc}`;
     }
-    case "synth": return c.synthPapers !== null ? `จาก ${c.synthPapers} ฉบับ` : null;
+    case "synth": {
+      const pools = c.pools !== null ? `ค่ารวม ${c.pools} ชุด` : null;
+      const from = c.synthPapers !== null ? `จาก ${c.synthPapers} ฉบับ` : null;
+      return [from, pools].filter(Boolean).join(" · ") || null;
+    }
     default: return null;
   }
 }

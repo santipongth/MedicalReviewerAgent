@@ -24,7 +24,12 @@ from app.graph.schemas import (
     SynthesisNarrative,
 )
 from app.graph.state import ReviewState
-from app.harness.grade import LEVELS, clamp_to_baseline, grade_baseline
+from app.harness.grade import (
+    LEVELS,
+    analyse_meta,
+    clamp_to_baseline,
+    grade_baseline,
+)
 from app.harness.localize import localize_strings
 from app.harness.matrix import (
     build_matrix,
@@ -33,9 +38,16 @@ from app.harness.matrix import (
     repair_clusters,
     validate_clusters,
 )
+from app.harness.meta import (
+    pooled_extra_patterns,
+    pooled_number_strings,
+    pools_for_prompt,
+    strip_pooled_numbers,
+    with_display,
+)
 from app.harness.quality import summarize_quality
 from app.harness.verify import check_citations, strip_unknown_citations
-from app.schemas.review import ReviewOptions
+from app.schemas.review import SLR_LIKE, ReviewOptions
 from app.services.llm import LLMError
 
 NO_PAPERS = {
@@ -102,7 +114,7 @@ def _brief(p: dict[str, Any]) -> dict[str, Any]:
 
 
 def _empty_synthesis(summary: str, review_type: str = "slr") -> dict[str, Any]:
-    graded = review_type == "slr"
+    graded = review_type in SLR_LIKE
     return Synthesis(executive_summary=summary, comparison=[], consensus=[], conflicts=[],
                      evidence_strength="very_low" if graded else None, evidence_rationale=summary, research_gaps=[],
                      grade_baseline="very_low" if graded else None).model_dump()
@@ -146,6 +158,50 @@ def make_normalize_outcomes(deps):
         return {"matrix": matrix, "cost_usd": cost, "errors": errors, "quality": [entry]}
 
     return normalize_outcomes
+
+
+# ---- S2b: pooled effects (meta-analysis only) ----------------------------------------------------
+def route_after_normalize(state: ReviewState) -> list[Send] | str:
+    """Meta-analysis goes through pool_effects; every other type keeps its path unchanged."""
+    if _review_type(state) == "meta_analysis":
+        return "pool_effects"
+    return route_conflicts(state)
+
+
+def make_pool_effects(deps):
+    async def pool_effects(state: ReviewState) -> dict:
+        """DerSimonian-Laird pools over the matrix (code, no LLM), then the meta GRADE-lite adjustments.
+        A failure here never fails the review: meta_analysis stays null and the error is recorded."""
+        if _review_type(state) != "meta_analysis":
+            return {}
+        started = time.perf_counter()
+        papers = _evidence(state)
+        matrix = state.get("matrix") or {}
+        if papers and not (harness_spec(deps).verify_quotes and any(p.get("verification") for p in papers)):
+            # the pooled section promises numbers checked against the abstracts; without that check, pool nothing
+            return {"meta_analysis": None, "errors": ["pooling skipped: study numbers were not verified"],
+                    "quality": [{"stage": "pool", "skipped": "numbers not verified",
+                                 "seconds": round(time.perf_counter() - started, 3)}]}
+        try:  # the whole computation: an unexpected shape anywhere must not fail the review
+            meta, grade = analyse_meta(matrix, papers, (state.get("question") or {}).get("outcomes"),
+                                       matrix.get("grade") or {"level": "very_low", "factors": []})
+            downgrades = meta["grade"]["reasons"]
+            k_total = sum(p["k"] for p in meta["pools"])
+        except Exception as exc:  # noqa: BLE001 - pooling is an extra; the review goes on without it
+            return {"meta_analysis": None, "errors": [f"pooling failed: {type(exc).__name__}"],
+                    "quality": [{"stage": "pool", "failed": True,
+                                 "seconds": round(time.perf_counter() - started, 3)}]}
+        if papers:
+            progress_writer()({"type": "pooled", "pools": len(meta["pools"]), "k_total": k_total})
+        entry = {"stage": "pool", "pools": len(meta["pools"]), "k_total": k_total,
+                 "excluded": len(meta["excluded"]), "downgrades": len(downgrades),
+                 "seconds": round(time.perf_counter() - started, 3)}
+        update: dict[str, Any] = {"meta_analysis": meta, "quality": [entry]}
+        if matrix:
+            update["matrix"] = {**matrix, "grade": grade}
+        return update
+
+    return pool_effects
 
 
 # ---- S3: explain each conflict ----------------------------------------------------------------
@@ -275,12 +331,37 @@ def _clusters(matrix: dict[str, Any], notes: list[dict[str, Any]]) -> tuple[list
     return consensus, conflicts
 
 
+POOLED_REFERENCE = "The pooled estimates are reported in the pooled analysis section."
+
+
+def _strip_pooled(narrative: SynthesisNarrative, meta: dict[str, Any]) -> tuple[SynthesisNarrative, int, int]:
+    """Remove every sentence of the summary, rationale and gaps that restates a pooled estimate, CI bound, I2 or
+    tau2 (see meta.strip_pooled_numbers). Returns (narrative, removed, single-study sentences kept)."""
+    strings = pooled_number_strings(meta)
+    always, numeric = pooled_extra_patterns(meta)
+    summary, removed, single = strip_pooled_numbers(narrative.executive_summary, strings, always, numeric)
+    rationale, n, s = strip_pooled_numbers(narrative.evidence_rationale, strings, always, numeric)
+    removed, single = removed + n, single + s
+    gaps = []
+    for gap in narrative.research_gaps:
+        text, n, s = strip_pooled_numbers(gap, strings, always, numeric)
+        removed, single = removed + n, single + s
+        if text.strip():
+            gaps.append(text)
+    if not removed:
+        return narrative, 0, single
+    return narrative.model_copy(update={"executive_summary": summary or POOLED_REFERENCE,
+                                        "evidence_rationale": rationale or POOLED_REFERENCE,
+                                        "research_gaps": gaps}), removed, single
+
+
 def make_write_synthesis(deps):
     async def write_synthesis(state: ReviewState) -> dict:
         started = time.perf_counter()
         language = state.get("language", "th")
         review_type = _review_type(state)
-        graded = review_type == "slr"
+        graded = review_type in SLR_LIKE
+        meta = state.get("meta_analysis") if review_type == "meta_analysis" else None
         # narrative reviews are cited and summarised in narrative/scoping reviews; only the matrix leaves them out
         papers = _evidence(state) if graded else _with_cards(state)
         if not papers:
@@ -321,7 +402,8 @@ def make_write_synthesis(deps):
                                       sub_questions=question.get("sub_questions") or [],
                                       papers=[_brief(p) for p in papers], matrix=prompt_matrix, conflict_notes=notes,
                                       baseline=matrix.get("grade") or {},
-                                      external_context=state.get("external_context") or [], review_type=review_type)
+                                      external_context=state.get("external_context") or [], review_type=review_type,
+                                      pooled_analysis=pools_for_prompt(meta) if meta else None)
         narrative_call = harness_runner(deps).call(
             deps.llms.synthesizer, prompts.narrative_system(review_type), user,
             schema=SynthesisNarrative if graded else NarrativeNoGrade, validate=validate, trigger="narrative")
@@ -368,6 +450,9 @@ def make_write_synthesis(deps):
             fixed = narrative.model_copy(update=update)
             entry["citation_fixes"] = int(fixed != narrative)
             narrative = fixed
+        if meta and meta.get("pools"):  # pooled numbers render only in the pooled-analysis view, never in prose
+            narrative, removed, single = _strip_pooled(narrative, meta)
+            quality.append({"stage": "pooled_numbers", "removed": removed, "kept_single_study": single})
         # not graded: no strength, no baseline, a fixed rationale that localizes like any other text
         synthesis = Synthesis(
             executive_summary=narrative.executive_summary, comparison=matrix.get("rows", []),
@@ -478,6 +563,17 @@ def _question_block(state: ReviewState) -> dict[str, Any]:
             "key_terms": q.get("key_terms") or []}
 
 
+def _meta_result(state: ReviewState, synthesis_en: dict[str, Any], display: dict[str, Any]) -> dict[str, Any] | None:
+    """result.meta_analysis: the pool_outcomes output (English outcome names) plus `outcome_display`, the matrix row
+    name in the user's language; null for every other review type."""
+    meta = state.get("meta_analysis") if _review_type(state) == "meta_analysis" else None
+    if not meta:
+        return None
+    names = {en["outcome"]: loc["outcome"] for en, loc in zip(synthesis_en.get("comparison") or [],
+                                                              display.get("comparison") or [], strict=False)}
+    return with_display(meta, names)
+
+
 def make_finalize(deps):
     async def finalize(state: ReviewState) -> dict:
         papers = unique_papers(state)
@@ -525,6 +621,8 @@ def make_finalize(deps):
             "external_context": [{"tool": e["tool"], "arguments": e["arguments"], "ok": e["ok"],
                                   "preview": (e.get("text") or e.get("error") or "")[:500]}
                                  for e in state.get("external_context") or []],
+            "citations": state.get("citations"),
+            "meta_analysis": _meta_result(state, synthesis_en, synthesis),
         }
         progress_writer()({"type": "finalizing"})
         return {"result": result}

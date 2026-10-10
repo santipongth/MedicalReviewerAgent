@@ -22,9 +22,11 @@ class ReviewState(TypedDict, total=False):
     selected: list[dict[str, Any]]  # {ref, relevance, reason, candidate}
     selection_stats: dict[str, Any]  # {excluded_screening: {reason: n}, narrative_excluded, over_limit}
     external_context: Annotated[list[dict[str, Any]], operator.add]  # results of external MCP tool calls
+    citations: dict[str, Any] | None  # {edges, cited_by, coverage, source_note}; soft-fails to null coverage
     papers: Annotated[list[dict[str, Any]], operator.add]  # {ref, candidate, relevance, card, error}
     started_at: float  # epoch seconds when the review started (total time in quality.timings)
     matrix: dict[str, Any] | None  # {rows, consensus, conflicts, grade} built by code from the cards
+    meta_analysis: dict[str, Any] | None  # meta.pool_outcomes output + {grade}; meta_analysis reviews only
     conflict_notes: Annotated[list[dict[str, Any]], operator.add]  # ConflictNote per conflicting outcome
     localized_cards: dict[str, dict[str, Any]] | None  # ref -> card in the user's language
     synthesis: dict[str, Any] | None  # Synthesis (English)

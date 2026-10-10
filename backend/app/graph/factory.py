@@ -7,6 +7,7 @@ from app.services.europepmc import EuropePmcClient
 from app.services.http import HttpClient
 from app.services.llm import build_llms
 from app.services.mcp_client import McpRegistry
+from app.services.openalex import OpenAlexClient
 from app.services.searxng import SearxngClient
 
 
@@ -21,6 +22,8 @@ def build_graph_deps(settings: Settings, http: HttpClient, redis=None, catalog=N
         searxng=SearxngClient(http, settings.searxng_url, settings.searxng_engines,
                               timeout=settings.searxng_timeout_seconds),
         europepmc=EuropePmcClient(http, settings.europepmc_url),
+        openalex=OpenAlexClient(http, settings.openalex_url, api_key=settings.openalex_api_key,
+                                mailto=settings.openalex_mailto, timeout=settings.openalex_timeout_seconds),
     )
 
 

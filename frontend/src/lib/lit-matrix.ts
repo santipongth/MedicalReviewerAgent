@@ -6,7 +6,8 @@ import { asReported, ciLabel, effectLabel, isBlankedEffect, isBlankedSampleSize 
 import type { Lang } from "./i18n";
 import { showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "./review-type";
 import { surnameOf } from "./author";
-import type { Direction, Paper, RiskOfBias } from "./types";
+import { citedByCell, type CitedByCell } from "./citation-network";
+import type { Citations, Direction, Paper, RiskOfBias } from "./types";
 
 export type NumberCell =
   | { kind: "value"; text: string }
@@ -34,20 +35,25 @@ export interface LitRow {
   risk: RiskOfBias | null;
   n: NumberCell;
   limitations: string;
+  /** Cited-by count from OpenAlex / Europe PMC (a count, not a paper number); absent when the review has no citations. */
+  citedBy?: CitedByCell;
 }
 
 export type LitColumn =
   | "ref" | "design" | "population" | "exposure" | "comparator" | "outcomes" | "findings"
-  | "direction" | "risk" | "n" | "limitations";
+  | "direction" | "risk" | "n" | "citedBy" | "limitations";
 
 const join = (xs: string[] | undefined) => (xs ?? []).filter(Boolean).join("; ");
 
-export function litRows(papers: Paper[], lang: Lang): LitRow[] {
+export function litRows(papers: Paper[], lang: Lang, citations: Citations | null = null): LitRow[] {
   return papers.map((p) => {
     const card = lang === "en" ? p.card_en ?? p.card : p.card;
     const en = p.card_en ?? p.card;
     const byline = [surnameOf(p.authors?.[0]), p.year].filter(Boolean).join(" ");
-    const base = { ref: p.ref, title: p.title, byline, uncertain: !!p.verification?.uncertain };
+    const base = {
+      ref: p.ref, title: p.title, byline, uncertain: !!p.verification?.uncertain,
+      ...(citations ? { citedBy: citedByCell(citations, p.ref) } : {}),
+    };
     if (!card || !en) {
       return { ...base, failed: true, design: null, population: "", exposure: "", comparator: "", outcomes: [], findings: "",
         direction: null, risk: null, n: { kind: "none" }, limitations: "" };
@@ -74,13 +80,16 @@ export function litRows(papers: Paper[], lang: Lang): LitRow[] {
   });
 }
 
-/** Columns for this review type; the comparator column goes when no row has one. */
+/** Columns for this review type; the comparator column goes when no row has one, "cited by" needs a count. */
 export function litColumns(type: ReviewTypeOrLegacy, rows: LitRow[]): LitColumn[] {
   const cols: LitColumn[] = ["ref", "design", "population", "exposure"];
   if (rows.some((r) => r.comparator)) cols.push("comparator");
   cols.push("outcomes", "findings");
   if (showsDirection(type)) cols.push("direction");
   if (showsRiskOfBias(type)) cols.push("risk");
-  cols.push("n", "limitations");
+  cols.push("n");
+  // A column of dashes says nothing: it needs at least one count.
+  if (rows.some((r) => r.citedBy?.count != null)) cols.push("citedBy");
+  cols.push("limitations");
   return cols;
 }

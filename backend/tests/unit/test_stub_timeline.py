@@ -19,11 +19,13 @@ REAL_KEYS = {
     "planning": {"queries"},
     "searching": {"found", "queries", "failed"},
     "enriching": {"candidates"},
+    "citations_fetched": {"edges", "covered", "total"},
     "screening": {"batch"},
     "screened": {"kept", "total"},
     "reading": {"ref", "title"},
     "extracted": {"ref", "ok", "verified", "uncertain", "direction", "design"},
     "synthesizing": {"papers"},
+    "pooled": {"pools", "k_total"},
     "localizing": set(),
     "finalizing": set(),
 }

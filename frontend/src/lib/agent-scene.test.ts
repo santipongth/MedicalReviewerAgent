@@ -318,6 +318,28 @@ describe("rings and trace", () => {
     const f = run([ev(1, "searching", { found: 5, queries: 3, failed: 2 })]);
     expect(f.trace[0].text).toBe("ค้นเจอ 5 รายการจาก 3 คำค้น · ค้นไม่สำเร็จ 2");
   });
+  it("citations_fetched is a known read-agent trace row with Thai text and no node, packet or status change", () => {
+    const before = run(live(12));
+    const s = reduceScene(before, { kind: "event", ev: ev(13, "citations_fetched", { edges: 4, covered: 3, total: 5, elapsed_s: 20 }) });
+    expect(s.trace.at(-1)).toMatchObject({
+      type: "citations_fetched", agent: "read", text: "ดึงข้อมูลการอ้างอิง: เชื่อม 4 เส้น จาก 3/5 งาน",
+    });
+    expect(traceAgent("citations_fetched")).toBe("read");
+    expect(s.agents).toEqual(before.agents);
+    expect(s.pulses).toEqual(before.pulses);
+    expect(s.status).toBe(before.status);
+  });
+  it("pooled (meta_analysis) is a synth trace row with counts; synth keeps running, no new node or packet", () => {
+    const before = run([...live(12), ev(13, "synthesizing", { papers: 7, elapsed_s: 31 })]);
+    const s = reduceScene(before, { kind: "event", ev: ev(14, "pooled", { pools: 1, k_total: 3, elapsed_s: 33 }) });
+    expect(s.trace.at(-1)).toMatchObject({ type: "pooled", agent: "synth", text: "คำนวณค่ารวม 1 ชุด จากผลของงานวิจัย 3 รายการ" });
+    expect(traceAgent("pooled")).toBe("synth");
+    expect(s.counts.pools).toBe(1);
+    expect(s.agents).toEqual(before.agents);
+    expect(s.pulses).toEqual(before.pulses);
+    expect(Object.keys(s.agents)).toEqual(Object.keys(initialScene().agents));
+    expect(initialScene().counts.pools).toBeNull();
+  });
   it("unknown events add a trace row only", () => {
     const s = run([ev(1, "mystery", { a: 1 })]);
     expect(s.trace).toHaveLength(1);

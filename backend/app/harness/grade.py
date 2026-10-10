@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from app.harness.design import POOLED_CATEGORIES
+from app.harness.meta import DESIGN_GROUP_LABEL, HIGH_I2, pool_outcomes, primary_outcome
 
 LEVELS = ("very_low", "low", "moderate", "high")
 RANDOMIZED = ("randomi", "rct", "controlled trial", "meta-analysis of randomized")
@@ -66,6 +67,65 @@ def grade_baseline(papers: list[dict[str, Any]], matrix: dict[str, Any]) -> dict
     elif source != "total sample size":
         factors.append(f"precision judged from the primary studies: {source} {total_n}")
     return {"level": LEVELS[max(level, 0)], "factors": factors}
+
+
+def grading_pools(pools: list[dict[str, Any]], outcome: str | None) -> tuple[str | None, list[dict[str, Any]]]:
+    """The pools GRADE-lite judges: those of the primary outcome from the best design group. GRADE starts from the
+    best available design, so the RCT pools are used when at least one exists, else the observational ones; a
+    heterogeneous observational pool then never lowers a body of evidence anchored on consistent RCTs.
+    Returns (design group, its pools of that outcome; several when several measures were pooled)."""
+    mine = [p for p in pools if p.get("outcome") == outcome]
+    for group in ("rct", "observational"):
+        chosen = [p for p in mine if p.get("design_group") == group]
+        if chosen:
+            return group, chosen
+    return None, []
+
+
+def apply_meta_grade(grade: dict[str, Any], pools: list[dict[str, Any]], outcome: str | None,
+                     group: str | None = None) -> tuple[dict[str, Any], list[str]]:
+    """Meta-analysis only: adjust the GRADE-lite baseline from the pools chosen by `grading_pools` (one design
+    group of the primary outcome). Inconsistency: any of them with I2 >= 50%. Imprecision: any of them whose 95% CI
+    includes no effect (1 for ratio measures, 0 for differences; i.e. 0 on the analysis scale). Each domain is
+    downgraded at most once: when the baseline already downgraded it (conflicting directions, small total n), the
+    reason is recorded without another level. Note: the baseline's `inconsistency:` counts direction conflicts in ANY
+    outcome, so it can absorb an I2 downgrade of an otherwise consistent primary outcome; accepted for GRADE-lite.
+    Returns (grade, the reason strings added). The reasons carry no pooled numbers."""
+    if not pools:
+        return grade, []
+    what = f"{outcome} ({DESIGN_GROUP_LABEL.get(group, group)})" if group else f"{outcome}"
+    level = LEVELS.index(grade.get("level", "very_low"))
+    factors = list(grade.get("factors") or [])
+    added: list[str] = []
+    checks = (
+        ("inconsistency", any(p["i2"] >= HIGH_I2 for p in pools),
+         f"substantial heterogeneity (I2 >= 50%) in the pooled analysis of {what}"),
+        ("imprecision", any(p["pooled"]["y_ci_lower"] <= 0.0 <= p["pooled"]["y_ci_upper"] for p in pools),
+         f"the pooled 95% CI for {what} includes no effect"),
+    )
+    for domain, hit, reason in checks:
+        if not hit:
+            continue
+        if any(f.startswith(f"{domain}:") for f in factors):
+            text = f"{domain} (pooled analysis, already downgraded): {reason}"
+        else:
+            level -= 1
+            text = f"{domain}: {reason}"
+        factors.append(text)
+        added.append(text)
+    return {**grade, "level": LEVELS[max(level, 0)], "factors": factors}, added
+
+
+def analyse_meta(matrix: dict[str, Any], papers: list[dict[str, Any]], question_outcomes: list[str] | None,
+                 baseline: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The one pool -> primary outcome -> GRADE-lite sequence, used by the pool_effects node and the timed stub.
+    Returns (meta_analysis with `grade`, the adjusted grade). Raises on an unexpected shape; callers decide."""
+    meta = pool_outcomes(matrix, papers)
+    outcome = primary_outcome(meta, question_outcomes)
+    group, pools = grading_pools(meta["pools"], outcome)
+    grade, reasons = apply_meta_grade(baseline, pools, outcome, group)
+    meta["grade"] = {"primary_outcome": outcome, "design_group": group, "reasons": reasons}
+    return meta, grade
 
 
 def clamp_to_baseline(chosen: str, baseline: str) -> str:
