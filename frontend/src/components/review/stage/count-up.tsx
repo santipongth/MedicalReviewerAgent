@@ -1,6 +1,6 @@
 "use client";
 import { animate, useReducedMotion } from "motion/react";
-import { useEffect, useRef, type SVGProps } from "react";
+import { useEffect, useLayoutEffect, useRef, type SVGProps } from "react";
 
 const DIGITS = /\d+/g;
 
@@ -23,7 +23,11 @@ export function withNumbers(text: string, values: number[]): string {
 export function CountUp({ text, ...rest }: { text: string } & SVGProps<SVGTextElement>) {
   const el = useRef<SVGTextElement>(null);
   const prev = useRef<string | null>(null);
+  // the latest committed text: a layout effect runs before the previous passive effect's cleanup, so a cleanup that
+  // stops an animation always restores the current value, never the one its own effect started with
+  const latest = useRef(text);
   const reduced = useReducedMotion();
+  useLayoutEffect(() => { latest.current = text; }, [text]);
   useEffect(() => {
     const from = prev.current;
     prev.current = text;
@@ -37,7 +41,7 @@ export function CountUp({ text, ...rest }: { text: string } & SVGProps<SVGTextEl
       onUpdate: (t) => { node.textContent = withNumbers(text, b.map((v, i) => a[i] + (v - a[i]) * t)); },
       onComplete: () => { node.textContent = text; },
     });
-    return () => { ctl.stop(); node.textContent = text; };
+    return () => { ctl.stop(); node.textContent = latest.current; };
   }, [text, reduced]);
   return <text ref={el} {...rest}>{text}</text>;
 }
