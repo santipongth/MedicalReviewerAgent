@@ -44,7 +44,7 @@ const STRINGS = {
   th: {
     notVerified: "ไม่ยืนยัน",
     home: "หน้าแรก",
-    about: "API และ MCP",
+    developers: "API และ MCP",
     theme: "สลับธีม",
     sourceSentence: "ประโยคที่ใช้ยืนยัน",
     foundVerbatim: "พบในบทความตรงทุกตัวอักษร",
@@ -59,12 +59,11 @@ const STRINGS = {
     dataSources: "แหล่งข้อมูล",
     footerNav: "ท้ายหน้า",
     site: "เว็บไซต์",
-    free: "ใช้ฟรี ไม่ต้องสมัคร",
   },
   en: {
     notVerified: "not verified",
     home: "Home",
-    about: "API & MCP",
+    developers: "API & MCP",
     theme: "Switch theme",
     sourceSentence: "Source sentence",
     foundVerbatim: "Found verbatim in the paper",
@@ -79,7 +78,6 @@ const STRINGS = {
     dataSources: "Data sources",
     footerNav: "Footer",
     site: "Site",
-    free: "free, no sign-up",
   },
 } as const;
 

@@ -6,10 +6,11 @@ import { Intro, WhatItIs } from "./intro";
 describe("WhatItIs (hero)", () => {
   it("says in plain words what the system is", () => {
     render(<WhatItIs />);
-    expect(screen.getByRole("heading", { name: "ระบบนี้คืออะไร" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "ระบบนี้คืออะไร" })).toBeInTheDocument();
     const text = screen.getByTestId("what-it-is").textContent ?? "";
     expect(text).toContain("ผู้ช่วย AI");
     expect(text).toContain("บทคัดย่อ (ย่อหน้าสรุปสั้น ๆ");
+    expect(text).not.toContain("ไม่ต้องสมัคร");
     // the arrow is decoration: the link's name is the words only
     expect(screen.getByRole("link", { name: "ดูว่าระบบทำอะไรให้บ้าง" })).toHaveAttribute("href", "#intro");
   });

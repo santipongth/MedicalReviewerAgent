@@ -14,7 +14,14 @@ describe("SiteFooter", () => {
     for (const s of ["PubMed", "Europe PMC", "OpenAlex", "Semantic Scholar", "Crossref", "arXiv", "DOAJ", "OpenAIRE"]) {
       expect(screen.getByText(new RegExp(s))).toBeInTheDocument();
     }
-    expect(screen.getByRole("link", { name: "API และ MCP" })).toHaveAttribute("href", "/about");
+    expect(screen.getByRole("link", { name: "API และ MCP" })).toHaveAttribute("href", "/developers");
+  });
+
+  it("has no bottom strip: no sign-up note and no English tagline under a Thai page", () => {
+    render(<SiteFooter />);
+    const text = document.querySelector("footer")!.textContent;
+    expect(text).not.toContain("ไม่ต้องสมัคร");
+    expect(text).not.toContain("Automated rapid review");
   });
 
   it("follows the page language: an English report gets an English footer (Plan 20 Task 7)", async () => {
@@ -24,7 +31,7 @@ describe("SiteFooter", () => {
     });
     expect(await screen.findByText("Not medical advice")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Footer" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "API & MCP" })).toHaveAttribute("href", "/about");
+    expect(screen.getByRole("link", { name: "API & MCP" })).toHaveAttribute("href", "/developers");
     expect(document.querySelector("footer")!.textContent).not.toMatch(/[฀-๿]/);
   });
 });

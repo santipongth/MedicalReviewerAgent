@@ -69,7 +69,7 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
   checked synthesis pipeline, Thai/English output.
 - Plan 3 (integrations) done: MCP server, external MCP tools, API keys, webhooks, cancellation, paper search.
 - Plan 4 (web) done: landing request slip, live run, interactive evidence report (matrix, verbatim source rail, forest plot,
-  PRISMA, study map, filters), /about; design system in `DESIGN.md` ("Theatre Green").
+  PRISMA, study map, filters), /developers (API and MCP); design system in `DESIGN.md` ("Theatre Green").
 - Plan 5 (abstract-only) done: full-text/crawling stack removed, a screened pool → a user-chosen number of abstracts (Plan 21 made it adjustable), shared LLM
   concurrency limit, parallel Thai localization, budget preset retuned from live latency measurements.
 - Plan 6 (harness round 2) done: fixed study-design categories, non-research filter, clustering repair, consensus

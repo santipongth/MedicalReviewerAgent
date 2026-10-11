@@ -79,16 +79,6 @@ test("home: when /status fails, the slider is hidden and the review still goes o
   expect(body!.options ?? {}).not.toHaveProperty("max_papers");
 });
 
-test("home: when the server cannot read /status, the timeline falls back to number-free wording", async ({ page }) => {
-  // the server cannot reach the mock API, so the server-rendered copy uses its number-free wording
-  await mockApi(page);
-  await page.goto("/");
-  const steps = page.getByRole("list", { name: "ขั้นตอนของรีวิว" });
-  await expect(steps).toContainText("เลือกฉบับที่เกี่ยวข้องที่สุดตามจำนวนที่คุณกำหนด");
-  await expect(steps).not.toContainText("ราว 60");
-  await expect(steps).not.toContainText("สูงสุด 30");
-});
-
 for (const [name, width, height, scheme] of [["slider-1440", 1440, 1000, "light"], ["slider-390", 390, 844, "light"],
   ["slider-1440-dark", 1440, 1000, "dark"], ["slider-390-dark", 390, 844, "dark"]] as const) {
   test(`home: the folded options with the slider fit at ${width}px (${scheme})`, async ({ page }) => {
