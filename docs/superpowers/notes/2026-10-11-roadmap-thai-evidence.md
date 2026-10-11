@@ -69,18 +69,31 @@ Seen through the five steps of evidence-based medicine (Ask, Acquire, Appraise, 
 
 | Plan | Scope | Why this order |
 |---|---|---|
-| 22 | Evaluation baseline and a **Cochrane benchmark** (frozen fixtures that replay without network calls; study-level recall, direction and certainty agreement, number-verification rate, citation precision) | Measures every later change; publishable on its own |
+| 22 | Evaluation baseline and a **Cochrane benchmark** (frozen fixtures that replay without network calls; study-level recall, direction and certainty agreement, number-verification rate, citation precision). Split into **22a** (the harness and the metrics that need no gold standard) and **22b** (gold standard: LLM extracts, a human checks). Spec: `../specs/2026-10-11-plan-22-cochrane-benchmark-design.md` | Measures every later change; publishable on its own |
 | 23 | **ThaiJO source** (section 7) | Cheap, adds Thai evidence, measured by Plan 22 |
-| 24 | Sentence-support grounding and a "why this source was cited" view | Safety for every audience; publishable |
+| 24 | Sentence-support grounding, a "why this source was cited" view, and a per-citation "ตรวจแล้ว" badge (goes beyond Evidence Finder's Verify) | Safety for every audience; publishable |
 | 25 | Audience modes (public, bedside, learner, committee) and **public safety rails** (personal-symptom questions go to a doctor or 1669; no dosing advice; harms gaps stated) | Needed once the public uses it |
-| 26 | Quick answer mode ("ถามเร็ว", about 8 papers, under a minute, can be upgraded to a full review) | Bedside use and the public; keeps the free service affordable |
-| 27 | Thai clinical terminology (a glossary file from Royal Institute medical terms, with a term check in `localize`, like the number check) | Thai quality, measured by Plan 22 |
+| 26 | Quick answer mode ("ถามเร็ว", Evidence Finder style): about 30 candidates → about 8 read, a 2–4 sentence answer with numbered refs [1]…[n] linking to PubMed, DOI or ThaiJO, under a minute, and a "ทำรีวิวฉบับเต็ม" button | Bedside use and the public; keeps the free service affordable |
+| 27 | Thai clinical terminology (a glossary file from Royal Institute medical terms, with a term check in `localize`, like the number check), plus an **A/B test of a Thai-tuned model** (for example Typhoon) in the `localize` role only, adopted only if it wins on the Plan 22 harness | Thai quality, measured by Plan 22 |
 | 28 | Thai practice context (NLEM status from a dated data file, and a curated index of Thai clinical practice guidelines; context only) | The Apply step for Thailand |
 
 Not planned:
-- **A Thai-tuned LLM for reasoning (Typhoon, Eir):** frontier models read English abstracts better. Revisit for the `localize` role only if Plan 22 shows translation is the bottleneck.
+- **A Thai-tuned LLM for reasoning (Typhoon, Eir):** frontier models read English abstracts better. The localize-only A/B test is in Plan 27.
 - **Licensed full text:** conflicts with the abstract-only rule.
 - **Advertising exam scores.**
+
+## 6a. Features inspired by Evidence Finder
+
+The owner wants Evidence Finder's ideas adopted as features. Where each one lands:
+
+| Evidence Finder | Ours | Plan |
+|---|---|---|
+| A question gets a short answer with numbered citations and links to the source | "ถามเร็ว": a 2–4 sentence answer with [1]…[n] linking to PubMed, DOI or ThaiJO, under a minute, with an upgrade to the full review | 26 |
+| Verify (checks the cited paper exists) | Already stronger: refs come only from the screened set and numbers are checked verbatim. Adds sentence-support checking and a "ตรวจแล้ว" badge that shows the supporting abstract sentence | 24 |
+| Its own retrieval and selection; the LLM only compares and writes | Already our design (search, screen, read, synthesise) | existing |
+| A locale-tuned model writes the answer (Namazu for Japanese) | Thai terminology control, plus an A/B test of a Thai-tuned model in the `localize` role only, measured on the Plan 22 harness | 27 |
+| Physicians only; the doctor decides | Open to everyone, with audience modes and public safety rails | 25 |
+| PubMed only | PubMed and 7 more sources, plus ThaiJO for Thai journals | 23 |
 
 ## 7. ThaiJO: findings for Plan 23 (probed 2026-10-11)
 
