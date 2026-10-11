@@ -10,12 +10,20 @@ from app.graph.progress import progress_writer
 from app.harness.citations import NOTE_UNAVAILABLE, build_citations, empty_citations, paper_idents
 
 log = logging.getLogger(__name__)
-CONCURRENCY = 3
+CONCURRENCY = 5  # Europe PMC reference lookups in flight (Plan 21: up to 50 papers)
 OPENALEX_SHARE = 0.5  # fraction of the citation budget OpenAlex may use
+# Plan 21: the step's budget grows with the paper count: citations_timeout_seconds + SECONDS_PER_PAPER per paper,
+# never above TIMEOUT_MAX_SECONDS.
+SECONDS_PER_PAPER = 0.3
+TIMEOUT_MAX_SECONDS = 40.0
+
+
+def citations_timeout(settings, papers: int) -> float:
+    return min(TIMEOUT_MAX_SECONDS, settings.citations_timeout_seconds + SECONDS_PER_PAPER * papers)
 
 
 async def _gather(deps, idents: dict[str, dict[str, Any]], oa: dict[str, Any], epmc: dict[str, Any],
-                  flags: dict[str, bool]) -> None:
+                  flags: dict[str, bool], timeout: float) -> None:
     """Fills `oa`, `epmc` and `flags["errored"]` in place, so a timeout still leaves the partial data behind."""
     try:
         # PMIDs only for papers without a DOI: one lookup per paper. OpenAlex gets at most half the step's budget,
@@ -23,7 +31,7 @@ async def _gather(deps, idents: dict[str, dict[str, Any]], oa: dict[str, Any], e
         found = await asyncio.wait_for(deps.openalex.works_by_ids(
             [i["doi"] for i in idents.values() if i["doi"]],
             [i["pmid"] for i in idents.values() if i["pmid"] and not i["doi"]]),
-            deps.settings.citations_timeout_seconds * OPENALEX_SHARE)
+            timeout * OPENALEX_SHARE)
         for ref, i in idents.items():
             oa[ref] = (found.get(f"doi:{i['doi']}") if i["doi"] else None) or \
                       (found.get(f"pmid:{i['pmid']}") if i["pmid"] else None)
@@ -54,11 +62,12 @@ def make_fetch_citations(deps):
         epmc: dict[str, Any] = {}
         flags = {"errored": False}
         timed_out = False
+        timeout = citations_timeout(deps.settings, len(idents))
         try:
-            await asyncio.wait_for(_gather(deps, idents, oa, epmc, flags), deps.settings.citations_timeout_seconds)
+            await asyncio.wait_for(_gather(deps, idents, oa, epmc, flags, timeout), timeout)
         except TimeoutError:
             timed_out = True
-            log.warning("citations: timed out after %ss; using partial data", deps.settings.citations_timeout_seconds)
+            log.warning("citations: timed out after %ss; using partial data", timeout)
         except Exception as exc:  # noqa: BLE001 - a citation failure never fails a review
             flags["errored"] = True
             log.warning("citations unavailable: %s: %s", type(exc).__name__, str(exc)[:200])

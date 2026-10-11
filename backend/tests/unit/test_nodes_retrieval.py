@@ -136,3 +136,99 @@ async def test_enrich_skips_lookup_for_hits_with_a_europe_pmc_abstract_and_pmcid
     assert epmc.calls == [(["10.1/todo"], ["2", "3"])]
     assert len(out["candidates"]) == 3
     assert out["quality"][0]["looked_up"] == 2 and out["quality"][0]["skipped_lookup"] == 1
+
+
+# ---- Plan 21: top-up of the candidate pool --------------------------------------------------------------------
+class PagedSearxng:
+    """Hits per (query, page); a page listed in `fail` raises."""
+
+    def __init__(self, pages, fail=()):
+        self.pages, self.fail, self.calls = pages, set(fail), []
+
+    async def search(self, query, pageno=1):
+        self.calls.append((query, pageno))
+        if (query, pageno) in self.fail:
+            raise RuntimeError("searx down")
+        return list(self.pages.get((query, pageno), []))
+
+
+def _hits(tag, n):
+    # distinct numbers in every title: titles that differ only in letters would merge as fuzzy duplicates
+    num = 1000 * (1 + ["a1", "b1", "a2", "b2", "a3"].index(tag))
+    return [Candidate(title=f"Paper {num + i} on metformin outcomes", doi=f"10.1/{tag}.{i}", abstract=ABSTRACT,
+                      abstract_source="engine", engines=["pubmed"]) for i in range(n)]
+
+
+def _paged_deps(sx, epmc=None, **settings):
+    return GraphDeps(settings=Settings(_env_file=None, **{"searxng_pages": 1, **settings}), searxng=sx,
+                     europepmc=epmc or FakeEpmc([]))
+
+
+def _page_one_state(pages, queries, options=None, page_count=1):
+    hits = [c for p in range(1, page_count + 1) for q in queries for c in pages.get((q, p), [])]
+    return {"plan": {"queries": queries}, "candidates": [c.model_dump() for c in hits],
+            "search_stats": {"found": len(hits), "per_source": {"pubmed": len(hits)}, "searched_at": "x"},
+            "options": options or {"max_papers": 30, "candidate_limit": 120}}
+
+
+async def test_enrich_tops_up_from_the_next_page_when_the_pool_is_short():
+    pages = {("q1", 1): _hits("a1", 20), ("q2", 1): _hits("b1", 20),
+             ("q1", 2): _hits("a2", 45), ("q2", 2): _hits("b2", 45)}
+    sx, epmc = PagedSearxng(pages), FakeEpmc([])
+    out = await make_enrich(_paged_deps(sx, epmc))(_page_one_state(pages, ["q1", "q2"]))
+    assert sorted(sx.calls) == [("q1", 2), ("q2", 2)]
+    assert len(out["candidates"]) == 120
+    # page-1 hits keep the front of the pool (rank order)
+    assert {c["doi"] for c in out["candidates"][:40]} == {c.doi for c in _hits("a1", 20) + _hits("b1", 20)}
+    assert out["search_stats"]["found"] == 130
+    assert out["search_stats"]["per_source"] == {"pubmed": 130}
+    q = out["quality"][0]
+    assert q["topup_pages"] == 1 and q["topup_found"] == 90
+    # only the new hits are looked up in Europe PMC the second time
+    assert epmc.calls[-1][0] == sorted(c.doi for c in _hits("a2", 45) + _hits("b2", 45))
+
+
+async def test_enrich_does_not_top_up_a_full_pool():
+    pages = {("q1", 1): _hits("a1", 65), ("q2", 1): _hits("b1", 65), ("q1", 2): _hits("a2", 5)}
+    sx = PagedSearxng(pages)
+    out = await make_enrich(_paged_deps(sx))(_page_one_state(pages, ["q1", "q2"]))
+    assert sx.calls == [] and len(out["candidates"]) == 120
+    assert out["quality"][0]["topup_pages"] == 0 and out["search_stats"]["found"] == 130
+
+
+async def test_enrich_tops_up_at_most_once():
+    pages = {("q1", 1): _hits("a1", 20), ("q2", 1): _hits("b1", 20),
+             ("q1", 2): _hits("a2", 15), ("q2", 2): _hits("b2", 15), ("q1", 3): _hits("a3", 40)}
+    sx = PagedSearxng(pages)
+    out = await make_enrich(_paged_deps(sx))(_page_one_state(pages, ["q1", "q2"]))
+    assert sorted(sx.calls) == [("q1", 2), ("q2", 2)]  # no page 3
+    assert len(out["candidates"]) == 70 and out["errors"] == []
+
+
+async def test_enrich_top_up_failure_is_soft():
+    pages = {("q1", 1): _hits("a1", 20), ("q2", 1): _hits("b1", 20), ("q2", 2): _hits("b2", 10)}
+    sx = PagedSearxng(pages, fail={("q1", 2)})
+    out = await make_enrich(_paged_deps(sx))(_page_one_state(pages, ["q1", "q2"]))
+    assert len(out["candidates"]) == 50  # page-1 hits kept, plus the page that answered
+    assert any("q1" in e and "page 2" in e for e in out["errors"])
+    assert out["quality"][0]["topup_found"] == 10
+
+
+async def test_enrich_top_up_skipped_without_a_search_client():
+    raw = [c.model_dump() for c in _hits("a1", 5)]
+    out = await make_enrich(_deps(europepmc=FakeEpmc([])))({"plan": {"queries": ["q1"]}, "candidates": raw,
+                                                           "options": {}})
+    assert len(out["candidates"]) == 5 and out["quality"][0]["topup_pages"] == 0
+
+
+async def test_meta_analysis_reads_page_three_only_when_short_after_two_pages():
+    meta = {"review_type": "meta_analysis", "max_papers": 30, "candidate_limit": 120}
+    short = {("q1", 1): _hits("a1", 20), ("q1", 2): _hits("a2", 20), ("q1", 3): _hits("a3", 30)}
+    sx = PagedSearxng(short)
+    out = await make_enrich(_paged_deps(sx))(_page_one_state(short, ["q1"], meta, page_count=2))
+    assert sx.calls == [("q1", 3)] and len(out["candidates"]) == 70
+    assert out["quality"][0]["topup_pages"] == 1
+    full = {("q1", 1): _hits("a1", 60), ("q1", 2): _hits("a2", 60), ("q1", 3): _hits("a3", 30)}
+    sx = PagedSearxng(full)
+    out = await make_enrich(_paged_deps(sx))(_page_one_state(full, ["q1"], meta, page_count=2))
+    assert sx.calls == [] and len(out["candidates"]) == 120

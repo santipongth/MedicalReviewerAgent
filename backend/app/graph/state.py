@@ -22,7 +22,7 @@ class ReviewState(TypedDict, total=False):
     # Send fan-out branches append to these; reducers merge them.
     screened: Annotated[list[dict[str, Any]], operator.add]  # {key, relevance, include, reason}
     selected: list[dict[str, Any]]  # {ref, relevance, reason, candidate}
-    selection_stats: dict[str, Any]  # {excluded_screening: {reason: n}, narrative_excluded, over_limit}
+    selection_stats: dict[str, Any]  # {excluded_screening: {reason: n}, narrative_excluded, over_limit, requested, eligible}
     external_context: Annotated[list[dict[str, Any]], operator.add]  # results of external MCP tool calls
     citations: dict[str, Any] | None  # {edges, cited_by, coverage, source_note}; soft-fails to null coverage
     papers: Annotated[list[dict[str, Any]], operator.add]  # {ref, candidate, relevance, card, error}

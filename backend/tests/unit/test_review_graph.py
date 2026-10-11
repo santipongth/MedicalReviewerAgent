@@ -167,10 +167,13 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
     assert r["papers"][0]["card"]["population"] == to_thai("adults with type 2 diabetes")
     assert r["papers"][0]["card_en"]["population"] == "adults with type 2 diabetes"
     assert r["papers"][0]["verification"]["numbers_verified"] == 2
-    assert r["stats"] == {"found": 20, "unique": 10, "with_abstract": 10, "candidates": 10, "screened": 10, "selected": 8,
+    # found: the pool (10) is short of candidate_limit (20), so page 2 is read once; this fake returns the same 10
+    # hits for every page, so 20 more records are identified and all are duplicates (Plan 21 top-up)
+    assert r["stats"] == {"found": 40, "unique": 10, "with_abstract": 10, "candidates": 10, "screened": 10, "selected": 8,
                           "extracted": 8, "non_research": 0, "year_excluded": 0, "no_abstract": 0,
                           "excluded_screening": {},
-                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
+                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "requested": 8,
+                                                 "eligible": 10, "study_design_relaxed": 0,
                                                  "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
                           "related_reports": 0}  # Plan 20 Task 10
     assert r["summary"] == to_thai(r["synthesis_en"]["executive_summary"])
@@ -320,3 +323,100 @@ async def test_slr_run_still_explains_conflicts_and_grades():
     values, _ = await run(deps, language="en")
     assert len(deps.llms.conflict_explainer.calls) == 1
     assert values["result"]["synthesis"]["evidence_strength"] == "low"
+
+
+# ---- Plan 21: 50 papers from a pool of 120 --------------------------------------------------------------------
+class PagedFakeSearxng:
+    def __init__(self, by_query_page):
+        self.by_query_page, self.calls = by_query_page, []
+
+    async def search(self, query, pageno=1):
+        self.calls.append((query, pageno))
+        return list(self.by_query_page.get((query, pageno), []))
+
+
+def _pool_hits(start, n):
+    return [Candidate(title=f"Paper {i} about metformin and colorectal cancer", doi=f"10.1/{i}",
+                      abstract=f"Paper {i}. {ABSTRACT}", engines=["pubmed"]) for i in range(start, start + n)]
+
+
+async def test_fifty_paper_review_from_a_pool_of_120_stays_within_its_cost_cap():
+    from app.schemas.review import ReviewOptions
+    from app.services.budget import ReviewBudget, review_cost_cap, use_budget
+    from app.services.llm import LimitedLLM
+    deps = make_deps()
+    # page 1: 2 queries × 40 hits; the pool is short of 120, so page 2 (2 × 30) tops it up to 140 → 120
+    q1, q2 = "metformin colorectal cancer", "metformin CRC cohort"  # the fake planner's queries
+    deps.searxng = PagedFakeSearxng({(q1, 1): _pool_hits(0, 40), (q2, 1): _pool_hits(100, 40),
+                                     (q1, 2): _pool_hits(200, 30), (q2, 2): _pool_hits(300, 30)})
+    # per-call costs near the budget preset's logged spend (Task 2 calibration: ~$0.0032 per analysed paper)
+    costs = {"guard": 0.001, "refiner": 0.002, "planner": 0.002, "screener": 0.001, "extractor": 0.003,
+             "normalizer": 0.004, "conflict_explainer": 0.002, "synthesizer": 0.02, "localizer": 0.001}
+    sem = asyncio.Semaphore(16)
+    for role, usd in costs.items():
+        getattr(deps.llms, role).cost = usd
+        setattr(deps.llms, role, LimitedLLM(getattr(deps.llms, role), sem))
+    options = {"max_papers": 50, "candidate_limit": 120}
+    cap = review_cost_cap(deps.settings, ReviewOptions(**options))
+    assert cap == pytest.approx(0.40)
+    with use_budget(ReviewBudget(cap_usd=cap)) as budget:
+        values, events = await run(deps, options=options, language="th", thread="fifty")
+    r = values["result"]
+    assert not any("cost cap" in e for e in r["errors"]) and budget.spent < cap
+    assert r["stats"]["candidates"] == 120 and r["stats"]["selected"] == 50 and r["stats"]["extracted"] == 50
+    assert r["stats"]["excluded_selection"]["requested"] == 50
+    assert r["stats"]["excluded_selection"]["eligible"] == 120
+    assert r["stats"]["excluded_selection"]["over_limit"] == 70
+    assert r["stats"]["found"] == 140  # PRISMA "identified" includes the top-up page
+    assert sorted({p for _, p in deps.searxng.calls}) == [1, 2]
+    assert len(deps.llms.screener.inner.calls) == 12  # 12 batches of 10
+    screened = next(e for e in events if e["type"] == "screened")
+    assert screened["requested"] == 50 and screened["kept"] == 50
+    assert [e["candidates"] for e in events if e["type"] == "enriching"] == [120]
+
+
+def _realistic_card(i):
+    """A card shaped like the budget preset's real extractions (2026-10-10 runs: 1.6-2.7k chars per brief card)."""
+    outcome = lambda name, v: OutcomeResult(
+        outcome=f"{name} at 12 months in study {i}",
+        result=(f"The intervention group had a lower {name.lower()} than usual care at 12 months, with a "
+                "consistent effect across the prespecified subgroups of age, sex and baseline HbA1c."),
+        evidence_quote=QUOTE, effect_size=f"HR {v} (0.71-0.90)", effect_measure="HR", effect_value=v,
+        ci_lower=0.71, ci_upper=0.9, p_value=0.003, direction="positive")
+    return PaperCard(
+        study_design="Multicentre, double-blind, placebo-controlled randomised controlled trial",
+        design_category="rct",
+        population=("Adults aged 40 to 75 years with type 2 diabetes and an HbA1c of 7.0-10.5% on stable metformin, "
+                    "recruited from 112 primary-care and hospital clinics in 14 countries"),
+        sample_size=1234, sample_size_quote="We enrolled 1,234 adults with type 2 diabetes",
+        intervention_or_exposure="Metformin extended release 1500-2000 mg daily titrated over four weeks",
+        comparator="Matching placebo with usual care",
+        outcomes=[outcome("Colorectal cancer incidence", 0.8), outcome("All-cause mortality", 0.85),
+                  outcome("Advanced adenoma detection", 0.82)],
+        key_findings=["Metformin lowered the incidence of colorectal cancer compared with placebo.",
+                      "All-cause mortality was lower with metformin, with no excess of serious adverse events.",
+                      "Benefits were consistent in prespecified subgroups."],
+        limitations=["Follow-up of 12 months is short for cancer outcomes.",
+                     "Open-label extension phase may introduce performance bias."],
+        funding_or_conflicts="Funded by a national research council; two authors report consulting fees.",
+        risk_of_bias="moderate", overall_direction="positive")
+
+
+def test_narrative_prompt_size_with_fifty_realistic_cards():
+    """Plan 21 Task 2 measurement. The brief's target was < 60k characters; real 30-paper prompts already measured
+    93-118k (2026-10-10 runs), so the guard here is the synthesizer's context, not 60k (see the task report)."""
+    from app.graph import prompts
+    from app.graph.nodes.synthesis import _brief
+    papers = [_brief({"ref": f"P{i}", "card": _realistic_card(i).model_dump(),
+                      "candidate": {"title": f"Paper {i} about metformin and colorectal cancer", "year": 2021}})
+              for i in range(1, 51)]
+    per_card = len(json.dumps(papers[0], ensure_ascii=False))
+    assert 1800 <= per_card <= 2800  # realistic: the logged runs averaged 1.6-2.7k chars per brief card
+    cells = [{"ref": f"P{i}", "finding": "lower risk at 12 months", "direction": "positive", "effect_measure": "HR",
+              "effect_value": 0.8, "ci_lower": 0.71, "ci_upper": 0.9} for i in range(1, 51)]
+    matrix = {"rows": [{"outcome": name, "cells": cells} for name in ("CRC incidence", "Mortality", "Adenoma")],
+              "consensus": []}
+    user = prompts.narrative_user(question="Does metformin reduce colorectal cancer?", sub_questions=["Dose?"],
+                                  papers=papers, matrix=matrix, conflict_notes=[], baseline={"level": "low"})
+    print(f"narrative_user with 50 cards: {len(user)} chars ({per_card} per card)")
+    assert len(user) < 240_000  # ~60k tokens of English, inside the budget synthesizer's context

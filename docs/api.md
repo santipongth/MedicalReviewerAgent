@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-10.8`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-11.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.

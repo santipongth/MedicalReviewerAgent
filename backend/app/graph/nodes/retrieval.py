@@ -11,7 +11,7 @@ from app.graph.schemas import Candidate
 from app.graph.state import ReviewState
 from app.harness.trials import trial_acronyms, trial_key
 from app.schemas.review import ReviewOptions
-from app.services.dedupe import merge_candidates
+from app.services.dedupe import identifiers, merge_candidates
 
 # Papers are analysed from their abstracts, so a candidate needs one long enough to hold a result.
 MIN_ABSTRACT_CHARS = 150
@@ -169,8 +169,8 @@ def make_search(deps):
         options = ReviewOptions.clamped(state.get("options"))
         settings = deps.settings
         queries = (state.get("plan") or {}).get("queries") or [state.get("english_topic") or state["topic"]]
-        pages = settings.searxng_pages_meta if options.review_type == "meta_analysis" else settings.searxng_pages
-        jobs = [(q, page) for q in queries for page in range(1, max(1, pages) + 1)]
+        pages = search_pages(settings, options)
+        jobs = [(q, page) for q in queries for page in range(1, pages + 1)]
         trial_queries = (trial_search_queries(queries, settings.trial_search_queries)
                          if wants_trial_search(options) and getattr(deps, "europepmc", None) is not None else [])
         gate = asyncio.Semaphore(SEARXNG_CONCURRENCY)
@@ -244,65 +244,148 @@ def make_search(deps):
     return search
 
 
+def search_pages(settings, options: ReviewOptions) -> int:
+    """SearXNG result pages the search node reads per planner query."""
+    return max(1, settings.searxng_pages_meta if options.review_type == "meta_analysis" else settings.searxng_pages)
+
+
+def topup_pages(settings, options: ReviewOptions) -> list[int]:
+    """The further pages enrich may read once when the pool is short (Plan 21): up to searxng_pages_max; a
+    meta-analysis, which already reads searxng_pages_meta pages, reads at least one more."""
+    first = search_pages(settings, options)
+    last = settings.searxng_pages_max
+    if options.review_type == "meta_analysis":
+        last = max(first + 1, last)
+    return list(range(first + 1, last + 1))
+
+
+def _filter_pool(cands: list[Candidate], options: ReviewOptions, terms: list[str]) -> tuple[list[Candidate], dict]:
+    """Year, non-research, abstract and focus filters, in that order; the search rank order is kept."""
+    year_excluded = 0
+    if options.year_from:
+        before = len(cands)
+        cands = [c for c in cands if c.year is None or c.year >= options.year_from]
+        year_excluded = before - len(cands)
+    non_research = sum(1 for c in cands if is_non_research(c))
+    cands = [c for c in cands if not is_non_research(c)]
+    snippet_only = sum(1 for c in cands if c.abstract_source == "snippet" and not usable_abstract(c)
+                       and len((c.abstract or "").strip()) >= MIN_ABSTRACT_CHARS)
+    no_abstract = sum(1 for c in cands if not usable_abstract(c))
+    cands = [c for c in cands if usable_abstract(c)]
+    # Plan 20 Task 10: hits that name none of the question's key terms (an arXiv paper on call admission control
+    # for "HF admission", a veterinary trial) move behind the on-topic ones, so they no longer take slots of the
+    # candidate cut; their order is kept and nothing is dropped. Skipped without a refined question.
+    off_focus = 0
+    if terms:
+        focused = [c for c in cands if on_focus(c, terms)]
+        off_focus = len(cands) - len(focused)
+        cands = focused + [c for c in cands if not on_focus(c, terms)]
+    return cands, {"year_excluded": year_excluded, "non_research": non_research, "snippet_only": snippet_only,
+                   "no_abstract": no_abstract, "off_focus": off_focus}
+
+
+async def _lookup(deps, lookup: list[Candidate], errors: list[str], failures: list[str],
+                  label: str = "") -> list[Candidate]:
+    """Europe PMC metadata for the hits that lack it; each batch is retried with backoff and a batch that still fails
+    is skipped (Plan 20 Task 10). Failures are soft: the search hits stand."""
+    dois = [c.doi for c in lookup if c.doi]
+    pmids = [c.pmid for c in lookup if c.pmid]
+    if not (dois or pmids):
+        return []
+    batch_failures: list[str] = []
+    try:
+        records = await deps.europepmc.lookup(dois=dois, pmids=pmids, failures=batch_failures)
+    except Exception as exc:  # noqa: BLE001 - enrichment is optional; keep search hits
+        failures.append(type(exc).__name__)
+        errors.append(f"Europe PMC enrichment{label} failed: {type(exc).__name__}")
+        return []
+    if batch_failures:
+        failures.extend(batch_failures)
+        errors.append(f"Europe PMC enrichment{label} failed for {len(batch_failures)} batch(es): "
+                      f"{', '.join(sorted(set(batch_failures)))}")
+    return list(records)
+
+
+def _with_records(records: list[Candidate], cands: list[Candidate]) -> list[Candidate]:
+    # Europe PMC first so its curated metadata wins scalar fields; the order stays the search rank order
+    # (rank_from), so the candidate cut keeps the best-ranked hits (audit I-8). Lookup-only records are dropped.
+    out = merge_candidates([*records, *cands], rank_from=len(records)) if records else cands
+    return [c for c in out if c.engines != ["europepmc"]]
+
+
+async def _topup_search(deps, queries: list[str], pages: list[int], errors: list[str]) -> list[Candidate]:
+    """The next pages of every planner query, under the same SearXNG gate as the search node; hits come out
+    round-robin by rank across queries, page by page. A failed page is an error, never fatal."""
+    gate = asyncio.Semaphore(SEARXNG_CONCURRENCY)
+    jobs = [(q, p) for p in pages for q in queries]
+
+    async def searx(q: str, page: int) -> list[Candidate]:
+        async with gate:
+            return await deps.searxng.search(q, pageno=page)
+
+    results = await asyncio.gather(*(searx(q, p) for q, p in jobs), return_exceptions=True)
+    hits: list[Candidate] = []
+    for page in pages:
+        lists: list[list[Candidate]] = []
+        for (q, p), res in zip(jobs, results, strict=True):
+            if p != page:
+                continue
+            if isinstance(res, BaseException):
+                errors.append(f"search failed for '{q}' page {p}: {type(res).__name__}")
+            else:
+                lists.append(list(res))
+        for rank in range(max((len(v) for v in lists), default=0)):
+            hits.extend(v[rank] for v in lists if rank < len(v))
+    return hits
+
+
 def make_enrich(deps):
     async def enrich(state: ReviewState) -> dict:
         started = time.perf_counter()
         options = ReviewOptions.clamped(state.get("options"))
         merged = merge_candidates(Candidate.model_validate(c) for c in state.get("candidates") or [])
         errors: list[str] = []
+        failures: list[str] = []
         # Hits that already carry the Europe PMC engine's full abstract and a PMCID have nothing left to gain from
         # the lookup (its pub types come with the hit); everything else is looked up and Europe PMC metadata wins.
         lookup = [c for c in merged if not already_enriched(c)]
-        dois = [c.doi for c in lookup if c.doi]
-        pmids = [c.pmid for c in lookup if c.pmid]
-        records: list[Candidate] = []
-        failures: list[str] = []
-        if dois or pmids:
-            try:  # each batch is retried with backoff; a batch that still fails is skipped (Plan 20 Task 10)
-                records = await deps.europepmc.lookup(dois=dois, pmids=pmids, failures=failures)
-            except Exception as exc:  # noqa: BLE001 - enrichment is optional; keep search hits
-                failures.append(type(exc).__name__)
-                errors.append(f"Europe PMC enrichment failed: {type(exc).__name__}")
-            else:
-                if failures:
-                    errors.append(f"Europe PMC enrichment failed for {len(failures)} batch(es): "
-                                  f"{', '.join(sorted(set(failures)))}")
-        # Europe PMC first so its curated metadata wins scalar fields; the order stays the search rank order
-        # (rank_from), so the candidate cut below keeps the best-ranked hits (audit I-8).
-        enriched = merge_candidates([*records, *merged], rank_from=len(records)) if records else merged
-        enriched = [c for c in enriched if c.engines != ["europepmc"]]
-        unique = len(enriched)
-        year_excluded = 0
-        if options.year_from:
-            before = len(enriched)
-            enriched = [c for c in enriched if c.year is None or c.year >= options.year_from]
-            year_excluded = before - len(enriched)
-        non_research = sum(1 for c in enriched if is_non_research(c))
-        enriched = [c for c in enriched if not is_non_research(c)]
-        snippet_only = sum(1 for c in enriched if c.abstract_source == "snippet" and not usable_abstract(c)
-                           and len((c.abstract or "").strip()) >= MIN_ABSTRACT_CHARS)
-        no_abstract = sum(1 for c in enriched if not usable_abstract(c))
-        enriched = [c for c in enriched if usable_abstract(c)]
-        # Plan 20 Task 10: hits that name none of the question's key terms (an arXiv paper on call admission control
-        # for "HF admission", a veterinary trial) move behind the on-topic ones, so they no longer take slots of the
-        # candidate cut; their order is kept and nothing is dropped. Skipped without a refined question.
+        enriched = _with_records(await _lookup(deps, lookup, errors, failures), merged)
         terms = focus_terms(state.get("question"))
-        off_focus = 0
-        if terms:
-            focused = [c for c in enriched if on_focus(c, terms)]
-            off_focus = len(enriched) - len(focused)
-            enriched = focused + [c for c in enriched if not on_focus(c, terms)]
-        kept = enriched[: options.candidate_limit]  # search rank order is kept
+        pool, counts = _filter_pool(enriched, options, terms)
+        search_stats = dict(state.get("search_stats") or {})
+        topup: dict[str, int] = {"topup_pages": 0, "topup_found": 0}
+        looked_up, skipped = len(lookup), len(merged) - len(lookup)
+        # Plan 21: a short pool is topped up once from the next SearXNG pages of the planner's queries; the new hits
+        # are merged behind the first-round ones, looked up, and the whole pool is filtered again.
+        pages = topup_pages(deps.settings, options)
+        topic = state.get("english_topic") or state.get("topic")
+        queries = (state.get("plan") or {}).get("queries") or ([topic] if topic else [])
+        if len(pool) < options.candidate_limit and pages and queries and getattr(deps, "searxng", None) is not None:
+            hits = await _topup_search(deps, queries, pages, errors)
+            known = {i for c in [*merged, *enriched] for i in identifiers(c)}
+            new = [c for c in merge_candidates(hits) if not known & set(identifiers(c))]
+            lookup_new = [c for c in new if not already_enriched(c)]
+            records = await _lookup(deps, lookup_new, errors, failures, " (top-up)")
+            enriched = _with_records(records, merge_candidates([*enriched, *new]))
+            pool, counts = _filter_pool(enriched, options, terms)
+            looked_up, skipped = looked_up + len(lookup_new), skipped + len(new) - len(lookup_new)
+            topup = {"topup_pages": len(pages), "topup_found": len(hits), "topup_new": len(new)}
+            # PRISMA "identified": the top-up hits are identified records too (per source, before deduplication)
+            per_source = Counter(search_stats.get("per_source") or {})
+            for c in hits:
+                per_source.update(set(c.engines) or {"unknown"})
+            search_stats |= {"found": search_stats.get("found", 0) + len(hits), "per_source": dict(per_source)}
+        kept = pool[: options.candidate_limit]  # search rank order is kept
         progress_writer()({"type": "enriching", "candidates": len(kept)})
-        entry = {"stage": "enrich", "snippet_only": snippet_only,
-                 "looked_up": len(lookup), "skipped_lookup": len(merged) - len(lookup),
-                 "off_focus": off_focus, "seconds": round(time.perf_counter() - started, 3)}
+        entry = {"stage": "enrich", "snippet_only": counts["snippet_only"], "looked_up": looked_up,
+                 "skipped_lookup": skipped, "off_focus": counts["off_focus"], **topup,
+                 "seconds": round(time.perf_counter() - started, 3)}
         if failures:
             entry["europepmc_failed"] = len(failures)
         return {"candidates": [c.model_dump() for c in kept], "errors": errors,
-                "search_stats": {**(state.get("search_stats") or {}), "unique": unique,
-                                 "with_abstract": len(enriched), "non_research": non_research,
-                                 "year_excluded": year_excluded, "no_abstract": no_abstract},
+                "search_stats": {**search_stats, "unique": len(enriched),
+                                 "with_abstract": len(pool), "non_research": counts["non_research"],
+                                 "year_excluded": counts["year_excluded"], "no_abstract": counts["no_abstract"]},
                 "quality": [entry]}
 
     return enrich

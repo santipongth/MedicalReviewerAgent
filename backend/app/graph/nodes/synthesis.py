@@ -40,7 +40,7 @@ from app.harness.grade import (
     grade_baseline,
     reconcile_rationale,
 )
-from app.harness.localize import Localized, localize_strings, untranslated
+from app.harness.localize import Localized, localize_strings, retry_cap, untranslated
 from app.harness.matrix import (
     DIFFERENCE_MEASURES,
     RATIO_MEASURES,
@@ -540,7 +540,7 @@ async def _localize_cards(deps, papers: list[dict[str, Any]], language: str) -> 
     strings: dict[str, str] = {}
     for p in papers:
         strings |= _card_strings(p["ref"], p["card"])
-    res = await localize_strings(llm, harness_runner(deps), strings, language)
+    res = await localize_strings(llm, harness_runner(deps), strings, language, retry_max_items=retry_cap(len(papers)))
     cards = {p["ref"]: _apply_card_strings(p["ref"], p["card"], res.strings) for p in papers}
     entry = {"stage": "localize_cards", "items": len(strings), **res.telemetry(),
              "seconds": round(time.perf_counter() - started, 3)}
@@ -1325,7 +1325,8 @@ def make_localize(deps):
         strings = {k: v for k, v in _synthesis_strings(synthesis).items() if k not in templated}
         errors: list[str] = []
         try:
-            res = await localize_strings(llm, harness_runner(deps), strings, language)
+            res = await localize_strings(llm, harness_runner(deps), strings, language,
+                                         retry_max_items=retry_cap(len(state.get("selected") or [])))
         except LLMError as exc:
             res = Localized(strings, kept_english=len(strings),
                             untranslated=sum(1 for v in strings.values() if untranslated(v, v, language)))
@@ -1474,6 +1475,10 @@ def make_finalize(deps):
                 "excluded_screening": dict(selection.get("excluded_screening") or {}),
                 "excluded_selection": {"narrative_excluded": selection.get("narrative_excluded", 0),
                                        "over_limit": selection.get("over_limit", 0),
+                                       # Plan 21: the requested paper count and the papers eligible for it
+                                       # (absent in results from before Plan 21: null, never a guess)
+                                       "requested": selection.get("requested"),
+                                       "eligible": selection.get("eligible"),
                                        "study_design_relaxed": selection.get("study_design_relaxed", 0),
                                        # read as a design outside the ticked types after selection: not evidence
                                        "study_design_corrected": len(design_excluded(state)),

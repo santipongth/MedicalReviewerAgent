@@ -212,7 +212,7 @@ async def test_select_top_tallies_exclusion_reasons_and_over_limit():
         {"candidates": candidates, "screened": screened, "options": {"max_papers": 5}})
     assert out["selection_stats"] == {
         "excluded_screening": {"population": 2, "outcome": 1, "other": 1, "off_topic": 1},
-        "narrative_excluded": 0, "over_limit": 0}
+        "narrative_excluded": 0, "over_limit": 0, "requested": 5, "eligible": 5}
     many = _screened(candidates, ["rct"] * 10, exclusion_reason=None)
     out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
         {"candidates": candidates, "screened": many, "options": {"max_papers": 5}})
@@ -274,3 +274,35 @@ async def test_failed_screening_stays_out_of_prisma_other_tally():
     out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
         {"candidates": candidates, "screened": [screened[0], screened[2]], "options": {}})
     assert "screening_failed" not in out["selection_stats"]
+
+
+# ---- Plan 21: the requested count is analysed when enough papers are eligible, never padded -------------------
+async def _select(monkeypatch, n_eligible, max_papers):
+    from app.graph.nodes import screening as screening_node
+    events = []
+    monkeypatch.setattr(screening_node, "progress_writer", lambda: events.append)
+    candidates = cands(n_eligible)
+    screened = [{**d, "relevance": 90 - i // 2}  # all above the relevance floor
+                for i, d in enumerate(_screened(candidates, ["rct"] * n_eligible, exclusion_reason=None))]
+    out = await make_select_top(deps(FakeStructuredLLM("g", scorer({}))))(
+        {"candidates": candidates, "screened": screened,
+         "options": {"max_papers": max_papers, "candidate_limit": 120}})
+    return out, events
+
+
+async def test_select_top_analyses_n_of_many(monkeypatch):
+    out, events = await _select(monkeypatch, 80, 50)
+    stats = out["selection_stats"]
+    assert len(out["selected"]) == 50
+    assert stats["over_limit"] == 30 and stats["eligible"] == 80 and stats["requested"] == 50
+    assert events == [{"type": "screened", "kept": 50, "total": 80, "requested": 50}]
+
+
+@pytest.mark.parametrize(("eligible", "n"), [(22, 50), (5, 5), (49, 50), (50, 50), (7, 30)])
+async def test_select_top_never_pads_a_shortfall(monkeypatch, eligible, n):
+    out, events = await _select(monkeypatch, eligible, n)
+    stats = out["selection_stats"]
+    assert len(out["selected"]) == min(n, eligible)
+    assert stats["eligible"] == eligible and stats["requested"] == n
+    assert stats["over_limit"] == max(0, eligible - n)
+    assert events[-1]["requested"] == n

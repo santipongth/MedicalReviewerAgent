@@ -15,7 +15,8 @@ SCALARS = ("title", "doi", "pmid", "pmcid", "arxiv_id", "year", "journal", "url"
 _SOURCE_RANK = {"europepmc": 2, "arxiv": 1, "engine": 1, "snippet": 0}
 
 
-def _identifiers(c: Candidate) -> list[str]:
+def identifiers(c: Candidate) -> list[str]:
+    """The ids two records of one paper can share: DOI, PMID, PMCID, arXiv id and a long normalised title."""
     ids = [f"doi:{c.doi}" if c.doi else "", f"pmid:{c.pmid}" if c.pmid else "",
            f"pmcid:{c.pmcid}" if c.pmcid else "", f"arxiv:{c.arxiv_id}" if c.arxiv_id else ""]
     title = normalize_title(c.title)
@@ -71,7 +72,7 @@ def merge_candidates(cands: Iterable[Candidate], *, fuzzy_threshold: int = 95, r
 
     seen: dict[str, int] = {}
     for i, c in enumerate(items):
-        for ident in _identifiers(c):
+        for ident in identifiers(c):
             if ident.startswith("t:") and ident in seen and not _years_compatible(items[seen[ident]], c):
                 continue
             if ident in seen:

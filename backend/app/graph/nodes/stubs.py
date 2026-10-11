@@ -145,7 +145,8 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
 
     async def select_top(state: ReviewState) -> dict:
         kept = _kept(state)
-        progress_writer()({"type": "screened", "kept": kept, "total": len(state.get("candidates") or [])})
+        progress_writer()({"type": "screened", "kept": kept, "total": len(state.get("candidates") or []),
+                           "requested": ReviewOptions.clamped(state.get("options")).max_papers})
         await asyncio.sleep(timeline.seconds("select", _rng(state, "select")))
         return {"selected": [{"ref": f"P{i + 1}"} for i in range(kept)]}
 

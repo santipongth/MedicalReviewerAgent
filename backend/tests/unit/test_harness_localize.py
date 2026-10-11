@@ -326,3 +326,27 @@ def test_thai_prompt_has_glossary_and_academic_register():
     assert "ภาษาเขียนเชิงวิชาการ" in system and "no casual particles" in system and "[P3]" in system
     assert len(system) < 2600  # stays compact
     assert "Glossary" not in localize_system("ja")  # the glossary is Thai only
+
+
+# ---- Plan 21: up to 50 papers ---------------------------------------------------------------------------------
+def _echo_then_translate(system, user):
+    return thai(user) if "left in English" in user else thai(user, echo=[i for i, _ in items_in(user)])
+
+
+async def test_retry_pass_covers_two_items_per_paper():
+    from app.harness.localize import RETRY_MAX_ITEMS, retry_cap
+    assert RETRY_MAX_ITEMS == 60 and retry_cap(0) == 60 and retry_cap(30) == 60 and retry_cap(50) == 100
+    llm = FakeStructuredLLM("gem", _echo_then_translate)
+    strings = {f"s{i}": f"Item {i} text here." for i in range(150)}
+    res = await localize_strings(llm, HarnessRunner(max_repairs=0), strings, "th", retry_max_items=retry_cap(50))
+    assert res.retried == 100 and res.untranslated == 50
+
+
+async def test_card_localization_of_fifty_papers_retries_one_hundred_items():
+    from app.graph.nodes.synthesis import _localize_cards
+    from tests.unit.test_review_graph import card, make_deps
+    deps = make_deps()
+    deps.llms.localizer = FakeStructuredLLM("loc", _echo_then_translate)
+    papers = [{"ref": f"P{i}", "card": card().model_dump()} for i in range(1, 51)]
+    _, entry, _ = await _localize_cards(deps, papers, "th")
+    assert entry["items"] > 100 and entry["retried"] == 100

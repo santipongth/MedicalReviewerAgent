@@ -42,6 +42,12 @@ RETRY_CHUNK = 5
 RETRY_MAX_ITEMS = 60  # 12 chunks of 5: one wave through the shared LLM semaphore
 
 
+def retry_cap(papers: int) -> int:
+    """Items the retry pass may re-send: RETRY_MAX_ITEMS, or two per analysed paper when that is more (Plan 21:
+    a 50-paper Thai report still gets its retry pass)."""
+    return max(RETRY_MAX_ITEMS, 2 * papers)
+
+
 def localize_system(language: str) -> str:
     name = LANGUAGE_NAMES.get(language, language)
     glossary = GLOSSARY.get(language)

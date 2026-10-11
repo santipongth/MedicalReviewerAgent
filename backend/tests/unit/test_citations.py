@@ -226,3 +226,44 @@ def test_stub_citations_carry_cited_by_source_and_partial():
     c = stub_result("t", "en", "slr")["citations"]
     assert set(c["cited_by_source"]) == set(c["cited_by"]) and c["partial"] is False
     assert c["cited_by_source"]["P6"] is None and set(c["cited_by_source"].values()) == {"openalex", "europepmc", None}
+
+
+# ---- Plan 21: up to 50 papers ---------------------------------------------------------------------------------
+def test_citation_timeout_scales_with_the_paper_count_and_is_capped():
+    from app.graph.nodes.citations import CONCURRENCY, citations_timeout
+    s = Settings(_env_file=None, citations_timeout_seconds=20.0)
+    assert citations_timeout(s, 0) == 20.0
+    assert citations_timeout(s, 30) == pytest.approx(29.0)
+    assert citations_timeout(s, 50) == pytest.approx(35.0)
+    assert citations_timeout(s, 200) == 40.0
+    assert CONCURRENCY == 5
+
+
+def _fifty():
+    return {"papers": [{"ref": f"P{i}", "candidate": {"pmid": str(1000 + i)}} for i in range(1, 51)]}
+
+
+async def test_fifty_papers_with_a_slow_europepmc_finish_inside_the_scaled_timeout(monkeypatch):
+    from app.graph.nodes import citations as node
+    monkeypatch.setattr(node, "SECONDS_PER_PAPER", 0.014)  # 0.1 s + 50 × 0.014 s = 0.8 s
+
+    class SlowEpmc(FakeEpmcRefs):
+        async def references(self, source, id, **kw):
+            await asyncio.sleep(0.05)  # 10 waves of 5 = 0.5 s; 3 at a time would need 0.85 s
+            return [EpmcReference(source="MED", id="1001", pmid="1001")]
+
+    out = (await make_fetch_citations(_deps(FakeOA({}), SlowEpmc(), timeout=0.1))(_fifty()))["citations"]
+    assert out["partial"] is False
+    assert all(out["coverage"].values()) and len(out["coverage"]) == 50
+
+
+async def test_fifty_papers_with_a_hanging_europepmc_give_partial_never_raise(monkeypatch):
+    from app.graph.nodes import citations as node
+    monkeypatch.setattr(node, "SECONDS_PER_PAPER", 0.002)
+
+    class Hanging(FakeEpmcRefs):
+        async def references(self, source, id, **kw):
+            await asyncio.sleep(30)
+
+    out = (await make_fetch_citations(_deps(FakeOA({}), Hanging(), timeout=0.1))(_fifty()))["citations"]
+    assert out["partial"] is True and not any(out["coverage"].values())

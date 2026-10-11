@@ -22,7 +22,7 @@ REAL_KEYS = {
     "enriching": {"candidates"},
     "citations_fetched": {"edges", "covered", "total"},
     "screening": {"batch"},
-    "screened": {"kept", "total"},
+    "screened": {"kept", "total", "requested"},  # Plan 21: requested
     "reading": {"ref", "title"},
     "extracted": {"ref", "ok", "verified", "uncertain", "direction", "design"},
     "synthesizing": {"papers"},
@@ -73,7 +73,7 @@ async def test_payload_keys_match_the_real_events():
         assert set(e) - {"type"} == REAL_KEYS[e["type"]], e
     by = {e["type"]: e for _, e in events}
     assert by["searching"]["found"] >= by["enriching"]["candidates"] >= by["screened"]["total"] >= by["screened"]["kept"]
-    assert by["enriching"]["candidates"] == 120 and by["screened"] == {"type": "screened", "kept": 30, "total": 120}
+    assert by["enriching"]["candidates"] == 120 and by["screened"] == {"type": "screened", "kept": 30, "total": 120, "requested": 30}
     assert len(by["planning"]["queries"]) == 4
     assert len(by["question_refined"]["sub_questions"]) == 2 and len(by["question_refined"]["assumptions"]) == 1
     assert by["synthesizing"]["papers"] == sum(1 for _, e in events if e["type"] == "extracted" and e["ok"])
@@ -111,7 +111,7 @@ async def test_options_scale_candidates_and_kept():
     events, _, _ = await run(options={"max_papers": 10, "candidate_limit": 30})
     seq = types(events)
     by = {e["type"]: e for _, e in events}
-    assert by["screened"] == {"type": "screened", "kept": 10, "total": 30}
+    assert by["screened"] == {"type": "screened", "kept": 10, "total": 30, "requested": 10}
     assert seq.count("screening") == 3 and seq.count("reading") == 10
 
 
@@ -119,7 +119,7 @@ async def test_fifty_papers_emit_fifty_extracted_events_within_the_delay():
     events, total, _ = await run(options={"max_papers": 50}, delay=1.0)
     by = {e["type"]: e for _, e in events}
     assert types(events).count("extracted") == 50
-    assert by["screened"] == {"type": "screened", "kept": 50, "total": 120}
+    assert by["screened"] == {"type": "screened", "kept": 50, "total": 120, "requested": 50}
     assert 0.8 <= total <= 1.2 + 0.1  # spec 1 +/- 0.2, plus 0.1s for Windows timer jitter
 
 
