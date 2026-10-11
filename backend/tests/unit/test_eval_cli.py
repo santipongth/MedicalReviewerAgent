@@ -97,9 +97,9 @@ async def test_report_compare_run_without_slash_fails(tmp_path, monkeypatch, cap
 
 def _write_rec(root, pv, run_id, rid, n, **kw):
     from app.evals.models import RunRecord, run_path, write_json_atomic
-    base = dict(id=rid, repeat=n, run_id=run_id, prompt_version=pv, git_sha="s", pool_version="v1", preset="test",
-                models={"extractor": "m1"}, started_at="2026-10-11T00:00:00", elapsed_s=1.0, cost_usd=0.1,
-                status="done", result={})
+    base = {"id": rid, "repeat": n, "run_id": run_id, "prompt_version": pv, "git_sha": "s", "pool_version": "v1",
+            "preset": "test", "models": {"extractor": "m1"}, "started_at": "2026-10-11T00:00:00", "elapsed_s": 1.0,
+            "cost_usd": 0.1, "status": "done", "result": {}}
     write_json_atomic(run_path(pv, run_id, rid, n), RunRecord(**{**base, **kw}))
 
 
