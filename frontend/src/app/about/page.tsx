@@ -4,6 +4,7 @@ import { LiveLimits } from "@/components/about/live-limits";
 import { CodeBlock } from "@/components/code-block";
 import { Gloss } from "@/components/ui/gloss";
 import { publicApiUrl } from "@/lib/public-api";
+import { paperRangeTh } from "@/lib/limits";
 import { getServerStatus } from "@/lib/server-api";
 import type { ServiceLimits } from "@/lib/types";
 
@@ -64,7 +65,7 @@ function limitsCopy(l: ServiceLimits | null) {
   const c = l?.candidate_limit;
   return {
     screen: c ? `ราว ${c.default} ฉบับ` : "",
-    read: m ? `ตามจำนวนที่ผู้ใช้กำหนด (${m.min}–${m.max} ฉบับ ค่าเริ่มต้น ${m.default})` : "ตามจำนวนที่ผู้ใช้กำหนด",
+    read: l ? `ตามจำนวนที่ผู้ใช้กำหนด ${paperRangeTh(l)}` : "ตามจำนวนที่ผู้ใช้กำหนด",
     mcpRange: m ? `ปรับให้อยู่ในช่วง ${m.min}–${m.max}` : "ปรับให้อยู่ในช่วงที่ระบบรับ ดู limits ใน /status",
     scope: c && m
       ? `คัดกรองงานที่มีบทคัดย่อราว ${c.default} ฉบับ (ปรับได้ ${c.min}–${c.max}) แล้ววิเคราะห์ฉบับที่เกี่ยวข้องที่สุดตามจำนวนที่ผู้ใช้กำหนด ${m.min}–${m.max} ฉบับ (ค่าเริ่มต้น ${m.default}) ถ้าผ่านเกณฑ์ไม่ถึงจะวิเคราะห์เท่าที่มีและแจ้งในรายงาน`

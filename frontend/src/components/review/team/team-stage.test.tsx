@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initialScene, reduceScene, type Scene } from "@/lib/agent-scene";
 import { memberLabel, PHASE_NOTE, teamOf, teamSummary } from "@/lib/agent-team";
 import type { ReviewEvent } from "@/lib/types";
+import { POOL_COLS, stageRowsFor, stageSizeFor } from "@/lib/stage-size";
 import { StagePlaceholder, StageRequested } from "../stage/stage-placeholder";
 import { WIDE_QUERY } from "../stage/use-wide";
 import { TeamStage } from "./team-stage";
@@ -94,6 +95,41 @@ describe("TeamStage", () => {
     const narrow = render(<TeamStage scene={upTo(3)} />).container;
     expect(narrow.querySelector("[data-stage-box]")?.className).not.toMatch(/aspect-/);
     expect(narrow.querySelector("[data-team-stage]")).toHaveAttribute("data-team-stage", "narrow");
+  });
+
+  it("Plan 21 fix round 1: for N = 5, 30 and 50 the live box equals stageSizeFor(N) and its placeholder while slots grow 0 → N", () => {
+    const aspectOf = (el: Element | null) => (el as HTMLElement).style.aspectRatio.replace(/\s/g, "");
+    for (const n of [5, 30, 50]) {
+      const w = stageSizeFor(n);
+      const ph = render(<StageRequested.Provider value={n}><StagePlaceholder view="team" /></StageRequested.Provider>);
+      const want = aspectOf(ph.container.querySelector('[data-placeholder="team-wide"]'));
+      expect(want).toBe(`${w.width}/${w.height}`);
+      let s = reduceScene(upTo(9), { kind: "requested", value: n });
+      s = reduceScene(s, { kind: "event", ev: ev(20, "screened", { kept: n, total: 120, requested: n }) });
+      const live = render(<TeamStage scene={s} />);
+      for (let k = 0; k <= n; k++) {
+        if (k > 0) s = reduceScene(s, { kind: "event", ev: ev(100 + k, "reading", { ref: `P${k}` }) });
+        live.rerender(<TeamStage scene={s} />);
+        expect(aspectOf(live.container.querySelector("[data-stage-box]")), `N ${n} slots ${k}`).toBe(want);
+        const vb = live.container.querySelector("[data-pool]")!.getAttribute("viewBox")!.split(" ").map(Number);
+        expect(vb[3] / 28, `N ${n} slots ${k} rows`).toBe(stageRowsFor(n));
+        expect(Math.ceil(s.slots.length / POOL_COLS)).toBeLessThanOrEqual(stageRowsFor(n));
+      }
+      live.unmount();
+      ph.unmount();
+    }
+  });
+
+  it("a stray slot beyond the reserved rows never grows the box (I2): unknown N with 50 slots keeps the default box", () => {
+    let s = upTo(9);
+    for (let k = 1; k <= 50; k++) s = reduceScene(s, { kind: "event", ev: ev(100 + k, "reading", { ref: `P${k}` }) });
+    expect(s.requested).toBeNull();
+    const live = render(<TeamStage scene={s} />);
+    const ph = render(<StagePlaceholder view="team" />);
+    const aspectOf = (el: Element | null) => (el as HTMLElement).style.aspectRatio.replace(/\s/g, "");
+    expect(aspectOf(live.container.querySelector("[data-stage-box]"))).toBe(aspectOf(ph.container.querySelector('[data-placeholder="team-wide"]')));
+    expect(live.container.querySelector("[data-pool]")!.getAttribute("viewBox")).toBe("0 0 280 84");
+    expect(live.container.querySelectorAll('[data-member="reader"] [data-testid^="reader-"]')).toHaveLength(30);
   });
 
   it("Plan 21: the reader pool reserves rows for the requested count, and the box matches its loading placeholder", () => {

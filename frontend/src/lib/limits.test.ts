@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STATUS_FIXTURE } from "@/test/status-fixture";
-import { usableLimits } from "./limits";
+import { paperRangeTh, usableLimits } from "./limits";
 import { getServerStatus } from "./server-api";
 
 describe("usableLimits", () => {
@@ -11,6 +11,12 @@ describe("usableLimits", () => {
     const l = STATUS_FIXTURE.limits;
     for (const bad of [null, undefined, 3, {}, { ...l, max_papers: { min: 5, max: 50 } }, { ...l, max_papers: { min: 5, max: 50, default: 60 } },
       { ...l, candidate_limit: null }, { ...l, max_papers: { min: "5", max: 50, default: 30 } }]) expect(usableLimits(bad)).toBeNull();
+  });
+});
+
+describe("paperRangeTh", () => {
+  it("states the range and default from /status", () => {
+    expect(paperRangeTh(STATUS_FIXTURE.limits)).toBe("(5–50 ฉบับ ค่าเริ่มต้น 30)");
   });
 });
 

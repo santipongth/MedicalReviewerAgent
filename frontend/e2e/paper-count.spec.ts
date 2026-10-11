@@ -96,10 +96,10 @@ const extracted = (i: number): Ev =>
   ["extracted", { ref: `P${i}`, ok: true, verified: 2, uncertain: false, direction: DIRS[i % DIRS.length], design: "cohort", elapsed_s: 20 + i }];
 const fifty = (done = 20): SseFrame[] => [{ delayMs: 0, events: [...PRE, ...READING, ...Array.from({ length: done }, (_, i) => extracted(i + 1))] }];
 
-async function openStage(page: Page, view: "team" | "steps" | "3d") {
+async function openStage(page: Page, view: "team" | "steps" | "3d", frames: SseFrame[] = fifty(), review: (route: Route) => unknown = running) {
   await page.addInitScript((v) => { try { localStorage.setItem("mra.stageView", v); } catch { /* storage blocked */ } }, view);
-  await streamSse(page, fifty());
-  await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: running });
+  await streamSse(page, frames);
+  await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: review as (route: Route) => Promise<void> });
   await page.goto(`/r/${RID}`);
 }
 
@@ -184,14 +184,64 @@ for (const [width, height] of [[1440, 1000], [390, 844]] as const) {
   });
 }
 
-test("3D view 1440px: 50 readers, the piles stay on the table (screenshot)", async ({ page }) => {
+const hasWebGL = (page: Page) => page.evaluate(() => { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") ?? c.getContext("webgl")); });
+const allPositive: SseFrame[] = [{ delayMs: 0, events: [...PRE, ...READING, ...Array.from({ length: 50 }, (_, i): Ev =>
+  ["extracted", { ref: `P${i + 1}`, ok: true, verified: 2, uncertain: false, direction: "positive", design: "rct", elapsed_s: 20 + i }])] }];
+
+// M1: 20 read (mixed), a full pile (50 tokens in one direction, 9 stacks of 6), and 10 per direction
+for (const [name, frames] of [["stage-3d-50-1440", fifty()], ["stage-3d-50-one-pile-1440", allPositive], ["stage-3d-50-ten-each-1440", fifty(50)]] as const) {
+  test(`3D view 1440px: ${name}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await openStage(page, "3d", [...frames]);
+    test.skip(!(await hasWebGL(page)), "this browser has no WebGL context");
+    await expect(page.locator("[data-stage3d] canvas")).toBeVisible({ timeout: 20_000 });
+    // 20 of 50 read: the reader speaks; all 50 read: the synthesizer has taken over
+    await expect(page.locator("[data-stage3d]")).toHaveAttribute("aria-label", name === "stage-3d-50-1440" ? /จาก 50/ : /ผู้สังเคราะห์/, { timeout: 20_000 });
+    await page.waitForTimeout(4000); // let the tokens land on their piles before the screenshot
+    await stageShot(page, name);
+  });
+}
+
+// I1: one box per run in every view. The default fixture (no max_papers) is the 960/288 box; 50 asked is 960/344.
+const defaultReview = (route: Route) => json(route, 200, { ...reviewFixture, status: "running", result: null });
+const thirty: SseFrame[] = [{ delayMs: 0, events: [...PRE.slice(0, 9), ["screened", { kept: 30, total: 60, elapsed_s: 16 }], ...READING.slice(0, 30),
+  ...Array.from({ length: 5 }, (_, i) => extracted(i + 1))] }];
+for (const [label, review, frames, ratio] of [["max_papers 50", running, fifty(), 960 / 344], ["default fixture", defaultReview, thirty, 960 / 288]] as const) {
+  test(`switching team / steps / 3D keeps one stage box (${label})`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await openStage(page, "team", [...frames], review);
+    await expect(page.locator('[data-member="reader"] [data-testid="reader-ok"]')).toHaveCount(label === "default fixture" ? 5 : 20, { timeout: 20_000 });
+    const views = page.getByRole("group", { name: "มุมมองเวที" });
+    const team = (await page.locator("[data-stage-box]").boundingBox())!;
+    expect(team.width / team.height).toBeCloseTo(ratio, 2);
+    await views.getByRole("button", { name: "ขั้นตอน", exact: true }).click();
+    const svg = page.locator("svg[role=img][viewBox^='0 0 960 ']");
+    await expect(svg).toBeVisible({ timeout: 20_000 });
+    const steps = (await svg.boundingBox())!;
+    for (const k of ["x", "y", "width", "height"] as const) expect(Math.abs(steps[k] - team[k]), `steps ${k}`).toBeLessThan(2);
+    if (await views.getByRole("button", { name: "3D", exact: true }).count()) {
+      await views.getByRole("button", { name: "3D", exact: true }).click();
+      await expect(page.locator("[data-stage3d] canvas")).toBeVisible({ timeout: 20_000 });
+      const d3 = (await page.locator("[data-stage3d]").boundingBox())!;
+      for (const k of ["x", "y", "width", "height"] as const) expect(Math.abs(d3[k] - team[k]), `3D ${k}`).toBeLessThan(2);
+    }
+  });
+}
+
+test("steps view 1440px with 50 readers while synthesizing: the caption sits under the pool, inside the box (M2)", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await openStage(page, "3d");
-  const hasGl = await page.evaluate(() => { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") ?? c.getContext("webgl")); });
-  test.skip(!hasGl, "this browser has no WebGL context");
-  await expect(page.locator("[data-stage3d] canvas")).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator("[data-stage3d]")).toHaveAttribute("aria-label", /อ่านเสร็จ 20 จาก 50/, { timeout: 20_000 });
-  await page.waitForTimeout(2500); // let the 20 tokens land on their piles before the screenshot
-  await stageShot(page, "stage-3d-50-1440");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openStage(page, "steps", [{ delayMs: 0, events: [...PRE, ...READING, ...Array.from({ length: 50 }, (_, i) => extracted(i + 1)),
+    ["synthesizing", { papers: 50, elapsed_s: 90 }]] }]);
+  const svg = page.locator("svg[role=img][viewBox^='0 0 960 ']");
+  await expect(svg.getByTestId("reader-ok")).toHaveCount(50, { timeout: 20_000 });
+  await expect(svg).toHaveAttribute("viewBox", "0 0 960 344");
+  const cap = svg.locator("[data-caption=synth]");
+  await expect(cap).toBeVisible();
+  const [c, z, b] = [(await cap.boundingBox())!, (await svg.locator("[data-zone=read]").boundingBox())!, (await svg.boundingBox())!];
+  expect(c.y).toBeGreaterThanOrEqual(z.y + z.height - 0.5);
+  expect(c.y + c.height).toBeLessThanOrEqual(b.y + b.height + 0.5);
+  await stageShot(page, "stage-steps-50-synth-1440");
 });

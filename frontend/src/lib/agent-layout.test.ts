@@ -7,7 +7,7 @@ import {
   REF_FONT, arc, clip, layoutFor, queryChars, segPath, segX, segY, type LayoutKind, type Rect, type StageLayout,
 } from "./agent-layout";
 
-const base = { showLocalize: true, showExternal: true, slots: 0, batches: 0, queries: 0 };
+const base = { showLocalize: true, showExternal: true, slots: 0, batches: 0, queries: 0, requested: 50 }; // the most a run asks for
 
 describe("arc", () => {
   it("lifts a horizontal pair by |dx|*0.18+6 and passes through the lifted midpoint", () => {
@@ -63,7 +63,7 @@ describe.each(["wide", "narrow"] as LayoutKind[])("layoutFor %s", (kind) => {
         for (let slots = 0; slots <= STAGE_MAX_PAPERS + 1; slots += 3) {
           for (let batches = 0; batches <= 10; batches += 2) {
             for (let queries = 0; queries <= 12; queries += 3) {
-              const l = layoutFor(kind, { showLocalize, showExternal, slots, batches, queries });
+              const l = layoutFor(kind, { showLocalize, showExternal, slots, batches, queries, requested: STAGE_MAX_PAPERS });
               inside(l);
               if (kind === "narrow") expect(l.width).toBeLessThanOrEqual(360);
               const ns = Object.values(l.nodes);
@@ -113,7 +113,7 @@ describe.each(["wide", "narrow"] as LayoutKind[])("edges avoid zones (%s)", (kin
     for (const showLocalize of [true, false]) {
       for (const showExternal of [true, false]) {
         for (let slots = 0; slots <= STAGE_MAX_PAPERS + 1; slots++) {
-          const l = layoutFor(kind, { showLocalize, showExternal, slots, batches: 10, queries: 12 });
+          const l = layoutFor(kind, { showLocalize, showExternal, slots, batches: 10, queries: 12, requested: STAGE_MAX_PAPERS });
           const rects = [...Object.values(l.zone), ...l.queryChips, ...l.batchChips];
           const bad: string[] = [];
           for (const e of l.edges) {
@@ -159,7 +159,7 @@ describe.each(["wide", "narrow"] as LayoutKind[])("scene edge ids exist in layou
 });
 
 const full = { slots: 30, batches: 6, queries: 9 };
-const fullest = { slots: STAGE_MAX_PAPERS, batches: 10, queries: 12 };
+const fullest = { slots: STAGE_MAX_PAPERS, batches: 10, queries: 12, requested: STAGE_MAX_PAPERS };
 const lane = (l: StageLayout) => Object.entries(l.nodes).filter(([k]) => k !== "external").map(([, p]) => p!);
 const overlap = (a: Rect, b: Rect) => Math.min(a.x + a.w, b.x + b.w) > Math.max(a.x, b.x) && Math.min(a.y + a.h, b.y + b.h) > Math.max(a.y, b.y);
 
@@ -181,10 +181,13 @@ describe("wide composition", () => {
     }
   });
 
-  it("keeps one constant box: the height never depends on external tools, localize or the detail counts", () => {
-    const h = layoutFor("wide", { ...base, showExternal: false, slots: 0, batches: 0, queries: 0 }).height;
-    for (const o of opts) for (const slots of [0, 1, 30, STAGE_MAX_PAPERS, STAGE_MAX_PAPERS + 1]) expect(layoutFor("wide", { ...o, slots }).height).toBe(h);
-    expect(layoutFor("wide", { ...base, showExternal: true }).height).toBe(h);
+  it("keeps one box per run: the height follows only the requested count, never external tools, localize or the detail counts", () => {
+    for (const requested of [undefined, 30, 40, 50]) {
+      const h = layoutFor("wide", { ...base, showExternal: false, slots: 0, batches: 0, queries: 0, requested }).height;
+      for (const o of opts) for (const slots of [0, 1, 30, STAGE_MAX_PAPERS, STAGE_MAX_PAPERS + 1]) expect(layoutFor("wide", { ...o, slots, requested }).height).toBe(h);
+      expect(layoutFor("wide", { ...base, showExternal: true, requested }).height).toBe(h);
+    }
+    expect(layoutFor("wide", { ...base, requested: undefined }).height).toBe(288); // unknown count = the service default: the 960/288 box
   });
 
   it("nests the external node in the headroom: clear of the tiles, arcs, done badges and labels", () => {
@@ -313,7 +316,7 @@ describe("Plan 21: the stage holds every paper the service lets a user ask for",
   });
 
   it.each(["wide", "narrow"] as LayoutKind[])("%s: 50 readers in five rows, clear of each other and the next block; a 51st is clamped", (kind) => {
-    const l = layoutFor(kind, { ...base, slots: 51, batches: 10, queries: 12 });
+    const l = layoutFor(kind, { ...base, slots: 51, batches: 10, queries: 12, requested: 50 });
     expect(l.slots).toHaveLength(50);
     expect(new Set(l.slots.map((p) => p.y)).size).toBe(5);
     const pool = l.zone.read!;

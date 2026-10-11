@@ -88,8 +88,9 @@ export interface Scene {
 }
 export type SceneAction = { kind: "event"; ev: ReviewEvent } | { kind: "lang"; language: string } | { kind: "requested"; value: unknown };
 
-/** The most papers the stage shows (reader slots, 3D pile tokens); covers /status `limits.max_papers.max` (Plan 21). */
-export const STAGE_MAX_PAPERS = 50;
+import { STAGE_MAX_PAPERS } from "./stage-size";
+/** The most papers the stage shows (reader slots, 3D pile tokens); single-sourced in stage-size.ts (Plan 21). */
+export { STAGE_MAX_PAPERS };
 export const MAX_PULSES = 24;
 export const MAX_TRACE = 80;
 

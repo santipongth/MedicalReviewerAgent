@@ -1,15 +1,14 @@
 import { Fragment, type ReactNode } from "react";
 import { TYPICAL_DURATION_TH } from "@/lib/copy";
 import { SAMPLE } from "@/lib/landing-sample";
-import { usableLimits } from "@/lib/limits";
+import { paperRangeTh, usableLimits } from "@/lib/limits";
 import type { ServiceLimits } from "@/lib/types";
 import { Gloss } from "../ui/gloss";
 
 /** The steps; the pool size and the paper-count range come from /status, with number-free wording when unknown. */
 function steps(limits: ServiceLimits | null): [string, string, ReactNode][] {
   const pool = limits ? `เก็บราว ${limits.candidate_limit.default} ฉบับที่มีบทคัดย่อ` : "เก็บเฉพาะเรื่องที่มีบทคัดย่อ";
-  const m = limits?.max_papers;
-  const pick = `เลือกฉบับที่เกี่ยวข้องที่สุดตามจำนวนที่คุณกำหนด${m ? ` (${m.min}–${m.max} ฉบับ ค่าเริ่มต้น ${m.default})` : ""}`;
+  const pick = `เลือกฉบับที่เกี่ยวข้องที่สุดตามจำนวนที่คุณกำหนด${limits ? ` ${paperRangeTh(limits)}` : ""}`;
   return [
     ["0:00", "ตีความคำถาม", <>แปลงหัวข้อหรือคำถามเป็นคำถามวิจัยตาม <Gloss k="pico" /> หรือ <Gloss k="pcc" /> สำหรับการทบทวนขอบเขต พร้อมบอกว่าตีความส่วนไหนเอง</>],
     ["~0:15", "ค้นหลายฐานข้อมูล", <>8 แหล่ง: PubMed, Europe PMC (รวม <Gloss k="preprint" />), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ และ OpenAIRE ตัดเรื่องซ้ำ {pool}</>],

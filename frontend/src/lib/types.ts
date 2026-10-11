@@ -460,10 +460,3 @@ export interface ReviewEvent {
   type: string;
   payload: Record<string, unknown>;
 }
-
-/** The `screened` event's payload (docs/api.md). `requested` (Plan 21) is absent in older streams. */
-export interface ScreenedPayload {
-  kept: number;
-  total: number;
-  requested?: number;
-}

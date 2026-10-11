@@ -37,7 +37,8 @@ import { teamLayout3D } from "@/lib/agent-layout-3d";
 import type { ReviewEvent } from "@/lib/types";
 import { BUBBLE_MAX_PX, PileLabels, PILES_CAPTION, TeamLabels3D } from "./labels-3d";
 import { TOKEN_FALLBACK } from "./tokens-3d";
-import { STAGE_ASPECT, STAGE_FOV } from "./model-3d";
+import { STAGE_ASPECT, STAGE_FOV, teamCameraGoal } from "./model-3d";
+import { stageSizeFor } from "@/lib/stage-size";
 import { PLACEHOLDER_SIZE } from "../stage/stage-placeholder";
 
 class Catch extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -79,7 +80,7 @@ describe("Stage3D wrapper", () => {
     expect(fig.getAttribute("aria-label")).toMatch(/^ทีมเอเจนต์ 5 คน ผู้อ่าน/);
     // the same full-width, centred box as the 2D views, so toggling never shifts the page
     const w = PLACEHOLDER_SIZE.wide;
-    expect(fig.className).toContain(`aspect-[${w.width}/${w.height}]`);
+    expect(fig.style.aspectRatio.replace(/\s/g, "")).toBe(`${w.width}/${w.height}`);
     expect(fig).toHaveClass("mx-auto", "w-full");
     expect(fig.className).not.toMatch(/max-w-/);
     expect(STAGE_ASPECT).toBeCloseTo(w.width / w.height, 9);
@@ -88,6 +89,25 @@ describe("Stage3D wrapper", () => {
     expect(canvas).toHaveAttribute("data-frameloop", "demand");
     expect(canvas).toHaveAttribute("data-dpr", "1,2");
     expect(canvas).toHaveAttribute("data-fov", String(STAGE_FOV));
+  });
+
+  it("Plan 21 fix round 1: the 3D box is the run's box, stageSizeFor(requested), the same as the 2D views", () => {
+    for (const n of [5, 30, 50]) {
+      const scene = reduceScene(midRead(), { kind: "requested", value: n });
+      const { unmount } = render(<Stage3D scene={scene} framework="PICO" />);
+      const w = stageSizeFor(n);
+      expect(screen.getByRole("img").style.aspectRatio.replace(/\s/g, ""), String(n)).toBe(`${w.width}/${w.height}`);
+      unmount();
+    }
+  });
+
+  it("the camera fits the box it is drawn in: a taller box keeps every frame point in view", () => {
+    const layout = teamLayout3D();
+    const w = stageSizeFor(50);
+    const cam = teamCameraGoal(layout, "reader", undefined, w.width / w.height);
+    const dflt = teamCameraGoal(layout, "reader");
+    expect(cam).not.toEqual(dflt); // the narrower aspect needs the camera further back (width-bound fit)
+    expect(Math.hypot(cam[0] - cam[3], cam[1] - cam[4], cam[2] - cam[5])).toBeGreaterThan(Math.hypot(dflt[0] - dflt[3], dflt[1] - dflt[4], dflt[2] - dflt[5]) - 1e-9);
   });
 
   it("throws to the error boundary when the WebGL context is lost (and cancels the default)", () => {

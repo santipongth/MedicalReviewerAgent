@@ -156,6 +156,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
   const tokenPending = !!siteKey && !token && !widgetFailed;
   const limits = usableLimits(status?.limits) ?? usableLimits(serverLimits);
   const range = limits?.max_papers;
+  const poolSize = limits?.candidate_limit.default;
   const maxPapers = range ? Math.min(range.max, Math.max(range.min, chosenPapers ?? range.default)) : null;
   const summary = [
     language === "th" ? "ภาษาไทย" : "English",
@@ -257,7 +258,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
             <span className="rounded-sm border border-rule px-2 py-0.5 font-display text-[0.88rem] tabular-nums text-muted">{summary}</span>
             <span className="text-[0.88rem] text-primary underline underline-offset-2 group-open:hidden">แก้ไข</span>
           </summary>
-          <div className="grid gap-6 pb-5 pt-2 lg:grid-cols-[auto_minmax(0,22rem)_auto] lg:items-start lg:gap-12">
+          <div className="grid gap-6 pb-5 pt-2 lg:grid-cols-[auto_minmax(0,30rem)_auto] lg:items-start lg:gap-12">
             <fieldset className="grid gap-1">
               <legend className="label p-0">ภาษาของรายงาน</legend>
               <div className="flex flex-wrap gap-x-6">
@@ -267,7 +268,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
                   onChange={() => setLanguage("en")} className="size-4 accent-primary" />English</label>
               </div>
             </fieldset>
-            {range && maxPapers != null && limits && (
+            {range && maxPapers != null && (
               <div className="grid gap-1">
                 <label className="label" htmlFor={`${id}-papers`}>จำนวนงานวิจัยที่ต้องการวิเคราะห์</label>
                 <div className="flex min-h-11 items-center gap-4">
@@ -279,7 +280,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
                   </span>
                 </div>
                 <p id={`${id}-papers-help`} className="text-[0.88rem] leading-[1.7] text-muted">
-                  ระบบคัดกรองราว {limits.candidate_limit.default} ฉบับที่มีบทคัดย่อ แล้ววิเคราะห์ฉบับที่เกี่ยวข้องที่สุดตามจำนวนนี้ ถ้าผ่านเกณฑ์ไม่ถึงจะวิเคราะห์เท่าที่มีและแจ้งในรายงาน
+                  ระบบคัดกรองราว {poolSize} ฉบับที่มีบทคัดย่อ แล้ววิเคราะห์ฉบับที่เกี่ยวข้องที่สุดตามจำนวนนี้ ถ้าผ่านเกณฑ์ไม่ถึงจะวิเคราะห์เท่าที่มีและแจ้งในรายงาน
                 </p>
               </div>
             )}

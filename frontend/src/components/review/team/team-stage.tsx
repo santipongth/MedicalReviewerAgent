@@ -1,8 +1,9 @@
 "use client";
 import { animate, useReducedMotion } from "motion/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { STAGE_MAX_PAPERS, SYNTH_CAPTION, showSynthCaption, stageCaption, type ReaderSlot, type Scene } from "@/lib/agent-scene";
+import { SYNTH_CAPTION, showSynthCaption, stageCaption, type ReaderSlot, type Scene } from "@/lib/agent-scene";
 import { arc, REF_FONT, SLOT_R, type Pt } from "@/lib/agent-layout";
+import { POOL_COLS, POOL_PITCH as PITCH, STAGE_MAX_PAPERS, stageRowsFor, stageSizeFor } from "@/lib/stage-size";
 import {
   PHASE_NOTE, TEAM, handoffs, memberLabel, teamOf, teamSummary, type MemberState, type TeamOpts,
 } from "@/lib/agent-team";
@@ -10,7 +11,6 @@ import { handoffDots, lookToward } from "@/lib/team-motion";
 import type { Connection } from "@/lib/use-review";
 import { numbersIn, withNumbers } from "../stage/count-up";
 import { StageMotion } from "../stage/motion";
-import { teamPoolRows, teamWideSize } from "../stage/stage-placeholder";
 import { PacketDot, type DotHandle } from "../stage/packet-layer";
 import { ReaderPool } from "../stage/reader-pool";
 import { useWide } from "../stage/use-wide";
@@ -21,12 +21,10 @@ import { TeamLegend } from "./team-legend";
 
 const DOTS = 12;
 const LOOK_MS = 700; // a packet's flight
-const POOL_COLS = 10;
-const PITCH = 28;
 
-/** Reader slots in a 10-column grid (the steps view's pool geometry, in the card's own svg). */
-function poolSlots(n: number): Pt[] {
-  return Array.from({ length: Math.min(n, STAGE_MAX_PAPERS) }, (_, i) => ({ x: PITCH / 2 + (i % POOL_COLS) * PITCH, y: PITCH / 2 + Math.floor(i / POOL_COLS) * PITCH }));
+/** Reader slots in a 10-column grid (the steps view's pool geometry, in the card's own svg), at most `cap`. */
+function poolSlots(n: number, cap: number): Pt[] {
+  return Array.from({ length: Math.min(n, cap) }, (_, i) => ({ x: PITCH / 2 + (i % POOL_COLS) * PITCH, y: PITCH / 2 + Math.floor(i / POOL_COLS) * PITCH }));
 }
 
 /** A count in a tally that counts up to its new value (display only; React always renders the final text). */
@@ -68,10 +66,14 @@ function Avatar({ m, wide }: { m: MemberState; wide: boolean }) {
   );
 }
 
-/** `fixedRows`: the rows the wide card reserves (teamPoolRows), so the pool never grows mid-run; null: fit the slots. */
+/**
+ * `fixedRows`: the rows the run reserves (stageRowsFor), so the wide pool never grows mid-run and a stray slot beyond
+ * them is not drawn; null (narrow list): the pool fits its slots.
+ */
 function Pool({ slots, fixedRows }: { slots: ReaderSlot[]; fixedRows: number | null }) {
-  const rows = fixedRows ?? Math.max(1, Math.ceil(slots.length / POOL_COLS));
-  const layout = useMemo(() => ({ slots: poolSlots(slots.length), slotR: SLOT_R }), [slots.length]);
+  const rows = fixedRows ?? Math.max(1, Math.ceil(Math.min(slots.length, STAGE_MAX_PAPERS) / POOL_COLS));
+  const cap = rows * POOL_COLS;
+  const layout = useMemo(() => ({ slots: poolSlots(slots.length, cap), slotR: SLOT_R }), [slots.length, cap]);
   // The pool scales with its card (about 0.8 at 1024px), so refs get a larger font in user units to stay >= 11px on
   // screen. At 13.75 units a three-character ref still fits inside the 24-unit slot circle.
   const svg = useRef<SVGSVGElement>(null);
@@ -214,8 +216,8 @@ function TeamPackets({ scene, box, label, wide }: { scene: Scene; box: RefObject
 /**
  * The live run as a team of five AI agents (Plan 18): each a flat robot head with a four-phase ring, its phase names
  * as text, and a speech bubble built only from received events (agent-team.ts). Wide: five cards in a row inside the
- * steps view's 960/288 box, one pool row taller per 10 papers asked for beyond 30 (teamWideSize; the reader's card is
- * wider and holds the reader pool). Narrow: a vertical list.
+ * run's wide box (stageSizeFor, the same as the steps and 3D views; the reader's card is wider and holds the reader
+ * pool). Narrow: a vertical list.
  */
 // Known and accepted: the view preference is read after hydration (useSyncExternalStore, server snapshot "team"), so a
 // user whose stored view is "steps" or "3d" sees the team placeholder first and then a swap. The wide box is the same
@@ -228,9 +230,9 @@ export function TeamStage({ scene, connection, ...opts }: { scene: Scene; connec
   const team = useMemo(() => teamOf(scene, { framework, question }), [scene, framework, question]);
   const label = useMemo(() => teamSummary(scene, { framework, question }), [scene, framework, question]);
   const caption = stageCaption(scene, connection);
-  // Plan 21: rows for the requested count (as the loading placeholder reserves), or more if more papers arrive
-  const poolRows = Math.max(teamPoolRows(scene.requested), Math.ceil(Math.min(scene.slots.length, STAGE_MAX_PAPERS) / POOL_COLS));
-  const size = teamWideSize(poolRows);
+  // Plan 21: the run's rows and box from its requested count only (as every view and the loading placeholder use)
+  const poolRows = stageRowsFor(scene.requested);
+  const size = stageSizeFor(scene.requested);
   return (
     <StageMotion>
       <figure className="grid gap-2" data-team-stage={wide ? "wide" : "narrow"}>
