@@ -232,3 +232,34 @@ async def test_meta_analysis_reads_page_three_only_when_short_after_two_pages():
     sx = PagedSearxng(full)
     out = await make_enrich(_paged_deps(sx))(_page_one_state(full, ["q1"], meta, page_count=2))
     assert sx.calls == [] and len(out["candidates"]) == 120
+
+
+async def test_top_up_hits_go_through_every_filter_and_fuzzy_duplicates_are_not_new():
+    page1 = _hits("a1", 10)
+    usable = _hits("a2", 5)
+    # the same paper as page1[0] by a near-identical title only (no shared identifier)
+    dup = Candidate(title="Paper 1000 on metformin outcome", pmid="777", abstract=ABSTRACT, abstract_source="engine",
+                    engines=["pubmed"])
+    old = Candidate(title="Paper 7001 on metformin outcomes from long ago", doi="10.1/old", year=2001,
+                    abstract=ABSTRACT, abstract_source="engine", engines=["pubmed"])
+    editorial = Candidate(title="Paper 7002 on metformin outcomes, an editorial", doi="10.1/ed", abstract=ABSTRACT,
+                          abstract_source="engine", engines=["pubmed"], pub_types=["Editorial"])
+    bare = Candidate(title="Paper 7003 on metformin outcomes without abstract", doi="10.1/bare",
+                     engines=["pubmed"])
+    off = Candidate(title="Paper 7004 on call admission control in networks", doi="10.1/off",
+                    abstract="A queueing model of call admission control. " * 5, abstract_source="engine",
+                    engines=["arxiv"])
+    pages = {("q1", 1): page1, ("q1", 2): [dup, off, *usable, old, editorial, bare]}
+    sx, epmc = PagedSearxng(pages), FakeEpmc([])
+    state = _page_one_state(pages, ["q1"], {"max_papers": 30, "candidate_limit": 120, "year_from": 2010})
+    state["question"] = {"key_terms": [{"term": "metformin", "mesh": "Metformin", "synonyms": []}]}
+    out = await make_enrich(_paged_deps(sx, epmc))(state)
+    dois = [c["doi"] for c in out["candidates"]]
+    assert "10.1/old" not in dois and "10.1/ed" not in dois and "10.1/bare" not in dois
+    assert dois[-1] == "10.1/off"  # off focus: kept, behind the on-topic hits
+    assert len(out["candidates"]) == 16
+    stats = out["search_stats"]
+    assert stats["year_excluded"] == 1 and stats["non_research"] == 1 and stats["no_abstract"] == 1
+    q = out["quality"][0]
+    assert q["topup_found"] == 10 and q["topup_new"] == 9 and q["off_focus"] == 1  # the fuzzy duplicate is not new
+    assert "777" not in epmc.calls[-1][1]  # and is not looked up

@@ -243,16 +243,20 @@ def _fifty():
     return {"papers": [{"ref": f"P{i}", "candidate": {"pmid": str(1000 + i)}} for i in range(1, 51)]}
 
 
-async def test_fifty_papers_with_a_slow_europepmc_finish_inside_the_scaled_timeout(monkeypatch):
-    from app.graph.nodes import citations as node
-    monkeypatch.setattr(node, "SECONDS_PER_PAPER", 0.014)  # 0.1 s + 50 × 0.014 s = 0.8 s
-
+async def test_fifty_papers_run_five_europepmc_lookups_at_a_time_and_finish():
+    """Concurrency is counted, not timed: the scaled budget (0.1 s + 50 x 0.3 s) is far above the 10 short waves."""
     class SlowEpmc(FakeEpmcRefs):
+        in_flight = peak = 0
+
         async def references(self, source, id, **kw):
-            await asyncio.sleep(0.05)  # 10 waves of 5 = 0.5 s; 3 at a time would need 0.85 s
+            SlowEpmc.in_flight += 1
+            SlowEpmc.peak = max(SlowEpmc.peak, SlowEpmc.in_flight)
+            await asyncio.sleep(0.01)
+            SlowEpmc.in_flight -= 1
             return [EpmcReference(source="MED", id="1001", pmid="1001")]
 
     out = (await make_fetch_citations(_deps(FakeOA({}), SlowEpmc(), timeout=0.1))(_fifty()))["citations"]
+    assert SlowEpmc.peak == 5
     assert out["partial"] is False
     assert all(out["coverage"].values()) and len(out["coverage"]) == 50
 

@@ -97,3 +97,28 @@ def merge_candidates(cands: Iterable[Candidate], *, fuzzy_threshold: int = 95, r
         if i >= rank_from and root not in rank:
             rank[root] = i
     return [_combine(groups[root]) for root in sorted(groups, key=lambda r: (r not in rank, rank.get(r, r)))]
+
+
+class PaperIndex:
+    """The papers already in hand, to tell whether another record is one of them by the same rules as
+    merge_candidates: a shared identifier, or a near-identical title (same numbers, compatible years)."""
+
+    def __init__(self, cands: Iterable[Candidate], *, fuzzy_threshold: int = 95) -> None:
+        self.threshold = fuzzy_threshold
+        self.ids: set[str] = set()
+        self.titles: list[tuple[str, list[str], Candidate]] = []
+        for c in cands:
+            self.ids.update(identifiers(c))
+            title = normalize_title(c.title)
+            if title:
+                self.titles.append((title, _numbers(title), c))
+
+    def __contains__(self, c: Candidate) -> bool:
+        if self.ids & set(identifiers(c)):
+            return True
+        title = normalize_title(c.title)
+        if not title:
+            return False
+        numbers = _numbers(title)
+        return any(n == numbers and _years_compatible(k, c) and fuzz.ratio(t, title) >= self.threshold
+                   for t, n, k in self.titles)

@@ -99,8 +99,9 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
         specs = (*specs, _RELATED)
     # The illustrative paper list is fixed (6-8 studies), so `selected` is its length whatever max_papers asks for;
     # the rest of the pool is split so the PRISMA flow balances exactly: screened - excluded = selected.
+    # Plan 21: when the fixed list is shorter than the requested count it is a shortfall, so nothing is over the limit.
     gap = max(0, opts.candidate_limit - len(specs))
-    over_limit = min(2, gap)
+    over_limit = min(2, gap) if len(specs) >= opts.max_papers else 0
     excluded = gap - over_limit
     off_topic, population = excluded * 7 // 10, excluded * 2 // 10
     excluded_screening = {"off_topic": off_topic, "population": population,
@@ -204,7 +205,9 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
                   "candidates": opts.candidate_limit, "screened": opts.candidate_limit,
                   "selected": len(papers), "extracted": len(papers), "excluded_screening": excluded_screening,
                   "non_research": 4, "year_excluded": 0, "no_abstract": 2,
-                  "excluded_selection": {"narrative_excluded": 0, "over_limit": over_limit, "study_design_relaxed": 0,
+                  "excluded_selection": {"narrative_excluded": 0, "over_limit": over_limit,
+                                         "requested": opts.max_papers, "eligible": len(specs) + over_limit,
+                                         "study_design_relaxed": 0,
                                          "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
                   "related_reports": sum(p["related_to"] is not None for p in papers)},
         # the lead clause the first graded finding shows is counted like the real check counts it

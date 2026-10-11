@@ -11,7 +11,7 @@ from app.graph.schemas import Candidate
 from app.graph.state import ReviewState
 from app.harness.trials import trial_acronyms, trial_key
 from app.schemas.review import ReviewOptions
-from app.services.dedupe import identifiers, merge_candidates
+from app.services.dedupe import PaperIndex, merge_candidates
 
 # Papers are analysed from their abstracts, so a candidate needs one long enough to hold a result.
 MIN_ABSTRACT_CHARS = 150
@@ -362,8 +362,8 @@ def make_enrich(deps):
         queries = (state.get("plan") or {}).get("queries") or ([topic] if topic else [])
         if len(pool) < options.candidate_limit and pages and queries and getattr(deps, "searxng", None) is not None:
             hits = await _topup_search(deps, queries, pages, errors)
-            known = {i for c in [*merged, *enriched] for i in identifiers(c)}
-            new = [c for c in merge_candidates(hits) if not known & set(identifiers(c))]
+            known = PaperIndex([*merged, *enriched])  # shared ids or a near-identical title, as merge_candidates
+            new = [c for c in merge_candidates(hits) if c not in known]
             lookup_new = [c for c in new if not already_enriched(c)]
             records = await _lookup(deps, lookup_new, errors, failures, " (top-up)")
             enriched = _with_records(records, merge_candidates([*enriched, *new]))
