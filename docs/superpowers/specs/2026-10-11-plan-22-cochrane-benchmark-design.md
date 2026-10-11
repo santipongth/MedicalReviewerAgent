@@ -129,7 +129,7 @@ checked_by: "<initials>"
 | `select` | Builds the sampling frame and draws the sample (steps below). Writes a draft manifest with `checked_by_owner: false`. | PubMed + LLM, once |
 
 How `select` builds the sample:
-1. **Sampling frame:** for each stratum, one PubMed E-utilities search: `"Cochrane Database Syst Rev"[Journal] AND 2020:2025[dp]` plus the stratum's MeSH terms (listed in `PROTOCOL.md`). The PMIDs are saved with the query and run date.
+1. **Sampling frame:** for each stratum, one Europe PMC REST search (deviation 2026-10-11: same Cochrane records, abstracts in one call, no NCBI key): `"Cochrane Database Syst Rev"[Journal] AND 2020:2025[dp]` plus the stratum's MeSH terms (listed in `PROTOCOL.md`). The PMIDs are saved with the query and run date.
 2. **Draw:** shuffle the PMIDs of each stratum with the seed, then go through them in that order.
 3. **Eligibility:** the LLM reads each abstract through the harness runner and decides whether it is an intervention review, reports GRADE certainty, and has ≥ 3 RCTs for the primary outcome. It also fills `question`, `primary_outcome`, `search_date` and `review_type`, and records the reason for every exclusion.
 4. **Stop:** when a stratum has 10 eligible reviews.

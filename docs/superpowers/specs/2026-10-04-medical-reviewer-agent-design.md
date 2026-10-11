@@ -322,3 +322,8 @@ D:\MedicalReviewerAgent\
   candidates (`candidate_limit` 20-120), with one SearXNG top-up page when the pool is short. The per-review cost cap
   scales with both numbers. Reading stays abstract-only. This supersedes the earlier "about 60 screened, up to 30
   analysed" figures.
+
+## Revision 2026-10-11: Cochrane harness (Plan 22a)
+
+Spec: `2026-10-11-plan-22-cochrane-benchmark-design.md`. Adds `app/evals/` and `python -m app.cli.eval`; the review
+graph gains counting-only hooks (citation tally, localization rejection counters) and an eval-only pool cutoff.
