@@ -129,8 +129,8 @@ checked_by: "<initials>"
 | `select [--force]` | Builds the sampling frame and draws the sample (steps below). Writes a draft manifest with `checked_by_owner: false`. Refuses to run when the manifest already has reviews; `--force` keeps a `.bak` copy and rebuilds. | Europe PMC + LLM, once |
 
 How `select` builds the sample:
-1. **Sampling frame:** for each stratum, one Europe PMC REST search (deviation 2026-10-11: same Cochrane records, abstracts in one call, no NCBI key): `JOURNAL:"Cochrane Database Syst Rev" AND PUB_YEAR:[2020 TO 2025] AND (<stratum terms>)`, where the stratum terms are in `manifest.yaml`. The record ids are saved with the query and run date.
-2. **Draw:** shuffle the record ids of each stratum with the seed, then go through them in that order.
+1. **Sampling frame:** for each stratum, one Europe PMC REST search (deviation 2026-10-11: same Cochrane records, abstracts in one call, no NCBI key): `JOURNAL:"Cochrane Database Syst Rev" AND PUB_YEAR:[2020 TO 2025] AND (<stratum terms>)`, where the stratum terms are in `manifest.yaml`. The sampling frame is saved to the committed file `frames/<stratum>.json` (query, run date, Europe PMC `hitCount`, number collected after dedupe, record ids in draw order).
+2. **Draw:** sort the deduplicated record ids of each stratum, shuffle them with the seed (so the draw does not depend on Europe PMC's changing relevance order), then go through them in that order.
 3. **Eligibility:** the LLM reads each abstract through the harness runner and decides whether it is an intervention review, reports GRADE certainty, and has ≥ 3 RCTs for the primary outcome. It also fills `question`, `primary_outcome`, `search_date` and `review_type`, and records the reason for every exclusion.
 4. **Stop:** when a stratum has 10 eligible reviews.
 

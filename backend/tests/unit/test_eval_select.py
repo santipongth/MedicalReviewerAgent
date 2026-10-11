@@ -1,10 +1,17 @@
 import httpx
 import pytest
 
+from app.evals import models
 from app.evals.models import Manifest, Stratum
 from app.evals.select import CochraneEligibility, cochrane_id, select
 from tests.fakes import FakeStructuredLLM
 from tests.unit.test_review_graph import make_deps
+
+
+@pytest.fixture(autouse=True)
+def root(tmp_path, monkeypatch):
+    monkeypatch.setattr(models, "EVAL_ROOT", tmp_path)
+    return tmp_path
 
 
 class FakeHttp:
@@ -13,7 +20,8 @@ class FakeHttp:
 
     async def get(self, url, params=None, **_):
         self.calls.append(params)
-        body = {"resultList": {"result": self.records}, "nextCursorMark": params.get("cursorMark")}
+        body = {"hitCount": len(self.records), "resultList": {"result": self.records},
+                "nextCursorMark": params.get("cursorMark")}
         return httpx.Response(200, json=body, request=httpx.Request("GET", url))
 
 
@@ -90,3 +98,30 @@ async def test_same_review_in_two_strata_lands_once_in_the_first_stratum():
     out = await select(deps, http, "u", m)
     assert [(r.id, r.stratum) for r in out.reviews] == [("CD000001", "cv")]
     assert 'AND (heart)' in http.calls[0]["query"]
+
+
+@pytest.mark.asyncio
+async def test_draw_does_not_depend_on_input_order():
+    deps = make_deps()
+    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    records = [rec(i, "Search up to 2023") for i in range(1, 7)]
+
+    def m():
+        return Manifest(seed=5, per_stratum=3, strata=[Stratum(name="cv", query="x")])
+
+    a = await select(deps, FakeHttp(records), "u", m())
+    b = await select(deps, FakeHttp(list(reversed(records))), "u", m())
+    assert [r.id for r in a.reviews] == [r.id for r in b.reviews]
+
+
+@pytest.mark.asyncio
+async def test_frame_file_is_written_with_hit_count_and_draw_order(root):
+    import json
+    deps = make_deps()
+    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    records = [rec(i, "Search up to 2023") for i in range(1, 5)]
+    out = await select(deps, FakeHttp(records), "u", Manifest(seed=2, per_stratum=2, strata=[Stratum(name="cv", query="x")]))
+    data = json.loads((root / "frames" / "cv.json").read_text(encoding="utf-8"))
+    assert data["hit_count"] == 4 and data["collected"] == 4 and data["run_date"]
+    assert 'JOURNAL:"Cochrane' in data["query"]
+    assert len(data["ids_in_draw_order"]) == 4 and data["ids_in_draw_order"][:2] == [r.id for r in out.reviews]

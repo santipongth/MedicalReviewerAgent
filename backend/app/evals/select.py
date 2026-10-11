@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import random
 import re
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from app.evals.models import Manifest, ManifestEntry, Stratum
+from app.evals import models
+from app.evals.models import Manifest, ManifestEntry, Stratum, write_json_atomic
 from app.graph.nodes.intake import harness_runner
 
 _CD = re.compile(r"(CD\d{6})", re.IGNORECASE)
@@ -43,21 +45,29 @@ def cochrane_id(doi: str) -> str:
     return m.group(1).upper() if m else ""
 
 
-async def frame(http, base_url: str, manifest: Manifest, stratum: Stratum) -> list[dict[str, Any]]:
-    query = (f'JOURNAL:"Cochrane Database Syst Rev" AND PUB_YEAR:[{manifest.year_from} TO {manifest.year_to}] '
-             f"AND ({stratum.query})")
+def frame_query(manifest: Manifest, stratum: Stratum) -> str:
+    return (f'JOURNAL:"Cochrane Database Syst Rev" AND PUB_YEAR:[{manifest.year_from} TO {manifest.year_to}] '
+            f"AND ({stratum.query})")
+
+
+async def frame(http, base_url: str, manifest: Manifest, stratum: Stratum) -> tuple[list[dict[str, Any]], int]:
+    """All records of the stratum query and Europe PMC's hitCount from the first page."""
+    query = frame_query(manifest, stratum)
     out: list[dict[str, Any]] = []
+    hit_count = 0
     cursor = "*"
     while True:
         resp = await http.get(f"{base_url.rstrip('/')}/search", params={
             "query": query, "format": "json", "resultType": "core", "pageSize": 1000, "cursorMark": cursor})
         resp.raise_for_status()
         body = resp.json()
+        if cursor == "*":
+            hit_count = int(body.get("hitCount") or 0)
         page = (body.get("resultList") or {}).get("result") or []
         out.extend(page)
         nxt = body.get("nextCursorMark")
         if not page or not nxt or nxt == cursor:
-            return out
+            return out, hit_count
         cursor = nxt
 
 
@@ -95,9 +105,16 @@ async def select(deps, http, base_url: str, manifest: Manifest) -> Manifest:
     reviews = list(manifest.reviews)
     for stratum in manifest.strata:
         taken = {e.id for e in reviews}  # a review lands in the first stratum that reaches it
-        records = [r for r in latest_per_review(await frame(http, base_url, manifest, stratum))
-                   if cochrane_id(r["doi"]) not in taken]
+        found, hit_count = await frame(http, base_url, manifest, stratum)
+        deduped = latest_per_review(found)
+        # sorted first: Europe PMC's relevance order drifts over time, the seeded draw must not
+        records = sorted((r for r in deduped if cochrane_id(r["doi"]) not in taken),
+                         key=lambda r: cochrane_id(r["doi"]))
         random.Random(f"{manifest.seed}:{stratum.name}").shuffle(records)
+        write_json_atomic(models.EVAL_ROOT / "frames" / f"{stratum.name}.json", {
+            "query": frame_query(manifest, stratum), "run_date": datetime.now(UTC).isoformat(timespec="seconds"),
+            "hit_count": hit_count, "collected": len(deduped),
+            "ids_in_draw_order": [cochrane_id(r["doi"]) for r in records]})
         eligible = 0
         for r in records:
             if eligible >= manifest.per_stratum:
