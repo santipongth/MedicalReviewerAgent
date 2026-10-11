@@ -27,6 +27,7 @@ class ReviewMetrics:
     stratum: str
     repeat: int
     status: str
+    started_at: str = ""
     error: str = ""
     cost_usd: float = 0.0
     elapsed_s: float = 0.0
@@ -36,35 +37,47 @@ class ReviewMetrics:
     citations_stripped: int = 0
     thai_share_mean: float | None = None
     thai_share_min: float | None = None
+    thai_keys_dropped: int = 0
     untranslated: int = 0
     numbers_rejected: int = 0
     citations_rejected: int = 0
     glossary: list[tuple[str, bool]] = field(default_factory=list)
     answer_present: bool = False
     papers_analysed: int = 0
+    pool_found: int = 0
+    pool_with_abstract: int = 0
     primary_direction: str = "none"
 
 
 def review_metrics(rec: RunRecord, stratum: str) -> ReviewMetrics:
-    m = ReviewMetrics(id=rec.id, stratum=stratum, repeat=rec.repeat, status=rec.status, error=rec.error,
-                      cost_usd=rec.cost_usd, elapsed_s=rec.elapsed_s,
+    m = ReviewMetrics(id=rec.id, stratum=stratum, repeat=rec.repeat, status=rec.status, started_at=rec.started_at,
+                      error=rec.error, cost_usd=rec.cost_usd, elapsed_s=rec.elapsed_s,
                       citations_proposed=rec.citations.get("proposed", 0),
                       citations_stripped=rec.citations.get("stripped", 0))
+    if rec.status != "done":
+        m.primary_direction = "failed"
+        return m
     pm = rec.primary_match
     if pm is not None and pm.row_index is not None:
         m.primary_direction = f"{pm.verdict}:{pm.direction or '-'}"
     result = rec.result or {}
-    if rec.status != "done" or not result:
+    if not result:
         return m
     q = result.get("quality") or {}
     loc = q.get("localize") or {}
+    stats = result.get("stats") or {}
     m.numbers_verified, m.numbers_total = int(q.get("numbers_verified", 0)), int(q.get("numbers_total", 0))
     m.untranslated = int(loc.get("untranslated", 0))
     m.numbers_rejected = int(loc.get("numbers_rejected", 0))
     m.citations_rejected = int(loc.get("citations_rejected", 0))
+    m.pool_found = int(stats.get("found", 0))
+    m.pool_with_abstract = int(stats.get("with_abstract", 0))
     en = _synthesis_strings(result.get("synthesis_en") or {})
     th = _synthesis_strings(result.get("synthesis") or {})
-    shares = [thai_share(th[k], en[k]) for k in en if k in th and en[k].strip()]
+    # A key the Thai synthesis dropped (or left empty) is counted, never scored as a share.
+    translated = {k for k in en if en[k].strip() and k in th and th[k].strip()}
+    m.thai_keys_dropped = sum(1 for k in en if en[k].strip() and k not in translated)
+    shares = [thai_share(th[k], en[k]) for k in translated]
     if shares:
         m.thai_share_mean, m.thai_share_min = statistics.fmean(shares), min(shares)
     terms = default_terms()
@@ -74,9 +87,12 @@ def review_metrics(rec: RunRecord, stratum: str) -> ReviewMetrics:
     return m
 
 
-def _rate(k: int, n: int) -> tuple[float, float, float]:
+def _rate(k: int, n: int) -> tuple[float, float, float] | None:
+    """Rate with a Wilson 95% CI; None when there is nothing to divide by."""
+    if n == 0:
+        return None
     lo, hi = wilson(k, n)
-    return (k / n if n else 0.0, lo, hi)
+    return (k / n, lo, hi)
 
 
 def aggregate(rows: list[ReviewMetrics]) -> dict:
@@ -90,6 +106,8 @@ def aggregate(rows: list[ReviewMetrics]) -> dict:
     for r in rows:
         by_id[r.id][r.repeat] = r.primary_direction
     pairs = [(d[1], d[2]) for d in by_id.values() if 1 in d and 2 in d]
+    # A pair with a failed run disagrees; two "none" (done, no matching row) agree.
+    agree = sum(1 for a, b in pairs if a == b and a != "failed")
     verified, total = sum(r.numbers_verified for r in done), sum(r.numbers_total for r in done)
     proposed, stripped = sum(r.citations_proposed for r in rows), sum(r.citations_stripped for r in rows)
     return {
@@ -99,9 +117,13 @@ def aggregate(rows: list[ReviewMetrics]) -> dict:
         "citation_strip_rate": stripped / proposed if proposed else None,
         "thai_share_mean": statistics.fmean(means) if means else None,
         "thai_share_min": min(shares) if shares else None,
-        "below_min_share": _rate(sum(1 for s in shares if s < MIN_THAI_SHARE), len(rows)),
+        "thai_keys_dropped": sum(r.thai_keys_dropped for r in done),
+        "below_min_share": _rate(sum(1 for s in shares if s < MIN_THAI_SHARE), len(shares)),
         "numbers_rejected": sum(r.numbers_rejected for r in done),
         "citations_rejected": sum(r.citations_rejected for r in done),
+        "untranslated_total": sum(r.untranslated for r in done),
+        "pool_found_mean": statistics.fmean([r.pool_found for r in done]) if done else 0.0,
+        "pool_with_abstract_mean": statistics.fmean([r.pool_with_abstract for r in done]) if done else 0.0,
         "glossary_consistency": _rate(sum(glossary), len(glossary)),
         "glossary_top_misses": misses.most_common(10),
         "answer_rate": _rate(sum(1 for r in done if r.answer_present), len(rows)),
@@ -109,5 +131,6 @@ def aggregate(rows: list[ReviewMetrics]) -> dict:
         "cost_median": statistics.median(costs) if costs else 0.0,
         "cost_max": max(costs) if costs else 0.0, "cost_total": sum(costs),
         "elapsed_mean": statistics.fmean([r.elapsed_s for r in done]) if done else 0.0,
-        "stability": _rate(sum(1 for a, b in pairs if a == b), len(pairs)), "stability_pairs": len(pairs),
+        "stability": _rate(agree, len(pairs)), "stability_pairs": len(pairs),
+        "stability_missing": sum(1 for d in by_id.values() if not (1 in d and 2 in d)),
     }
