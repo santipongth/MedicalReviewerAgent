@@ -11,9 +11,9 @@ import { readTokens, type ChartTokens } from "../charts/tokens";
 import { useTheme } from "../theme-toggle";
 import { ComputedNumber, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { SectionHeading, useNested } from "./report-nav";
 import { L } from "./text";
-import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const M = RC.meta;
 

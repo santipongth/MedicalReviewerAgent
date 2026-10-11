@@ -58,6 +58,12 @@ describe("conceptTree", () => {
     const tree = conceptTree(scopingReviewFixture.result!, "th", "scoping");
     expect(tree.byDirection).toBe(false);
     expect(tree.root.children.map((c) => c.id)).toEqual(["e:p", "e:concept", "e:c", "e:context", "terms"]);
+    // fix round 1: plain Thai names for the PCC parts (three "(C)" nodes could not be told apart); PCC is glossed once
+    expect(find(tree.root, "e:concept")!.label).toMatch(/^แนวคิด(:|$)/);
+    expect(find(tree.root, "e:context")!.label).toMatch(/^บริบท(:|$)/);
+    const labels = tree.root.children.map((c) => c.label).join(" ");
+    expect(labels).not.toMatch(/\((Concept|Context)\)/);
+    expect(labels.match(/\(C\)/g) ?? []).toHaveLength(1); // only the comparator keeps its letter
     // "metformin" only appears in the negated comparator ("no metformin"): it is filed under key terms, not under C
     expect(find(tree.root, "e:c")!.children).toEqual([]);
     expect(find(tree.root, "terms")!.children.map((c) => c.label)).toEqual(["metformin"]);

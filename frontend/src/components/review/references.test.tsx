@@ -18,6 +18,10 @@ vi.mock("../charts/echart", () => ({
 import { Report } from "./report";
 import { ComparisonMatrix } from "./report-parts";
 
+// Full <Report> renders take about 1 s alone and passed 5 s when three suites shared the CPU (Task 9 stress runs):
+// a hang guard for this file only, not a timing assertion.
+vi.setConfig({ testTimeout: 20_000 });
+
 const section = (name: RegExp | string) => screen.getByRole("heading", { level: 2, name }).closest("section")!;
 const refs = () => section("เอกสารอ้างอิง");
 const entry = (ref: string) => document.getElementById(`ref-${ref}`)!;

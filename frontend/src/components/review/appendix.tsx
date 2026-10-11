@@ -7,11 +7,11 @@ import type { ComparisonRow, MetaAnalysis, Paper } from "@/lib/types";
 import { appendixEntries, computedEntries, type VerifiedEntry } from "@/lib/verified-appendix";
 import { ComputedNumber, VerifiedNumber } from "../ui/evidence";
 import { HighlightedQuote } from "../ui/quote";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { SECTION_H2 as H2 } from "./report-nav";
 import type { Select } from "./report-parts";
 import { ScrollRegion } from "./scroll-region";
 import { L, Lw } from "./text";
-import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const A = RC.appendix;
 const TH = "label px-2.5 py-2 text-left align-bottom";

@@ -12,10 +12,10 @@ import type { ComparisonCell, ComparisonRow, EvidenceCluster, Paper, PaperCard, 
 import { DesignMismatchFlag, Glyph, UncertainFlag } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { ThaiText } from "../ui/thai-text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { CertaintyMark } from "./certainty";
 import { ScrollRegion } from "./scroll-region";
 import { L } from "./text";
-import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const P = RC.parts;
 

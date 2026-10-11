@@ -74,7 +74,8 @@ export interface SseFrame {
   delayMs: number;
   events: [string, Record<string, unknown>][];
   /** release this frame only once an element matching this selector is on the page (then wait `delayMs`): a test
-   * that needs the page ready for an event waits on that, not on a guess of how long loading takes (Task 9) */
+   * that needs the page ready for an event waits on that, not on a guess of how long loading takes (Task 9). Re-checked
+   * on every DOM change, attributes included; a gate still closed is named in `window.__sseGate` (see `sseGatesOpen`). */
   after?: string;
 }
 
@@ -97,7 +98,8 @@ export async function streamSse(page: Page, frames: SseFrame[]) {
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (!url.endsWith(`/reviews/${rid}/events`)) return realFetch(input, init);
-      const w = window as unknown as { __sseStart: number; __sseFrameAt: number[] };
+      const w = window as unknown as { __sseStart: number; __sseFrameAt: number[]; __sseGate: string | null };
+      w.__sseGate = null;
       w.__sseStart = Date.now(); // lets a test line itself up with the first frame
       w.__sseFrameAt = [];
       const enc = new TextEncoder();
@@ -119,12 +121,14 @@ export async function streamSse(page: Page, frames: SseFrame[]) {
               if (!f) return;
               const go = () => { timers.push(window.setTimeout(() => { send(f.text); next(i + 1); }, f.delayMs)); };
               if (!f.after || document.querySelector(f.after)) return go();
+              w.__sseGate = f.after;
               observer = new MutationObserver(() => {
                 if (!document.querySelector(f.after!)) return;
                 observer?.disconnect();
+                w.__sseGate = null;
                 go();
               });
-              observer.observe(document, { subtree: true, childList: true });
+              observer.observe(document, { subtree: true, childList: true, attributes: true });
             };
             next(0);
           }
@@ -139,4 +143,14 @@ export async function streamSse(page: Page, frames: SseFrame[]) {
       return Promise.resolve(new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } }));
     };
   }, { wire, rid: RID });
+}
+
+/** Waits until no `after:` gate of `streamSse` is still closed, else fails naming the selector that never matched. */
+export async function sseGatesOpen(page: Page, timeout = 15_000) {
+  try {
+    await page.waitForFunction(() => (window as unknown as { __sseGate?: string | null }).__sseGate == null, undefined, { timeout });
+  } catch {
+    const gate = await page.evaluate(() => (window as unknown as { __sseGate?: string | null }).__sseGate);
+    throw new Error(`streamSse: the frame gated on "${gate}" was never sent (no element matched within ${timeout} ms)`);
+  }
 }

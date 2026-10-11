@@ -144,6 +144,8 @@ describe("SofTable", () => {
   it("a statement that fits shows no 'more' button; English says More", () => {
     render(<SofTable rows={rowsOf(slrP20ReviewFixture, "en")} lang="en" onSelect={() => {}} graded />);
     expect(screen.queryByRole("button", { name: /^(More|Less|อ่านต่อ)$/ })).toBeNull();
+    // a statement that is not cut keeps no tooltip (fix round 1)
+    for (const el of document.querySelectorAll("[data-clamp]")) expect(el).not.toHaveAttribute("title");
   });
 
   it("Thai notes wrap between words and a design keeps its count on its line (Task 9 screenshot review)", () => {

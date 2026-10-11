@@ -560,7 +560,7 @@ export function reportDate(iso: string | null | undefined, lang: Lang): string |
   if (Number.isNaN(d.getTime())) return null;
   if (lang === "en") return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(d);
   const th = new Intl.DateTimeFormat("th-TH-u-ca-buddhist", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(d);
-  return `${th} (ค.ศ. ${d.getUTCFullYear()})`;
+  return `${th} (ค.ศ. ${d.getUTCFullYear()})`; // a no-break space: "(ค.ศ. 2026)" stays on one line
 }
 
 export const SOURCE_NAME: Record<string, string> = {

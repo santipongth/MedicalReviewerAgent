@@ -33,7 +33,10 @@ describe("ThaiText (Plan 20 Task 7)", () => {
     const { container } = render(<p><ThaiText>{text}</ThaiText></p>);
     expect(container.textContent).toBe(text);
     const runs = [...container.querySelectorAll(".th-n")].map((s) => s.textContent);
-    expect(runs).toEqual(["HR", "0.83", "(0.71–0.97)", "1,234", "0.77–0.96", "COVID-19"]);
+    // only runs with a digit are nowrap (fix round 1): a plain Latin word may still wrap, so a clamped cell never clips it
+    expect(runs).toEqual(["0.83", "(0.71–0.97)", "1,234", "0.77–0.96", "COVID-19"]);
+    const plain = render(<p><ThaiText>{"ผู้ใหญ่ postmenopausal pharmacotherapy-naive"}</ThaiText></p>).container;
+    expect(plain.querySelectorAll(".th-n")).toHaveLength(0);
     // a number glued to Thai inside a long run that may break keeps its digits together
     const glued = "ซิทากลิปตินเอมพากลิโฟลซินดาพากลิโฟลซิน0.77–0.96";
     const g = render(<p><ThaiText>{`ยา ${glued}`}</ThaiText></p>).container;

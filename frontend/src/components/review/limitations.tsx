@@ -1,12 +1,12 @@
 "use client";
 
-import { ThaiNodes } from "../ui/thai-text";
 import type { ReactNode } from "react";
 import type { Lang } from "@/lib/i18n";
 import { RC } from "@/lib/i18n-report";
 import { extractionReading, modelsUsed } from "@/lib/report-view";
 import { isGraded, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ReviewResult } from "@/lib/types";
+import { ThaiNodes } from "../ui/thai-text";
 import { READING } from "./report-parts";
 import { SECTION_H2 } from "./report-nav";
 import { fill, L, Lw } from "./text";

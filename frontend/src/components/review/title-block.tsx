@@ -13,9 +13,9 @@ import type { Review, ReviewResult, ReviewType } from "@/lib/types";
 import { CopyLinkButton } from "../ui/copy-link";
 import { Term } from "../ui/term";
 import { ThaiText } from "../ui/thai-text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { QuestionDetails } from "./report-parts";
 import { L } from "./text";
-import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const T = RC.title;
 

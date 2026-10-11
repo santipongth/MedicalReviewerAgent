@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { TEAM_NARROW_HEIGHT } from "../src/components/review/stage/stage-placeholder";
 import { reviewFixture } from "../src/test/fixtures";
-import { json, mockApi, RID, streamSse, type SseFrame } from "./mock-api";
+import { json, mockApi, RID, sseGatesOpen, streamSse, type SseFrame } from "./mock-api";
 
 // The 2D agent team view (Plan 18), the stage's default view.
 type Ev = [string, Record<string, unknown>];
@@ -115,6 +115,7 @@ test("a live hand-off flies a packet with its wake between avatars, and working 
     const w = window as unknown as { __handoffs: { packet: { at: number; overlay: boolean }[]; look: { at: number; member: string | null; dir: string }[] }; __sseFrameAt: number[] };
     return { ...w.__handoffs, frames: w.__sseFrameAt };
   });
+  await sseGatesOpen(page); // a gate that never opens fails here, naming its selector
   await expect.poll(async () => (await handoffs()).packet.length, { timeout: 15_000 }).toBeGreaterThan(0);
   await expect.poll(async () => (await handoffs()).look.length, { timeout: 15_000 }).toBeGreaterThan(0);
   const log = await handoffs();

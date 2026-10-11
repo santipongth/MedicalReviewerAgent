@@ -8,8 +8,8 @@ import type { ReviewMethods, Stats } from "@/lib/types";
 import { RC } from "@/lib/i18n-report";
 import { Term } from "../ui/term";
 import { ThaiText } from "../ui/thai-text";
-import { L } from "./text";
 import { DisclosureChevron } from "../ui/disclosure-chevron";
+import { L } from "./text";
 
 const F = RC.prisma;
 

@@ -11,6 +11,10 @@ vi.mock("../charts/echart", () => ({
 import { desktopViewport } from "@/test/viewport";
 import { Report } from "./report";
 
+// Full <Report> renders take about 1 s alone and passed 5 s when three suites shared the CPU (Task 9 stress runs):
+// a hang guard for this file only, not a timing assertion.
+vi.setConfig({ testTimeout: 20_000 });
+
 desktopViewport();
 
 /** Every piece of text a reader or a screen reader meets: the text and the accessible-name attributes. */

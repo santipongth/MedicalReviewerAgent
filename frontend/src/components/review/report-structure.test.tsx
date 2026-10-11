@@ -15,6 +15,10 @@ vi.mock("../charts/echart", () => ({
 
 import { Report } from "./report";
 
+// Full <Report> renders take about 1 s alone and passed 5 s when three suites shared the CPU (Task 9 stress runs):
+// a hang guard for this file only, not a timing assertion.
+vi.setConfig({ testTimeout: 20_000 });
+
 /** Top-level section ids in reading order (the table of contents). */
 function tocIds() {
   return within(screen.getByRole("navigation", { name: /สารบัญ|Contents/ })).getAllByRole("link").map((a) => a.getAttribute("href")!.slice(1));

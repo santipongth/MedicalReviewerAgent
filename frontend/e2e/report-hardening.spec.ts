@@ -138,3 +138,27 @@ test("literature matrix at 1440 (English): no column header breaks inside a word
     expect(broken).toEqual([]);
   }
 });
+
+/** The SLR with long English words inside Thai population and intervention cells, and a long Thai SoF outcome. */
+const longWords: Review = {
+  ...slrP20ReviewFixture,
+  id: "20200000-0000-4000-8000-000000000092",
+  result: {
+    ...slrP20ReviewFixture.result!,
+    papers: slrP20ReviewFixture.result!.papers!.map((p) => (p.card ? { ...p, card: { ...p.card,
+      population: "หญิง postmenopausal ที่เป็นเบาหวาน pharmacotherapy-naive", intervention_or_exposure: "dapagliflozin-treated ร่วมกับยาหลอก" } } : p)),
+  },
+};
+
+test("literature matrix and summary-of-findings cells never overflow their box (390 and 1440, fix round 1)", async ({ page }) => {
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await open(page, longWords);
+    const over = await page.evaluate(() => {
+      const cells = document.querySelectorAll(
+        "[data-lit-framework] td, [data-lit-framework] th, [data-lit-framework] dd, [data-lit-framework] [class*=line-clamp], [data-sof-row] td, [data-sof-row] th, [data-sof-row] [data-clamp]");
+      return [...cells].filter((c) => c.scrollWidth > c.clientWidth + 1).map((c) => `${c.tagName} ${(c.textContent ?? "").slice(0, 40)} ${c.scrollWidth}>${c.clientWidth}`);
+    });
+    expect(over, `${width}`).toEqual([]);
+  }
+});

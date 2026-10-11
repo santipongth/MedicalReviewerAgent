@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
-import { ThaiNodes } from "../ui/thai-text";
 import { isNonQuantitative } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
 import { fieldLang, RC } from "@/lib/i18n-report";
@@ -10,10 +9,11 @@ import { extractionReading, modelName, reportDate } from "@/lib/report-view";
 import { REVIEW_TYPE_LABEL, isGraded, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import { ROB_COLUMN, ROB_ORDER } from "@/lib/rob-summary";
 import type { Review, ReviewResult } from "@/lib/types";
+import { ThaiNodes } from "../ui/thai-text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { READING } from "./report-parts";
 import { SECTION_H2, SECTION_H3 } from "./report-nav";
 import { fill, L, Lw } from "./text";
-import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const M = RC.methods;
 

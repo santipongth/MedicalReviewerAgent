@@ -205,7 +205,8 @@ describe("summary of findings", () => {
 
 describe("title block data", () => {
   it("dates: Thai Buddhist era with the common era, English day month year", () => {
-    expect(reportDate("2026-10-05T03:00:30Z", "th")).toBe("5 ตุลาคม 2569 (ค.ศ. 2026)");
+    // a no-break space keeps "(ค.ศ. 2026)" on one line (fix round 1)
+    expect(reportDate("2026-10-05T03:00:30Z", "th")).toBe("5 ตุลาคม 2569 (ค.ศ. 2026)");
     expect(reportDate("2026-10-05T03:00:30Z", "en")).toBe("5 October 2026");
     expect(reportDate(null, "th")).toBeNull();
     expect(reportDate("not a date", "en")).toBeNull();

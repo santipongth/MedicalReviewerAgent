@@ -37,6 +37,9 @@ export const THAI_KEEP_WHOLE = [
   "ซัลโฟนิลยูเรีย", "เบาหวาน", "ผสมผสาน", "ภาคตัดขวาง", "คัดกรอง", "ฟันเนล",
   // Task 9 (screenshot review): split at a line end in the selection flow, the SoF notes and the certainty labels
   "หลักฐาน", "ตัวอักษร", "การศึกษา", "ความเชื่อมั่น",
+  // fix round 1: ICU ends a word after a bound prefix (ผู้|เชี่ยวชาญ, ตี|พิมพ์, ตัว|วัด), which strands a non-word at a
+  // line end; found by scanning the report copy and fixtures (breaks after การ/ความ are ordinary Thai and stay)
+  "ตีพิมพ์", "ตีตรา", "ผู้ใช้", "ผู้ป่วย", "ผู้เชี่ยวชาญ", "ผู้เข้าร่วม", "ผู้ทบทวน", "ตัววัด",
 ];
 
 /** A dictionary fragment that cannot start a word: a lone consonant (มิ|น) or a silenced final (ออด|ส์, เอเจน|ต์). */

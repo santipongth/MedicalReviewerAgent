@@ -15,6 +15,10 @@ vi.mock("../charts/echart", () => ({
 import { desktopViewport } from "@/test/viewport";
 import { Report } from "./report";
 
+// Full <Report> renders take about 1 s alone and passed 5 s when three suites shared the CPU (Task 9 stress runs):
+// a hang guard for this file only, not a timing assertion.
+vi.setConfig({ testTimeout: 20_000 });
+
 desktopViewport(); // desktop layouts unless a test stubs a narrow viewport (Plan 20 Task 5: lit-matrix cards, concept outline)
 
 async function openFilters() {

@@ -84,10 +84,10 @@ function elements(result: ReviewResult, lang: Lang): { key: string; label: strin
     if (clean(text)) out.push({ key, label, text: clean(text), hub });
   };
   add("p", t(lang, "ประชากร (P)", "Population (P)"), q?.pico?.population);
-  if (pcc) add("concept", t(lang, "แนวคิด (C)", "Concept"), q?.concept, true);
+  if (pcc) add("concept", t(lang, "แนวคิด", "Concept"), q?.concept, true);
   else add("ie", t(lang, "การรักษา/ปัจจัย (I/E)", "Intervention/exposure (I/E)"), q?.pico?.intervention_or_exposure, true);
   add("c", t(lang, "ตัวเทียบ (C)", "Comparator (C)"), q?.pico?.comparator);
-  if (pcc) add("context", t(lang, "บริบท (C)", "Context"), q?.context);
+  if (pcc) add("context", t(lang, "บริบท", "Context"), q?.context);
   return out;
 }
 

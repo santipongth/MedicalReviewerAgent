@@ -91,6 +91,7 @@ describe("literature matrix: compact columns and frameworks", () => {
     expect(litColumnLabel("population", "spider", "en")).toBe("Sample (S)");
     expect(litColumnLabel("outcomes", "spider", "en")).toBe("Evaluation (E)");
     expect(litColumnLabel("exposure", "pcc", "en")).toBe("Concept");
+    expect(litColumnLabel("exposure", "pcc", "th")).toBe("แนวคิด");
     expect(litColumnLabel("population", "pico", "en")).toBe("Population / sample");
   });
 

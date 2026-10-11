@@ -8,10 +8,10 @@ import { fieldLang, RC } from "@/lib/i18n-report";
 import type { ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ExclusionReason, Paper, Stats } from "@/lib/types";
 import { CopyTextButton } from "../ui/copy-text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { StudyButton, type Select } from "./report-parts";
 import { SECTION_H2 as H2 } from "./report-nav";
 import { L, Lw } from "./text";
-import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const R = RC.refs;
 

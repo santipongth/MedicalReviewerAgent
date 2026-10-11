@@ -22,7 +22,7 @@ import { RequestSlip } from "./request-slip";
 // (the default delay 0), so a test's wall time grew with CPU load until it hit Vitest's 5 s timeout in a busy full run
 // (reproduced by running three suites at once). Now nothing waits on a timer (delay: null) and the topic is pasted as
 // one input event, as a person pasting a question would.
-const user = userEvent.setup({ delay: null });
+let user: ReturnType<typeof userEvent.setup>;
 
 async function typeTopic(text = "statins and dementia") {
   await user.click(screen.getByLabelText(/คำถามหรือวัตถุประสงค์/));
@@ -30,6 +30,7 @@ async function typeTopic(text = "statins and dementia") {
 }
 
 beforeEach(() => {
+  user = userEvent.setup({ delay: null }); // one per test, as the user-event docs recommend
   push.mockReset();
   createReview.mockReset();
   getStatus.mockReset();
@@ -94,8 +95,9 @@ describe("RequestSlip", () => {
     createReview.mockResolvedValue({ review_id: "r-2", status: "queued", cached: false });
     render(<RequestSlip />);
     await typeTopic();
-    // the widget mounts in a passive effect after the status arrives: wait for its token (the button turns enabled),
-    // not for the widget's container, which renders first
+    // the status first (the button is also enabled before it arrives, when no Turnstile is known), then the token: the
+    // widget mounts in a passive effect after the container renders, and the button turns enabled when its token is in
+    await screen.findByTestId("turnstile");
     const button = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ });
     await waitFor(() => expect(button).toBeEnabled());
     await user.click(button);

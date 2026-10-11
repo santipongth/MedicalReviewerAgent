@@ -132,12 +132,12 @@ function ClampedStatement({ text, lang }: { text: string; lang: Lang }) {
   }, [open, text]);
   return (
     <>
-      <span ref={ref} id={id} data-clamp className={`break-words ${open ? "block" : "line-clamp-3"}`} title={open ? undefined : text}
+      <span ref={ref} id={id} data-clamp className={`break-words ${open ? "block" : "line-clamp-3"}`} title={clamped && !open ? text : undefined}
         lang={fieldLang(text, lang)}>{text}</span>
       {(clamped || open) && (
         <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}
           className="mt-0.5 inline-flex min-h-11 items-center font-display text-[0.85rem] font-semibold text-primary underline underline-offset-2 md:min-h-0 print:hidden">
-          {L(lang, open ? S.less : S.more_)}
+          {L(lang, open ? S.readLess : S.readMore)}
         </button>
       )}
     </>

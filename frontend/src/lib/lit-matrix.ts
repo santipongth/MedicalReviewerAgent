@@ -151,7 +151,7 @@ const LABELS: Record<LitFramework, Partial<Record<LitColumn, [string, string]>>>
   },
   pcc: {
     population: ["ประชากร / ขนาดตัวอย่าง", "Population / sample"],
-    exposure: ["แนวคิด (C)", "Concept"],
+    exposure: ["แนวคิด", "Concept"],
     outcomes: ["ประเด็นที่ทำแผนที่", "Aspects charted"],
   },
   pico_qual: {

@@ -16,6 +16,13 @@ function views(review: Review): FindingView[] {
 const items = () => screen.getAllByRole("listitem").filter((li) => li.hasAttribute("data-key-finding"));
 
 describe("KeyFindings", () => {
+  it("the outcome and statement wrap only between Thai words (Task 9 fix round 1: ผู้|ใช้ at 390)", () => {
+    render(<KeyFindings findings={views(slrP20ReviewFixture)} lang="th" onSelect={() => {}} />);
+    const [first] = items();
+    const words = [...first.querySelectorAll("[data-prose] .th-w")].map((w) => w.textContent);
+    expect(words).toContain("ผู้ใช้");
+    expect(first.querySelector("p.font-display .th-seg")).not.toBeNull();
+  });
   it("one bullet per finding: outcome, statement, k studies and the refs that open the rail", async () => {
     const onSelect = vi.fn();
     render(<KeyFindings findings={views(slrP20ReviewFixture)} lang="th" onSelect={onSelect} />);

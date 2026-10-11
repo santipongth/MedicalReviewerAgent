@@ -51,6 +51,10 @@ describe("Thai segmentation helpers (Plan 20 Task 7)", () => {
     // ICU splits these (อภิ|มาน, เมต|ฟอร์มิ|น, ออด|ส์): one piece each
     for (const w of ["อภิมาน", "เมตฟอร์มิน", "อุบัติการณ์", "ออดส์", "ยาหลอก", "หลักฐาน", "ตัวอักษร", "การศึกษา", "ความเชื่อมั่น"]) expect(thaiChunks(w)).toEqual([w]);
     expect(thaiChunks("การวิเคราะห์อภิมาน")).toEqual(["การ", "วิเคราะห์", "อภิมาน"]);
+    // Task 9 fix round 1: a bound prefix (ผู้, ตี, ตัว) never ends a line on its own
+    for (const w of ["ตีพิมพ์", "ตีตรา", "ผู้ใช้", "ผู้ป่วย", "ผู้เชี่ยวชาญ", "ผู้เข้าร่วม", "ผู้ทบทวน", "ตัววัด"]) expect(thaiChunks(w), w).toEqual([w]);
+    expect(thaiChunks("ทะเบียนที่ยังไม่ตีพิมพ์")).toContain("ตีพิมพ์");
+    expect(thaiChunks("ต่ำลงในผู้ใช้เมตฟอร์มิน")).toEqual(["ต่ำ", "ลง", "ใน", "ผู้ใช้", "เมตฟอร์มิน"]);
     // Task 9: ICU's segment can straddle a kept word's end (เมตฟอร์มิ|นร่ว|ม…): the text after a kept word is
     // segmented on its own, so the next word is never cut ("ร่ว|มกับ" before)
     expect(thaiChunks("เมตฟอร์มินร่วมกับยาหลอก")).toEqual(["เมตฟอร์มิน", "ร่วม", "กับ", "ยาหลอก"]);

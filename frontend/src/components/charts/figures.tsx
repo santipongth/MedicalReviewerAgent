@@ -148,7 +148,7 @@ export function MetaForestFigure({ pool, tokens, lang, onSelect }: { pool: MetaP
       title={`${L(lang, G.pooledForest)} · ${pool.measure}`}
       caption={<>
         {L(lang, MEASURE_NOTE[family])}
-        {pool.ratio && <> (<Term k="logScale" lang={lang}>{L(lang, G.whatLog)}</Term>)</>}
+        {pool.ratio && <> <span className="nw">(<Term k="logScale" lang={lang}>{L(lang, G.whatLog)}</Term>)</span></>}
         {" · "}{L(lang, G.markerWeight)}
         <MeasureGlossary measures={[pool.measure]} lang={lang} />
       </>}

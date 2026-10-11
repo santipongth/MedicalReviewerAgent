@@ -113,6 +113,16 @@ test("Thai at 390: the H1 and the selection-flow boxes never break inside a word
   await page.screenshot({ path: shot("th-390-flow") });
 });
 
+test("Thai limitations, key findings and methods never break inside a word (1440 and 390, Task 9 fix round 1)", async ({ page }) => {
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await open(page, P20_FIXTURES.slr, "th");
+    const r = await brokenWords(page, "[data-limitation], [data-methods-line], #h-key-findings ~ * p");
+    expect(r.lines).toBeGreaterThan(1);
+    expect(r.broken).toEqual([]);
+  }
+});
+
 test("Thai at 390: long slash/dash-joined Thai in the H1, a summary-of-findings cell and the matrix never overflows", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, slashedThaiReviewFixture, "th");
@@ -165,13 +175,13 @@ const SHARED_WORDS = new Set(["k", "n", "SE", "CI", "AUC", "HR", "OR", "RR", "MD
   "Markdown", "CSV", "JSON", "PubMed", "OpenAlex", "RCT", "Cohort", "PRISMA", "GRADE",
   // the question framework's letters (PICO, PECO, PCC, SPIDER): "C · ตัวเปรียบเทียบ"
   "P", "I", "C", "O", "E", "S", "D", "R", "PI", "Q"]);
-/** A study's label: its code, first author and year are names (data), e.g. "P3 Lindqvist 2021". */
-const STUDY_LABEL = /^P\d+(?: |$)/;
+/** A study's label: its code, first author and year are names (data), e.g. "P3 Lindqvist 2021". Only that prefix is
+ * exempt; the rest of the string is still checked (fix round 1: "P3 Summary of findings" no longer passes whole). */
+const STUDY_LABEL = /^P\d+(?: [\p{Lu}][\p{L}'’-]+(?: et al\.?)?)?(?: \d{4})?/u;
 
 /** The English words of `t` that are not allow-listed (study codes such as P3 are names). */
 function unlistedEnglish(t: string): string[] {
-  if (STUDY_LABEL.test(t)) return [];
-  let rest = t;
+  let rest = t.replace(STUDY_LABEL, " ");
   for (const p of SHARED_PHRASES) rest = rest.split(p).join(" ");
   return (rest.match(/[A-Za-z][A-Za-z'’]*(?:-[A-Za-z]+)*/g) ?? []).filter((w) => !SHARED_WORDS.has(w) && !/^P\d*$/.test(w));
 }
@@ -183,6 +193,8 @@ test("the Thai allow-list flags English inside a Thai string (Task 9)", () => {
   expect(unlistedEnglish("Cohort 2")).toEqual([]);
   expect(unlistedEnglish("แนวคิด (Concept)")).toEqual(["Concept"]);
   expect(unlistedEnglish("P3 Lindqvist 2021")).toEqual([]);
+  expect(unlistedEnglish("P5 Stub 2022SR/MA")).toEqual([]);
+  expect(unlistedEnglish("P3 Summary of findings")).toEqual(["of", "findings"]);
 });
 
 for (const type of TYPES) {

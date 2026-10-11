@@ -16,6 +16,10 @@ vi.mock("../charts/echart", () => ({
 
 import { Report } from "./report";
 
+// Full <Report> renders take about 1 s alone and passed 5 s when three suites shared the CPU (Task 9 stress runs):
+// a hang guard for this file only, not a timing assertion.
+vi.setConfig({ testTimeout: 20_000 });
+
 const section = (name: RegExp) => screen.getByRole("heading", { level: 2, name }).closest("section")!;
 const findings = () => within(section(/ผลการศึกษาที่สำคัญ|Key findings/)).getAllByRole("listitem").filter((li) => li.hasAttribute("data-key-finding"));
 const paperItem = (ref: string) => within(section(/เอกสารอ้างอิง|References/)).getByRole("button", { name: new RegExp(`^${ref} `) });

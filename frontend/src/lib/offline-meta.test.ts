@@ -12,9 +12,9 @@ describe("offlineMeta (Plan 20 Task 8: the offline file's metadata line)", () =>
     expect(meta.items.map((i) => [i.key, i.label, i.value])).toEqual([
       ["id", "รหัสรีวิว", review.id],
       ["type", "ประเภท", "การทบทวนวรรณกรรมอย่างเป็นระบบ"],
-      ["searched", "ค้นเมื่อ", "5 ตุลาคม 2569 (ค.ศ. 2026)"],
+      ["searched", "ค้นเมื่อ", "5 ตุลาคม 2569 (ค.ศ.\u00a02026)"],
       // the same date format as the search date (fix round 1), then the time in UTC
-      ["generated", "สร้างไฟล์เมื่อ", "11 ตุลาคม 2569 (ค.ศ. 2026) 08:30 UTC"],
+      ["generated", "สร้างไฟล์เมื่อ", "11 ตุลาคม 2569 (ค.ศ.\u00a02026) 08:30 UTC"],
       ["language", "ภาษาของรายงาน", "ภาษาไทย"],
       ["prompt", "เวอร์ชันพรอมต์", "2026-10-10.7"],
     ]);
@@ -40,14 +40,14 @@ describe("offlineMeta (Plan 20 Task 8: the offline file's metadata line)", () =>
     expect(offlineLine(slrP20ReviewFixture, AT, "en")).toBe(
       "Offline report · downloaded 11 October 2026 08:30 UTC · automated rapid literature review, not medical advice");
     expect(offlineLine(slrP20ReviewFixture, AT)).toBe(
-      "รายงานแบบออฟไลน์ · ดาวน์โหลดเมื่อ 11 ตุลาคม 2569 (ค.ศ. 2026) 08:30 UTC · การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์");
+      "รายงานแบบออฟไลน์ · ดาวน์โหลดเมื่อ 11 ตุลาคม 2569 (ค.ศ.\u00a02026) 08:30 UTC · การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์");
   });
 
   it("falls back to the created date when the search date was not recorded, and says what is unknown", () => {
     const meta = offlineMeta(reviewFixture, AT); // no methods, no prompt_version, no review_type
     const byKey = Object.fromEntries(meta.items.map((i) => [i.key, i]));
     expect(byKey.searched).toBeUndefined();
-    expect(byKey.created).toMatchObject({ label: "สร้างรีวิวเมื่อ", value: "5 ตุลาคม 2569 (ค.ศ. 2026)" });
+    expect(byKey.created).toMatchObject({ label: "สร้างรีวิวเมื่อ", value: "5 ตุลาคม 2569 (ค.ศ.\u00a02026)" });
     expect(byKey.prompt.value).toBe("ไม่ทราบ");
     expect(byKey.type.value).toBe("รูปแบบเดิม (ก่อนมีประเภทรีวิว)");
     expect(offlineMeta(legacyReviewFixture, AT).items.find((i) => i.key === "type")?.value).toBe("รูปแบบเดิม (ก่อนมีประเภทรีวิว)");

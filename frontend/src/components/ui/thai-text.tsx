@@ -9,8 +9,8 @@ import { hasThai, thaiChunks } from "@/lib/text-wrap";
 export const THAI_WORD_MAX = 16;
 
 /**
- * The longest Latin or number run kept on one line ("HR 0.83 (0.71–0.97)" tokens, "COVID-19", "1,234"): longer (a URL)
- * stays breakable so it never overflows.
+ * The longest run with a digit kept on one line ("0.83", "(0.71–0.97)", "COVID-19", "1,234"): longer (a URL) stays
+ * breakable so it never overflows; its number runs are still kept whole.
  */
 export const LATIN_RUN_MAX = 24;
 /** A number, a range or a percentage ("0.77–0.96", "1,234", "−0.5", "12.5%"). */
@@ -31,7 +31,7 @@ function numbersWhole(t: string, key: number): ReactNode {
 }
 
 /**
- * A chunk with its Thai words kept whole (`th-w`), its Latin words and numbers kept whole (`th-n`: under the root's
+ * A chunk with its Thai words kept whole (`th-w`), each token with a digit kept whole (`th-n`: under the root's
  * `overflow-wrap: anywhere` an unwrapped "0.77–0.96" could break inside, Task 9) and its spaces left as break points.
  */
 function chunk(text: string): ReactNode {
@@ -39,6 +39,9 @@ function chunk(text: string): ReactNode {
     if (/^\s+$/.test(t)) return t;
     const n = [...t].length;
     if (hasThai(t)) return n <= THAI_WORD_MAX ? <span key={i} className="th-w">{t}</span> : numbersWhole(t, i);
+    // only a run with a digit is kept on one line ("0.77–0.96", "COVID-19"): a plain Latin word stays wrappable, so a
+    // narrow clamped cell can still break it rather than clip it (fix round 1)
+    if (!/\d/.test(t)) return t;
     return n <= LATIN_RUN_MAX ? <span key={i} className="th-n">{t}</span> : numbersWhole(t, i);
   });
 }

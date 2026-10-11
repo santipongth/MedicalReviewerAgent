@@ -281,7 +281,7 @@ export function ForestPanel({ panel, arms, lang, onSelect }: { panel: ForestPane
           {sides && <>{" · "}{L(lang, F.sides)}</>}
           {pooled && <>{" · "}{L(lang, F.ownBlock)}</>}
           {panel.reviews.length > 0 && <>{" · "}{L(lang, F.reviewsApart)}</>}
-          {panel.family === "ratio" && <> (<Term k="logScale" lang={lang}>{L(lang, F.whatLog)}</Term>)</>}
+          {panel.family === "ratio" && <> <span className="nw">(<Term k="logScale" lang={lang}>{L(lang, F.whatLog)}</Term>)</span></>}
           {MEASURE_TERM[panel.measure] && <> · <Term k={MEASURE_TERM[panel.measure]} lang={lang}>{panel.measure}</Term></>}
         </p>
       </div>} />

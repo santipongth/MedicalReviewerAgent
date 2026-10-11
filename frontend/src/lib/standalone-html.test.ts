@@ -24,7 +24,7 @@ describe("buildStandaloneHtml", () => {
     expect(header).toContain("not medical advice");
     expect(header).not.toMatch(/[฀-๿]/);
     const th = buildStandaloneHtml(reviewFixture, ASSETS, new Date("2026-10-05T10:00:00Z")).match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
-    expect(th).toContain("รายงานแบบออฟไลน์ · ดาวน์โหลดเมื่อ 5 ตุลาคม 2569 (ค.ศ. 2026) 10:00 UTC");
+    expect(th).toContain("รายงานแบบออฟไลน์ · ดาวน์โหลดเมื่อ 5 ตุลาคม 2569 (ค.ศ.\u00a02026) 10:00 UTC");
   });
 
   it("asks the network for nothing: no web fonts, stylesheets or scripts from elsewhere (Plan 20 Task 8)", () => {
@@ -39,8 +39,8 @@ describe("buildStandaloneHtml", () => {
     const review = { ...slrP20ReviewFixture, result: { ...slrP20ReviewFixture.result!, prompt_version: "2026-10-10.7" } };
     const header = buildStandaloneHtml(review, ASSETS, new Date("2026-10-11T08:30:00Z")).match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
     const meta = header.match(/<dl[^>]*data-offline-meta[\s\S]*?<\/dl>/)?.[0] ?? "";
-    for (const text of ["รหัสรีวิว", review.id, "การทบทวนวรรณกรรมอย่างเป็นระบบ", "ค้นเมื่อ", "5 ตุลาคม 2569 (ค.ศ. 2026)",
-      "สร้างไฟล์เมื่อ", "11 ตุลาคม 2569 (ค.ศ. 2026) 08:30 UTC", "ภาษาของรายงาน", "ภาษาไทย", "เวอร์ชันพรอมต์", "2026-10-10.7"]) {
+    for (const text of ["รหัสรีวิว", review.id, "การทบทวนวรรณกรรมอย่างเป็นระบบ", "ค้นเมื่อ", "5 ตุลาคม 2569 (ค.ศ.\u00a02026)",
+      "สร้างไฟล์เมื่อ", "11 ตุลาคม 2569 (ค.ศ.\u00a02026) 08:30 UTC", "ภาษาของรายงาน", "ภาษาไทย", "เวอร์ชันพรอมต์", "2026-10-10.7"]) {
       expect(meta).toContain(text);
     }
     const en = { ...review, language: "en" as const, result: { ...review.result, language: "en" as const } };
