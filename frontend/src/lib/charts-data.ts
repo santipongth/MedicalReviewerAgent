@@ -3,7 +3,7 @@ import { surnameOf } from "./author";
 import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, isVerifiedEffect } from "./evidence";
 import { DESIGN_LABEL, type Lang } from "./i18n";
 import { clampLabel } from "./text-wrap";
-import { isRelatedReport } from "./trial-reports";
+import { isNotEvidence } from "./trial-reports";
 import type { DesignCategory, Direction, ExclusionReason, OutcomeResult, Paper, PaperCard, RiskOfBias } from "./types";
 
 /** The design a paper is filtered by: its fixed category, or (results stored before categories) its free text. */
@@ -62,11 +62,12 @@ export function questionDirection(card: Pick<PaperCard, "overall_direction" | "o
 /** Papers that have a card, counted by the card's overall direction. A count of papers, not a number from a paper.
  * `skipReviews` leaves narrative-review articles out (they restate other studies; the matrix and map skip them too).
  * Qualitative and mixed-methods studies are never counted (they report themes, not a direction), and neither is a
- * further report of a trial already counted (Plan 20 Task 11: one study, however many reports). */
+ * further report of a trial already counted (Plan 20 Task 11: one study, however many reports) or a paper read as a
+ * design outside the ticked study types (`design_excluded`): neither is evidence (`isNotEvidence`). */
 export function directionTally(papers: Paper[], skipReviews = false): Record<Direction, number> {
   const tally: Record<Direction, number> = { positive: 0, negative: 0, null: 0, mixed: 0, unclear: 0 };
   for (const p of papers) {
-    if (isRelatedReport(p)) continue;
+    if (isNotEvidence(p)) continue;
     const card = p.card_en ?? p.card;
     if (skipReviews && card?.design_category === "narrative_review") continue;
     if (isNonQuantitative(card)) continue;
@@ -328,7 +329,7 @@ export interface DtaData {
 export function dtaData(papers: Paper[], lang: Lang): DtaData | null {
   const studies: DtaStudy[] = [];
   for (const p of papers) {
-    if (isRelatedReport(p)) continue; // a further report of a trial is not a second study
+    if (isNotEvidence(p)) continue; // a further report of a trial is not a second study; a design_excluded paper no evidence
     const en = p.card_en ?? p.card;
     const shown = (lang === "en" ? p.card_en : p.card) ?? en;
     if (!en || !shown || isNonQuantitative(en)) continue;
@@ -464,7 +465,8 @@ export function studyPoints(papers: Paper[]): { points: StudyPoint[]; missing: n
   const points: StudyPoint[] = [];
   let missing = 0;
   for (const p of papers) {
-    if (isRelatedReport(p)) continue; // one study, one point: a further report of a trial is not plotted again
+    // one study, one point: a further report of a trial is not plotted again, nor a paper that is not evidence
+    if (isNotEvidence(p)) continue;
     const card = p.card_en ?? p.card;
     if (isNonQuantitative(card)) continue;
     if (!card || p.year == null || card.sample_size == null || card.sample_size <= 0) {

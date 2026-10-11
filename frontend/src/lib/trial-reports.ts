@@ -11,6 +11,17 @@ export function isRelatedReport(p: Pick<Paper, "related_to"> | null | undefined)
 }
 
 /**
+ * Not evidence (Plan 20 final review): a further report of a trial already counted, or a paper read as a design outside
+ * the ticked study types (`design_excluded`, Task 6). The engine keeps both in `papers` but out of every comparison row,
+ * key finding, SoF, pool and grade (`synthesis.py`: `outside = design_excluded | related`); the report's own tallies (the
+ * bottom-line direction count, the risk-of-bias summary, the study map) leave them out the same way. The title block
+ * and PRISMA still count them among the included reports.
+ */
+export function isNotEvidence(p: Pick<Paper, "related_to" | "design_excluded"> | null | undefined): boolean {
+  return isRelatedReport(p) || !!p?.design_excluded;
+}
+
+/**
  * The studies behind a list of refs, in order: a further report stands for its primary report, and each study counts
  * once. Refs the engine already counted as studies (comparison rows) come back unchanged. A report whose primary is not
  * in the result stays, since it is then the only record of that trial here.

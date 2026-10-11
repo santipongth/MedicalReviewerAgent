@@ -1,5 +1,6 @@
 // Review types (Plan 14a): labels, grading and which report sections each type shows. Pure data, no React.
 import { isNonQuantitative } from "./charts-data";
+import { TERM_NAME as N, capitalised } from "./term-names";
 import type { ReviewResult, ReviewType } from "./types";
 
 export const REVIEW_TYPES: ReviewType[] = ["narrative", "slr", "scoping", "meta_analysis"];
@@ -9,10 +10,11 @@ export const DEFAULT_REVIEW_TYPE: ReviewType = "slr";
 export type ReviewTypeOrLegacy = ReviewType | "legacy";
 
 export const REVIEW_TYPE_LABEL: Record<ReviewType, { th: string; en: string }> = {
-  narrative: { th: "การทบทวนแบบบรรยาย", en: "Narrative review" },
-  slr: { th: "การทบทวนวรรณกรรมอย่างเป็นระบบ", en: "Systematic review" },
-  scoping: { th: "การทบทวนขอบเขต", en: "Scoping review" },
-  meta_analysis: { th: "การวิเคราะห์อภิมาน", en: "Meta-analysis" },
+  // the shared names (term-names.ts): the home page and the report name each type the same way
+  narrative: { th: N.narrativeReview.th, en: capitalised(N.narrativeReview.en) },
+  slr: { th: N.slr.th, en: capitalised(N.slr.en) },
+  scoping: { th: N.scopingReview.th, en: capitalised(N.scopingReview.en) },
+  meta_analysis: { th: N.metaAnalysis.th, en: capitalised(N.metaAnalysis.en) },
 };
 
 export function isReviewType(v: unknown): v is ReviewType {

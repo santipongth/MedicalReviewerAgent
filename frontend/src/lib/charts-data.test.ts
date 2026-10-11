@@ -58,6 +58,13 @@ describe("studyPoints", () => {
     expect(pts.points.map((p) => [p.ref, p.year, p.n])).toEqual([["P1", 2019, 48210], ["P3", 2021, 1234], ["P4", 2020, 6331]]);
     expect(pts.missing).toBe(2);
   });
+
+  it("leaves out a paper read as a design outside the ticked study types (not evidence), like a further report", () => {
+    const flagged = papers.map((p) => (p.ref === "P3" ? { ...p, design_excluded: true } : p));
+    const pts = studyPoints(flagged);
+    expect(pts.points.map((p) => p.ref)).toEqual(["P1", "P4"]);
+    expect(pts.missing).toBe(2);
+  });
 });
 
 describe("EXCLUSION_REASON_LABEL", () => {
@@ -68,6 +75,12 @@ describe("EXCLUSION_REASON_LABEL", () => {
 });
 
 describe("directionTally", () => {
+  it("never counts a paper read as a design outside the ticked study types (design_excluded: not evidence)", () => {
+    const flagged = papers.map((p) => (p.ref === "P1" ? { ...p, design_excluded: true } : p));
+    expect(directionTally(flagged)).toEqual(directionTally(papers.filter((p) => p.ref !== "P1")));
+    expect(directionTally(flagged, true)).toEqual(directionTally(papers.filter((p) => p.ref !== "P1"), true));
+  });
+
   it("can leave narrative-review articles out of the tally", () => {
     const review = { ...papers[0], card_en: { ...papers[0].card_en!, design_category: "narrative_review" as const, overall_direction: "unclear" as const } };
     const withReview = [...papers, { ...review, ref: "P9" }];

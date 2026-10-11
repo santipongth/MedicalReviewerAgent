@@ -117,6 +117,20 @@ describe("key findings", () => {
     expect(v[0]).toMatchObject({ themes: true, k: 2, effect: null });
     expect(v[1].effect).toMatchObject({ kind: "verified", effect: { ref: "P3", text: "HR 0.80", ci: "0.71–0.90" } });
   });
+  it("a finding resting on one SR/MA shows no single-study number, as in the summary of findings (final review M6)", () => {
+    const papers = resultFixture.papers!.map((p) => {
+      if (p.ref !== "P3") return p;
+      const card = { ...(p.card_en ?? p.card)!, design_category: "sr_ma_observational" as const };
+      return { ...p, card, card_en: card };
+    });
+    const row: ComparisonRow = { outcome: "CRC incidence", cells: [{ ref: "P3", finding: "lower incidence", direction: "positive" }] };
+    const ctx: OutcomeContext = { rows: [row], enRows: [], papers, meta: null, lang: "en" };
+    const kf = [{ outcome: "CRC incidence", statement: "s", refs: ["P3"], k: 1 }];
+    // the same paper as a primary study does show its verified HR
+    expect(keyFindingViews(kf, undefined, { ...ctx, papers: resultFixture.papers! })[0].effect).toMatchObject({ kind: "verified" });
+    expect(keyFindingViews(kf, undefined, ctx)[0].effect).toBeNull();
+    expect(sofRows(kf, undefined, ctx, null)[0].effect).toEqual({ kind: "none" });
+  });
   it("a key finding with no matching row still shows its k, never a number", () => {
     const v = keyFindingViews([{ outcome: "Unknown", statement: "s", refs: ["P1"], k: 1 }], undefined, ctxOf(slrP20ReviewFixture));
     expect(v[0]).toMatchObject({ k: 1, effect: null, pools: [] });

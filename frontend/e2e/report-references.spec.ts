@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { directionTally } from "../src/lib/charts-data";
 import { vancouver } from "../src/lib/citation";
 import { buildStandaloneHtml } from "../src/lib/standalone-html";
 import type { Review } from "../src/lib/types";
@@ -52,6 +53,18 @@ for (const width of [1440, 390]) {
       await expect(entry(page, "P1").locator(":scope > div > [data-citation]")).toHaveText(vancouver(p1));
       await expect(entry(page, "P1").getByRole("link", { name: /^DOI 10\.1000\/p1/ })).toHaveAttribute("href", "https://doi.org/10.1000/p1");
       await expect(entry(page, "P2").locator("[data-reference-note=design_excluded]")).toBeVisible();
+
+      // not evidence (final review I1): P2 is left out of the bottom-line tally and the risk-of-bias counts, with a note
+      const all = review.result!.papers!;
+      const expected = directionTally(all.filter((p) => p.ref !== "P2" && !p.related_to));
+      const withP2 = directionTally(all.map((p) => ({ ...p, design_excluded: false })));
+      expect(Object.values(withP2).reduce((a, b) => a + b, 0)).toBe(Object.values(expected).reduce((a, b) => a + b, 0) + 1);
+      for (const [d, n] of Object.entries(expected)) {
+        const item = page.locator(`[data-direction-tally] > li[data-direction="${d}"]`);
+        if (n > 0) await expect(item.locator("span.tabular-nums")).toHaveText(String(n));
+        else await expect(item).toHaveCount(0);
+      }
+      await expect(page.locator("[data-rob-not-evidence]")).toHaveText("ไม่นับ 1 งานที่อ่านแล้วพบว่ารูปแบบการศึกษาไม่ตรงชนิดที่เลือก (ไม่ใช้เป็นหลักฐาน)");
 
       // the excluded-at-screening disclosure: closed, then the reason counts
       const excluded = list.locator("details[data-excluded-screening]");

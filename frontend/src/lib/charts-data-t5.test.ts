@@ -213,6 +213,11 @@ describe("dtaData", () => {
     qual.card = qual.card_en = { ...qual.card!, design_category: "qualitative" };
     expect(dtaData([qual], "en")).toBeNull();
   });
+
+  it("leaves out a paper that is not evidence (design_excluded), like a further report of a trial", () => {
+    expect(dtaData([{ ...p1, design_excluded: true }, p2], "en")!.studies.map((s) => s.ref)).toEqual(["P2"]);
+    expect(dtaData([{ ...p1, design_excluded: true }], "en")).toBeNull();
+  });
 });
 
 describe("studyLabel and themesReview", () => {

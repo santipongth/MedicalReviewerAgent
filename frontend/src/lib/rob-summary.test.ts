@@ -26,6 +26,17 @@ describe("robSummary", () => {
     expect(withRelated.related).toBe(1);
   });
 
+  it("leaves out a paper read as a design outside the ticked study types and counts it in a note", () => {
+    const papers = resultFixture.papers!;
+    const base = robSummary(papers, "en")!;
+    const flagged = papers.map((p) => (p.ref === "P1" ? { ...p, design_excluded: true } : p));
+    const s = robSummary(flagged, "en")!;
+    expect(s.total).toBe(base.total - 1);
+    expect(s.notEvidence).toBe(1);
+    expect(s.related).toBe(0);
+    expect(base.notEvidence).toBe(0);
+  });
+
   it("is null when no paper has a judgement", () => {
     expect(robSummary([], "en")).toBeNull();
     expect(robSummary([{ ...resultFixture.papers![0], card: null, card_en: null }], "en")).toBeNull();
@@ -34,7 +45,7 @@ describe("robSummary", () => {
   it("qualitative and mixed-methods studies are listed under their design (no direction is involved)", () => {
     const s = robSummary(narrativeP20ReviewFixture.result!.papers!, "th")!;
     const q = s.rows.find((r) => r.design === "qualitative")!;
-    expect(q.label).toBe("เชิงคุณภาพ");
+    expect(q.label).toBe("การวิจัยเชิงคุณภาพ");
     expect(q.themes).toBe(true);
     expect(s.rows.find((r) => r.design === "mixed_methods")!.themes).toBe(true);
   });

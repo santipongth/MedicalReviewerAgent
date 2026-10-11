@@ -103,9 +103,9 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
           <p className="text-muted">
             <Term k="directionTally" lang={lang}>{L(lang, B.tally)}</Term>
           </p>
-          <ul className="flex flex-wrap gap-x-5 gap-y-1.5">
+          <ul className="flex flex-wrap gap-x-5 gap-y-1.5" data-direction-tally>
             {shown.map((d) => (
-              <li key={d} className="inline-flex items-center gap-1.5 font-display">
+              <li key={d} data-direction={d} className="inline-flex items-center gap-1.5 font-display">
                 <Glyph direction={d} lang={lang} />
                 {DIRECTION_LABEL[lang][d]} <span className="tabular-nums font-semibold">{tally[d]}</span>
               </li>

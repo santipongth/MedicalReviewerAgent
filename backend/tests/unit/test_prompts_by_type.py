@@ -34,7 +34,8 @@ SYSTEM_HASHES = {
     "extract_system": (prompts.extract_system, "be79abbcebcf454162d8f7d58245103387e748d2c33e52e066bae146ac5841fa"),
     # Plan 20 (prompt_version 2026-10-10.7, report audit issues 1-3): the narrative also writes `answer` (a 1-2
     # sentence bottom line with the GRADE certainty wording) and 3-5 numberless `key_findings` (outcome, statement,
-    # refs); the report renders their numbers from the verified cards and the computed pools.
+    # refs); the report renders their numbers from the verified cards and the computed pools. Current version
+    # 2026-10-10.8 changed only the qualitative screen/extract blocks (appended when ticked), so these SLR pins hold.
     "narrative_system": (prompts.narrative_system, "16278465ee36d386eede4011a039ce7adf15588592669958c92883bcc06b3b7d"),
 }
 

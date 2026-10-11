@@ -180,7 +180,10 @@ export function keyFindingViews(findings: KeyFinding[], enFindings: KeyFinding[]
     // further report of a trial counts as that trial (once), never as a second study.
     const refs = row ? refsOf(row) : f.refs ?? [];
     const k = studyRefs(refs, byRef).length || f.k || 0;
-    const effect = !pools.length && row && refs.length === 1 ? studyEffect(byRef.get(refs[0]), row, refs[0], en) : null;
+    // An SR/MA's own estimate is never shown as the one study's number (the SoF effect leaves it out the same way).
+    const one = refs.length === 1 ? byRef.get(refs[0]) : undefined;
+    const effect = !pools.length && row && refs.length === 1 && !(one && isPooled(one))
+      ? studyEffect(one, row, refs[0], en) : null;
     const themes = refs.length > 0 && refs.every((r) => isNonQuantitative(byRef.get(r)?.card_en ?? byRef.get(r)?.card));
     return { outcome: f.outcome, statement: f.statement, refs, k, themes, pools, effect, certainty: f.certainty ?? null };
   });

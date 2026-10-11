@@ -152,3 +152,18 @@ async def test_finalize_flags_papers_left_out_for_their_design():
     st = state(papers, language="en", options={"study_types": ["RCT"]})
     final = (await make_finalize(deps())({**st, "topic": "t", "synthesis": None}))["result"]
     assert [p["design_excluded"] for p in final["papers"]] == [False, True]
+
+
+def test_markdown_reference_tells_a_blanked_sample_size_from_a_missing_one():
+    """Final review M9: the verifier's blank reads "n not verified"; a sample size never reported stays "n=?"."""
+    r = stub_result("t", "en", "slr")
+    r["papers"][0]["card"] = {**r["papers"][0]["card"], "sample_size": None}
+    r["papers"][0]["verification"] = {**(r["papers"][0].get("verification") or {}),
+                                      "unverified": [{"field": "sample_size", "outcome": None}]}
+    r["papers"][1]["card"] = {**r["papers"][1]["card"], "sample_size": None}
+    r["papers"][1]["verification"] = {**(r["papers"][1].get("verification") or {}), "unverified": []}
+    lines = render_markdown(_review(r)).splitlines()
+    p1 = next(x for x in lines if x.startswith("- [P1] "))
+    p2 = next(x for x in lines if x.startswith("- [P2] "))
+    assert ", n not verified." in p1 and "n=?" not in p1
+    assert ", n=?." in p2

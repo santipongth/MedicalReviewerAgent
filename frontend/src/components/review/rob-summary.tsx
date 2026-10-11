@@ -82,6 +82,11 @@ export function RobSummarySection({ papers, type, lang, fullText = false }: {
           {L(lang, R.related(s.related))}
         </p>
       )}
+      {s.notEvidence > 0 && (
+        <p className="text-[0.82rem] text-muted" data-rob-not-evidence>
+          {L(lang, R.notEvidence(s.notEvidence))}
+        </p>
+      )}
     </section>
   );
 }

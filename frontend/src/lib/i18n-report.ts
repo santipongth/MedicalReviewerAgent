@@ -394,6 +394,8 @@ export const RC = {
     total: ["รวม", "Total"],
     themes: ["สรุปเป็นประเด็น ไม่มีทิศทางผล", "themes, no direction"],
     related: (n: number): Pair => [`ไม่นับ ${n} รายงานของการทดลองที่นับแล้ว`, `${n} further ${pl(n, "report", "reports")} of a trial already counted ${pl(n, "is", "are")} not counted again`],
+    notEvidence: (n: number): Pair => [`ไม่นับ ${n} งานที่อ่านแล้วพบว่ารูปแบบการศึกษาไม่ตรงชนิดที่เลือก (ไม่ใช้เป็นหลักฐาน)`,
+      `${n} ${pl(n, "paper", "papers")} read as a design outside the ticked study types ${pl(n, "is", "are")} not counted (not evidence)`],
   },
 
   /** References and the excluded-at-screening disclosure (references.tsx). */
@@ -563,6 +565,7 @@ export const RC = {
     pooledForest: ["แผนภาพค่ารวม", "Pooled forest plot"],
     whatLog: ["สเกล log คืออะไร", "what is a log scale"],
     markerWeight: ["ขนาดสัญลักษณ์ตามน้ำหนัก · รูปข้าวหลามตัดแบบเส้นขอบ = ค่ารวมที่ระบบคำนวณ", "Marker size follows weight · outlined lozenge = the computed pooled estimate"],
+    pooledTable: (k: number, outcome: string): Pair => [`ตารางค่ารวมของ ${k} งานวิจัย (${outcome})`, `Pooled analysis of ${k} ${pl(k, "study", "studies")} as a table (${outcome})`],
     pooledAria: (k: number, outcome: string): Pair => [`Forest plot ค่ารวมของ ${k} งานวิจัย (${outcome})`, `Pooled forest plot of ${k} ${pl(k, "study", "studies")} (${outcome})`],
     study: ["งานวิจัย", "Study"],
     effect: ["ขนาดผล", "Effect"],

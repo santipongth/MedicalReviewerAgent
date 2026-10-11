@@ -191,8 +191,8 @@ describe("RequestSlip", () => {
     expect(rct).toHaveAccessibleName("การทดลองแบบสุ่มและมีกลุ่มควบคุม RCT");
     expect(rct).toHaveAccessibleDescription(GLOSS.rct.plain?.th ?? "");
     expect(within(group).getByRole("checkbox", { name: "การศึกษาติดตามกลุ่มคน Cohort" })).toBeInTheDocument();
-    expect(within(group).getByRole("checkbox", { name: "การสำรวจภาคตัดขวาง Cross-sectional" }))
-      .toHaveAccessibleDescription("สำรวจ ณ จุดเวลาเดียว");
+    expect(within(group).getByRole("checkbox", { name: "การสำรวจ ณ จุดเวลาเดียว Cross-sectional" }))
+      .toHaveAccessibleDescription(GLOSS.crossSectional.plain?.th ?? "");
     expect(within(group).getByRole("checkbox", { name: "อื่น ๆ — ระบุ" })).toBeInTheDocument();
     expect(within(group).getAllByRole("checkbox")).toHaveLength(8); // seven designs plus "other"
   });

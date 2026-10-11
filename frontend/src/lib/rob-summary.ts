@@ -2,6 +2,7 @@
 // by study design. Pure data, no React. Counts of studies: the component sets them in the display face.
 import { designKey, designLabel, isNonQuantitative } from "./charts-data";
 import { DESIGN_LABEL, type Lang } from "./i18n";
+import { isRelatedReport } from "./trial-reports";
 import type { Paper, RiskOfBias } from "./types";
 
 /** Column order: low, some concerns (moderate), high, unclear. */
@@ -27,6 +28,8 @@ export interface RobSummary {
   total: number;
   /** further reports of a trial already counted (Plan 20 Task 10), left out of the counts */
   related: number;
+  /** papers read as a design outside the ticked study types (`design_excluded`): not evidence, left out of the counts */
+  notEvidence: number;
 }
 
 const DESIGN_ORDER = Object.keys(DESIGN_LABEL.en);
@@ -37,11 +40,14 @@ export function robSummary(papers: Paper[], lang: Lang): RobSummary | null {
   const rows = new Map<string, RobRow>();
   const totals = zero();
   let related = 0;
+  let notEvidence = 0;
   for (const p of papers) {
     const card = p.card_en ?? p.card;
     const rob = card?.risk_of_bias;
     if (!card || !rob || !(ROB_ORDER as string[]).includes(rob)) continue;
-    if (p.related_to) { related += 1; continue; }
+    // not evidence (`isNotEvidence`): each kind is left out and named in its own note
+    if (isRelatedReport(p)) { related += 1; continue; }
+    if (p.design_excluded) { notEvidence += 1; continue; }
     const key = designKey(card);
     const row = rows.get(key) ?? { design: key, label: designLabel(key, lang), counts: zero(), total: 0, themes: isNonQuantitative(card) };
     row.counts[rob] += 1;
@@ -52,5 +58,5 @@ export function robSummary(papers: Paper[], lang: Lang): RobSummary | null {
   if (!rows.size) return null;
   const rank = (d: string) => { const i = DESIGN_ORDER.indexOf(d); return i < 0 ? DESIGN_ORDER.length : i; };
   const sorted = [...rows.values()].sort((a, b) => rank(a.design) - rank(b.design) || a.label.localeCompare(b.label));
-  return { rows: sorted, totals, total: sorted.reduce((n, r) => n + r.total, 0), related };
+  return { rows: sorted, totals, total: sorted.reduce((n, r) => n + r.total, 0), related, notEvidence };
 }

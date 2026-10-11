@@ -4,6 +4,7 @@
 // own language. The backend's Markdown export (app/services/report.py `vancouver`) follows the same rules.
 import type { Lang } from "./i18n";
 import type { ReviewTypeOrLegacy } from "./review-type";
+import { TERM_NAME } from "./term-names";
 import type { Paper } from "./types";
 
 /** ICMJE: list the first six authors, then "et al.". */
@@ -155,10 +156,11 @@ export function vancouver(p: CitationInput): string {
 }
 
 const TYPE_NAME: Record<ReviewTypeOrLegacy, Record<Lang, string>> = {
-  narrative: { th: "การทบทวนแบบบรรยาย", en: "narrative review" },
-  slr: { th: "การทบทวนวรรณกรรมอย่างเป็นระบบ", en: "systematic review" },
-  scoping: { th: "การทบทวนขอบเขต", en: "scoping review" },
-  meta_analysis: { th: "การวิเคราะห์อภิมาน", en: "meta-analysis" },
+  // the shared term names (term-names.ts), lower case in a sentence
+  narrative: TERM_NAME.narrativeReview,
+  slr: TERM_NAME.slr,
+  scoping: TERM_NAME.scopingReview,
+  meta_analysis: TERM_NAME.metaAnalysis,
   legacy: { th: "การทบทวนวรรณกรรม", en: "literature review" },
 };
 

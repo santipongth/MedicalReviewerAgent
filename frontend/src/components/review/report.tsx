@@ -324,9 +324,12 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
                 <li>{L(lang, RC.report.tryEnglish)}</li>
                 <li>{L(lang, RC.report.tryBroader)}</li>
               </ul>
-              <Link href="/" className="w-fit rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary no-underline hover:brightness-110">
-                {L(lang, RC.report.askNew)}
-              </Link>
+              {/* the offline file has no links back to the service: "/" there is the file-system root (final review M3) */}
+              {!offline && (
+                <Link href="/" className="w-fit rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary no-underline hover:brightness-110">
+                  {L(lang, RC.report.askNew)}
+                </Link>
+              )}
             </section>
           )}
 

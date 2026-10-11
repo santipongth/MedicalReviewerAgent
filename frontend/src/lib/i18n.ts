@@ -1,4 +1,5 @@
 import type { DesignCategory, Direction, EvidenceStrength, RiskOfBias } from "./types";
+import { TERM_NAME as N } from "./term-names";
 
 export type Lang = "th" | "en";
 
@@ -17,10 +18,11 @@ export const STRENGTH_LABEL: Record<Lang, Record<EvidenceStrength, string>> = {
 
 export const DESIGN_LABEL: Record<Lang, Record<DesignCategory, string>> = {
   th: {
-    rct: "RCT", non_randomized_trial: "การทดลองแบบไม่สุ่ม", cohort: "Cohort", case_control: "Case-control",
-    cross_sectional: "ภาคตัดขวาง", case_series: "รายงานกลุ่มผู้ป่วย", mendelian_randomization: "Mendelian randomization",
+    // the word the home page teaches (RCT, Cohort, Case-control) or the shared Thai name (term-names.ts, final review I2)
+    rct: "RCT", non_randomized_trial: N.nonRandomized.th, cohort: "Cohort", case_control: "Case-control",
+    cross_sectional: N.crossSectional.th, case_series: N.caseSeries.th, mendelian_randomization: N.mendelian.en,
     sr_ma_rct: "SR/MA ของ RCT", sr_ma_observational: "SR/MA ของงานเชิงสังเกต", sr_ma_mixed: "SR/MA",
-    narrative_review: "บทความทบทวน (ไม่เป็นระบบ)", qualitative: "เชิงคุณภาพ", mixed_methods: "ผสมผสาน (Mixed methods)",
+    narrative_review: N.narrativeReview.th, qualitative: N.qualitative.th, mixed_methods: N.mixedMethods.th,
     other: "อื่น ๆ",
   },
   en: {

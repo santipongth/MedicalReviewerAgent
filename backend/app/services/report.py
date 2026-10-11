@@ -300,7 +300,10 @@ def _methods_section(result: dict[str, Any]) -> list[str]:
 def _reference_line(p: dict[str, Any]) -> str:
     """One reference: the Vancouver text, then what the review made of the paper (design, n, notes)."""
     card = p.get("card") or {}
-    design = f" — {card.get('study_design')}, n={card.get('sample_size') or '?'}." if card else " — not extracted."
+    # final review M9: a sample size the verifier blanked is "n not verified"; one never reported stays "n=?"
+    blanked_n = any(u.get("field") == "sample_size" for u in (p.get("verification") or {}).get("unverified") or [])
+    n = "n not verified" if blanked_n and card.get("sample_size") is None else f"n={card.get('sample_size') or '?'}"
+    design = f" — {card.get('study_design')}, {n}." if card else " — not extracted."
     excluded = (" Not used as evidence: read as a design outside the ticked study types."
                 if p.get("design_excluded") else "")
     if (p.get("verification") or {}).get("design_mismatch"):  # the report's note too (Task 6 review finding 7)

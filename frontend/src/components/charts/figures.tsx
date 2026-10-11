@@ -159,6 +159,7 @@ export function MetaForestFigure({ pool, tokens, lang, onSelect }: { pool: MetaP
       }
       table={
         <table className="w-full min-w-[480px] border-collapse text-[0.88rem]">
+          <caption className="sr-only">{L(lang, G.pooledTable(pool.k, pool.outcome))}</caption>
           <thead><tr className="border-b border-rule text-left">
             <th scope="col" className="py-1.5 label">{L(lang, G.study)}</th>
             <th scope="col" className="py-1.5 label">{L(lang, G.effect)}</th>
@@ -548,7 +549,8 @@ export function CitationNetworkFigure({ net, tokens, lang, onSelect }: {
         </div>
       }
       table={
-        <table aria-label={L(lang, G.citationTable)} className="w-full min-w-[640px] border-collapse text-[0.88rem]">
+        <table className="w-full min-w-[640px] border-collapse text-[0.88rem]">
+          <caption className="sr-only">{L(lang, G.citationTable)}</caption>
           <thead><tr className="border-b border-rule text-left">
             <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.study)}</th>
             <th scope="col" className="py-1.5 pr-3 label">{L(lang, G.year)}</th>

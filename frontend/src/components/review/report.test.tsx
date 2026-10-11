@@ -270,6 +270,16 @@ describe("Report", () => {
     expect(screen.getByRole("button", { name: "พิมพ์" })).toBeInTheDocument();
   });
 
+  it("a zero-included report offers a new question online, but the offline file links nowhere (final review M3)", () => {
+    const empty = { ...reviewFixture, result: { ...reviewFixture.result!, papers: [] } };
+    const { unmount } = render(<Report review={empty} />);
+    expect(screen.getByRole("link", { name: "ถามคำถามใหม่" })).toHaveAttribute("href", "/");
+    unmount();
+    render(<Report review={empty} offline />);
+    expect(screen.getByRole("heading", { name: "ลองแบบนี้" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "ถามคำถามใหม่" })).toBeNull();
+  });
+
   it("the summary note points to the source rail and no longer says tape is in the table", () => {
     render(<Report review={reviewFixture} />);
     const note = screen.getByText(/สรุปเขียนโดยโมเดล/);
