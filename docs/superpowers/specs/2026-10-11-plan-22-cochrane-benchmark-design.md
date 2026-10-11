@@ -26,7 +26,7 @@ conclusion agree with Cochrane's on:
 **Success for 22a:**
 - 60 reviews are selected and owner-checked, and each has a frozen pool.
 - One command runs all 60 offline (no search calls) twice and writes a report per `prompt_version`.
-- Every later plan (from Plan 23, ThaiJO) can be measured against this baseline.
+- Every later plan (from Plan 23, the admin console, and Plan 24, ThaiJO) can be measured against this baseline.
 - Gold-standard slots are defined but left empty.
 
 **Out of scope for 22a (this is 22b):**
@@ -47,6 +47,7 @@ conclusion agree with Cochrane's on:
 | Freezing | Approach B: freeze the candidate pool per review once, then replay from screening onward |
 | Stability | Run every review twice |
 | Run language | Thai (the service default); the English synthesis kept inside the result is used for direction metrics |
+| Thai quality | Improved by **harness engineering only** (glossary, checks, retries) and measured here. No Thai-tuned or fine-tuned model |
 
 ## 3. Layout
 
@@ -149,6 +150,12 @@ The owner checks every entry, including the exclusions.
    - Candidates carry only a year. The rule keeps studies from the search year itself (`year == year_to`) and reports how many there were, so the analysis can check sensitivity to that choice.
 3. **Citation counters:** `strip_unknown_citations` callers add `{citations_proposed, citations_stripped}` to their
    `quality` entries, and `summarize_quality` sums them. No prompt changes, so `prompt_version` is unchanged.
+4. **Localization counters:** `app/harness/localize.py` records, in its quality entry, how many items were accepted on
+   the first pass, how many were rejected by `numbers_preserved` (and by the citation multiset check) and retried, and
+   how many were left in English. Only counting: no behaviour change.
+5. **Glossary check** (`app/harness/glossary_check.py`, pure function): `glossary_consistency(source_en, text_th, glossary)`
+   returns the terms found and whether each is rendered in its listed Thai form. In 22a the report computes it from the
+   stored English and Thai items (no runtime effect). Plan 28 reuses it as an enforced term check.
 
 ### 4.3 Budget and determinism
 - Each run uses the normal per-review cap (`review_cost_cap`), and the CLI adds the `--max-usd` cap for the whole batch.
@@ -164,7 +171,9 @@ The owner checks every entry, including the exclusions.
 | Pool | Candidates found / unique / with usable abstract; per-source counts; removed after cutoff; thin pool (`with_abstract` < `max_papers`) | fixture `pool_stats` |
 | Numbers | Numbers verified / blanked; verification rate | `result.quality` |
 | Citations | Share of proposed `[Pn]` refs stripped as unknown | new counters (4.2.3) |
-| Thai | Thai share; items left in English after the retry pass | `localize` quality entry |
+| Thai share | Per review mean and minimum; share of reviews below `MIN_THAI_SHARE`; items left in English after the retry pass | `localize` quality entry |
+| Numbers preserved | Items whose numbers survived translation on the first pass / rejected by `numbers_preserved` and retried / left in English | new counters in `localize` (4.2.4) |
+| Glossary consistency | For each glossary term found in an English source item: does the Thai item use the listed Thai form (or "Thai (ABBR)")? Share consistent, plus the 10 most frequent misses | new pure check (4.2.5), measured on stored results |
 | Output | Answer present; papers analysed; design mix; not-evidence count | result |
 | Cost | `cost_usd`, `elapsed_s` per review (mean, median, max) | run file |
 | Stability | Same direction for the primary outcome in r1 and r2, from each run's `primary_match` (no match counts as "not reported", a fifth class) | two run files |

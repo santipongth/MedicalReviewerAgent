@@ -5,8 +5,8 @@
 แต่เราวางตำแหน่งเป็น "การทบทวนหลักฐานแบบเร่งด่วนสำหรับการตัดสินใจทางการแพทย์ในบริบทไทย" ไม่ใช่แชตบอตตอบคำถามหมอ
 หลักคือ "หลักฐานภาษาอังกฤษ เสียงภาษาไทย": หลักฐานยังเป็นสากล บริบทไทยเป็นชั้นแยก ไม่ปนกับหลักฐาน
 ผู้ใช้มี 4 กลุ่ม (แพทย์ข้างเตียง, คณะกรรมการยาหรือ HTA, นักศึกษาและแพทย์ประจำบ้าน, ประชาชน) เป้าหมายคือบริการสาธารณะฟรีและผลงานวิชาการ
-ลำดับงานคือ Plan 22 วัดผลเทียบ Cochrane → 23 ThaiJO → 24 ตรวจว่าประโยคมีหลักฐานรองรับ → 25 โหมดผู้ใช้และราวกันความปลอดภัยสำหรับประชาชน
-→ 26 ถามเร็ว → 27 ศัพท์แพทย์ไทย → 28 บริบทไทย (บัญชียาหลัก, แนวทางเวชปฏิบัติไทย)
+ลำดับงานคือ Plan 22a ชุดวัดผล (Cochrane) → 23 หน้า admin → 24 ThaiJO → 25 ตรวจว่าประโยคมีหลักฐานรองรับ → 26 โหมดผู้ใช้และราวกันความปลอดภัย
+→ 27 ถามเร็ว → 28 ศัพท์แพทย์ไทย (ด้วย harness เท่านั้น ไม่ใช้โมเดลภาษาไทย ไม่ fine-tune) → 29 บริบทไทย (บัญชียาหลัก, แนวทางเวชปฏิบัติไทย)
 
 Facts about other products are as of 2026-10 and come from their own announcements and press coverage. Their performance claims are self-reported.
 
@@ -69,16 +69,17 @@ Seen through the five steps of evidence-based medicine (Ask, Acquire, Appraise, 
 
 | Plan | Scope | Why this order |
 |---|---|---|
-| 22 | Evaluation baseline and a **Cochrane benchmark** (frozen fixtures that replay without network calls; study-level recall, direction and certainty agreement, number-verification rate, citation precision). Split into **22a** (the harness and the metrics that need no gold standard) and **22b** (gold standard: LLM extracts, a human checks). Spec: `../specs/2026-10-11-plan-22-cochrane-benchmark-design.md` | Measures every later change; publishable on its own |
-| 23 | **ThaiJO source** (section 7) | Cheap, adds Thai evidence, measured by Plan 22 |
-| 24 | Sentence-support grounding, a "why this source was cited" view, and a per-citation "ตรวจแล้ว" badge (goes beyond Evidence Finder's Verify) | Safety for every audience; publishable |
-| 25 | Audience modes (public, bedside, learner, committee) and **public safety rails** (personal-symptom questions go to a doctor or 1669; no dosing advice; harms gaps stated) | Needed once the public uses it |
-| 26 | Quick answer mode ("ถามเร็ว", Evidence Finder style): about 30 candidates → about 8 read, a 2–4 sentence answer with numbered refs [1]…[n] linking to PubMed, DOI or ThaiJO, under a minute, and a "ทำรีวิวฉบับเต็ม" button | Bedside use and the public; keeps the free service affordable |
-| 27 | Thai clinical terminology (a glossary file from Royal Institute medical terms, with a term check in `localize`, like the number check), plus an **A/B test of a Thai-tuned model** (for example Typhoon) in the `localize` role only, adopted only if it wins on the Plan 22 harness | Thai quality, measured by Plan 22 |
-| 28 | Thai practice context (NLEM status from a dated data file, and a curated index of Thai clinical practice guidelines; context only) | The Apply step for Thailand |
+| 22 | Evaluation baseline and a **Cochrane benchmark** (frozen fixtures that replay without network calls; study-level recall, direction and certainty agreement, number-verification rate, citation precision). Split into **22a** (the harness and the metrics that need no gold standard, including Thai share, glossary consistency, numbers preserved and cost) and **22b** (gold standard: LLM extracts, a human checks). Spec: `../specs/2026-10-11-plan-22-cochrane-benchmark-design.md` | Measures every later change; publishable on its own |
+| 23 | **Admin console** (section 6b): username + password login, a dashboard, LLM model management with live reload, reviews and cost, API keys and runtime settings, the glossary editor, and harness results | From here on every plan can be configured and measured from one place |
+| 24 | **ThaiJO source** (section 7) | Cheap, adds Thai evidence, measured by Plan 22 |
+| 25 | Sentence-support grounding, a "why this source was cited" view, and a per-citation "ตรวจแล้ว" badge (goes beyond Evidence Finder's Verify) | Safety for every audience; publishable |
+| 26 | Audience modes (public, bedside, learner, committee) and **public safety rails** (personal-symptom questions go to a doctor or 1669; no dosing advice; harms gaps stated) | Needed once the public uses it |
+| 27 | Quick answer mode ("ถามเร็ว", Evidence Finder style): about 30 candidates → about 8 read, a 2–4 sentence answer with numbered refs [1]…[n] linking to PubMed, DOI or ThaiJO, under a minute, and a "ทำรีวิวฉบับเต็ม" button | Bedside use and the public; keeps the free service affordable |
+| 28 | Thai clinical terminology **by harness engineering only**: a larger glossary (Royal Institute medical terms, edited in the admin console), the 22a glossary check enforced in `localize` with a retry like the number check, measured on the 22a harness. No Thai-tuned model, no fine-tuning | Thai quality, measured by Plan 22 |
+| 29 | Thai practice context (NLEM status from a dated data file, and a curated index of Thai clinical practice guidelines; context only) | The Apply step for Thailand |
 
 Not planned:
-- **A Thai-tuned LLM for reasoning (Typhoon, Eir):** frontier models read English abstracts better. The localize-only A/B test is in Plan 27.
+- **Thai-tuned or fine-tuned models (Typhoon, Eir, or our own fine-tune):** Thai quality comes from harness engineering (glossary, checks, retries), measured by Plan 22a.
 - **Licensed full text:** conflicts with the abstract-only rule.
 - **Advertising exam scores.**
 
@@ -88,14 +89,42 @@ The owner wants Evidence Finder's ideas adopted as features. Where each one land
 
 | Evidence Finder | Ours | Plan |
 |---|---|---|
-| A question gets a short answer with numbered citations and links to the source | "ถามเร็ว": a 2–4 sentence answer with [1]…[n] linking to PubMed, DOI or ThaiJO, under a minute, with an upgrade to the full review | 26 |
-| Verify (checks the cited paper exists) | Already stronger: refs come only from the screened set and numbers are checked verbatim. Adds sentence-support checking and a "ตรวจแล้ว" badge that shows the supporting abstract sentence | 24 |
+| A question gets a short answer with numbered citations and links to the source | "ถามเร็ว": a 2–4 sentence answer with [1]…[n] linking to PubMed, DOI or ThaiJO, under a minute, with an upgrade to the full review | 27 |
+| Verify (checks the cited paper exists) | Already stronger: refs come only from the screened set and numbers are checked verbatim. Adds sentence-support checking and a "ตรวจแล้ว" badge that shows the supporting abstract sentence | 25 |
 | Its own retrieval and selection; the LLM only compares and writes | Already our design (search, screen, read, synthesise) | existing |
-| A locale-tuned model writes the answer (Namazu for Japanese) | Thai terminology control, plus an A/B test of a Thai-tuned model in the `localize` role only, measured on the Plan 22 harness | 27 |
-| Physicians only; the doctor decides | Open to everyone, with audience modes and public safety rails | 25 |
-| PubMed only | PubMed and 7 more sources, plus ThaiJO for Thai journals | 23 |
+| A locale-tuned model writes the answer (Namazu for Japanese) | Harness engineering instead of a Thai model: glossary, term check, retries, measured on the 22a harness | 28 |
+| Physicians only; the doctor decides | Open to everyone, with audience modes and public safety rails | 26 |
+| PubMed only | PubMed and 7 more sources, plus ThaiJO for Thai journals | 24 |
 
-## 7. ThaiJO: findings for Plan 23 (probed 2026-10-11)
+## 6b. Plan 23: admin console (scope; its own brainstorm and spec come when it starts)
+
+The owner wants one place to run the service: a dashboard behind a simple username and password, where models, glossary
+terms and settings can be changed without editing files or restarting.
+
+What exists today:
+- One admin endpoint (`POST /api/v1/admin/mcp/reload`), with admin access through an API key flagged `is_admin`.
+- The CLIs `app.cli.keys` and `app.cli.models`.
+- `backend/config/llm.yaml`, loaded once per worker at startup.
+- Every other setting is env-only.
+
+Scope, built in three phases inside Plan 23:
+- **23a: login, dashboard, reviews, keys.**
+  - **Login:** an `admin_users` table (username, argon2 or bcrypt hash). The first admin is created by `python -m app.cli.admin create`. Sessions are opaque tokens in Redis, carried in an httpOnly, Secure, SameSite=Strict cookie on the single origin. Login is throttled with a lockout. Admin routes are hidden from the public OpenAPI, and admin API keys keep working for scripts.
+  - **Dashboard:** reviews and cost per day, cost per model, queue and capacity, error rate, the latest harness score.
+  - **Reviews:** list and search; cancel, delete, and show or hide in the public list (`is_listed`).
+  - **Keys:** mint, revoke, set quotas.
+  - **Audit log:** who changed what, before and after, and when.
+- **23b: model management.**
+  - Add, edit and delete providers, presets and per-role models, and choose the active preset.
+  - Browse the OpenRouter catalog (`model_catalog.py`), with a test call and a cost-per-review estimate (as `app.cli.models check`).
+  - Each save is validated by the `llm_config` schema and stored as a versioned config in the DB, with history and rollback. `llm.yaml` stays as the seed.
+  - Workers check a Redis version key between jobs and rebuild their models: no restart.
+- **23c: settings, glossary, harness.**
+  - **Settings:** rate limits, cost caps, queue cap and concurrency, stored in the DB, mirrored to Redis and read by every process. Env values stay as defaults.
+  - **Glossary:** an editor for the Thai terms, with history. `localize` reads the active glossary instead of the hard-coded `GLOSSARY`.
+  - **Harness:** 22a reports and version comparison, with a button to start a harness run (an arq job with a cost cap).
+
+## 7. ThaiJO: findings for Plan 24 (probed 2026-10-11)
 
 The owner found ThaiJO's internal search API in the browser's network tab. This replaces the "no central API" finding in the
 2026-10-10 sources survey (section 9 there).
@@ -137,7 +166,7 @@ for the papers that are actually read (at most `max_papers`), not for the whole 
 
 **Status:** the API is undocumented and has no published terms of use. `www` robots.txt does not disallow `/api/`. Journal servers also expose OAI-PMH (for example `he01.tci-thaijo.org/index.php/<journal>/oai`).
 
-**Design for Plan 23:**
+**Design for Plan 24:**
 - A backend client like `app/services/europepmc.py`, called from `make_search` in `app/graph/nodes/retrieval.py`. It is not a SearXNG engine module, because each candidate needs a search call and a detail call.
 - Three steps: search (titles), the detail API (abstracts, every candidate), and OAI-PMH (full citation metadata and licence, read papers only).
 - Health categories only. Keep only candidates with an English abstract of at least 150 characters. Never use `pdf_url`, and never scrape the HTML page.

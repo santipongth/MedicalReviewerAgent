@@ -123,7 +123,7 @@ journals, keep our own local index (abstracts only) and expose it as an engine. 
 
 **Update 2026-10-11:** ThaiJO has an internal central search API (`POST /api/v1/articles/search`, with a detail call
 `GET /api/v1/articles/{id}` that returns English and Thai abstracts). A local OAI-PMH index is therefore no longer needed.
-ThaiJO is now planned as a backend source (Plan 23). The findings and design are in `2026-10-11-roadmap-thai-evidence.md`,
+ThaiJO is now planned as a backend source (Plan 24). The findings and design are in `2026-10-11-roadmap-thai-evidence.md`,
 section 7.
 
 ## 10. Outcome (as built, 2026-10-10)
