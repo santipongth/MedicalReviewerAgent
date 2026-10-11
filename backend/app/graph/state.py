@@ -8,6 +8,7 @@ class ReviewState(TypedDict, total=False):
     review_id: str
     topic: str
     language: str
+    eval_year_to: int | None  # Plan 22a eval only: drop candidates published after this year (Cochrane search date)
     options: dict[str, Any]
     english_topic: str
     question: dict[str, Any] | None  # ReviewQuestion (English) after interpretation/refinement

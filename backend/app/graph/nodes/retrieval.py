@@ -259,13 +259,20 @@ def topup_pages(settings, options: ReviewOptions) -> list[int]:
     return list(range(first + 1, last + 1))
 
 
-def _filter_pool(cands: list[Candidate], options: ReviewOptions, terms: list[str]) -> tuple[list[Candidate], dict]:
-    """Year, non-research, abstract and focus filters, in that order; the search rank order is kept."""
+def _filter_pool(cands: list[Candidate], options: ReviewOptions, terms: list[str],
+                 year_to: int | None = None) -> tuple[list[Candidate], dict]:
+    """Year, non-research, abstract and focus filters, in that order; the search rank order is kept. `year_to` is set
+    only by the Plan 22a eval (a Cochrane review's search year); unknown years are kept, as for `year_from`."""
     year_excluded = 0
     if options.year_from:
         before = len(cands)
         cands = [c for c in cands if c.year is None or c.year >= options.year_from]
         year_excluded = before - len(cands)
+    after_cutoff = 0
+    if year_to is not None:
+        before = len(cands)
+        cands = [c for c in cands if c.year is None or c.year <= year_to]
+        after_cutoff = before - len(cands)
     non_research = sum(1 for c in cands if is_non_research(c))
     cands = [c for c in cands if not is_non_research(c)]
     snippet_only = sum(1 for c in cands if c.abstract_source == "snippet" and not usable_abstract(c)
@@ -280,8 +287,8 @@ def _filter_pool(cands: list[Candidate], options: ReviewOptions, terms: list[str
         focused = [c for c in cands if on_focus(c, terms)]
         off_focus = len(cands) - len(focused)
         cands = focused + [c for c in cands if not on_focus(c, terms)]
-    return cands, {"year_excluded": year_excluded, "non_research": non_research, "snippet_only": snippet_only,
-                   "no_abstract": no_abstract, "off_focus": off_focus}
+    return cands, {"year_excluded": year_excluded, "after_cutoff": after_cutoff, "non_research": non_research,
+                   "snippet_only": snippet_only, "no_abstract": no_abstract, "off_focus": off_focus}
 
 
 async def _lookup(deps, lookup: list[Candidate], errors: list[str], failures: list[str],
@@ -351,7 +358,8 @@ def make_enrich(deps):
         lookup = [c for c in merged if not already_enriched(c)]
         enriched = _with_records(await _lookup(deps, lookup, errors, failures), merged)
         terms = focus_terms(state.get("question"))
-        pool, counts = _filter_pool(enriched, options, terms)
+        year_to = state.get("eval_year_to")
+        pool, counts = _filter_pool(enriched, options, terms, year_to)
         search_stats = dict(state.get("search_stats") or {})
         topup: dict[str, int] = {"topup_pages": 0, "topup_found": 0}
         looked_up, skipped = len(lookup), len(merged) - len(lookup)
@@ -367,7 +375,7 @@ def make_enrich(deps):
             lookup_new = [c for c in new if not already_enriched(c)]
             records = await _lookup(deps, lookup_new, errors, failures, " (top-up)")
             enriched = _with_records(records, merge_candidates([*enriched, *new]))
-            pool, counts = _filter_pool(enriched, options, terms)
+            pool, counts = _filter_pool(enriched, options, terms, year_to)
             looked_up, skipped = looked_up + len(lookup_new), skipped + len(new) - len(lookup_new)
             topup = {"topup_pages": len(pages), "topup_found": len(hits), "topup_new": len(new)}
             # PRISMA "identified": the top-up hits are identified records too (per source, before deduplication)
@@ -385,7 +393,8 @@ def make_enrich(deps):
         return {"candidates": [c.model_dump() for c in kept], "errors": errors,
                 "search_stats": {**search_stats, "unique": len(enriched),
                                  "with_abstract": len(pool), "non_research": counts["non_research"],
-                                 "year_excluded": counts["year_excluded"], "no_abstract": counts["no_abstract"]},
+                                 "year_excluded": counts["year_excluded"], "after_cutoff": counts["after_cutoff"],
+                                 "no_abstract": counts["no_abstract"]},
                 "quality": [entry]}
 
     return enrich
