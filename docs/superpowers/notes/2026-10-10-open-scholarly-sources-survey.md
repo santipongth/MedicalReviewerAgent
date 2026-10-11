@@ -121,6 +121,11 @@ ThaiJO (https://www.tci-thaijo.org) hosts about 260k articles across 1,300+ jour
 journal, but there is no central search API. Thai-language coverage therefore needs a future plan: harvest OAI-PMH from the
 journals, keep our own local index (abstracts only) and expose it as an engine. This is out of scope for Plan 16.
 
+**Update 2026-10-11:** ThaiJO has an internal central search API (`POST /api/v1/articles/search`, with a detail call
+`GET /api/v1/articles/{id}` that returns English and Thai abstracts). A local OAI-PMH index is therefore no longer needed.
+ThaiJO is now planned as a backend source (Plan 23). The findings and design are in `2026-10-11-roadmap-thai-evidence.md`,
+section 7.
+
 ## 10. Outcome (as built, 2026-10-10)
 
 - **Default engines (backend `searxng_engines`):** `pubmed`, `europe pmc`, `openalex`, `semantic scholar`, `crossref`, `arxiv`,
