@@ -190,7 +190,8 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
         assert t[stage] is not None and t[stage] >= 0, stage
     assert r["quality"]["verification_rate"] == 1.0 and r["quality"]["question_refined"] is True
     # the fake translates every item, so the main path runs: nothing retried, nothing left in English
-    assert r["quality"]["localize"] == {"untranslated": 0, "retried": 0, "citations_restored": 0}
+    assert r["quality"]["localize"] == {"untranslated": 0, "retried": 0, "citations_restored": 0,
+                                        "numbers_rejected": 0, "citations_rejected": 0}
     assert r["quality"]["localization_kept_english"] == 0
     assert values["cost_usd"] == pytest.approx(0.01 * all_calls(deps))
     types = [e["type"] for e in events]
