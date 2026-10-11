@@ -145,9 +145,11 @@ export function MethodsSection({ review, result, type, lang }: {
   // Plan 21: with the requested N recorded, the line states N, S and A (and a shortfall, said here once); older results
   // keep the "at most N" line
   const counts = paperCounts(result.stats);
-  const requestedLine = counts && counts.screened != null && counts.analysed != null
-    ? <>{fill(lang, M.requested(counts.requested, counts.screened, counts.analysed), {
-      n: <N>{counts.requested}</N>, s: <N>{counts.screened}</N>, a: <N>{counts.analysed}</N> })}
+  // S is the rank cut (candidates), as PRISMA and Limitations say; it falls back to the screened count when absent
+  const sent = typeof result.stats?.candidates === "number" ? result.stats.candidates : counts?.screened ?? null;
+  const requestedLine = counts && sent != null && counts.analysed != null
+    ? <>{fill(lang, M.requested(counts.requested, sent, counts.analysed), {
+      n: <N>{counts.requested}</N>, s: <N>{sent}</N>, a: <N>{counts.analysed}</N> })}
       {counts.shortfall && <span data-shortfall>{fill(lang, M.shortfall, { e: <N>{counts.shortfall.eligible}</N> })}</span>}</>
     : counts ? fill(lang, M.max(counts.requested), { n: <N>{counts.requested}</N> }) : null;
   const band = sc && { lo: <N>{sc.borderline[0]}</N>, hi: <N>{sc.borderline[1]}</N> };

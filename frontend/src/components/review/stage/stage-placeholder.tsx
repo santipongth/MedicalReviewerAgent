@@ -20,8 +20,6 @@ export const StageLocalize = createContext(true);
 /** The paper count the user asked for (scene.requested, Plan 21); null when unknown. */
 export const StageRequested = createContext<number | null>(null);
 
-
-
 /**
  * Reserves the stage's box while its chunk loads; breakpoints follow useWide() (lg = 1024px) via CSS, so no flip on
  * desktop. Wide spans the panel like the stage; narrow is capped at 480px wide, like the stage (a tablet would

@@ -24,12 +24,12 @@ const CASES = {
 
 const METHODS_LINE = {
   n50: {
-    th: "ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ คัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 50 ฉบับตามอันดับความเกี่ยวข้อง",
-    en: "The user asked for 50 records; 120 records with abstracts were screened and 50 were analysed, in order of relevance",
+    th: "ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ ส่งเข้าคัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 50 ฉบับตามอันดับความเกี่ยวข้อง",
+    en: "The user asked for 50 records; 120 records with abstracts were sent to screening and 50 were analysed, in order of relevance",
   },
   shortfall: {
-    th: "ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ คัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 22 ฉบับตามอันดับความเกี่ยวข้อง ผ่านเกณฑ์เพียง 22 ฉบับ จึงวิเคราะห์น้อยกว่าที่กำหนด (ไม่เติมงานที่ไม่ผ่านเกณฑ์)",
-    en: "The user asked for 50 records; 120 records with abstracts were screened and 22 were analysed, in order of relevance. Only 22 met the criteria, so fewer than requested were analysed (none were added to make up the number)",
+    th: "ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ ส่งเข้าคัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 22 ฉบับตามอันดับความเกี่ยวข้อง ผ่านเกณฑ์เพียง 22 ฉบับ จึงวิเคราะห์น้อยกว่าที่กำหนด (ไม่เติมงานที่ไม่ผ่านเกณฑ์)",
+    en: "The user asked for 50 records; 120 records with abstracts were sent to screening and 22 were analysed, in order of relevance. Only 22 met the criteria, so fewer than requested were analysed (none were added to make up the number)",
   },
 } as const;
 

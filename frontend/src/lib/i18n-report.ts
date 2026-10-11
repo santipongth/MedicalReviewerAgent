@@ -333,10 +333,10 @@ export const RC = {
     narrative: ["ตัดบทความทบทวนแบบไม่เป็นระบบออก เมื่อมีงานวิจัยหลักหรือ SR/MA อย่างน้อย 3 ฉบับ",
       "Narrative reviews were left out when at least 3 primary studies or systematic reviews were available"],
     max: (n: number): Pair => ["วิเคราะห์สูงสุด {n} ฉบับตามอันดับความเกี่ยวข้อง", `At most {n} ${pl(n, "record was", "records were")} analysed, in order of relevance`],
-    /** Plan 21: the requested N, the S screened and the A analysed (replaces `max` when the result records N). */
+    /** Plan 21: the requested N, the S sent to screening (the rank cut, as PRISMA and Limitations say) and the A analysed (replaces `max` when the result records N). */
     requested: (n: number, s: number, a: number): Pair => [
-      "ผู้ใช้กำหนดให้วิเคราะห์ {n} ฉบับ คัดกรอง {s} ฉบับที่มีบทคัดย่อ วิเคราะห์ {a} ฉบับตามอันดับความเกี่ยวข้อง",
-      `The user asked for {n} ${pl(n, "record", "records")}; {s} ${pl(s, "record with an abstract was", "records with abstracts were")} screened and {a} ${pl(a, "was", "were")} analysed, in order of relevance`],
+      "ผู้ใช้กำหนดให้วิเคราะห์ {n} ฉบับ ส่งเข้าคัดกรอง {s} ฉบับที่มีบทคัดย่อ วิเคราะห์ {a} ฉบับตามอันดับความเกี่ยวข้อง",
+      `The user asked for {n} ${pl(n, "record", "records")}; {s} ${pl(s, "record with an abstract was", "records with abstracts were")} sent to screening and {a} ${pl(a, "was", "were")} analysed, in order of relevance`],
     /** Plan 21: appended to `requested` when fewer than N were analysed; the only place the shortfall is said in prose. */
     shortfall: [" ผ่านเกณฑ์เพียง {e} ฉบับ จึงวิเคราะห์น้อยกว่าที่กำหนด (ไม่เติมงานที่ไม่ผ่านเกณฑ์)",
       ". Only {e} met the criteria, so fewer than requested were analysed (none were added to make up the number)"],

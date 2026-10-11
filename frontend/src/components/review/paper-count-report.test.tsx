@@ -58,22 +58,22 @@ describe("legacy results (no `requested`) render exactly as before Plan 21", () 
 describe("Methods: requested, screened and analysed (Plan 21)", () => {
   it("N=50: the selection line states N, S and A, in TH and EN, with no shortfall", () => {
     let { methods } = renderAll(resultN50, "th");
-    expect(text(line(methods, "max"))).toBe("ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ คัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 50 ฉบับตามอันดับความเกี่ยวข้อง");
+    expect(text(line(methods, "max"))).toBe("ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ ส่งเข้าคัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 50 ฉบับตามอันดับความเกี่ยวข้อง");
     expect(methods.querySelector("[data-shortfall]")).toBeNull();
     cleanup();
     ({ methods } = renderAll(englishReview(resultN50), "en"));
     expect(text(line(methods, "max")))
-      .toBe("The user asked for 50 records; 120 records with abstracts were screened and 50 were analysed, in order of relevance");
+      .toBe("The user asked for 50 records; 120 records with abstracts were sent to screening and 50 were analysed, in order of relevance");
     expect(methods.querySelector("[data-shortfall]")).toBeNull();
   });
 
   it("a shortfall adds the honest sentence, in TH and EN", () => {
     let { methods } = renderAll(resultShortfall, "th");
-    expect(text(line(methods, "max"))).toBe("ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ คัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 22 ฉบับตามอันดับความเกี่ยวข้อง"
+    expect(text(line(methods, "max"))).toBe("ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ ส่งเข้าคัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 22 ฉบับตามอันดับความเกี่ยวข้อง"
       + " ผ่านเกณฑ์เพียง 22 ฉบับ จึงวิเคราะห์น้อยกว่าที่กำหนด (ไม่เติมงานที่ไม่ผ่านเกณฑ์)");
     cleanup();
     ({ methods } = renderAll(englishReview(resultShortfall), "en"));
-    expect(text(line(methods, "max"))).toBe("The user asked for 50 records; 120 records with abstracts were screened and 22 were analysed, in order of relevance."
+    expect(text(line(methods, "max"))).toBe("The user asked for 50 records; 120 records with abstracts were sent to screening and 22 were analysed, in order of relevance."
       + " Only 22 met the criteria, so fewer than requested were analysed (none were added to make up the number)");
   });
 
@@ -173,8 +173,8 @@ describe("M2: which field each sentence reads when A ≠ E", () => {
     for (const lang of ["th", "en"] as const) {
       const { methods, prisma, limits } = renderAll(lang === "en" ? englishReview(odd) : odd, lang);
       expect(text(line(methods, "max"))).toBe(lang === "th"
-        ? "ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ คัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 20 ฉบับตามอันดับความเกี่ยวข้อง ผ่านเกณฑ์เพียง 22 ฉบับ จึงวิเคราะห์น้อยกว่าที่กำหนด (ไม่เติมงานที่ไม่ผ่านเกณฑ์)"
-        : "The user asked for 50 records; 120 records with abstracts were screened and 20 were analysed, in order of relevance. Only 22 met the criteria, so fewer than requested were analysed (none were added to make up the number)");
+        ? "ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ ส่งเข้าคัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 20 ฉบับตามอันดับความเกี่ยวข้อง ผ่านเกณฑ์เพียง 22 ฉบับ จึงวิเคราะห์น้อยกว่าที่กำหนด (ไม่เติมงานที่ไม่ผ่านเกณฑ์)"
+        : "The user asked for 50 records; 120 records with abstracts were sent to screening and 20 were analysed, in order of relevance. Only 22 met the criteria, so fewer than requested were analysed (none were added to make up the number)");
       expect(text(prisma.querySelector("[data-flow-box='included'] [data-count-note]"))).toBe(lang === "th" ? "ผ่านเกณฑ์ 22 จากที่ขอ 50" : "22 eligible of 50 requested");
       expect(text(limits.querySelector("[data-limitation='shortfall']"))).toMatch(lang === "th" ? /ผ่านเกณฑ์ 22 จาก 50 ฉบับ/ : /22 eligible of 50/);
       expect(text(limits.querySelector("[data-limitation='cap']"))).toMatch(lang === "th" ? /วิเคราะห์ 20 ฉบับ \(สูงสุด 50\)/ : /20 studies were analysed \(at most 50\)/);

@@ -103,7 +103,7 @@ class Capacity:
     def worst_case_cap(self) -> float:
         return review_cost_cap(self.settings, ReviewOptions(
             max_papers=ReviewOptions.bound("max_papers"),
-            candidate_limit=ReviewOptions.model_fields["candidate_limit"].default))
+            candidate_limit=ReviewOptions.bound("candidate_limit")))
 
     async def check(self, *, queued: int, running: int = 0, this_cap: float | None = None) -> Refusal | None:
         s = self.settings

@@ -84,7 +84,7 @@ def pct(values: list[float], p: float) -> str:
     if not values:
         return "-"
     values = sorted(values)
-    return f"{values[min(len(values) - 1, int(round(p / 100 * (len(values) - 1))))]:.2f}s"
+    return f"{values[min(len(values) - 1, round(p / 100 * (len(values) - 1)))]:.2f}s"
 
 
 async def main() -> None:

@@ -16,6 +16,10 @@ async function noHorizontalScroll(page: Page) {
 
 /** No two boxes overlap (a hair of anti-aliasing allowed). */
 function expectApart(boxes: { l: number; r: number; t: number; btm: number }[], what: string) {
+  boxes.forEach((b, i) => {
+    expect(b.r - b.l, `${what} ${i} has width`).toBeGreaterThan(4);
+    expect(b.btm - b.t, `${what} ${i} has height`).toBeGreaterThan(4);
+  });
   for (let i = 0; i < boxes.length; i++) {
     for (let j = i + 1; j < boxes.length; j++) {
       const [a, b] = [boxes[i], boxes[j]];

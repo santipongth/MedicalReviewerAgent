@@ -22,6 +22,7 @@
 import { asDesign, asDirection, isThemeDesign } from "./live-evidence";
 import type { DesignCategory, Direction, ReviewEvent } from "./types";
 import type { Connection } from "./use-review"; // type only (erased): no runtime cycle
+import { STAGE_MAX_PAPERS } from "./stage-size";
 
 export type AgentId =
   | "guard" | "refine" | "plan" | "search" | "enrich" | "screen" | "read" | "external" | "synth" | "localize" | "finish";
@@ -88,7 +89,6 @@ export interface Scene {
 }
 export type SceneAction = { kind: "event"; ev: ReviewEvent } | { kind: "lang"; language: string } | { kind: "requested"; value: unknown };
 
-import { STAGE_MAX_PAPERS } from "./stage-size";
 /** The most papers the stage shows (reader slots, 3D pile tokens); single-sourced in stage-size.ts (Plan 21). */
 export { STAGE_MAX_PAPERS };
 export const MAX_PULSES = 24;

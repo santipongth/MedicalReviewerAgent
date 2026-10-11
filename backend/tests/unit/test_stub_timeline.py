@@ -246,4 +246,5 @@ def test_stub_prisma_flow_balances_exactly(max_papers, candidates, review_type):
     assert st["screened"] - sum(excl.values()) - sum(sel.values()) == st["selected"]
     assert all(v >= 0 for v in (*excl.values(), *sel.values(), st["found"], st["unique"], st["with_abstract"],
                                 st["non_research"], st["year_excluded"], st["no_abstract"]))
+    assert st["unique"] == st["year_excluded"] + st["non_research"] + st["no_abstract"] + st["with_abstract"]
     assert sum(r["methods"]["sources"].values()) == st["found"] >= st["unique"] >= st["candidates"] >= st["selected"]

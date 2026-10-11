@@ -4,7 +4,7 @@
 
 /** The most papers the stage shows (reader slots, 3D pile tokens); covers /status `limits.max_papers.max`. */
 export const STAGE_MAX_PAPERS = 50;
-/** The service's default paper count (/status `limits.max_papers.default`), used when a run's count is unknown. */
+/** The service's default paper count (/status `limits.max_papers.default`), used when a run's count is unknown (layout only; it need not track /status). */
 export const DEFAULT_REQUESTED = 30;
 /** The reader pool's grid: 10 columns, 28 units per row (2D steps and team views). */
 export const POOL_COLS = 10;
