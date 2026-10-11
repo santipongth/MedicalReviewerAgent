@@ -97,6 +97,14 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
     evidence = len(specs)
     if not scoping:
         specs = (*specs, _RELATED)
+    # The illustrative paper list is fixed (6-8 studies), so `selected` is its length whatever max_papers asks for;
+    # the rest of the pool is split so the PRISMA flow balances exactly: screened - excluded = selected.
+    gap = max(0, opts.candidate_limit - len(specs))
+    over_limit = min(2, gap)
+    excluded = gap - over_limit
+    off_topic, population = excluded * 7 // 10, excluded * 2 // 10
+    excluded_screening = {"off_topic": off_topic, "population": population,
+                          "publication_type": excluded - off_topic - population}
     papers = []
     for i, (_d, _s, year, *_rest) in enumerate(specs):
         card = _card(i, topic, specs)
@@ -194,9 +202,9 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
         "papers": papers, "queries": [f"{topic} randomized controlled trial", f"{topic} cohort study"],
         "stats": {"found": found, "unique": found * 4 // 5, "with_abstract": found * 3 // 4,
                   "candidates": opts.candidate_limit, "screened": opts.candidate_limit,
-                  "selected": len(papers), "extracted": len(papers), "excluded_screening": {"off_topic": 20, "population": 5, "publication_type": 3},
+                  "selected": len(papers), "extracted": len(papers), "excluded_screening": excluded_screening,
                   "non_research": 4, "year_excluded": 0, "no_abstract": 2,
-                  "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
+                  "excluded_selection": {"narrative_excluded": 0, "over_limit": over_limit, "study_design_relaxed": 0,
                                          "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
                   "related_reports": sum(p["related_to"] is not None for p in papers)},
         # the lead clause the first graded finding shows is counted like the real check counts it

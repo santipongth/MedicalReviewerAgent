@@ -2,6 +2,7 @@
 import time
 from typing import get_args
 
+import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.config import Settings
@@ -163,7 +164,7 @@ async def test_timed_stub_result_is_representative_and_carries_review_type():
     r = final.values["result"]
     assert r["review_type"] == "scoping"
     assert len(r["papers"]) == 6 and len(r["synthesis"]["comparison"]) == 2
-    assert sum(r["stats"]["excluded_screening"].values()) == 28 and r["stats"]["non_research"] == 4
+    assert sum(r["stats"]["excluded_screening"].values()) == 112 and r["stats"]["non_research"] == 4
     assert r["stats"]["excluded_selection"] == {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
                                                 "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0}
     assert r["question"]["key_terms"][0].keys() == {"term", "synonyms", "mesh"}
@@ -173,3 +174,21 @@ async def test_timed_stub_result_is_representative_and_carries_review_type():
     assert r["synthesis"]["comparison"][0]["cells"][0]["direction"] in get_args(Direction)
     again = (await run(options={"review_type": "scoping"}, delay=0.1))[2].values["result"]
     assert again == r  # deterministic
+
+
+@pytest.mark.parametrize("review_type", ["slr", "scoping", "meta_analysis"])
+@pytest.mark.parametrize("candidates", [20, 120])
+@pytest.mark.parametrize("max_papers", [5, 30, 50])
+def test_stub_prisma_flow_balances_exactly(max_papers, candidates, review_type):
+    from app.graph.nodes.stub_result import stub_result
+    from app.schemas.review import ReviewOptions
+    opts = ReviewOptions(max_papers=max_papers, candidate_limit=max(candidates, max_papers))
+    r = stub_result("statins", "en", review_type, opts)
+    st = r["stats"]
+    excl, sel = st["excluded_screening"], st["excluded_selection"]
+    assert st["screened"] == opts.candidate_limit
+    assert st["selected"] == st["extracted"] == len(r["papers"])  # the illustrative paper list is fixed
+    assert st["screened"] - sum(excl.values()) - sum(sel.values()) == st["selected"]
+    assert all(v >= 0 for v in (*excl.values(), *sel.values(), st["found"], st["unique"], st["with_abstract"],
+                                st["non_research"], st["year_excluded"], st["no_abstract"]))
+    assert sum(r["methods"]["sources"].values()) == st["found"] >= st["unique"] >= st["candidates"] >= st["selected"]
