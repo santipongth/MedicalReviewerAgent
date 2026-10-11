@@ -1,0 +1,19 @@
+seed: 20261011
+pool_version: v1
+year_from: 2020
+year_to: 2025
+per_stratum: 10
+strata:
+  - name: cardiovascular
+    query: '(hypertension OR "heart failure" OR "coronary heart disease" OR stroke OR "atrial fibrillation")'
+  - name: diabetes_metabolic
+    query: '(diabetes OR obesity OR dyslipidaemia OR dyslipidemia OR "metabolic syndrome")'
+  - name: infection
+    query: '(dengue OR tuberculosis OR malaria OR HIV OR sepsis OR pneumonia OR "urinary tract infection")'
+  - name: maternal_child
+    query: '(pregnancy OR preterm OR neonatal OR newborn OR "postpartum haemorrhage" OR "pre-eclampsia" OR breastfeeding)'
+  - name: renal_respiratory
+    query: '("chronic kidney disease" OR dialysis OR asthma OR COPD OR "chronic obstructive pulmonary disease")'
+  - name: mental_health
+    query: '(depression OR anxiety OR schizophrenia OR "bipolar disorder" OR dementia OR "alcohol use disorder")'
+reviews: []
