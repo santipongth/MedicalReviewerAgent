@@ -25,14 +25,15 @@ _POOL = ReviewOptions.model_fields["candidate_limit"].default
 
 INSTRUCTIONS = f"""Medical literature review agent (abstracts only). It turns a topic or question into a structured
 question (PICO, or PCC for scoping reviews), searches PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv,
-DOAJ and OpenAIRE through its own SearXNG, screens about {_POOL} candidates that have abstracts and analyses the abstracts
-of the {_MIN_PAPERS}-{_MAX_PAPERS} most relevant (default {_DEFAULT_PAPERS}); every number shown is checked against the abstract, and numbers that fail are blanked.
+DOAJ and OpenAIRE through its own SearXNG, screens about {_POOL} candidates that have abstracts and analyses the
+abstracts of the {_MIN_PAPERS}-{_MAX_PAPERS} most relevant (default {_DEFAULT_PAPERS}); every number shown is checked
+against the abstract, and numbers that fail are blanked.
 Review types: slr (default), meta_analysis (adds labelled, system-computed pooled estimates), scoping, narrative.
 Reports include a comparison matrix, a literature matrix, a concept map and, when metadata is available, a citation
 network between the reviewed papers (OpenAlex / Europe PMC reference lists).
 Typical flow: start_review(topic) → poll get_review_status every ~10 seconds until the status is terminal: done, error,
 rejected or cancelled (done usually takes 1-3 minutes) → on done call get_review_result (or read
-review://{id}/report.md); on error/rejected/cancelled read the error field. search_papers answers quick literature
+review://{{id}}/report.md); on error/rejected/cancelled read the error field. search_papers answers quick literature
 questions without starting a review. When the service is busy, start_review fails with a reason (queue_full,
 daily_reviews, daily_budget) and how many seconds to wait. Results are a rapid, automated review of published
 papers, not medical advice."""

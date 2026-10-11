@@ -13,7 +13,7 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
 - Repositories never commit; callers use `async with session.begin()`.
 - Structured LLM calls go through `app/services/llm.py` and the harness runner (`app/harness/runner.py`: validate → repair → escalate), never raw provider clients in nodes. Prompts are English; translation happens last (`app/harness/localize.py`, numbers must survive unchanged).
 - Models, presets and per-role tuning live in `backend/config/llm.yaml` (default provider OpenRouter, preset `budget`; `LLM_PRESET` env overrides); `python -m app.cli.models list|check`. `GRAPH_MODE=stub` runs the Plan 1 placeholder graph; with `STUB_DELAY_SECONDS>0` the stub emits the real event sequence on a scaled timeline (manual QA of the live run, load tests).
-- Abstract only (2026-10-05): no full-text fetching or crawling of any kind; papers are read from title + abstract (candidates need ≥ 150 abstract chars) and numbers are verified against the abstract. a pool of up to 120 candidates (one SearXNG top-up page when short) is screened; the user picks how many are analysed (`max_papers`, limits from `/status`).
+- Abstract only (2026-10-05): no full-text fetching or crawling of any kind; papers are read from title + abstract (candidates need ≥ 150 abstract chars) and numbers are verified against the abstract. A pool of up to 120 candidates (one SearXNG top-up page when short) is screened; the user picks how many are analysed (`max_papers`, limits from `/status`).
 - Every role's LLM calls share one per-process semaphore (`LimitedLLM`, `LLM_CONCURRENCY`); localization runs in parallel 15-item chunks (bigger batches overflow `max_tokens` in Thai), then items still in English get one retry pass in 5-item chunks.
 - Numbers shown to users must be verified against the paper text (`app/harness/verify.py`); unverifiable numbers are nulled, never guessed.
 - REST routes and MCP tools are thin adapters over the service layer (`app/services/review_service.py`,
@@ -32,7 +32,7 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
 - `AppDeps` lives in `app/runtime.py` (re-exported by `app.main`) to avoid import cycles with `app/api/*`.
 - Capacity and scale (Plan 7): admission control, daily counters and SSE slots live in Redis (`app/services/capacity.py`,
   `sse_slots.py`), so any number of API processes behave as one; per-review LLM spend is capped by a contextvar budget
-  charged in `LimitedLLM` (`app/services/budget.py`); the cap scales with the request (`review_cost_cap`: 0.04 + 0.006·N + 0.0005·C, ≤ `max_cost_per_review_usd`) and admission reserves the worst case. Public limits come from `GET /api/v1/status`; never hard-code them
+  charged in `LimitedLLM` (`app/services/budget.py`); the cap scales with the request (`review_cost_cap`: `review_cost_base_usd` + `review_cost_per_paper_usd`·N + `review_cost_per_candidate_usd`·C, at most `max_cost_per_review_usd`; all in `app/config.py`); admission reserves the worst-case cap for each queued/running review and the request's own cap for the new one. Public limits come from `GET /api/v1/status`; never hard-code them
   in docs or UI. Reference docs: `docs/api.md` (keep it in step with routes, events, MCP tools and limits).
 - Load test: `scripts/loadtest.py` against the Caddy front (`:8088`) with `GRAPH_MODE=stub STUB_DELAY_SECONDS=20` (the stub now emits ~80 events per review).
 - Report (Plan 20, frontend): the section order comes from `SECTIONS_BY_TYPE` (answer first). Report chrome is in the

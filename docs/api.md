@@ -617,7 +617,7 @@ The daily budget figures are private. When the budget runs out, the status shows
 - The agent screens a pool of up to `candidate_limit` (default 120) candidates that have abstracts and analyses the `max_papers` (5–50, default 30) most relevant. Reading is on abstracts only.
 - Top-up: when fewer than `candidate_limit` candidates keep a usable abstract after the first search round, `enrich` runs one single top-up of the next SearXNG page (bounded by `searxng_pages_max`). The `searching` event's `found` counts the first round only; `stats.found` (PRISMA "identified") also counts the top-up hits.
 - Shortfall: when fewer than `max_papers` papers are eligible, all eligible papers are analysed and nothing is padded; `stats.excluded_selection.eligible` is then lower than `requested`. Both are informational, not exclusion counts.
-- Cost cap: each review is capped at `0.04 + 0.006 * max_papers + 0.0005 * candidate_limit` USD, never above `max_cost_per_review_usd` (0.60). Admission reserves the worst-case cap for queued and running reviews and the request's own cap for the new one, so a large request can be refused while a small one is still accepted.
+- Cost cap: each review is capped at `review_cost_base_usd + review_cost_per_paper_usd * max_papers + review_cost_per_candidate_usd * candidate_limit` USD (defaults 0.04, 0.006 and 0.0005), never above `max_cost_per_review_usd` (default 0.60). These are settings and can be tuned per deployment. Admission reserves the worst-case cap for queued and running reviews and the request's own cap for the new one, so a large request can be refused while a small one is still accepted.
 - Limits for clients come from `GET /api/v1/status → limits`, never hard-code them.
 
 ## Event stream (SSE)

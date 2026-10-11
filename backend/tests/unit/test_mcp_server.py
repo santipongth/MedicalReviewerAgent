@@ -115,6 +115,11 @@ async def test_tool_description_and_instructions_show_the_bounds_from_review_opt
         assert "5-30" not in text and "~60" not in text and "about 60" not in text
 
 
+def test_instructions_keep_the_literal_report_resource_and_no_evaluated_names():
+    from app.mcp.server import INSTRUCTIONS
+    assert "review://{id}/report.md" in INSTRUCTIONS and "<built-in" not in INSTRUCTIONS
+
+
 async def test_instructions_and_prompt_describe_the_current_service(mcp):
     from app.mcp.server import INSTRUCTIONS
     for text in (INSTRUCTIONS,):

@@ -25,6 +25,20 @@ def test_status_example_matches_review_option_bounds():
         assert limits[name] == _bounds(name)
 
 
+async def test_status_limits_match_the_documented_ones(app):
+    live = (await app.state.deps.service.status())["limits"]
+    for name in ("max_papers", "candidate_limit"):
+        assert live[name] == _status_example()["limits"][name]
+
+
+def test_openapi_description_uses_the_review_option_bounds(app):
+    text = app.openapi()["info"]["description"]
+    pool = ReviewOptions.model_fields["candidate_limit"].default
+    lo, hi = ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le")
+    assert str(pool) in text and f"{lo}-{hi}" in text
+    assert "about 60" not in text and "/reviews/{id}/events" in text and "<built-in" not in text
+
+
 def test_docs_have_no_stale_paper_counts():
     text = API_MD.read_text(encoding="utf-8")
     assert not re.search(r"~60|about 60|5[-–]30\b", text)

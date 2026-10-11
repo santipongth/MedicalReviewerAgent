@@ -46,5 +46,8 @@ def test_check_reports_problems_with_nonzero_exit(tmp_path):
 
 def test_typical_calls_assume_60_candidates_and_30_abstracts():
     from app.cli.models import TYPICAL_CALLS
-    assert TYPICAL_CALLS["extractor"] == (30, 1200, 700) and TYPICAL_CALLS["extractor_secondary"][0] == 30
-    assert TYPICAL_CALLS["screener"][0] == 6  # 60 candidates in batches of 10
+    from app.schemas.review import ReviewOptions
+    papers = ReviewOptions.model_fields["max_papers"].default
+    pool = ReviewOptions.model_fields["candidate_limit"].default
+    assert TYPICAL_CALLS["extractor"] == (papers, 1200, 700) and TYPICAL_CALLS["extractor_secondary"][0] == papers
+    assert TYPICAL_CALLS["screener"][0] == pool // 10  # the pool in batches of 10
