@@ -66,3 +66,27 @@ async def test_non_eligibility_value_is_excluded_not_a_crash():
     http = FakeHttp([rec(1, "Search up to 2023")])
     out = await select(deps, http, "u", Manifest(seed=1, per_stratum=1, strata=[Stratum(name="cv", query="x")]))
     assert [(r.status, r.exclusion_reason) for r in out.reviews] == [("excluded", "model gave no answer")]
+
+
+def rec_doi(doi, abstract="Search up to 2023"):
+    return {"pmid": "p", "doi": doi, "title": "Review", "abstractText": abstract}
+
+
+@pytest.mark.asyncio
+async def test_two_versions_of_one_review_give_one_entry_with_the_newer_doi():
+    deps = make_deps()
+    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    records = [rec_doi("10.1002/14651858.CD000001.pub2"), rec_doi("10.1002/14651858.CD000001.pub3")]
+    out = await select(deps, FakeHttp(records), "u", Manifest(seed=1, per_stratum=3, strata=[Stratum(name="cv", query="x OR y")]))
+    assert [(r.id, r.doi) for r in out.reviews] == [("CD000001", "10.1002/14651858.CD000001.pub3")]
+
+
+@pytest.mark.asyncio
+async def test_same_review_in_two_strata_lands_once_in_the_first_stratum():
+    deps = make_deps()
+    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    http = FakeHttp([rec_doi("10.1002/14651858.CD000001.pub1")])
+    m = Manifest(seed=1, per_stratum=1, strata=[Stratum(name="cv", query="heart"), Stratum(name="lung", query="lung")])
+    out = await select(deps, http, "u", m)
+    assert [(r.id, r.stratum) for r in out.reviews] == [("CD000001", "cv")]
+    assert 'AND (heart)' in http.calls[0]["query"]

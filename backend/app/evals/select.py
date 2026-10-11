@@ -14,6 +14,7 @@ from app.graph.nodes.intake import harness_runner
 
 _CD = re.compile(r"(CD\d{6})", re.IGNORECASE)
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_PUB = re.compile(r"\.pub(\d+)$", re.IGNORECASE)
 
 
 class CochraneEligibility(BaseModel):
@@ -44,7 +45,7 @@ def cochrane_id(doi: str) -> str:
 
 async def frame(http, base_url: str, manifest: Manifest, stratum: Stratum) -> list[dict[str, Any]]:
     query = (f'JOURNAL:"Cochrane Database Syst Rev" AND PUB_YEAR:[{manifest.year_from} TO {manifest.year_to}] '
-             f"AND {stratum.query}")
+             f"AND ({stratum.query})")
     out: list[dict[str, Any]] = []
     cursor = "*"
     while True:
@@ -58,6 +59,24 @@ async def frame(http, base_url: str, manifest: Manifest, stratum: Stratum) -> li
         if not page or not nxt or nxt == cursor:
             return out
         cursor = nxt
+
+
+def cochrane_version(doi: str) -> int:
+    """The pubN of a Cochrane DOI (10.1002/14651858.CD012345.pub3 -> 3); no .pub suffix counts as version 1."""
+    m = _PUB.search(doi or "")
+    return int(m.group(1)) if m else 1
+
+
+def latest_per_review(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One record per Cochrane id: the highest pubN (first seen on a tie). Order follows first appearance."""
+    best: dict[str, dict[str, Any]] = {}
+    for r in records:
+        cid = cochrane_id(r.get("doi", ""))
+        if not cid:
+            continue
+        if cid not in best or cochrane_version(r["doi"]) > cochrane_version(best[cid]["doi"]):
+            best[cid] = r
+    return list(best.values())
 
 
 def _exclusion(v: Any) -> str:
@@ -75,7 +94,9 @@ async def select(deps, http, base_url: str, manifest: Manifest) -> Manifest:
     runner = harness_runner(deps)
     reviews = list(manifest.reviews)
     for stratum in manifest.strata:
-        records = [r for r in await frame(http, base_url, manifest, stratum) if cochrane_id(r.get("doi", ""))]
+        taken = {e.id for e in reviews}  # a review lands in the first stratum that reaches it
+        records = [r for r in latest_per_review(await frame(http, base_url, manifest, stratum))
+                   if cochrane_id(r["doi"]) not in taken]
         random.Random(f"{manifest.seed}:{stratum.name}").shuffle(records)
         eligible = 0
         for r in records:
