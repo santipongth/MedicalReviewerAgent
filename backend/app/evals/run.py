@@ -64,7 +64,8 @@ async def replay(deps, fixture: Fixture, *, options: dict[str, Any], repeat: int
     tally = CitationTally()
     budget = ReviewBudget(cap_usd=review_cost_cap(deps.settings, ReviewOptions.clamped(options)))
     common = {"id": fixture.id, "repeat": repeat, "run_id": run_id, "prompt_version": deps.settings.prompt_version,
-              "git_sha": git_sha, "preset": getattr(deps.llms, "preset", ""),
+              "git_sha": git_sha, "pool_version": fixture.pool_version,
+              "fixture_frozen_at": fixture.frozen_at, "preset": getattr(deps.llms, "preset", ""),
               "models": dict(getattr(deps.llms, "models", {}) or {}), "started_at": started_at}
     try:
         with use_budget(budget), use_tally(tally):

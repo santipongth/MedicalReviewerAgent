@@ -17,6 +17,9 @@ async def freeze_one(deps, entry: ManifestEntry, *, pool_version: str, git_sha: 
     base = {"id": entry.id, "pool_version": pool_version, "frozen_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "git_sha": git_sha, "prompt_version": deps.settings.prompt_version, "engines": engines,
             "year_to": entry.year_to or 9999, "pmid": entry.pmid, "topic": entry.question}
+    if entry.year_to is None:  # never freeze without a cutoff
+        return Fixture(**base, english_topic=None, question=None, plan=None, candidates=[], search_stats={},
+                       status="error", error="no year_to (search date) in manifest")
     state = {**initial_state(f"freeze-{entry.id}", entry.question, "en", entry_options(entry)),
              "eval_year_to": entry.year_to}
     try:

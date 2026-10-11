@@ -150,3 +150,32 @@ async def test_select_continue_keeps_entries_and_conflicts_with_force(tmp_path, 
     assert seen["ids"] == ["CD1"]
     with pytest.raises(SystemExit):
         await run(["select", "--continue", "--force"], make_deps(), None, "")
+
+
+@pytest.mark.asyncio
+async def test_run_prints_run_id_first_and_report_shows_record_pool(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(models, "EVAL_ROOT", tmp_path)
+    save_manifest(Manifest(seed=1, strata=[Stratum(name="cv", query="x")], reviews=[_entry("CD1")]),
+                  tmp_path / "manifest.yaml")
+    deps = make_deps()
+    assert await run(["run", "--run-id", "idx"], deps, None, "") == 0
+    assert capsys.readouterr().out.splitlines()[0] == "run id: idx"
+    _write_rec(tmp_path, deps.settings.prompt_version, "pp", "CD1", 1, pool_version="v7")
+    _write_rec(tmp_path, deps.settings.prompt_version, "pp", "CD1", 2, pool_version="v7")
+    assert await run(["report", "--run-id", "pp"], deps, None, "") == 0
+    report = (tmp_path / "reports" / f"{deps.settings.prompt_version}-pp.md").read_text(encoding="utf-8")
+    assert "pool `v7`" in report
+
+
+def test_git_sha_uses_describe_dirty(monkeypatch):
+    import subprocess
+
+    from app.cli import eval as cli
+    seen = {}
+
+    def fake(cmd, **k):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="abc123-dirty\n")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake)
+    assert cli.git_sha() == "abc123-dirty" and seen["cmd"] == ["git", "describe", "--always", "--dirty"]

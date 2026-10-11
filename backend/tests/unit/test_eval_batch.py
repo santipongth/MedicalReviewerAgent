@@ -70,3 +70,21 @@ def test_selected_excludes_unchecked_and_excluded_entries():
         ManifestEntry(id="OUT", stratum="cv", title="t", checked_by_owner=True, status="excluded"),
     ])
     assert [e.id for e in _selected(m, None)] == ["OK"]
+
+
+@pytest.mark.asyncio
+async def test_freeze_without_year_to_is_an_error_fixture(root):
+    deps, m = make_deps(), manifest(1)
+    m.reviews[0].year_to = None
+    [fx] = await freeze_all(deps, m, ids=None, force=False, git_sha="s", engines=["pubmed"])
+    assert fx.status == "error" and fx.error == "no year_to (search date) in manifest" and fx.candidates == []
+    assert deps.searxng.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_run_records_carry_pool_provenance(root):
+    deps, m = make_deps(), manifest(1)
+    [fx] = await freeze_all(deps, m, ids=None, force=False, git_sha="s", engines=["pubmed"])
+    await run_all(deps, m, run_id="p1", repeats=1, max_usd=100, ids=None, git_sha="s")
+    rec = read_model(run_path(deps.settings.prompt_version, "p1", "CD0", 1), RunRecord)
+    assert rec.pool_version == "v1" and rec.fixture_frozen_at == fx.frozen_at != ""

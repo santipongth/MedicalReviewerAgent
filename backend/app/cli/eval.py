@@ -47,7 +47,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def git_sha() -> str:
     try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+        return subprocess.run(["git", "describe", "--always", "--dirty"], capture_output=True, text=True,
                               check=True).stdout.strip()
     except Exception:  # noqa: BLE001 - outside a checkout
         return "unknown"
@@ -107,6 +107,7 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
         print(", ".join(f"{f.id}:{f.status}:{len(f.candidates)}" for f in fixtures))
         return 0
     if args.cmd == "run":
+        print(f"run id: {args.run_id}")
         s = await run_all(deps, manifest, run_id=args.run_id, repeats=args.repeats, max_usd=args.max_usd,
                           ids=args.ids, git_sha=git_sha())
         print(f"run {args.run_id}: done={s.done} skipped={s.skipped} failed={s.failed} spent=${s.spent:.2f}"
