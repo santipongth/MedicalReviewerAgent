@@ -49,3 +49,24 @@ async def test_rejected_topic_is_recorded_not_dropped(root):
     s = await run_all(deps, m, run_id="r3", repeats=1, max_usd=100, ids=None, git_sha="s")
     rec = read_model(run_path(deps.settings.prompt_version, "r3", "CD0", 1), RunRecord)
     assert s.failed == 1 and rec.status == "rejected"
+
+
+async def test_missing_fixture_writes_no_record_and_freeze_repairs_it(root):
+    deps, m = make_deps(), manifest(1)
+    s1 = await run_all(deps, m, run_id="r4", repeats=2, max_usd=100, ids=None, git_sha="s")
+    assert s1.missing_fixture == ["CD0"]
+    assert (s1.done, s1.failed) == (0, 0)
+    assert not models.run_path(deps.settings.prompt_version, "r4", "CD0", 1).exists()
+    await freeze_all(deps, m, ids=None, force=False, git_sha="s", engines=["pubmed"])
+    s2 = await run_all(deps, m, run_id="r4", repeats=1, max_usd=100, ids=None, git_sha="s")
+    assert s2.done == 1 and s2.missing_fixture == []
+
+
+def test_selected_excludes_unchecked_and_excluded_entries():
+    from app.evals.freeze import _selected
+    m = Manifest(seed=1, reviews=[
+        ManifestEntry(id="OK", stratum="cv", title="t", checked_by_owner=True),
+        ManifestEntry(id="UNCHECKED", stratum="cv", title="t", checked_by_owner=False),
+        ManifestEntry(id="OUT", stratum="cv", title="t", checked_by_owner=True, status="excluded"),
+    ])
+    assert [e.id for e in _selected(m, None)] == ["OK"]

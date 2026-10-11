@@ -2,7 +2,7 @@
 runs once the batch has spent `max_usd`."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from app.evals import models
@@ -18,6 +18,7 @@ class BatchSummary:
     failed: int = 0
     spent: float = 0.0
     stopped_for_budget: bool = False
+    missing_fixture: list[str] = field(default_factory=list)
 
 
 async def run_all(deps, manifest: Manifest, *, run_id: str, repeats: int, max_usd: float, ids: list[str] | None,
@@ -26,7 +27,10 @@ async def run_all(deps, manifest: Manifest, *, run_id: str, repeats: int, max_us
     pv = deps.settings.prompt_version
     for entry in _selected(manifest, ids):
         fx_path = models.fixture_path(manifest.pool_version, entry.id)
-        fixture = models.read_model(fx_path, Fixture) if fx_path.exists() else None
+        if not fx_path.exists():  # operator error, not a review outcome: no run record, so freeze can repair it
+            s.missing_fixture.append(entry.id)
+            continue
+        fixture = models.read_model(fx_path, Fixture)
         for repeat in range(1, repeats + 1):
             path = models.run_path(pv, run_id, entry.id, repeat)
             if path.exists():
@@ -35,13 +39,12 @@ async def run_all(deps, manifest: Manifest, *, run_id: str, repeats: int, max_us
             if s.spent >= max_usd:
                 s.stopped_for_budget = True
                 return s
-            if fixture is None or fixture.status != "ok":
-                status = "rejected" if fixture is not None and fixture.status == "rejected" else "error"
+            if fixture.status != "ok":
                 rec = RunRecord(id=entry.id, repeat=repeat, run_id=run_id, prompt_version=pv, git_sha=git_sha,
                                 preset=getattr(deps.llms, "preset", ""), models={},
                                 started_at=datetime.now(UTC).isoformat(timespec="seconds"), elapsed_s=0.0,
-                                cost_usd=0.0, status=status,
-                                error=fixture.error if fixture is not None else "no fixture (run freeze first)")
+                                cost_usd=0.0, status="rejected" if fixture.status == "rejected" else "error",
+                                error=fixture.error)
             else:
                 rec = await replay(deps, fixture, options=entry_options(entry), repeat=repeat, run_id=run_id,
                                    git_sha=git_sha, primary_outcome=entry.primary_outcome)
