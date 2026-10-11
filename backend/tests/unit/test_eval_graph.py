@@ -63,3 +63,54 @@ def test_eval_state_carries_pool_and_question():
     fx = fixture_from({"candidates": [{"title": "x"}], "question": {"p": 1}, "plan": {"queries": ["q"]}})
     s = eval_state(fx, {"max_papers": 8})
     assert s["candidates"] == [{"title": "x"}] and s["plan"] == {"queries": ["q"]} and s["question"] == {"p": 1}
+
+
+class _FakeGraph:
+    def __init__(self, values=None, exc=None):
+        self.values, self.exc = values, exc
+
+    async def ainvoke(self, *a, **k):
+        if self.exc:
+            raise self.exc
+        return self.values
+
+
+async def _replay(deps, fx):
+    return await replay(deps, fx, options={"max_papers": 8, "candidate_limit": 20}, repeat=1, run_id="r",
+                        git_sha="s", primary_outcome="CRC incidence")
+
+
+@pytest.mark.asyncio
+async def test_replay_graph_exception_is_an_error_record(monkeypatch):
+    deps = make_deps()
+    fx = fixture_from(await freeze_values(deps))
+    monkeypatch.setattr("app.evals.run.build_eval_graph", lambda d: _FakeGraph(exc=ValueError("boom")))
+    rec = await _replay(deps, fx)
+    assert rec.status == "error" and "boom" in rec.error
+    assert rec.cost_usd == 0.0 and rec.citations == {"proposed": 0, "stripped": 0}
+
+
+@pytest.mark.asyncio
+async def test_replay_llm_exception_is_an_error_record():
+    from tests.fakes import FakeStructuredLLM
+
+    def boom(system, user):
+        raise RuntimeError("llm down")
+
+    deps = make_deps()
+    fx = fixture_from(await freeze_values(deps))
+    deps.llms.screener = FakeStructuredLLM("scr", boom)
+    rec = await _replay(deps, fx)
+    assert rec.status == "error" and "llm down" in rec.error
+    assert "cost_usd" in rec.model_dump() and set(rec.citations) == {"proposed", "stripped"}
+
+
+@pytest.mark.asyncio
+async def test_replay_empty_result_is_an_error_keeping_cost(monkeypatch):
+    deps = make_deps()
+    fx = fixture_from(await freeze_values(deps))
+    monkeypatch.setattr("app.evals.run.build_eval_graph", lambda d: _FakeGraph(values={"cost_usd": 0.5}))
+    rec = await _replay(deps, fx)
+    assert rec.status == "error" and rec.error == "empty result" and rec.result is None
+    assert rec.cost_usd == 0.5
+    assert set(rec.citations) == {"proposed", "stripped"}

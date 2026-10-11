@@ -72,6 +72,11 @@ async def replay(deps, fixture: Fixture, *, options: dict[str, Any], repeat: int
             values = await graph.ainvoke(eval_state(fixture, options, language),
                                          {"configurable": {"thread_id": f"{fixture.id}-{repeat}"}})
             result = values.get("result") or {}
+            if not result:  # a graph that ends without a report is a failed review, never a "done" one
+                return RunRecord(**common, elapsed_s=round(time.monotonic() - t0, 2),
+                                 cost_usd=round(max(budget.spent, float(values.get("cost_usd", 0.0))), 6),
+                                 status="error", error="empty result",
+                                 citations={"proposed": tally.proposed, "stripped": tally.stripped})
             match, match_cost = await match_primary(deps, result, primary_outcome)
     except Exception as exc:  # noqa: BLE001 - a failed review is recorded and stays in every denominator
         return RunRecord(**common, elapsed_s=round(time.monotonic() - t0, 2), cost_usd=round(budget.spent, 6),
