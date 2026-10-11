@@ -48,6 +48,7 @@ from typing import NamedTuple
 from rapidfuzz import fuzz
 
 from app.graph.schemas import OutcomeResult, PaperCard
+from app.harness.citation_tally import current_tally
 from app.services.text import normalize_title
 
 RATIO_MEASURES = {"HR", "OR", "RR"}
@@ -616,8 +617,14 @@ def check_citations(text: str, allowed: set[str]) -> list[str]:
 
 
 def strip_unknown_citations(text: str, allowed: set[str]) -> str:
+    tally = current_tally()
+
     def keep(match: re.Match) -> str:
-        refs = [r for r in _REF.findall(match.group(1)) if r in allowed]
+        cited = _REF.findall(match.group(1))
+        refs = [r for r in cited if r in allowed]
+        if tally is not None:
+            tally.proposed += len(cited)
+            tally.stripped += len(cited) - len(refs)
         if not refs:
             return ""
         lead = " " if match.group(0).startswith(" ") else ""
