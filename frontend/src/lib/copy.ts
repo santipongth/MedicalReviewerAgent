@@ -7,3 +7,30 @@ export const POOLED_OVERLAP_TH = "งานทบทวน/วิเคราะ
 export const AS_READ_TH = "ตามที่เอเจนต์อ่าน";
 /** A finished read without a (known) direction: old events or future enum values. Never shown as "unclear". */
 export const NO_DIRECTION_TH = "ไม่มีข้อมูลทิศทาง";
+
+type Copy = { th: string; en: string };
+/**
+ * A meta-analysis without a pooled estimate, in its two honest states (title-block chip, bottom line, section). "none":
+ * the pooling step ran and no outcome qualified. "failed": the step did not complete (`meta_analysis` is null), so the
+ * cause is unknown and the copy never claims "fewer than 3 studies".
+ */
+export const META_POOL_COPY: Record<"none" | "failed", { chip: Copy; label: Copy; reason: Copy; heading: Copy }> = {
+  none: {
+    chip: { th: "(รวมผลไม่ได้)", en: "(not pooled)" },
+    label: { th: "การวิเคราะห์อภิมาน (รวมผลไม่ได้)", en: "Meta-analysis (not pooled)" },
+    reason: {
+      th: "ไม่มีผลลัพธ์ใดที่มีงานวิจัยหลักตั้งแต่ 3 ฉบับวัดผลด้วยตัววัดเดียวกันและมีตัวเลขที่ตรวจผ่านครบ จึงไม่มีค่ารวม",
+      en: "No outcome had at least 3 primary studies with the same measure and fully verified numbers, so there is no pooled estimate",
+    },
+    heading: { th: "การวิเคราะห์อภิมาน: รวมผลไม่ได้", en: "Meta-analysis: not pooled" },
+  },
+  failed: {
+    chip: { th: "(รวมผลไม่สำเร็จ)", en: "(pooling failed)" },
+    label: { th: "การวิเคราะห์อภิมาน (รวมผลไม่สำเร็จ)", en: "Meta-analysis (pooling failed)" },
+    reason: {
+      th: "ขั้นตอนรวมผลทำงานไม่สำเร็จ จึงไม่มีค่ารวม ผลของแต่ละงานยังอยู่ในรายงาน",
+      en: "The pooling step did not complete, so there is no pooled estimate; each study's result is still in the report",
+    },
+    heading: { th: "การวิเคราะห์อภิมาน: ค่ารวมไม่สำเร็จ", en: "Meta-analysis: pooling failed" },
+  },
+};

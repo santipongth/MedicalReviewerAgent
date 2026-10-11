@@ -26,13 +26,19 @@ export function isPooledDesign(d: DesignCategory | null): boolean {
   return d !== null && d.startsWith("sr_ma");
 }
 
+/** Qualitative / mixed-methods (same rule as charts-data `isNonQuantitative`): themes, never a direction. */
+export function isThemeDesign(d: DesignCategory | null | undefined): boolean {
+  return d === "qualitative" || d === "mixed_methods";
+}
+
 export interface EvidenceItem {
   ref: string; direction: Direction; design: DesignCategory | null; uncertain: boolean; key: number; title: string | null;
 }
 export interface LiveTally {
   groups: Record<Direction, EvidenceItem[]>;
   counted: number; // items on the board (finished, read ok, with a known direction)
-  noDirection: number; // read ok but no (known) direction
+  noDirection: number; // read ok but no (known) direction (themes not included)
+  themes: number; // read ok, qualitative / mixed-methods: summarised as themes, never on the board
   failed: number; // read failed: never on the board
   uncertain: number; // finished ok reads where the two models disagreed
   pooled: number; // board items with an SR/MA design
@@ -46,6 +52,7 @@ export function liveTally(s: Scene): LiveTally {
   const groups = { positive: [], negative: [], null: [], mixed: [], unclear: [] } as Record<Direction, EvidenceItem[]>;
   let counted = 0;
   let noDirection = 0;
+  let themes = 0;
   let failed = 0;
   let uncertain = 0;
   let pooled = 0;
@@ -55,6 +62,7 @@ export function liveTally(s: Scene): LiveTally {
   for (const sl of done) {
     if (sl.state === "failed") { failed++; continue; }
     if (sl.state === "uncertain") uncertain++;
+    if (isThemeDesign(sl.design)) { themes++; continue; }
     if (sl.direction === null || sl.ref === null) { noDirection++; continue; }
     groups[sl.direction].push({
       ref: sl.ref, direction: sl.direction, design: sl.design, uncertain: sl.state === "uncertain",
@@ -63,5 +71,5 @@ export function liveTally(s: Scene): LiveTally {
     counted++;
     if (isPooledDesign(sl.design)) pooled++;
   }
-  return { groups, counted, noDirection, failed, uncertain, pooled, total: s.slots.length };
+  return { groups, counted, noDirection, themes, failed, uncertain, pooled, total: s.slots.length };
 }

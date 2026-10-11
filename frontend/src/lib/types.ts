@@ -77,6 +77,20 @@ export interface Paper {
   card_en?: PaperCard | null;
   verification?: Verification | null;
   error?: string | null;
+  /** Plan 20 Task 10 (engine): a further report of a trial already analysed: the primary report's ref. Absent before it. */
+  related_to?: string | null;
+  /**
+   * English, from the engine: "same trial (EMPEROR-Preserved)", "same trial (NCT03057951)", "near-identical title, same
+   * first author, same sample size" or "… same registry number" (shown through `relatedReasonText`).
+   */
+  related_reason?: string | null;
+  /** On the primary report: the refs of the other reports of the same trial ([] on every other paper). */
+  related_reports?: string[];
+  /**
+   * Plan 20 Task 6: read as a design outside the ticked study types (one of `excluded_selection.study_design_corrected`):
+   * listed with its card, not evidence. Absent before it.
+   */
+  design_excluded?: boolean;
 }
 
 export interface ComparisonCell {
@@ -101,6 +115,12 @@ export interface EvidenceCluster {
   refs: string[];
   explanation: string;
   likely_reasons?: string[];
+  /**
+   * Plan 20 Task 11: systematic reviews and primary studies point different ways (a conflict, or a consensus that
+   * significant reviews contradict). Never lowers the grade. Absent before it: the engine's fixed statement wording
+   * still tells (see `isReviewDiscordant`).
+   */
+  review_discordant?: boolean;
 }
 
 export type EvidenceStrength = "high" | "moderate" | "low" | "very_low";
@@ -114,6 +134,56 @@ export interface Synthesis {
   evidence_rationale?: string;
   research_gaps?: string[];
   grade_baseline?: EvidenceStrength | null;
+  /** Plan 20: 1–2 sentence direct answer (numberless; GRADE wording for graded types). "" or absent in older results. */
+  answer?: string;
+  /** Plan 20: at most 5 numberless findings; render numbers from the cards in `refs` or the matching pool. */
+  key_findings?: KeyFinding[];
+}
+
+/** Plan 20: `outcome` is a comparison row name when it is about a row (localized like the row in `synthesis`). */
+export interface KeyFinding {
+  /** a comparison row name when it is about a row (localized like the row in `synthesis`) */
+  outcome: string;
+  /**
+   * no numbers, no [Pn]. At low / very low certainty a strong causal claim is led by a fixed clause that is part of the
+   * statement ("Low-certainty evidence suggests: …", "Very low-certainty evidence: …"), localized with it.
+   */
+  statement: string;
+  refs: string[];
+  k: number; // refs.length
+  /**
+   * Set in code, never by the model (Plan 20 Task 10): the review's final evidence_strength for graded types, null for
+   * narrative and scoping reviews (not graded). Absent in results stored before it: the review-level grade, labelled.
+   */
+  certainty?: EvidenceStrength | null;
+}
+
+/** Plan 20: result.methods (absent in results stored before Plan 20). Models are "provider:model" strings. */
+export interface ReviewMethods {
+  searched_at: string | null; // ISO 8601 UTC
+  sources: Record<string, number> | null; // records per source before deduplication (can sum to more than found)
+  eligibility: {
+    year_from: number | null;
+    study_types: string[];
+    inclusion_criteria: string[];
+    exclusion_criteria: string[];
+  };
+  limits: { candidate_limit: number; max_papers: number; min_abstract_chars: number };
+  screening: {
+    model: string | null;
+    second_model: string | null;
+    second_vote: "two_models" | "same_model" | "off";
+    borderline: [number, number];
+    relevance_floor: number;
+  };
+  extraction: {
+    model: string | null;
+    second_model: string | null;
+    verify_quotes: boolean;
+    quote_match_threshold: number;
+    text: "abstract";
+  };
+  synthesis: { model: string | null; pooling: string | null; grading: string | null };
 }
 
 export interface QuestionText {
@@ -167,6 +237,18 @@ export interface Quality {
   citation_fixes?: number;
   /** meta_analysis: sentences the post-check removed for restating a pooled number (when the backend reports it). */
   pooled_numbers?: { removed: number; kept_single_study: number };
+  /** Plan 19 grounded-prose check (only the keys the report reads; absent in older results). */
+  prose_check?: {
+    /**
+     * How the evidence rationale was reconciled with the GRADE-lite factors in code: "replaced" (by the factors),
+     * "appended" (a missing downgrade added), "trimmed" (Plan 20 Task 10: sentences that claimed more than the data show
+     * were removed) or null (kept as written).
+     */
+    rationale_fixed?: "replaced" | "appended" | "trimmed" | null;
+    answer_removed?: number;
+    key_findings_removed?: number;
+    key_findings_certainty_lead?: number;
+  };
   timings?: Record<string, number | null>;
 }
 
@@ -267,7 +349,10 @@ export interface Stats {
     narrative_excluded: number; over_limit: number; low_relevance?: number;
     study_design_relaxed?: number; // design mismatches kept because fewer than 3 papers matched the ticked types
     study_design_corrected?: number; // Plan 19: read as a design outside the ticked types; listed, not evidence
+    off_focus?: number; // Plan 20 Task 10: themes reviews only, included papers that never name the question's focus
   };
+  /** Plan 20 Task 10: analysed papers that are further reports of a trial already analysed (not counted again). */
+  related_reports?: number;
 }
 
 export interface ExternalNote {
@@ -297,6 +382,7 @@ export interface ReviewResult {
   external_context?: ExternalNote[];
   meta_analysis?: MetaAnalysis | null; // Plan 14b
   citations?: Citations | null; // Plan 14b
+  methods?: ReviewMethods; // Plan 20
 }
 
 export interface ServiceStatus {

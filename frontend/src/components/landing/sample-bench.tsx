@@ -7,6 +7,7 @@ import { DIRECTION_LABEL } from "@/lib/i18n";
 import { SAMPLE, SAMPLE_OUTCOME } from "@/lib/landing-sample";
 import type { Direction, Paper } from "@/lib/types";
 import { Glyph, Hole, VerifiedNumber } from "../ui/evidence";
+import { Gloss } from "../ui/gloss";
 import { HighlightedQuote } from "../ui/quote";
 import { MiniForest, rowKey } from "./mini-forest";
 
@@ -67,16 +68,21 @@ export function SampleBench() {
             ตัวเลขที่มีเส้นเทปลายทแยงตรวจกับบทคัดย่อแล้ว แตะเพื่อดูประโยคต้นฉบับ
             ส่วนช่องลายเส้นคือค่าที่ตรวจไม่ผ่าน ระบบเว้นว่างไว้ ไม่เดา
           </p>
+          <p className="max-w-[65ch] text-[0.95rem] text-muted">
+            อ่านตัวเลขอย่างไร: <Gloss k="ratios" full /> · <Gloss k="ci95" /> · <Gloss k="sampleSize" />
+          </p>
         </div>
         <p data-testid="sample-summary" className="max-w-[65ch] text-[1.02rem] leading-[1.9]">
-          การทดลองแบบสุ่ม {trials.length} ฉบับ: {summary} ส่วนการวิเคราะห์อภิมาน {pooled.length} ฉบับรายงานค่ารวมตั้งแต่{" "}
+          การทดลองแบบสุ่ม {trials.length} ฉบับ: {summary} ส่วน<Gloss k="metaAnalysis" named /> {pooled.length} ฉบับรายงานค่ารวมตั้งแต่{" "}
           <VerifiedNumber value={pooled[0].valueText} onSelect={select(pooled[0])} /> ถึง{" "}
           <VerifiedNumber value={pooled[pooled.length - 1].valueText} onSelect={select(pooled[pooled.length - 1])} />
         </p>
         <div className="grid gap-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-[1.02rem] font-semibold">MACE · อัตราส่วน (log scale)</h3>
-            <span className="label">แตะแถวเพื่อดูประโยคต้นฉบับ</span>
+          <div className="grid gap-1">
+            <h3 className="text-[1.02rem] font-semibold"><Gloss k="mace" /></h3>
+            <p className="text-[0.88rem] text-muted">
+              อัตราส่วนบน <Gloss k="logScale" /> · <span className="font-display font-semibold">แตะแถวเพื่อดูประโยคต้นฉบับ</span>
+            </p>
           </div>
           <MiniForest group={group} selected={selected} onSelect={setSelected} sub={sub} />
           {unplotted.length > 0 && (

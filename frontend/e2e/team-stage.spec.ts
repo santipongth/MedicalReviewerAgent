@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { TEAM_NARROW_HEIGHT } from "../src/components/review/stage/stage-placeholder";
 import { reviewFixture } from "../src/test/fixtures";
-import { json, mockApi, RID, streamSse, type SseFrame } from "./mock-api";
+import { json, mockApi, RID, sseGatesOpen, streamSse, type SseFrame } from "./mock-api";
 
 // The 2D agent team view (Plan 18), the stage's default view.
 type Ev = [string, Record<string, unknown>];
@@ -38,7 +38,8 @@ async function open(page: Page, frames: SseFrame[]) {
   await streamSse(page, frames);
   await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: running });
   await page.goto(`/r/${RID}`);
-  await expect(page.locator("[data-team-stage]")).toBeVisible();
+  // a load guard, not a timing assertion: with 20 browsers at once the lazy team chunk can take over 5 s
+  await expect(page.locator("[data-team-stage]")).toBeVisible({ timeout: 20_000 });
 }
 
 async function noSeriousA11y(page: Page) {
@@ -87,13 +88,42 @@ test("the team view is the default: five named agents, phases and speech follow 
   await expect(page.getByText("ขั้นคิด/วิเคราะห์/วางแผน/ลงมือ มาจากเหตุการณ์จริงของระบบ ไม่ใช่ความคิดภายในของโมเดล")).toBeVisible();
 });
 
+// Flake root causes (Task 9): the packet attribute and the sender's glance live only for one flight (~700 ms), and the
+// test polled those transient states (18 of 20 runs failed with 10 workers); and the hand-off frame came at a fixed
+// 2.5 s, so when the lazy team chunk loaded later under load the hand-off was history at mount and never flew. Now a
+// MutationObserver installed before the page loads records every packet launch and glance with its time, the test
+// reads that log, and the hand-off frame is sent once the team stage is on the page (both real events).
 test("a live hand-off flies a packet with its wake between avatars, and working agents blink and ping", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await open(page, [{ delayMs: 0, events: PRE.slice(0, 9) }, { delayMs: 2500, events: [PRE[9], ...READING] }]);
-  await expect(member(page, "screener")).toHaveAttribute("data-status", "working");
-  expect(await page.locator("[data-packet]").count()).toBe(0); // history at mount never animates
-  await expect(page.locator("[data-team-overlay] [data-packet]").first()).toBeAttached({ timeout: 10_000 });
-  await expect(member(page, "screener").locator("[data-eyes]")).toHaveAttribute("data-look", "r"); // glances at the reader
+  await page.addInitScript(() => {
+    const log: { packet: { at: number; overlay: boolean }[]; look: { at: number; member: string | null; dir: string }[] } = { packet: [], look: [] };
+    (window as unknown as { __handoffs: typeof log }).__handoffs = log;
+    new MutationObserver((records) => {
+      for (const r of records) {
+        const el = r.target as Element;
+        const v = el.getAttribute(r.attributeName!);
+        if (v == null) continue;
+        if (r.attributeName === "data-packet") log.packet.push({ at: Date.now(), overlay: !!el.closest("[data-team-overlay]") });
+        else log.look.push({ at: Date.now(), member: el.closest("[data-member]")?.getAttribute("data-member") ?? null, dir: v });
+      }
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ["data-packet", "data-look"] });
+  });
+  // the hand-off frame is sent once the team stage (a lazy chunk) is on the page, plus a beat: under load the chunk could
+  // load after a fixed 2.5 s frame, so the hand-off was history at mount and never flew
+  await open(page, [{ delayMs: 0, events: PRE.slice(0, 9) }, { delayMs: 500, after: "[data-team-overlay]", events: [PRE[9], ...READING] }]);
+  const handoffs = () => page.evaluate(() => {
+    const w = window as unknown as { __handoffs: { packet: { at: number; overlay: boolean }[]; look: { at: number; member: string | null; dir: string }[] }; __sseFrameAt: number[] };
+    return { ...w.__handoffs, frames: w.__sseFrameAt };
+  });
+  await sseGatesOpen(page); // a gate that never opens fails here, naming its selector
+  await expect.poll(async () => (await handoffs()).packet.length, { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => (await handoffs()).look.length, { timeout: 15_000 }).toBeGreaterThan(0);
+  const log = await handoffs();
+  // history at mount never animates: every packet flew after the second frame was sent
+  expect(log.frames).toHaveLength(2);
+  expect(log.packet.every((p) => p.at >= log.frames[1]), JSON.stringify(log)).toBe(true);
+  expect(log.packet.every((p) => p.overlay)).toBe(true);
+  expect(log.look).toContainEqual(expect.objectContaining({ member: "screener", dir: "r" })); // glances at the reader
   const running = await page.evaluate(() => ({
     blink: [...document.querySelectorAll("[data-member] .team-blink")].map((e) => e.getAnimations().length),
     ping: [...document.querySelectorAll("[data-member] [data-ping]")].map((e) => e.getAnimations().length),

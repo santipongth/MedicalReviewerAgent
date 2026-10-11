@@ -1,5 +1,9 @@
 // One self-contained HTML document: the report app (JS + CSS) and the review data inline, so the file opens offline
-// and can be shared. Fonts load from Google Fonts when online and fall back to system fonts when not.
+// and can be shared. It asks the network for nothing (Plan 20 Task 8): Martian Mono, the verified-number face, is
+// embedded in the CSS (src/standalone/fonts.css); the other faces fall back to the system fonts. The header carries
+// a metadata line and a theme toggle (mounted by src/standalone/main.tsx), in the report's language.
+import { offlineLine, offlineMeta, reportLanguage } from "./offline-meta";
+import { RC } from "./i18n-report";
 import type { Review } from "./types";
 
 export interface StandaloneAssets {
@@ -7,8 +11,13 @@ export interface StandaloneAssets {
   css: string;
 }
 
-const FONTS = "https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600&family=Bai+Jamjuree:wght@500;600;700" +
-  "&family=Martian+Mono:wdth,wght@87.5,500&family=Source+Serif+4:opsz,wght@8..60,400&display=swap";
+/** The faces by name: used when installed on the reader's system, else the theme's system fallbacks. */
+const FONT_VARS = ':root{--font-anuphan:"Anuphan";--font-bai-jamjuree:"Bai Jamjuree";--font-martian-mono:"Martian Mono";'
+  + '--font-source-serif:"Source Serif 4"}';
+
+/** The remembered theme, applied before the first paint; storage may be blocked for files or in a private window. */
+const THEME_BOOT = '(function(){try{var t=localStorage.getItem("theme");if(t==="dark"||t==="light")'
+  + 'document.documentElement.setAttribute("data-theme",t)}catch(e){}})();';
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -26,26 +35,39 @@ function scriptCode(code: string): string {
   return code.replace(/<\/script/gi, "<\\/script");
 }
 
+/** Class names of the metadata items, shared with the React re-render in src/standalone/main.tsx. */
+export const META_ITEM = "flex gap-1";
+export const META_VALUE = "text-ink";
+
 export function buildStandaloneHtml(review: Review, assets: StandaloneAssets, downloadedAt = new Date()): string {
   const title = `${escapeHtml(review.topic)} · Medical Reviewer Agent`;
-  const lang = review.result?.language ?? review.language ?? "th";
-  const when = downloadedAt.toISOString().slice(0, 16).replace("T", " ");
+  const lang = reportLanguage(review);
+  const meta = offlineMeta(review, downloadedAt);
+  const details = RC.offline.details[lang === "th" ? 0 : 1];
+  const items = meta.items.map((i) => {
+    const value = i.key === "id" ? `<span class="font-code">${escapeHtml(i.value)}</span>`
+      : i.key === "language" ? `<span lang="${lang}">${escapeHtml(i.value)}</span>` : escapeHtml(i.value);
+    return `<div class="${META_ITEM}"><dt>${escapeHtml(i.label)}:</dt><dd class="${META_VALUE}">${value}</dd></div>`;
+  }).join("");
   return `<!doctype html>
-<html lang="${lang === "en" ? "en" : "th"}">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="${FONTS}" media="print" onload="this.media='all'">
-<style>:root{--font-anuphan:"Anuphan";--font-bai-jamjuree:"Bai Jamjuree";--font-martian-mono:"Martian Mono";--font-source-serif:"Source Serif 4"}</style>
+<script>${THEME_BOOT}</script>
+<style>${FONT_VARS}</style>
 <style>${assets.css.replace(/<\/style/gi, "<\\/style")}</style>
 </head>
 <body class="min-h-dvh">
-<header class="border-b border-rule">
-<div class="mx-auto flex w-full max-w-[1240px] flex-wrap items-baseline justify-between gap-2 px-4 py-3 text-[0.85rem] text-muted">
+<header class="border-b border-rule" data-offline-header data-generated="${downloadedAt.toISOString()}">
+<div class="mx-auto grid w-full max-w-[1240px] gap-1.5 px-4 py-3 text-[0.85rem] text-muted">
+<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 <span class="font-display font-bold text-ink">Medical Reviewer Agent</span>
-<span>รายงานแบบออฟไลน์ · ดาวน์โหลดเมื่อ ${when} UTC · การทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติ ไม่ใช่คำแนะนำทางการแพทย์</span>
+<span class="min-w-0 flex-1" data-offline-line>${escapeHtml(offlineLine(review, downloadedAt))}</span>
+<div id="mra-theme" class="print:hidden"></div>
+</div>
+<dl data-offline-meta aria-label="${escapeHtml(details)}" class="flex flex-wrap gap-x-4 gap-y-0.5 text-[0.8rem]">${items}</dl>
 </div>
 </header>
 <main class="mx-auto w-full max-w-[1240px] px-4 pb-16"><div id="root"></div></main>

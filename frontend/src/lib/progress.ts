@@ -1,6 +1,6 @@
 // Pure reducer: review events (SSE) → what the live-run screen shows. Replayed events (seq ≤ lastSeq) are ignored so
 // a reconnect with Last-Event-ID never double-applies anything.
-import { asDesign, asDirection } from "./live-evidence";
+import { asDesign, asDirection, isThemeDesign } from "./live-evidence";
 import type { DesignCategory, Direction, ReviewEvent } from "./types";
 
 export type StepKey = "queue" | "refine" | "search" | "screen" | "read" | "synthesize" | "done";
@@ -115,7 +115,7 @@ export function reduceRun(state: RunState, ev: ReviewEvent): RunState {
       };
       const direction = p.ok ? asDirection(p.direction) : null;
       const design = p.ok ? asDesign(p.design) : null;
-      if (direction) item.direction = direction;
+      if (direction && !isThemeDesign(design)) item.direction = direction; // themes never carry a direction
       if (design) item.design = design;
       s.reading = prev ? s.reading.map((r) => (r.ref === ref ? item : r)) : [...s.reading, item];
       break;

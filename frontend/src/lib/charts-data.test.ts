@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resultFixture, legacyReviewFixture } from "@/test/fixtures";
-import { EXCLUSION_REASON_LABEL, exclusionRows, designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, prismaStages, questionDirection, studyPoints } from "./charts-data";
+import { resultFixture } from "@/test/fixtures";
+import { EXCLUSION_REASON_LABEL, designLabel, directionTally, emptyFilters, hasPooledPapers, filterPapers, isPooled, forestAxis, forestData, questionDirection, studyPoints } from "./charts-data";
 
 const papers = resultFixture.papers!;
 
@@ -52,60 +52,35 @@ describe("forestData", () => {
   });
 });
 
-describe("prismaStages and studyPoints", () => {
-  it("lists the PRISMA stages that exist, in order", () => {
-    expect(prismaStages(resultFixture.stats, "en").map((s) => [s.key, s.value])).toEqual([
-      ["found", 41], ["unique", 26], ["with_abstract", 22], ["screened", 20], ["selected", 5], ["extracted", 4],
-    ]);
-    // results stored before abstract-only reading still show their full-text stage
-    expect(prismaStages(legacyReviewFixture.result!.stats, "en").map((s) => s.key)).toEqual(
-      ["found", "unique", "screened", "selected", "with_fulltext", "extracted"]);
-    expect(prismaStages(undefined, "en")).toEqual([]);
-  });
-
+describe("studyPoints", () => {
   it("maps studies with a year and a verified sample size; others are counted, not plotted", () => {
     const pts = studyPoints(papers);
     expect(pts.points.map((p) => [p.ref, p.year, p.n])).toEqual([["P1", 2019, 48210], ["P3", 2021, 1234], ["P4", 2020, 6331]]);
     expect(pts.missing).toBe(2);
   });
+
+  it("leaves out a paper read as a design outside the ticked study types (not evidence), like a further report", () => {
+    const flagged = papers.map((p) => (p.ref === "P3" ? { ...p, design_excluded: true } : p));
+    const pts = studyPoints(flagged);
+    expect(pts.points.map((p) => p.ref)).toEqual(["P1", "P4"]);
+    expect(pts.missing).toBe(2);
+  });
 });
 
-describe("exclusionRows", () => {
-  const stats = {
-    ...resultFixture.stats, non_research: 3, excluded_screening: { study_design: 2, off_topic: 7, other: 1, outcome: 0 },
-    excluded_selection: { narrative_excluded: 0, over_limit: 4 },
-  };
-
-  it("labels each recorded reason in Thai, in a fixed order, skipping zero counts", () => {
-    const r = exclusionRows(stats, "th")!;
-    expect(r.reasons.map((x) => [x.key, x.label, x.value])).toEqual([
-      ["off_topic", "ไม่เกี่ยวกับหัวข้อ", 7], ["study_design", "รูปแบบการศึกษาไม่ตรงเกณฑ์", 2], ["other", "เหตุผลอื่น", 1],
-    ]);
-    expect(r.extra.map((x) => [x.label, x.value])).toEqual([["ไม่ใช่งานวิจัย", 3], ["เกินจำนวนที่วิเคราะห์", 4]]);
-  });
-
-  it("lists year, abstract and relevance exclusions when the result records them (Plan 19)", () => {
-    const r = exclusionRows({ ...stats, year_excluded: 5, no_abstract: 9,
-      excluded_selection: { narrative_excluded: 0, over_limit: 4, low_relevance: 2 } }, "en")!;
-    expect(r.extra.map((x) => [x.key, x.value])).toEqual([
-      ["year_excluded", 5], ["non_research", 3], ["no_abstract", 9], ["low_relevance", 2], ["over_limit", 4],
-    ]);
-  });
-
-  it("has a Thai and English label for every reason", () => {
+describe("EXCLUSION_REASON_LABEL", () => {
+  it("has a Thai and English label for every reason (the PRISMA flow's screening reasons)", () => {
     for (const v of Object.values(EXCLUSION_REASON_LABEL)) { expect(v.th.trim()).not.toBe(""); expect(v.en.trim()).not.toBe(""); }
     expect(Object.keys(EXCLUSION_REASON_LABEL)).toHaveLength(7);
-  });
-
-  it("is null for results without the data, and never derives a remainder", () => {
-    expect(exclusionRows(resultFixture.stats, "th")).toBeNull();
-    expect(exclusionRows(undefined, "th")).toBeNull();
-    const r = exclusionRows({ ...stats, excluded_screening: { off_topic: 1 } }, "th")!;
-    expect(r.reasons).toHaveLength(1); // screened - selected is not turned into an "other" row
   });
 });
 
 describe("directionTally", () => {
+  it("never counts a paper read as a design outside the ticked study types (design_excluded: not evidence)", () => {
+    const flagged = papers.map((p) => (p.ref === "P1" ? { ...p, design_excluded: true } : p));
+    expect(directionTally(flagged)).toEqual(directionTally(papers.filter((p) => p.ref !== "P1")));
+    expect(directionTally(flagged, true)).toEqual(directionTally(papers.filter((p) => p.ref !== "P1"), true));
+  });
+
   it("can leave narrative-review articles out of the tally", () => {
     const review = { ...papers[0], card_en: { ...papers[0].card_en!, design_category: "narrative_review" as const, overall_direction: "unclear" as const } };
     const withReview = [...papers, { ...review, ref: "P9" }];

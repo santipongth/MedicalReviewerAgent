@@ -62,7 +62,8 @@ async def test_event_types_arrive_in_pipeline_order():
     assert seq.index("synthesizing") > max(i for i, t in enumerate(seq) if t == "extracted")
     assert last_reading < seq.index("synthesizing")
     assert final.values["result"]["summary"].startswith("Stub review for:")
-    assert len(final.values["result"]["papers"]) == 6 and final.values["result"]["review_type"] == "slr"
+    # six studies plus a further report of P1's trial (Plan 20 Task 11)
+    assert len(final.values["result"]["papers"]) == 7 and final.values["result"]["review_type"] == "slr"
 
 
 async def test_payload_keys_match_the_real_events():
@@ -145,7 +146,7 @@ async def test_timed_stub_result_is_representative_and_carries_review_type():
     assert len(r["papers"]) == 6 and len(r["synthesis"]["comparison"]) == 2
     assert sum(r["stats"]["excluded_screening"].values()) == 28 and r["stats"]["non_research"] == 4
     assert r["stats"]["excluded_selection"] == {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
-                                                "study_design_corrected": 0, "low_relevance": 0}
+                                                "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0}
     assert r["question"]["key_terms"][0].keys() == {"term", "synonyms", "mesh"}
     card = r["papers"][0]["card"]
     assert {"population", "intervention_or_exposure", "comparator", "key_findings", "limitations",

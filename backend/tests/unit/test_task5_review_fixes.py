@@ -108,12 +108,15 @@ def test_a_non_significant_far_side_estimate_does_not_downgrade():
 
 # ---- 7. a split exactly between reviews and primaries is review-discordant, never a conflict ---------------------
 def test_a_review_against_its_own_trial_is_review_discordant():
+    # Plan 20 Task 10: a significant split between a review and its (probable) trial is shown and explained as a
+    # conflict flagged `review_discordant` (it was `imprecise`, invisible in the result); it still never downgrades
     v = classify_row([cell("P1", "negative", pooled=True), cell("P2", "positive")])
-    assert v["verdict"] == "imprecise" and v["review_discordant"] is True
+    assert v["verdict"] == "conflict" and v["review_discordant"] is True
+    assert classify_row([cell("P1", "negative", pooled=True), cell("P2", "null")])["verdict"] != "conflict"
     papers = [ev("P1", "sr_ma_rct", [out("CVD", "negative")], n=8000),
               ev("P2", "rct", [out("CVD", "positive")], n=3000)]
     m = matrix_of(papers)
-    assert m["conflicts"] == []
+    assert [c["review_discordant"] for c in m["conflicts"]] == [True]
     g = grade_baseline(papers, m, ["CVD"])
     assert not any(f.startswith("inconsistency:") for f in g["factors"])
     assert any(f.startswith("minor inconsistency: systematic reviews and primary studies") for f in g["factors"])
@@ -124,9 +127,12 @@ def test_a_review_against_its_own_trial_is_review_discordant():
 
 # ---- 8. discordant reviews are named, in English and in fixed Thai ---------------------------------------------
 def test_discordant_reviews_are_named_in_the_consensus():
-    v = classify_row([cell("P1", "negative", 1.3, pooled=True), cell("P2", "positive", 0.8),
+    # a non-significant review leaning the other way (a significant one is a review-discordant conflict since Plan 20
+    # Task 10)
+    v = classify_row([cell("P1", "null", 1.3, pooled=True), cell("P2", "positive", 0.8),
                       cell("P3", "positive", 0.7)])
     assert v["refs"] == ["P2", "P3"] and v["corroborating"] == [] and v["discordant_reviews"] == ["P1"]
+    assert "review_discordant" not in v
     c = {"outcome": "CVD", **v}
     assert _consensus_explanation(c).endswith(" Systematic reviews [P1] report a different direction.")
     assert "[P1] รายงานผลไปในทิศทางที่ต่างออกไป" in _consensus_explanation_th(c, "CVD")

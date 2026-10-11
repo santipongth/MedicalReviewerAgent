@@ -84,7 +84,7 @@ class Epmc:
     def __init__(self, records=(), trials=None, fail_trials=False):
         self.records, self.trials, self.fail_trials, self.trial_calls = list(records), trials or {}, fail_trials, []
 
-    async def lookup(self, *, dois, pmids):
+    async def lookup(self, *, dois, pmids, failures=None):
         return self.records
 
     async def search_trials(self, query, *, page_size=25):
@@ -201,8 +201,9 @@ async def test_search_trials_short_timeout_one_retry():
             return httpx.Response(200, json={"resultList": {"result": []}}, request=httpx.Request("GET", url))
 
     assert await EuropePmcClient(Http(), "https://epmc.test").search_trials("SGLT2 heart failure") == []
-    assert seen == {"timeout": EuropePmcClient.TRIAL_TIMEOUT, "retries": 1}
-    assert EuropePmcClient.TRIAL_TIMEOUT <= 10
+    # Plan 20 Task 10: the client's own bounded backoff replaces the HttpClient retries (one retry after a timeout)
+    assert seen == {"timeout": EuropePmcClient.TRIAL_TIMEOUT, "retries": 0}
+    assert EuropePmcClient.TRIAL_TIMEOUT <= 10 and EuropePmcClient.TRANSPORT_RETRIES == 1
 
 
 async def test_meta_planner_may_use_five_queries():

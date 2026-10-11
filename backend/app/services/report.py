@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import csv
 import io
+import re
+import unicodedata
 from typing import Any
+from urllib.parse import quote
 
+from app.harness.design import NON_QUANTITATIVE_CATEGORIES
 from app.harness.meta import DESIGN_GROUP_LABEL
 
 DIRECTION = {"positive": "supports", "negative": "opposite/harm", "null": "no association",
@@ -28,6 +32,176 @@ WARNING_LABEL = {
     "other_measures_not_pooled": "studies reporting another effect measure were not pooled",
     "md_units_assumed_equal": "mean differences assumed to share units",
 }
+
+
+_END = re.compile(r"[\s.,;:]+$")
+MAX_AUTHORS = 6  # ICMJE / Vancouver: the first six, then "et al."
+
+
+def _clean(value: Any) -> str:
+    """One line of metadata text without trailing punctuation (the formatter adds its own)."""
+    return _END.sub("", " ".join(str(value if value is not None else "").split()))
+
+
+def _doi(value: Any) -> str:
+    return re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", "", _clean(value),
+                  flags=re.IGNORECASE)
+
+
+def _pmcid(value: Any) -> str:
+    v = _clean(value)
+    return f"PMC{v}" if v.isdigit() else v
+
+
+def doi_href(doi: Any) -> str:
+    """doi.org link with each path segment URL-encoded like JavaScript's encodeURIComponent (old SICI DOIs carry
+    "#", "?", "<", ";")."""
+    return "https://doi.org/" + "/".join(quote(seg, safe="!*'()") for seg in _doi(doi).split("/"))
+
+
+# Author names in Vancouver form (NLM): "Surname Initials". Mirrors frontend src/lib/citation.ts vancouverName; both
+# test suites share one table of cases.
+_PARTICLES = frozenset({"van", "von", "der", "den", "de", "del", "della", "di", "da", "du", "la", "le", "dos", "das",
+                        "ten", "ter"})
+
+
+def _has_letter(s: str) -> bool:
+    return any(ch.isalpha() for ch in s)
+
+
+def _non_latin(s: str) -> bool:
+    """A name with a letter outside the Latin script (Thai, CJK, ...) is left as written."""
+    return any(ch.isalpha() and not unicodedata.name(ch, "").startswith("LATIN") for ch in s)
+
+
+def _bare_initials(t: str) -> str:
+    """Hyphens between initials are dropped: "S-H" -> "SH" ("Lee S-H" -> "Lee SH")."""
+    return t.replace(".", "").replace("-", "")
+
+
+def _is_initials(t: str) -> bool:
+    bare = _bare_initials(t)
+    return 1 <= len(bare) <= 3 and bare.isalpha() and bare.isupper()
+
+
+# A word that names a group, not a person; ASCII word boundaries, like JavaScript's \b.
+_ORG_WORD = re.compile(r"\b(?:group|organi[sz]ation|collaborat\w*|consortium|investigators?|committee|society|"
+                       r"association|network|institute|council|team|working|study|trial|foundation|biobank)\b",
+                       re.IGNORECASE | re.ASCII)
+_SUFFIX = re.compile(r"^(?:jr|sr|ii|iii|iv)\.?$", re.IGNORECASE)
+
+
+def _suffix_text(t: str) -> str:
+    bare = t.replace(".", "")
+    return bare.upper() if bare[0] in "iI" else bare[0].upper() + bare[1:].lower()
+
+
+def _is_organisation(name: str) -> bool:
+    """An organisation author, kept as written: it holds an organisation word, or it has 4 or more words that are
+    neither surname particles nor a suffix ("Martin Luther King Jr" and "Anna de la Cruz" are people)."""
+    if _ORG_WORD.search(name):
+        return True
+    words = [w for w in name.replace(",", " ").split() if w.lower() not in _PARTICLES and not _SUFFIX.match(w)]
+    return len(words) >= 4
+
+
+def _initials_of(token: str) -> str:
+    """"J.A." -> "JA", "Jean-Pierre" -> "JP", "Andrew" -> "A"; "" when a part has no letter."""
+    if _is_initials(token):
+        return _bare_initials(token)
+    return "".join(next((ch for ch in part if ch.isalpha()), "") for part in token.split("-")).upper()
+
+
+def vancouver_name(name: Any) -> str:
+    """One author as "Surname Initials": "Smith, John A." and "John A. Smith" -> "Smith JA"; "Kim J.H." -> "Kim JH";
+    particles stay with the surname ("van Beethoven L"); hyphenated given names give one initial per part. A single
+    word, a non-Latin name or anything that does not parse is kept as written."""
+    full = _clean(name)
+    if not full or _non_latin(full) or _is_organisation(full):
+        return full
+    tokens = full.replace(",", " , ").split()
+    # a generational suffix ("Jr", "Sr", "II"-"IV") goes after the initials: "John Smith Jr" -> "Smith J Jr"
+    suffix = ""
+    if len(tokens) > 1 and _SUFFIX.match(tokens[-1]):
+        suffix = _suffix_text(tokens.pop())
+        while tokens and tokens[-1] == ",":
+            tokens.pop()
+    # a suffix written with the surname, before the comma ("Smith Jr, John") goes there too
+    first_comma = tokens.index(",") if "," in tokens else -1
+    if not suffix and first_comma > 1 and _SUFFIX.match(tokens[first_comma - 1]):
+        suffix = _suffix_text(tokens.pop(first_comma - 1))
+
+    def with_suffix(s: str) -> str:
+        return f"{s} {suffix}" if suffix else s
+
+    rest = " ".join(tokens).replace(" ,", ",")
+    if "," in rest:
+        head, _, tail = rest.partition(",")
+        surname, given = head.split(), tail.replace(",", " ").split()
+        while given and given[-1] in _PARTICLES:  # "Beethoven, Ludwig van"
+            surname.insert(0, given.pop())
+    else:
+        words = rest.split(" ")
+        if len(words) == 1:
+            return with_suffix(rest)
+        if _is_initials(words[-1]):
+            return with_suffix(f"{' '.join(words[:-1])} {_bare_initials(words[-1])}")
+        start = len(words) - 1
+        while start > 1 and words[start - 1].lower() in _PARTICLES:  # "De La Cruz" too
+            start -= 1
+        surname, given = words[start:], words[:start]
+    initials = [_initials_of(g) for g in given]
+    if not surname or not _has_letter("".join(surname)) or not given or not all(initials):
+        return full
+    return with_suffix(f"{' '.join(surname)} {''.join(initials)}")
+
+
+def author_names(authors: Any) -> list[str]:
+    """The author strings as names: an entry holding a ";"-separated list is split there (never at a comma)."""
+    parts = [part for a in authors or [] if isinstance(a, str) for part in a.split(";")]
+    return [n for n in (vancouver_name(part) for part in parts) if n]
+
+
+def _citation_parts(p: dict[str, Any]) -> tuple[list[str], list[tuple[str, str, str]]]:
+    """The text parts of a Vancouver reference and its identifiers as (label, value, url). Only fields the result
+    carries (no volume, issue or pages: the search sources do not give them); a missing part is left out. The title
+    and journal stay in their own language. Mirrors frontend `src/lib/citation.ts`."""
+    text: list[str] = []
+    authors = author_names(p.get("authors"))
+    if authors:
+        shown = authors[:MAX_AUTHORS] + (["et al"] if len(authors) > MAX_AUTHORS else [])
+        text.append(", ".join(shown) + ".")
+    title = re.sub(r"[\s.]+$", "", " ".join(str(p.get("title") or "").split()))
+    if title:
+        text.append(title if title[-1] in "?!" else f"{title}.")
+    if _clean(p.get("journal")):
+        text.append(f"{_clean(p.get('journal'))}.")
+    if p.get("year"):
+        text.append(f"{p['year']}.")
+    ids: list[tuple[str, str, str]] = []
+    if _doi(p.get("doi")):
+        ids.append(("doi", _doi(p.get("doi")), doi_href(p.get("doi"))))
+    if _clean(p.get("pmid")):
+        ids.append(("PMID", _clean(p.get("pmid")), f"https://pubmed.ncbi.nlm.nih.gov/{_clean(p.get('pmid'))}/"))
+    if _pmcid(p.get("pmcid")):
+        ids.append(("PMCID", _pmcid(p.get("pmcid")), f"https://pmc.ncbi.nlm.nih.gov/articles/{_pmcid(p.get('pmcid'))}/"))
+    return text, ids
+
+
+def vancouver(p: dict[str, Any]) -> str:
+    """`Authors (up to 6, then et al.). Title. Journal. Year. doi: … PMID: … PMCID: …` as plain text."""
+    text, ids = _citation_parts(p)
+    return " ".join([*text, *(f"{label}: {value}." for label, value, _ in ids)])
+
+
+def _md_url(url: str) -> str:
+    return url.replace(" ", "%20").replace("(", "%28").replace(")", "%29")
+
+
+def _vancouver_md(p: dict[str, Any]) -> str:
+    """`vancouver` with the identifiers as Markdown links."""
+    text, ids = _citation_parts(p)
+    return " ".join([*text, *(f"{label}: [{value}]({_md_url(url)})." for label, value, url in ids)])
 
 
 def _num(value: float, decimals: int = 2) -> str:
@@ -78,10 +252,15 @@ def _comparison(rows: list[dict[str, Any]], directions: bool = True) -> list[str
     if not rows or not refs:
         return []
     lines = ["| Outcome | " + " | ".join(refs) + " |", "|---|" + "---|" * len(refs)]
+    def text(c: dict[str, Any]) -> str:
+        # qualitative / mixed-methods themes never carry a direction (Task 2 review finding 5, as in the UI)
+        if not directions or c.get("design_category") in NON_QUANTITATIVE_CATEGORIES:
+            return _cell(c["finding"])
+        return f"{_cell(c['finding'])} ({DIRECTION.get(c['direction'], c['direction'])})"
+
     for row in rows:
         by_ref = {c["ref"]: c for c in row["cells"]}
-        cells = [(f"{_cell(by_ref[r]['finding'])} ({DIRECTION.get(by_ref[r]['direction'], by_ref[r]['direction'])})"
-                  if directions else _cell(by_ref[r]["finding"])) if r in by_ref else "" for r in refs]
+        cells = [text(by_ref[r]) if r in by_ref else "" for r in refs]
         lines.append(f"| {_cell(row['outcome'])} | " + " | ".join(cells) + " |")
     return lines
 
@@ -94,6 +273,46 @@ def _other_comparisons(card: dict[str, Any] | None) -> str:
     items = "; ".join(_cell(f"{o.get('outcome')} ({o['comparison']})" if o.get("comparison") else o.get("outcome"))
                       for o in others)
     return f" Other comparisons, not evidence for the question: {items}."
+
+
+def _methods_section(result: dict[str, Any]) -> list[str]:
+    """A short Methods block (Plan 20): search date, sources with their record counts, queries, models and the prompt
+    version. Absent when the result has none of them (results stored before Plan 20 still list queries and models)."""
+    methods = result.get("methods") or {}
+    lines: list[str] = []
+    if methods.get("searched_at"):
+        lines.append(f"- **Searched:** {methods['searched_at']}")
+    sources = methods.get("sources") or {}
+    if sources:
+        lines.append("- **Sources (records before deduplication):** "
+                     + ", ".join(f"{_cell(k)} {v}" for k, v in sorted(sources.items(), key=lambda kv: -kv[1])))
+    queries = result.get("queries") or []
+    if queries:
+        lines.append("- **Queries:** " + "; ".join(f"`{_cell(q)}`" for q in queries))
+    models = result.get("models") or {}
+    if models:
+        lines.append("- **Models:** " + ", ".join(f"{role} {_cell(m)}" for role, m in models.items() if m))
+    if result.get("prompt_version"):
+        lines.append(f"- **Prompt version:** {result['prompt_version']}")
+    return ["## Methods", "", *lines, ""] if lines else []
+
+
+def _reference_line(p: dict[str, Any]) -> str:
+    """One reference: the Vancouver text, then what the review made of the paper (design, n, notes)."""
+    card = p.get("card") or {}
+    # final review M9: a sample size the verifier blanked is "n not verified"; one never reported stays "n=?"
+    blanked_n = any(u.get("field") == "sample_size" for u in (p.get("verification") or {}).get("unverified") or [])
+    n = "n not verified" if blanked_n and card.get("sample_size") is None else f"n={card.get('sample_size') or '?'}"
+    design = f" — {card.get('study_design')}, {n}." if card else " — not extracted."
+    excluded = (" Not used as evidence: read as a design outside the ticked study types."
+                if p.get("design_excluded") else "")
+    if (p.get("verification") or {}).get("design_mismatch"):  # the report's note too (Task 6 review finding 7)
+        excluded += (" Used as evidence although its design is outside the ticked study types, because fewer than 3 "
+                     "studies matched.")
+    # Plan 20 Task 10: a further report of a trial counted once, under its primary report
+    related = (f" Related report of [{p['related_to']}] ({p.get('related_reason') or 'same trial'}), not "
+               f"counted again." if p.get("related_to") else "")
+    return f"{_vancouver_md(p)}{design}{_other_comparisons(p.get('card_en') or card)}{excluded}{related}"
 
 
 def render_markdown(review) -> str:
@@ -109,6 +328,20 @@ def render_markdown(review) -> str:
     review_type = result.get("review_type")
     if review_type and review_type != "slr":  # SLR Markdown stays as before
         out += [f"**Review type:** {TYPE_LABEL.get(review_type, review_type)} (automated, abstracts only)", ""]
+    # Plan 20: the bottom line and the key findings lead (absent for results stored before Plan 20)
+    if s.get("answer"):
+        out += ["## Answer", "", s["answer"], ""]
+    findings = s.get("key_findings") or []
+    if findings:
+        out += ["## Key findings", ""]
+        # a finding's certainty is the review's one grade (set in code), so it is said once, never per line
+        if review_type in (None, "slr", "meta_analysis") and s.get("evidence_strength"):
+            level = str(s["evidence_strength"]).replace("_", " ")
+            out += [f"Certainty (whole review, not graded per outcome): {level}", ""]
+        for f in findings:
+            out.append(f"- **{_cell(f.get('outcome'))}** — {f.get('statement')} [{', '.join(f.get('refs') or [])}] "
+                       f"(k={f.get('k', len(f.get('refs') or []))})")
+        out.append("")
     out += ["## Summary", "", result.get("summary") or s.get("executive_summary", ""), ""]
     if "evidence_strength" in s and s["evidence_strength"] is None:
         out += [f"**Evidence strength:** not assessed ({s.get('evidence_rationale', '')})", ""]
@@ -129,15 +362,22 @@ def render_markdown(review) -> str:
             out.append("")
     if s.get("research_gaps"):
         out += ["## Research gaps", "", *[f"- {g}" for g in s["research_gaps"]], ""]
+    out += _methods_section(result)
     papers = result.get("papers") or []
     if papers:
-        out += ["## Papers", ""]
+        # Plan 20 Task 6: Vancouver references in P-number order (the report's rules, lib/citation.ts); a further
+        # report of a trial (Task 10) is listed right under its primary report, not as a study of its own
+        out += ["## References", ""]
+        refs = {p.get("ref") for p in papers}
+        under: dict[str, list[dict[str, Any]]] = {}
         for p in papers:
-            card = p.get("card") or {}
-            link = f" https://doi.org/{p['doi']}" if p.get("doi") else ""
-            design = f" — {card.get('study_design')}, n={card.get('sample_size') or '?'}" if card else " — not extracted"
-            out.append(f"- [{p['ref']}] {p.get('title')} ({p.get('year') or 'n.d.'}, {p.get('journal') or ''})"
-                       f"{design}.{link}{_other_comparisons(p.get('card_en') or card)}")
+            if p.get("related_to") in refs:
+                under.setdefault(p["related_to"], []).append(p)
+        for p in papers:
+            if p.get("related_to") in refs:
+                continue
+            out.append(f"- [{p['ref']}] {_reference_line(p)}")
+            out += [f"  - Related report [{r['ref']}] {_reference_line(r)}" for r in under.get(p["ref"], [])]
         out.append("")
     quality = result.get("quality") or {}
     if quality:
@@ -195,5 +435,7 @@ def render_csv(result: dict[str, Any] | None) -> str:
                 row["matches_question"] = "false" if o.get("matches_question") is False else "true"
             if scoping:
                 row |= {"direction": None, "overall_direction": None, "risk_of_bias": None}
+            elif card.get("design_category") in NON_QUANTITATIVE_CATEGORIES:  # themes: no direction (Task 2 review)
+                row |= {"direction": None, "overall_direction": None}
             writer.writerow({k: _cell_value(v) for k, v in row.items()})
     return "\ufeff" + out.getvalue()  # BOM: spreadsheet apps then read Thai/unicode titles correctly

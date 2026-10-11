@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
+import { GLOSS, glossText } from "@/lib/glossary";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -17,16 +18,26 @@ const OPEN = { accepting: true, reason: null, retry_after: null, queue_depth: 0,
 
 import { RequestSlip } from "./request-slip";
 
+// Flake root cause (Task 9): every keystroke of userEvent.type re-rendered the whole form and waited on a setTimeout
+// (the default delay 0), so a test's wall time grew with CPU load until it hit Vitest's 5 s timeout in a busy full run
+// (reproduced by running three suites at once). Now nothing waits on a timer (delay: null) and the topic is pasted as
+// one input event, as a person pasting a question would.
+let user: ReturnType<typeof userEvent.setup>;
+
 async function typeTopic(text = "statins and dementia") {
-  await userEvent.type(screen.getByLabelText(/คำถามหรือวัตถุประสงค์/), text);
+  await user.click(screen.getByLabelText(/คำถามหรือวัตถุประสงค์/));
+  await user.paste(text);
 }
 
 beforeEach(() => {
+  user = userEvent.setup({ delay: null }); // one per test, as the user-event docs recommend
   push.mockReset();
   createReview.mockReset();
   getStatus.mockReset();
   getStatus.mockResolvedValue(OPEN);
   delete (window as { turnstile?: unknown }).turnstile;
+  // a script left by an earlier test belongs to an unmounted slip
+  document.head.querySelectorAll('script[src*="challenges.cloudflare.com"]').forEach((el) => el.remove());
 });
 
 describe("RequestSlip", () => {
@@ -34,9 +45,9 @@ describe("RequestSlip", () => {
     createReview.mockResolvedValue({ review_id: "r-1", status: "queued", cached: false });
     render(<RequestSlip />);
     await typeTopic();
-    await userEvent.click(screen.getByLabelText("English"));
-    await userEvent.click(screen.getByLabelText(/RCT/));
-    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    await user.click(screen.getByLabelText("English"));
+    await user.click(screen.getByLabelText(/RCT/));
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith({
       topic: "statins and dementia", language: "en", options: { max_papers: 30, review_type: "slr", study_types: ["RCT"] },
     });
@@ -71,7 +82,7 @@ describe("RequestSlip", () => {
     createReview.mockRejectedValue(new ApiError(503, "the review queue is full", 60, undefined, "queue_full"));
     render(<RequestSlip />);
     await typeTopic();
-    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("คิว");
   });
 
@@ -83,28 +94,36 @@ describe("RequestSlip", () => {
     getStatus.mockResolvedValue({ ...OPEN, turnstile_site_key: "site-key" });
     createReview.mockResolvedValue({ review_id: "r-2", status: "queued", cached: false });
     render(<RequestSlip />);
-    await screen.findByTestId("turnstile");
     await typeTopic();
-    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    // the status first (the button is also enabled before it arrives, when no Turnstile is known), then the token: the
+    // widget mounts in a passive effect after the container renders, and the button turns enabled when its token is in
+    await screen.findByTestId("turnstile");
+    const button = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ });
+    await waitFor(() => expect(button).toBeEnabled());
+    await user.click(button);
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({ language: "th" }), { turnstileToken: "tok-1" });
   });
 
   it("explains why it cannot submit when the Turnstile script is blocked", async () => {
     getStatus.mockResolvedValue({ ...OPEN, turnstile_site_key: "site-key" });
     render(<RequestSlip />);
-    await screen.findByTestId("turnstile");
-    const script = document.head.querySelector<HTMLScriptElement>('script[src*="challenges.cloudflare.com"]');
-    expect(script).not.toBeNull();
-    script!.dispatchEvent(new Event("error"));
+    // the script is added by a passive effect that can run after the widget's container is on screen (the flake under
+    // load, Task 9): wait for the script itself
+    const script = await waitFor(() => {
+      const el = document.head.querySelector<HTMLScriptElement>('script[src*="challenges.cloudflare.com"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    script.dispatchEvent(new Event("error"));
     expect(await screen.findByText(/โหลดระบบยืนยันว่าเป็นผู้ใช้จริงไม่ได้/)).toBeInTheDocument();
-    script!.remove();
+    script.remove();
   });
 
   it("names a momentary admission backlog honestly", async () => {
     createReview.mockRejectedValue(new ApiError(503, "too many submissions", 5, undefined, "busy"));
     render(<RequestSlip />);
     await typeTopic();
-    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("มีผู้ส่งพร้อมกันจำนวนมาก");
   });
 
@@ -112,14 +131,14 @@ describe("RequestSlip", () => {
     createReview.mockRejectedValue(new ApiError(429, "rate limit exceeded", 1800));
     render(<RequestSlip />);
     await typeTopic();
-    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("30 นาที");
     expect(push).not.toHaveBeenCalled();
   });
 
   it("example topics fill the slip instead of navigating", async () => {
     render(<RequestSlip />);
-    await userEvent.click(screen.getByRole("button", { name: "SGLT2 inhibitors and heart failure" }));
+    await user.click(screen.getByRole("button", { name: "SGLT2 inhibitors and heart failure" }));
     expect(screen.getByLabelText(/คำถามหรือวัตถุประสงค์/)).toHaveValue("SGLT2 inhibitors and heart failure");
   });
 
@@ -151,8 +170,8 @@ describe("RequestSlip", () => {
     render(<RequestSlip />);
     const summary = screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary") as HTMLElement;
     expect(summary).toHaveTextContent("ภาษาไทย · สูงสุด 30 ฉบับ · ทุกปี");
-    await userEvent.click(screen.getByLabelText("English"));
-    await userEvent.type(screen.getByLabelText(/ตั้งแต่ปี/), "2015");
+    await user.click(screen.getByLabelText("English"));
+    await user.type(screen.getByLabelText(/ตั้งแต่ปี/), "2015");
     expect(summary).toHaveTextContent("English · สูงสุด 30 ฉบับ · ตั้งแต่ปี 2015");
   });
 
@@ -164,13 +183,41 @@ describe("RequestSlip", () => {
     expect(screen.getByText(/ไม่เลือก = ไม่จำกัดชนิดงานวิจัย/)).toBeInTheDocument();
   });
 
+  it("shows each study design as a tile: Thai name first, then the English term and its plain gloss", () => {
+    render(<RequestSlip />);
+    const group = screen.getByRole("group", { name: /หลักฐานและเกณฑ์คัดเลือก/ });
+    // the name is short (Thai name + term); the plain words are the description, so tabbing stays quick
+    const rct = within(group).getByRole("checkbox", { name: /RCT/ });
+    expect(rct).toHaveAccessibleName("การทดลองแบบสุ่มและมีกลุ่มควบคุม RCT");
+    expect(rct).toHaveAccessibleDescription(GLOSS.rct.plain?.th ?? "");
+    expect(within(group).getByRole("checkbox", { name: "การศึกษาติดตามกลุ่มคน Cohort" })).toBeInTheDocument();
+    expect(within(group).getByRole("checkbox", { name: "การสำรวจ ณ จุดเวลาเดียว Cross-sectional" }))
+      .toHaveAccessibleDescription(GLOSS.crossSectional.plain?.th ?? "");
+    expect(within(group).getByRole("checkbox", { name: "อื่น ๆ — ระบุ" })).toBeInTheDocument();
+    expect(within(group).getAllByRole("checkbox")).toHaveLength(8); // seven designs plus "other"
+  });
+
+  it("marks the folded options as something that opens", () => {
+    render(<RequestSlip />);
+    const summary = screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary") as HTMLElement;
+    expect(summary.querySelector("[data-chevron][aria-hidden=true]")).not.toBeNull();
+    expect(summary).toHaveTextContent("แก้ไข");
+  });
+
+  it("glosses PICO in the question hint and keeps the free, no-sign-up note in the submit row", () => {
+    render(<RequestSlip />);
+    expect(screen.getByText(/ลองคิดตาม/).textContent).toContain(glossText("pico"));
+    const submit = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ });
+    expect(submit.closest("[data-testid=submit-row]")).toHaveTextContent("ฟรี · ไม่ต้องสมัคร");
+  });
+
   it("sends the chosen review type", async () => {
     createReview.mockResolvedValue({ review_id: "r-4", status: "queued", cached: false });
     render(<RequestSlip />);
     await typeTopic();
-    await userEvent.selectOptions(screen.getByLabelText(/รูปแบบการทบทวน/), "meta_analysis");
+    await user.selectOptions(screen.getByLabelText(/รูปแบบการทบทวน/), "meta_analysis");
     expect(screen.getByText(/ตัวเลขรวมคำนวณโดยระบบ/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({
       options: { max_papers: 30, review_type: "meta_analysis" },
     }));
@@ -181,11 +228,11 @@ describe("RequestSlip", () => {
     render(<RequestSlip />);
     await typeTopic();
     expect(screen.queryByLabelText("ระบุชนิดงานวิจัยอื่น")).toBeNull();
-    await userEvent.click(screen.getByLabelText(/อื่น ๆ — ระบุ/));
+    await user.click(screen.getByLabelText(/อื่น ๆ — ระบุ/));
     const other = screen.getByLabelText("ระบุชนิดงานวิจัยอื่น");
     expect(other).toHaveAttribute("maxlength", "60");
-    await userEvent.type(other, "Delphi study");
-    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    await user.type(other, "Delphi study");
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({
       options: { max_papers: 30, review_type: "slr", study_types: ["Other: Delphi study"] },
     }));
@@ -194,7 +241,7 @@ describe("RequestSlip", () => {
   it("explains the limited support for qualitative and mixed-methods studies", async () => {
     render(<RequestSlip />);
     expect(screen.queryByText(/สรุปเป็นประเด็นจากบทคัดย่อ/)).toBeNull();
-    await userEvent.click(screen.getByLabelText(/Qualitative/));
+    await user.click(screen.getByLabelText(/Qualitative/));
     expect(screen.getByText(/สรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข/)).toBeInTheDocument();
   });
 
@@ -202,9 +249,9 @@ describe("RequestSlip", () => {
     createReview.mockResolvedValue({ review_id: "r-3", status: "queued", cached: false });
     render(<RequestSlip />);
     await typeTopic();
-    await userEvent.click(screen.getByLabelText(/Cohort/));
-    await userEvent.click(screen.getByLabelText(/ทดลองไม่สุ่ม/));
-    await userEvent.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    await user.click(screen.getByLabelText(/Cohort/));
+    await user.click(screen.getByLabelText(/การทดลองแบบไม่สุ่ม/));
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({
       options: { max_papers: 30, review_type: "slr", study_types: ["Cohort", "Non-randomized trial"] },
     }));

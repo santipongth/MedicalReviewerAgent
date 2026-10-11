@@ -32,6 +32,10 @@ checked against every paper. Sentences split at . ! ? before an uppercase letter
 `prose_problems` lists the failures as repair messages for the harness runner; `fix_prose` corrects measure names
 and removes every sentence that still fails, never inventing a replacement number.
 
+Numberless fields (Plan 20: the direct answer and the key-finding statements) are stricter: `statement_problems` and
+`fix_statement` admit only context numbers ("type 2 diabetes"), never a card estimate, pooled value or count, because
+the report renders those numbers from the verified cards and the computed pools beside the text.
+
 Why deterministic and not an LLM claim check: these checks cost nothing, cannot hallucinate, run identically on every
 review and are unit-tested on the audit's real failures. A bounded LLM check through the runner would add a call per
 review on the budget model, which is the model that wrote the error. The population check is lexical and covers only
@@ -379,6 +383,65 @@ def prose_problems(text: str, ctx: ProseContext, label: str = "text", *, fixable
             problems.append(f"{label}: \"{_short(sentence)}\" ascribes {claimed} to [{ref}], whose population is "
                             f"{opposite}; describe each paper's population as its card states")
     return problems
+
+
+def _result_numbers(sentence: str, refs: list[str], ctx: ProseContext, toks: tuple[Tok, ...]) -> list[str]:
+    """Numbers a numberless statement may not carry: everything except context numbers (the question and PICO text,
+    the scope's titles, years, population, intervention, comparator and outcome names: "type 2 diabetes", "ejection
+    fraction of more than 40%"). Card estimates, sample sizes, pooled values and counts are results, which the report
+    renders from the cards and pools (Plan 20).
+    Known gap: only numbers written in digits are tokens; number words ("three trials", "half", "thirty-two percent")
+    are not caught here or anywhere in the prose check."""
+    return [t.text for t in toks
+            if not (ctx.context.admits(t, sentence) or any(ctx.facts[r].context.admits(t, sentence) for r in refs))]
+
+
+def _statement_scope(refs: Iterable[str] | None, sentence: str, ctx: ProseContext) -> list[str]:
+    scoped = [r for r in refs or () if r in ctx.facts]
+    return list(dict.fromkeys(scoped)) or _scope(sentence, ctx)
+
+
+def statement_problems(text: str, ctx: ProseContext, label: str, refs: Iterable[str] | None = None) -> list[str]:
+    """Repair messages for a numberless field (the answer, a key-finding statement): any result number, and the
+    population check, scoped to `refs` (else the sentence's citations, else every paper)."""
+    problems: list[str] = []
+    for sentence in _sentences(text):
+        scope = _statement_scope(refs, sentence, ctx)
+        numbers = _result_numbers(sentence, scope, ctx, _tokens(sentence))
+        if numbers:
+            problems.append(f"{label}: \"{_short(sentence)}\" states {', '.join(numbers)}; this field must contain no "
+                            "numbers (the report shows the verified numbers next to it), so leave them out")
+        for claimed, ref, opposite in _population_issues(sentence, scope, ctx, True):
+            problems.append(f"{label}: \"{_short(sentence)}\" ascribes {claimed} to [{ref}], whose population is "
+                            f"{opposite}; describe each paper's population as its card states")
+    return problems
+
+
+def fix_statement(text: str, ctx: ProseContext, refs: Iterable[str] | None = None) -> tuple[str, Counter[str]]:
+    """The numberless variant of fix_prose for the answer and the key-finding statements (Plan 20): a sentence is
+    removed when it states any number other than a context number, ascribes a population the scoped paper did not
+    study, or names a wrong measure with no number after it; a wrong measure name before a number is corrected.
+    The scope is `refs` (a key finding's refs), else the sentence's citations, else every paper."""
+    counts: Counter[str] = Counter()
+    kept: list[str] = []
+    for sentence in _sentences(text):
+        scope = _statement_scope(refs, sentence, ctx)
+        toks = _tokens(sentence)
+        if _result_numbers(sentence, scope, ctx, toks):
+            counts["numbers_removed"] += 1
+            continue
+        if _population_issues(sentence, scope, ctx, True):
+            counts["population_removed"] += 1
+            continue
+        measures = _measure_issues(sentence, scope, ctx, toks)
+        if any(fix is None for *_, fix, _refs in measures):
+            counts["measures_removed"] += 1
+            continue
+        for start, end, _written, fix, _refs in sorted(measures, reverse=True):
+            sentence = sentence[:start] + fix + sentence[end:]
+            counts["measures_fixed"] += 1
+        kept.append(sentence)
+    return " ".join(kept), counts
 
 
 def fix_prose(text: str, ctx: ProseContext) -> tuple[str, Counter[str]]:

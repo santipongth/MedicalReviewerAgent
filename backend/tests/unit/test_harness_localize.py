@@ -199,13 +199,36 @@ async def test_half_translated_item_keeps_the_better_attempt_when_the_retry_is_w
     assert res.strings["a"] == half and res.untranslated == 1 and res.retried == 1
 
 
-async def test_retry_repairs_only_a_plain_echo_not_a_partial_translation():
+async def test_retry_repairs_a_partial_translation_within_max_repairs():
+    # Plan 20 Task 10 (the mammography re-run left "ผู้ป่วย undergoing mammography และ ..." after the retry): a partial
+    # translation now also gets the retry pass's repair rounds, bounded by max_repairs
     half = "Significantly higher 2-year OS ในผู้ที่ใช้ Metformin"
     llm = FakeStructuredLLM("qwen", lambda s, u: thai(u, transform={"a": lambda t: half}))
     res = await localize_strings(llm, HarnessRunner(max_repairs=2), {"a": "Significantly higher 2-year OS with "
                                                                            "metformin"}, "th")
-    assert len(llm.calls) == 2  # first pass + one retry call, no repair rounds for a partial translation
+    assert len(llm.calls) == 4  # first pass + retry call + 2 repair rounds, then it stops
+    assert "only partly translated" in llm.calls[2][1]
     assert res.untranslated == 1 and res.strings["a"] == half
+
+
+async def test_retry_repair_fixes_a_half_translated_population():
+    source = "Patients undergoing mammography and digital breast tomosynthesis (DBT)"
+    half = "ผู้ป่วย undergoing mammography และ digital breast tomosynthesis (DBT)"
+    full = "ผู้ป่วยที่เข้ารับการตรวจแมมโมแกรมและการถ่ายภาพเต้านมแบบสามมิติ (DBT)"
+    answers = iter([half, half, full])
+    llm = FakeStructuredLLM("qwen", lambda s, u: thai(u, transform={"a": lambda t: next(answers)}))
+    res = await localize_strings(llm, HarnessRunner(max_repairs=2), {"a": source}, "th")
+    assert res.strings["a"] == full and res.untranslated == 0
+
+
+@pytest.mark.parametrize(("source", "text", "expected"), [
+    # Plan 20 Task 10: names copied verbatim (a product, a company) are not English left untranslated
+    ("Transpara version 1.7.0 ScreenPoint Medical", "Transpara รุ่น 1.7.0 ScreenPoint Medical", False),
+    ("women undergoing mammography screening", "ผู้หญิง undergoing mammography screening", True),
+    ("Patients undergoing mammography", "Patients ที่เข้ารับ mammography screening", True),
+])
+def test_untranslated_detector_excuses_names_copied_from_the_source(source, text, expected):
+    assert untranslated(source, text, "th") is expected
 
 
 @pytest.mark.parametrize(("source", "text", "expected"), [

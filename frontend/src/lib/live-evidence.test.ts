@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { type Scene, initialScene, reduceScene } from "./agent-scene";
-import { DIRECTION_ORDER, asDesign, asDirection, isPooledDesign, liveTally } from "./live-evidence";
+import { paperLines } from "./agent-thought";
+import { DESIGN_LABEL } from "./i18n";
+import { DIRECTION_ORDER, asDesign, asDirection, isPooledDesign, isThemeDesign, liveTally } from "./live-evidence";
+import { initialRun, reduceRun } from "./progress";
 import type { ReviewEvent } from "./types";
 
 const ev = (seq: number, type: string, payload: Record<string, unknown> = {}): ReviewEvent => ({ seq, type, payload });
@@ -79,6 +82,27 @@ describe("liveTally", () => {
     const b = run([ev(30, "extracted", { ref: "P1", ok: true, direction: "negative", design: "rct" })], a);
     expect(liveTally(b)).toEqual(liveTally(a));
     expect(liveTally(b).groups.negative[0].key).toBe(20);
+  });
+  it("qualitative and mixed-methods reads are themes: never on the board, the piles or a slot direction", () => {
+    const s = run([...base,
+      ev(20, "extracted", { ref: "P1", ok: true, direction: "positive", design: "qualitative" }),
+      ev(21, "extracted", { ref: "P2", ok: true, direction: "unclear", design: "mixed_methods" }),
+      ev(22, "extracted", { ref: "P3", ok: true, direction: "positive", design: "rct" })]);
+    const t = liveTally(s);
+    expect(t.themes).toBe(2);
+    expect(t.noDirection).toBe(0);
+    expect(Object.values(t.groups).flat().map((i) => i.ref)).toEqual(["P3"]);
+    expect(s.slots.filter((sl) => sl.ref === "P1" || sl.ref === "P2").map((sl) => sl.direction)).toEqual([null, null]);
+    // the text ledger drops the direction too
+    const r = [["extracted", { ref: "P1", ok: true, direction: "positive", design: "qualitative" }]] as const;
+    const progress = r.reduce((acc, [type, payload], i) => reduceRun(acc, { seq: i + 1, type, payload } as ReviewEvent), initialRun());
+    expect(progress.reading[0]).toMatchObject({ ref: "P1", design: "qualitative" });
+    expect(progress.reading[0].direction).toBeUndefined();
+    // the thought card names the design and "themes", never a direction or its absence
+    const lines = paperLines({ kind: "paper", ref: "P1", title: "t", ok: true, direction: null, design: "qualitative", uncertain: false, verified: 0 });
+    expect(lines.finding).toBe(`${DESIGN_LABEL.th.qualitative} · สรุปเป็นประเด็น`);
+    expect(isThemeDesign("mixed_methods")).toBe(true);
+    expect(isThemeDesign("rct")).toBe(false);
   });
   it("empty scene", () => {
     expect(liveTally(initialScene())).toMatchObject({ counted: 0, noDirection: 0, failed: 0, uncertain: 0, pooled: 0, total: 0 });

@@ -55,7 +55,7 @@ class FakeEpmc:
         self.trial_queries = [*getattr(self, "trial_queries", []), query]
         return []
 
-    async def lookup(self, *, dois, pmids):
+    async def lookup(self, *, dois, pmids, failures=None):
         return [Candidate(title="Paper 0 about metformin and colorectal cancer", doi="10.1/0", pmcid="PMC0",
                           is_open_access=True, abstract="enriched abstract", engines=["europepmc"])]
 
@@ -171,7 +171,8 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
                           "extracted": 8, "non_research": 0, "year_excluded": 0, "no_abstract": 0,
                           "excluded_screening": {},
                           "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
-                                                 "study_design_corrected": 0, "low_relevance": 0}}
+                                                 "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
+                          "related_reports": 0}  # Plan 20 Task 10
     assert r["summary"] == to_thai(r["synthesis_en"]["executive_summary"])
     assert r["synthesis_en"]["executive_summary"].startswith("Metformin")
     assert r["synthesis"]["comparison"][0]["outcome"] == to_thai("Colorectal cancer incidence")

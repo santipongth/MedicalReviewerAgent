@@ -1,5 +1,6 @@
 "use client";
 
+import { CHART_SYMBOL } from "@/lib/glyphs";
 import type { Direction } from "@/lib/types";
 
 /** Chart colors and fonts read from the live CSS tokens, so charts follow the active theme. */
@@ -11,8 +12,9 @@ export interface ChartTokens {
   /** The "not verified" hatch tone; used as a neutral fill (never for a direction). */
   hatch: string;
   direction: Record<Direction, string>;
+  /** Every chart text: axes, ticks, counts, labels and tooltips (the EChart wrapper turns on tabular figures). Charts
+   * carry no Martian Mono token: the verified face belongs to VerifiedNumber only. */
   fontDisplay: string;
-  fontNum: string;
   reducedMotion: boolean;
 }
 
@@ -33,16 +35,9 @@ export function readTokens(): ChartTokens {
       unclear: v("--unclear", "#5f6b73"),
     },
     fontDisplay: v("--font-bai-jamjuree", "sans-serif"),
-    fontNum: v("--font-martian-mono", "monospace"),
     reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   };
 }
 
-/** Marker shape per direction (shape carries identity alongside color). */
-export const SYMBOL: Record<Direction, string> = {
-  positive: "circle",
-  negative: "diamond",
-  null: "rect",
-  mixed: "triangle",
-  unclear: "emptyCircle",
-};
+/** Marker shape per direction: the shared glyph vocabulary (lib/glyphs.ts), so markers match the legend. */
+export const SYMBOL: Record<Direction, string> = CHART_SYMBOL;

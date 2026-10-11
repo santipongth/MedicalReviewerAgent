@@ -1,9 +1,17 @@
 "use client";
 
 import type { ECharts, EChartsCoreOption } from "echarts/core";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { fitChartForPrint } from "@/lib/print";
+import { usePrinting } from "../review/print-mode";
 
 export type EChartsOption = EChartsCoreOption;
+
+/**
+ * A chart's width on paper (CSS px): A4 less the print margins (globals.css `@page`, 182mm ≈ 688px) and a little room.
+ * The SVG has a fixed size, so it is redrawn at this width instead of the screen's (vector, never scaled).
+ */
+export const PRINT_CHART_WIDTH = 660;
 
 /** Same escaping as echarts.format.encodeHTML, kept here so building tooltip strings never pulls in echarts. */
 export function encodeHTML(source: unknown): string {
@@ -32,6 +40,9 @@ export function EChart({
   const chart = useRef<ECharts | null>(null);
   const clickRef = useRef(onItemClick);
   const optionRef = useRef(option);
+  // drawn at the print size (between beforeprint and afterprint), and the print fitting to undo afterwards
+  const printed = useRef(false);
+  const unViewBox = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     clickRef.current = onItemClick;
@@ -46,7 +57,8 @@ export function EChart({
       chart.current = c;
       c.on("click", (params) => clickRef.current?.((params as { data?: unknown }).data));
       c.setOption(optionRef.current, { notMerge: true }); // whatever option is current once the runtime arrives
-      ro = new ResizeObserver(() => c.resize());
+      // while printing the drawing keeps its print size: the page box resizing must not redraw it (fix round 1)
+      ro = new ResizeObserver(() => { if (!printed.current) c.resize(); });
       ro.observe(el.current);
     }).catch((e: unknown) => {
       // The box stays empty at its reserved height; every figure also has a table view with the same numbers.
@@ -60,10 +72,30 @@ export function EChart({
     };
   }, []);
 
-  useEffect(() => {
+  // Layout effects: in print mode (Plan 20 Task 8) the chart must be redrawn before the browser lays the page out for
+  // print, right after `beforeprint`. setOption draws synchronously; with no animation the printout never catches a
+  // half-way transition (the colours switch to the light theme at the same time).
+  const printing = usePrinting();
+  useLayoutEffect(() => {
     optionRef.current = option;
-    chart.current?.setOption(option, { notMerge: true });
-  }, [option]);
+    const c = chart.current;
+    if (!c) return;
+    unViewBox.current?.();
+    unViewBox.current = null;
+    if (printing) {
+      c.resize({ width: PRINT_CHART_WIDTH, height, animation: { duration: 0 } });
+      printed.current = true;
+    } else if (printed.current) {
+      // back to the container's width (explicit: the drawing still has its print width at this point)
+      c.resize({ width: el.current?.clientWidth || undefined, height, animation: { duration: 0 } });
+      printed.current = false;
+    }
+    c.setOption(printing ? { ...option, animation: false } : option, { notMerge: true });
+    // fix round 1: the drawing scales to the width the page has, in proportion (never clipped)
+    if (printing && el.current) unViewBox.current = fitChartForPrint(el.current, PRINT_CHART_WIDTH, height);
+  }, [option, printing, height]);
 
-  return <div ref={el} role="img" aria-label={label} style={{ height, width: "100%" }} />;
+  // Tabular figures for every tick, count and label. font-feature-settings (unlike font-variant-numeric) survives the
+  // `font` shorthand the SVG renderer writes on each text node, so it inherits into the chart's text.
+  return <div ref={el} role="img" aria-label={label} data-echart style={{ height, width: "100%", fontFeatureSettings: '"tnum"' }} />;
 }

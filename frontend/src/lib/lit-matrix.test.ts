@@ -54,31 +54,19 @@ describe("litRows", () => {
 });
 
 describe("litColumns", () => {
-  const rows = litRows(papers, "th");
-  it("narrative keeps direction and risk of bias", () => {
+  it("narrative keeps the direction (risk of bias shows under it)", () => {
     const cols = litColumns("narrative", litRows(narrativeReviewFixture.result!.papers!, "th"));
     expect(cols).toContain("direction");
-    expect(cols).toContain("risk");
   });
   it("scoping drops direction and risk of bias", () => {
     const cols = litColumns("scoping", litRows(scopingReviewFixture.result!.papers!, "th"));
     expect(cols).not.toContain("direction");
     expect(cols).not.toContain("risk");
   });
-  it("drops the comparator column when no row has one", () => {
-    const none = rows.map((r) => ({ ...r, comparator: "" }));
-    expect(litColumns("slr", none)).not.toContain("comparator");
-    expect(litColumns("slr", rows)).toContain("comparator");
-  });
-  it("adds the cited-by column after n only when the review has citation data", () => {
-    expect(litColumns("slr", rows)).not.toContain("citedBy");
-    const cols = litColumns("slr", litRows(papers, "th", citationsFixture));
-    expect(cols.indexOf("citedBy")).toBe(cols.indexOf("n") + 1);
-  });
-  it("drops the cited-by column when no paper has a count (a column of dashes says nothing)", () => {
-    const none = Object.fromEntries(papers.map((p) => [p.ref, null]));
-    const empty = { ...citationsFixture, cited_by: none, cited_by_source: none };
-    expect(litColumns("slr", litRows(papers, "th", empty))).not.toContain("citedBy");
+  it("Plan 20 Task 5: the comparator, n, year and cited-by share other cells (no columns of their own)", () => {
+    for (const c of ["comparator", "n", "year", "citedBy"]) {
+      expect(litColumns("slr", litRows(papers, "th", citationsFixture))).not.toContain(c as never);
+    }
   });
   it("cited-by values are counts with their source; null stays null (no data), also for a failed row", () => {
     const rows = litRows(papers, "th", citationsFixture);

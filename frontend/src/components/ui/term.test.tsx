@@ -5,6 +5,11 @@ import { GLOSSARY } from "@/lib/glossary";
 import { Term } from "./term";
 
 describe("Term", () => {
+  it("a wrapped term reads left-aligned, like the text around it (Plan 20 Task 7 fix round 1)", () => {
+    render(<Term k="relevance" />);
+    expect(screen.getByRole("button", { name: GLOSSARY.relevance.label.th })).toHaveClass("text-left");
+  });
+
   it("opens and closes on click, toggling aria-expanded", async () => {
     render(<Term k="relevance" />);
     const btn = screen.getByRole("button", { name: GLOSSARY.relevance.label.th });

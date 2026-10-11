@@ -3,6 +3,7 @@
 // or computes a number from a paper, and no mediator or causal path is inferred. Counts are counts of papers.
 import { designKey, designLabel, NON_QUANTITATIVE_DESIGNS } from "./charts-data";
 import { DESIGN_LABEL, DIRECTION_LABEL, DIRECTION_ORDER, type Lang } from "./i18n";
+import { plural } from "./plural";
 import { showsDirection, type ReviewTypeOrLegacy } from "./review-type";
 import type { Direction, Paper, ReviewResult } from "./types";
 
@@ -22,6 +23,8 @@ export interface MapNode {
   direction?: Direction;
   /** Group nodes under a design grouping (a design category key, or the free text of an older card). */
   design?: string;
+  /** Group of qualitative / mixed-methods studies reporting the theme: "found in k studies", no direction. */
+  theme?: boolean;
   children: MapNode[];
 }
 
@@ -40,6 +43,7 @@ export interface ConceptTree {
 const ROOT_MAX = 90;
 const REFS_SHOWN = 2;
 const NARRATIVE = "narrative_review";
+const THEMES = "themes";
 
 const t = (lang: Lang, th: string, en: string) => (lang === "th" ? th : en);
 const clean = (s: string | null | undefined) => (s ?? "").trim();
@@ -80,10 +84,10 @@ function elements(result: ReviewResult, lang: Lang): { key: string; label: strin
     if (clean(text)) out.push({ key, label, text: clean(text), hub });
   };
   add("p", t(lang, "ประชากร (P)", "Population (P)"), q?.pico?.population);
-  if (pcc) add("concept", t(lang, "แนวคิด (Concept)", "Concept"), q?.concept, true);
+  if (pcc) add("concept", t(lang, "แนวคิด", "Concept"), q?.concept, true);
   else add("ie", t(lang, "การรักษา/ปัจจัย (I/E)", "Intervention/exposure (I/E)"), q?.pico?.intervention_or_exposure, true);
   add("c", t(lang, "ตัวเทียบ (C)", "Comparator (C)"), q?.pico?.comparator);
-  if (pcc) add("context", t(lang, "บริบท (Context)", "Context"), q?.context);
+  if (pcc) add("context", t(lang, "บริบท", "Context"), q?.context);
   return out;
 }
 
@@ -136,14 +140,21 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
       if (!paper || seen.has(cell.ref)) continue;
       seen.add(cell.ref);
       const design = designOf(paper, cell.design_category ?? undefined);
-      if (byDirection && (design === NARRATIVE || NON_QUANTITATIVE_DESIGNS.includes(design))) continue;
-      const key = byDirection ? (DIRECTION_ORDER.includes(cell.direction) ? cell.direction : "unclear") : design;
+      if (byDirection && design === NARRATIVE) continue;
+      // Qualitative / mixed-methods studies report themes: one neutral "found in k studies" group, never a direction.
+      const key = byDirection
+        ? (NON_QUANTITATIVE_DESIGNS.includes(design) ? THEMES : DIRECTION_ORDER.includes(cell.direction) ? cell.direction : "unclear")
+        : design;
       buckets.set(key, [...(buckets.get(key) ?? []), cell.ref]);
     }
     const known = byDirection ? (DIRECTION_ORDER as string[]) : DESIGN_ORDER;
     const keys = [...known.filter((k) => buckets.has(k)), ...[...buckets.keys()].filter((k) => !known.includes(k)).sort()];
     const children: MapNode[] = keys.map((key) => {
       const refs = [...buckets.get(key)!].sort(byRef);
+      if (key === THEMES) {
+        const name = t(lang, `พบใน ${refs.length} การศึกษา`, `Found in ${refs.length} ${plural(refs.length, "study", "studies")}`);
+        return { id: `o${ri}:${key}`, kind: "group", label: `${name} · ${refsLabel(refs)}`, text: name, count: refs.length, refs, theme: true, children: [] };
+      }
       const name = byDirection ? DIRECTION_LABEL[lang][key as Direction] : designLabel(key, lang);
       return {
         id: `o${ri}:${key}`, kind: "group", label: `${name} · ${refsLabel(refs)}`, text: name, count: refs.length, refs,
@@ -181,6 +192,10 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
 
   const full = questionText(result, lang);
   const root: MapNode = { id: "root", kind: "root", label: truncate(full, ROOT_MAX), text: full, children: nodes };
+  return finish(root, byDirection);
+}
+
+function finish(root: MapNode, byDirection: boolean): ConceptTree {
   const flat: MapNode[] = [];
   const walk = (n: MapNode) => { flat.push(n); n.children.forEach(walk); };
   walk(root);
@@ -188,4 +203,28 @@ export function conceptTree(result: ReviewResult, lang: Lang, type: ReviewTypeOr
     root, nodes: flat, leaves: flat.filter((n) => n.kind === "group").length,
     drawnLeaves: flat.filter((n) => !n.children.length).length, byDirection,
   };
+}
+
+/** Studies under an outcome node: the distinct refs of its groups. */
+function outcomeK(n: MapNode): number {
+  return new Set(n.children.flatMap((g) => g.refs ?? [])).size;
+}
+
+/**
+ * The chart's tree (Plan 20 Task 5): only the `max` outcomes most studies report, most first; the outline keeps the full
+ * tree. `shown`/`total` count outcome nodes. A tree within the limit is returned as is.
+ */
+export function topOutcomes(tree: ConceptTree, max: number): { tree: ConceptTree; shown: number; total: number } {
+  const outcomes = tree.nodes.filter((n) => n.kind === "outcome");
+  if (outcomes.length <= max) return { tree, shown: outcomes.length, total: outcomes.length };
+  const keep = new Set([...outcomes].sort((a, b) => outcomeK(b) - outcomeK(a)).slice(0, max));
+  const rank = new Map([...keep].map((n, i) => [n, i]));
+  const prune = (n: MapNode): MapNode => {
+    if (!n.children.length) return n;
+    const kids = n.children.filter((c) => c.kind !== "outcome" || keep.has(c));
+    const outs = kids.filter((c) => c.kind === "outcome").sort((a, b) => rank.get(a)! - rank.get(b)!);
+    const ordered = kids.map((c) => (c.kind === "outcome" ? outs.shift()! : c));
+    return { ...n, children: ordered.map(prune) };
+  };
+  return { tree: finish(prune(tree.root), tree.byDirection), shown: keep.size, total: outcomes.length };
 }

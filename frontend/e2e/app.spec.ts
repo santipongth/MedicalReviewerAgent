@@ -83,7 +83,8 @@ test("report: matrix cell opens the verbatim sentence; charts and filters work; 
   const rail = page.getByRole("complementary", { name: "ต้นฉบับ" });
   await expect(rail.locator("mark")).toHaveText("0.80");
   await expect(rail.getByText("HR 0.80", { exact: true })).toHaveClass(/num-verified/);
-  await expect(page.getByRole("img", { name: "Forest plot ของ 3 ผลลัพธ์" })).toBeVisible();
+  // this fixture's Thai rows match no card outcome exactly (no English rows), so the forest says it has nothing to plot
+  await expect(page.locator("section[aria-labelledby=h-charts]")).toContainText("ไม่มีขนาดผลที่ตรวจกับต้นฉบับผ่านสำหรับวาดกราฟ");
   await expect(page.locator("svg").first()).toBeVisible();
   await page.screenshot({ path: shots("report-light"), fullPage: true });
   await noSeriousA11y(page);
@@ -252,13 +253,15 @@ test("live run: the search queries are listed under the PubMed step", async ({ p
   await expect(page.locator("ol li").filter({ hasText: "metformin colorectal cancer" })).toBeVisible();
 });
 
-test("report: the section nav jumps to the papers", async ({ page }) => {
+test("report: the table of contents jumps to the papers and stays in view", async ({ page }) => {
   await mockApi(page);
   await page.goto(`/r/${RID}`);
-  const nav = page.getByRole("navigation", { name: "ในรายงานนี้" });
-  await nav.getByRole("link", { name: "งานวิจัยที่อ่าน" }).click();
+  const toc = page.getByRole("navigation", { name: "สารบัญ" });
+  await expect(page.getByRole("navigation", { name: "ในรายงานนี้" })).toBeHidden(); // the top nav is below 1280px only
+  await toc.getByRole("link", { name: "อ้างอิง", exact: true }).click();
   await expect(page).toHaveURL(/#h-papers$/);
   await expect(page.locator("#h-papers")).toBeInViewport();
+  await expect(toc.getByRole("link", { name: "คำตอบ" })).toBeInViewport();
 });
 
 test("report on a phone: the section nav sticks below the wrapped site header and jumps clear of it", async ({ page }) => {
@@ -280,7 +283,7 @@ test("report on a phone: the section nav sticks below the wrapped site header an
   const header = await page.locator("header").first().boundingBox();
   const navBox = await nav.boundingBox();
   expect(navBox!.y).toBeGreaterThanOrEqual(header!.y + header!.height - 1);
-  await nav.getByRole("link", { name: "งานวิจัยที่อ่าน" }).click();
+  await nav.getByRole("link", { name: "อ้างอิง", exact: true }).click();
   await expect(page).toHaveURL(/#h-papers$/);
   await expect(page.locator("#h-papers")).toBeInViewport();
   await expect.poll(() => uncovered("#h-papers", "top")).toBe(true);
@@ -322,20 +325,29 @@ test("axe: report with the source drawer open at 375px", async ({ page }) => {
   await noSeriousA11y(page);
 });
 
-test("phone width: the literature matrix scrolls inside its own container, not the page", async ({ page }) => {
+test("phone width: the literature matrix is ruled cards, never a page-wide table", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, narrativeReviewFixture) });
   await page.goto(`/r/${RID}`);
-  const table = page.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
+  const cards = page.getByRole("list", { name: "ตารางสรุปงานวิจัย" });
+  await expect(cards).toBeVisible();
+  await expect(page.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).toHaveCount(0);
+  await noHorizontalScroll(page);
+  const box = (await cards.boundingBox())!;
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+});
+
+test("findings matrix at 390: scrolls inside its region with the edge cue and a sticky outcome column", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, narrativeReviewFixture) });
+  await page.goto(`/r/${RID}`);
+  const table = page.getByRole("table", { name: "ผลแต่ละการศึกษา" });
   await expect(table).toBeVisible();
   await noHorizontalScroll(page);
   const scroller = await table.evaluate((t) => ({ box: t.parentElement!.clientWidth, content: t.parentElement!.scrollWidth }));
-  expect(scroller.box).toBeLessThanOrEqual(390);
   expect(scroller.content).toBeGreaterThan(scroller.box);
-  const first = await table.getByRole("rowheader").first().boundingBox();
-  await table.evaluate((t) => { t.parentElement!.scrollLeft = 400; });
-  const after = await table.getByRole("rowheader").first().boundingBox();
-  expect(Math.abs(after!.x - first!.x)).toBeLessThan(2);
+  await expect(table.locator("xpath=..")).toHaveAttribute("data-fade-end", "true");
+  await expect(page.locator("section[aria-labelledby=h-matrix] [data-scroll-hint]")).toBeVisible();
 });
 
 // ---- Plan 14a: review types, literature matrix, concept map ----
@@ -346,7 +358,8 @@ async function openReport(page: Page, fixture: typeof reviewFixture) {
   await mockApi(page, { [`GET /api/v1/reviews/${RID}`]: (route) => json(route, 200, fixture) });
   await page.goto(`/r/${RID}`);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
+  // a table from 1280px, ruled cards below it (Plan 20 Task 5 fix round 1)
+  await expect(page.getByRole(page.viewportSize()!.width >= 1280 ? "table" : "list", { name: "ตารางสรุปงานวิจัย" })).toBeVisible();
 }
 
 test("landing: the scope form sends the chosen review_type", async ({ page }) => {
@@ -358,7 +371,7 @@ test("landing: the scope form sends the chosen review_type", async ({ page }) =>
   const select = page.getByRole("combobox", { name: /รูปแบบการทบทวน/ });
   await expect(select).toHaveValue("slr");
   await select.selectOption("scoping");
-  await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" }).getByText(/ด้วยกรอบ PCC/)).toBeVisible();
+  await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" }).getByText(/ตั้งคำถามด้วย PCC/)).toBeVisible();
   await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("metformin colorectal cancer");
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
   await expect(page).toHaveURL(new RegExp(`/r/${RID}$`));
@@ -378,36 +391,39 @@ test("landing: choosing the meta-analysis type sends review_type=meta_analysis",
   expect(body.options?.review_type).toBe("meta_analysis");
 });
 
-test("report per review type: badge, sections and nav", async ({ page }) => {
-  const nav = () => page.getByRole("navigation", { name: "ในรายงานนี้" });
+test("report per review type: type in the title block, sections and table of contents", async ({ page }) => {
+  const nav = () => page.getByRole("navigation", { name: "สารบัญ" });
+  const meta = () => page.getByLabel("ข้อมูลรายงาน");
   await openReport(page, scopingReviewFixture);
-  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ").first()).toContainText("การทบทวนขอบเขต");
+  await expect(meta()).toContainText("การทบทวนขอบเขต");
+  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ · ไม่ใช่คำแนะนำทางการแพทย์")).toBeVisible();
   await expect(page.getByRole("heading", { name: "แผนที่หลักฐาน" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่หลักฐาน" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "ตารางงานวิจัย" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่ความรู้" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ลักษณะงานวิจัย" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ภาพรวมความรู้" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "จุดที่ตรงกันและขัดกัน" })).toHaveCount(0);
   await expect(page.getByRole("img", { name: /^Forest plot/ })).toHaveCount(0);
-  await expect(nav().getByRole("link", { name: "จุดตรงกัน/ขัดกัน" })).toHaveCount(0);
+  await expect(nav().getByRole("link", { name: "ตรงกัน/ขัดกัน" })).toHaveCount(0);
+  await expect(nav().getByRole("link", { name: "ผลลัพธ์" })).toHaveCount(0);
 
   await openReport(page, narrativeReviewFixture);
-  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ").first()).toContainText("การทบทวนแบบบรรยาย");
-  await expect(nav().getByRole("link", { name: "ตารางงานวิจัย" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่ความรู้" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่หลักฐาน" })).toHaveCount(0);
-  await expect(page.getByRole("table", { name: "เหตุผลที่คัดออก" })).toHaveCount(0);
+  await expect(meta()).toContainText("การทบทวนแบบบรรยาย");
+  await expect(nav().getByRole("link", { name: "ลักษณะงานวิจัย" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ภาพรวมความรู้" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "การคัดเลือก" })).toHaveCount(0);
+  await expect(page.locator("[data-prisma-flow]")).toHaveCount(0);
 
   await openReport(page, slrReviewFixture);
-  await expect(page.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ").first()).toContainText("การทบทวนวรรณกรรมอย่างเป็นระบบ");
-  await expect(nav().getByRole("link", { name: "จุดตรงกัน/ขัดกัน" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนภาพ" })).toBeVisible();
-  await expect(nav().getByRole("link", { name: "แผนที่หลักฐาน" })).toHaveCount(0);
+  await expect(meta()).toContainText("การทบทวนวรรณกรรมอย่างเป็นระบบ");
+  await expect(nav().getByRole("link", { name: "ตรงกัน/ขัดกัน" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ผลลัพธ์" })).toBeVisible();
+  await expect(nav().getByRole("link", { name: "ตารางสรุปผล" })).toBeVisible();
 });
 
-test("scoping report: PRISMA lists the exclusion reasons; the concept map toggles to its outline", async ({ page }) => {
+test("scoping report: the PRISMA-ScR flow lists the exclusion reasons; the concept map toggles to its outline", async ({ page }) => {
   await openReport(page, scopingReviewFixture);
-  const reasons = page.getByRole("table", { name: "เหตุผลที่คัดออก" });
-  await expect(reasons).toBeAttached();
+  const reasons = page.locator("[data-flow-box=excluded_screening]");
+  await expect(reasons.locator("[data-flow-line]")).toHaveCount(3);
+  await expect(page.locator("[data-prisma-flow]")).toHaveAttribute("data-prisma-flow", "PRISMA-ScR");
   const section = page.locator("#h-map").locator("xpath=ancestor::section[1]");
   await section.scrollIntoViewIfNeeded();
   await expect(section.getByRole("img", { name: /^แผนที่ความรู้/ })).toBeVisible();
@@ -457,7 +473,7 @@ test("landing: scope form sends study types incl. other text, qualitative note, 
   await page.goto("/");
   await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" })).toBeVisible();
   await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("ประสบการณ์ของผู้ป่วยเบาหวานต่อการใช้อินซูลิน");
-  await page.getByLabel("Cohort", { exact: true }).check();
+  await page.getByLabel(/Cohort/).check();
   await page.getByLabel(/Qualitative/).check();
   await expect(page.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" }).getByText(/สรุปเป็นประเด็นจากบทคัดย่อ/)).toBeVisible();
   await page.getByLabel(/อื่น ๆ — ระบุ/).check();

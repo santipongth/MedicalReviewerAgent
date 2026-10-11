@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { Lang } from "@/lib/i18n";
+import { RC } from "@/lib/i18n-report";
+import { L } from "../review/text";
 
-/** Copies the current page URL. Falls back to a selected read-only input when the clipboard is unavailable. */
-export function CopyLinkButton({ className = "" }: { className?: string }) {
+/**
+ * Copies the current page URL. Falls back to a selected read-only input when the clipboard is unavailable. Its words
+ * follow the language of the page it sits on (the report's language in the report, Plan 20 Task 7).
+ */
+export function CopyLinkButton({ className = "", lang = "th" }: { className?: string; lang?: Lang }) {
   const [state, setState] = useState<"idle" | "copied" | "fallback">("idle");
   const input = useRef<HTMLInputElement>(null);
 
@@ -27,16 +33,16 @@ export function CopyLinkButton({ className = "" }: { className?: string }) {
         onClick={copy}
         className="cursor-pointer rounded-sm border border-rule bg-transparent px-3 py-1.5 text-sm hover:text-primary"
       >
-        คัดลอกลิงก์
+        {L(lang, RC.copyLink.button)}
       </button>
       <span role="status" className="text-sm text-muted">
-        {state === "copied" ? "คัดลอกแล้ว" : ""}
+        {state === "copied" ? L(lang, RC.copyLink.copied) : ""}
       </span>
       {state === "fallback" && (
         <input
           ref={input}
           readOnly
-          aria-label="ลิงก์"
+          aria-label={L(lang, RC.copyLink.box)}
           defaultValue={location.href}
           onFocus={(e) => e.currentTarget.select()}
           className="w-full min-w-0 rounded-sm border border-rule bg-surface px-2 py-1 font-code text-sm sm:w-80"

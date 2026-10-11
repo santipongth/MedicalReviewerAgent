@@ -235,6 +235,82 @@ h4 {
   white-space: nowrap;
 }
 
+/* Plan 20 Task 7: Thai segmented by ThaiText (each word a .th-w, a <wbr> between words). The strict rules help engines
+   that honour them for Thai; Chromium does not, which is why each word does not wrap. Words stay inline (an inline-block
+   word would add spaces to a heading's accessible name in Chromium); a run too long to be one word is left as plain text,
+   which `overflow-wrap: anywhere` may break as a last resort, so nothing overflows (fix round 1). */
+.th-seg {
+  line-break: strict;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.th-w,
+.th-n {
+  white-space: nowrap;
+}
+
+/* Running prose in the report (answer, findings, claims, gaps, limitations, methods): the body size in English, the
+   Thai reading size (DESIGN.md body-thai-reading: 17px / 1.75) in a Thai report, untranslated English lines included. */
+.reading {
+  font-size: 1rem;
+  line-height: 1.7;
+}
+[lang="th"] .reading,
+.reading[lang="th"] {
+  font-size: 17px;
+  line-height: 1.75;
+}
+
+/* Report section nav (Plan 20): fade the edge that has more links, so a cut-off row reads as scrollable. */
+.nav-fade {
+  scrollbar-width: thin;
+}
+.nav-fade[data-fade-end],
+.edge-fade[data-fade-end] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+}
+.nav-fade[data-fade-start],
+.edge-fade[data-fade-start] {
+  mask-image: linear-gradient(to right, transparent, #000 2.5rem);
+}
+.nav-fade[data-fade-start][data-fade-end],
+.edge-fade[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+}
+/* A scroll region's mask would also fade its focus ring: drop the mask while it has keyboard focus. */
+.edge-fade:focus-visible {
+  mask-image: none;
+}
+
+/* Plan 20 Task 5 forest panels: one grid per row (label · plot · numbers), the same columns in every row so the
+   numeric column lines up; in a narrow panel the numbers move under the label and the plot keeps the width. */
+.forest {
+  container: forest / inline-size;
+  font-feature-settings: "tnum";
+}
+.forest-row {
+  display: grid;
+  grid-template-columns: minmax(0, 30%) minmax(0, 1fr) 10.5rem;
+  grid-template-areas: "label plot num";
+}
+@container forest (max-width: 34rem) {
+  .forest-row {
+    grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+    grid-template-areas: "label plot" "num plot";
+  }
+  .forest-row > .forest-num {
+    padding-left: 0;
+    padding-top: 0;
+  }
+  .forest-tick-minor {
+    display: none;
+  }
+  /* the favours labels split the axis in halves (not at the null line) so neither is squeezed */
+  .forest-favours > span {
+    width: 50% !important;
+  }
+}
+
 .label {
   font: 600 0.75rem/1.3 var(--font-display);
   letter-spacing: 0.04em;
@@ -314,6 +390,285 @@ h4 {
 .team-eyes[data-look="d"] { transform: translateY(2.5px); }
 .team-eyes[data-look="u"] { transform: translateY(-2.5px); }
 
+/* Plan 20 Task 8: print / PDF. A4 with a running header (short title, review id) and "page X of Y" in the @page margin
+   boxes (their text is written per report by <Report>, lib/print.ts; a browser without margin boxes shows none). The
+   light theme whatever the screen theme; controls hidden (Tailwind `print:hidden` on each); every disclosure open (JS,
+   with ::details-content as the CSS fallback) and every clamped cell in full; tables at 9pt with rows kept whole and
+   their header repeated; the verified tape as a solid underline plus ✓, a blanked value as bracketed text. */
+@page {
+  size: A4;
+  margin: 18mm 14mm 16mm;
+  @top-left {
+    font: 500 8pt/1.3 "Bai Jamjuree", "Anuphan", system-ui, sans-serif;
+    color: #4a5e57;
+  }
+  @top-right {
+    font: 500 8pt/1.3 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    color: #4a5e57;
+  }
+  @bottom-right {
+    font: 500 8pt/1.3 "Bai Jamjuree", "Anuphan", system-ui, sans-serif;
+    color: #4a5e57;
+  }
+}
+
+@media print {
+  /* the light tokens, over any screen theme (more specific than both dark rules above) */
+  :root:root:root {
+    --ground: #ffffff;
+    --surface: #ffffff;
+    --rail: #ffffff;
+    --ink: #10241e;
+    --muted: #4a5e57;
+    --rule: #bccac1;
+    --primary: #0e5a47;
+    --on-primary: #ffffff;
+    --highlight: #f2d16b;
+    --tape: #e6ddb8;
+    --stripe: #10241e;
+    --hatch: #9aa8a0;
+    --sup: #0072b2;
+    --harm: #d55e00;
+    --none: #5f6b73;
+    --mixed: #8e3b7e;
+    --unclear: #5f6b73;
+    --ok: #0e5a47;
+    --warn: #8a5a00;
+    --warn-bg: #f5e7c4;
+    --err: #a33a12;
+    --err-bg: #f6ddd2;
+    --info-bg: #dde9f3;
+    color-scheme: light;
+  }
+  html,
+  body {
+    background: #ffffff;
+  }
+  /* direction glyphs, forest whiskers and certainty marks are drawn with background colours, which browsers drop
+     when printing by default: the report keeps its colours (the light tokens above) */
+  [data-report],
+  [data-offline-header] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body {
+    font-size: 10pt;
+    line-height: 1.55;
+  }
+  .reading,
+  [lang="th"] .reading,
+  .reading[lang="th"] {
+    font-size: 10.5pt;
+    line-height: 1.6;
+  }
+  main {
+    padding-bottom: 0 !important;
+  }
+
+  /* the report bench prints as one column of text: no frame, no padding, no sticky parts */
+  [data-report] > div,
+  [data-report] > div > div {
+    border: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  /* the table of contents and the rail are not printed: the reading column takes the whole width */
+  [data-report] > div {
+    display: block !important;
+  }
+  /* Block flow on paper (fix round 1). Chromium does not grow a grid when page breaking pushes one of its items to
+     the next page, so the items after it, and the footer, were drawn over it (and a grid disclosure, the appendix,
+     left a blank page after the report). The report's structural grids (the page, its sections, figures, lists,
+     disclosures and their wrappers) flow as blocks, the gap turned into a top margin. Small
+     units keep their grid: a cell's stacked lines, a list entry, a button, a two-column list (dl), a PRISMA stage. */
+  [data-report].grid,
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid:not([data-flow-stage], .print\:hidden, .hidden, :is(td, th, li, button, span, p, dd, dt, label) *) {
+    display: block !important;
+  }
+  [data-report].grid > * + *,
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid:not([data-flow-stage], :is(td, th, li, button, span, p, dd, dt, label) *) > * + * {
+    margin-top: 0.5rem;
+  }
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid:is(.gap-0\.5, .gap-1, .gap-1\.5):not([data-flow-stage], :is(td, th, li, button, span, p, dd, dt, label) *) > * + * {
+    margin-top: 0.25rem;
+  }
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid:is(.gap-3, .gap-4):not([data-flow-stage], :is(td, th, li, button, span, p, dd, dt, label) *) > * + * {
+    margin-top: 0.75rem;
+  }
+  [data-report].gap-6 > * + *,
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid.gap-6:not(:is(td, th, li, button, span, p, dd, dt, label) *) > * + * {
+    margin-top: 1.25rem;
+  }
+  [data-report] :is(div, section, figure, ul, ol, header, article, details).grid.gap-10 > * + * {
+    margin-top: 1.75rem;
+  }
+  /* body and main end with the report: no viewport-high minimum that can add a blank last page */
+  body {
+    min-height: 0 !important;
+  }
+  /* the site footer (its disclaimer) prints whole at the end, in block flow: a grid footer pushed to a new page
+     left a blank page after the report */
+  body > footer .grid:not(.print\:hidden) {
+    display: block !important;
+  }
+  body > footer .grid > * + * {
+    margin-top: 0.75rem;
+  }
+  /* the footer's last line ends the paper with no padding under it: its bottom padding alone pushed an empty last page
+     after the Thai meta-analysis report (Task 9; some other long Thai reports still get one, see e2e/pdf-layout.ts) */
+  body > footer > div:last-child {
+    padding-bottom: 0 !important;
+  }
+  [data-report] .sticky {
+    position: static !important;
+  }
+  /* screen-reader-only text is for screen readers: on paper its 1px box printed as a stray dot (and, placed outside
+     the flow, could add a blank last page) */
+  [data-report] .sr-only {
+    display: none !important;
+  }
+  /* Thai marks above the letters stand higher than a tight heading line (1.2): on the first line of a page they
+     were painted at the foot of the page before, as stray dots. On paper headings get room for them */
+  [data-report] :is(h1, h2, h3, h4, figcaption, .label) {
+    line-height: 1.6 !important;
+  }
+  /* touch targets mean nothing on paper */
+  [data-report] button {
+    min-height: 0 !important;
+    min-width: 0 !important;
+  }
+
+  /* scroll regions show everything: no mask, no clipping (tables fit the page instead) */
+  .edge-fade,
+  .nav-fade {
+    mask-image: none !important;
+    overflow: visible !important;
+  }
+  [data-report] table {
+    font-size: 9pt;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  [data-report] thead {
+    display: table-header-group;
+  }
+  /* small units stay whole (a row, a list entry, a card, a PRISMA stage); big tables and lists break between them,
+     the table header repeated */
+  [data-report] tr,
+  [data-report] tbody[data-sof-row],
+  [data-report] li,
+  [data-report] [data-claim] {
+    break-inside: avoid;
+  }
+  /* a scroll region's frame would be split into an empty box at a page foot: the rows carry the rules */
+  [data-report] [data-scroll-region] > [role="region"] {
+    border: 0 !important;
+  }
+  /* a scroll box cannot break across pages: on paper every one shows its content in flow */
+  [data-report] .overflow-x-auto,
+  [data-report] .overflow-auto {
+    overflow: visible !important;
+  }
+
+  /* clamped cells print in full (SoF "what it means", literature-matrix outcomes and fields) */
+  [data-report] .line-clamp-2,
+  [data-report] .line-clamp-3 {
+    display: revert !important;
+    -webkit-line-clamp: unset !important;
+    line-clamp: none !important;
+    overflow: visible !important;
+  }
+
+  /* every disclosure open (the JS opens them; this shows their content where it did not run) */
+  @supports selector(::details-content) {
+    [data-report] details::details-content {
+      content-visibility: visible;
+      display: block;
+    }
+  }
+
+  /* headings stay with what follows; figures and their captions never split */
+  h1,
+  h2,
+  h3,
+  h4,
+  summary {
+    break-after: avoid;
+  }
+  /* a figure with its caption stays whole, unless it is taller than a page (marked by print mode); the PRISMA flow
+     breaks between its stages */
+  [data-report] figure:not([data-print-tall]):not([data-prisma-flow]):not(:has([data-echart])) {
+    break-inside: avoid;
+  }
+  /* a chart figure: the drawing stays whole and its title and notes stay with it (a whole-figure "avoid" around an
+     echarts drawing made Chromium open a blank page at the end of the report) */
+  [data-report] figure:has([data-echart]) [data-echart] {
+    break-inside: avoid;
+  }
+  [data-report] figure > :first-child,
+  [data-report] figcaption {
+    break-after: avoid;
+  }
+  [data-report] [data-echart] + * {
+    break-before: avoid;
+  }
+  /* charts scale down as vectors to the width there is, in proportion, never clipped: print mode fits each drawing
+     (lib/print.ts fitChartForPrint: aspect-ratio box, viewBox). The drawing sits in flow: echarts positions its SVG
+     absolutely, and an absolute box inside a figure that page breaking moved opened a blank page after the report. */
+  [data-echart] svg {
+    position: static !important;
+    display: block;
+  }
+  /* the appendix's source sentences at the table size */
+  [data-appendix] .font-quote {
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+
+  /* verified numbers: a solid underline and a check mark (the striped tape prints as a smudge) */
+  .num-verified {
+    padding-bottom: 0;
+    text-decoration: underline solid currentColor;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+  .num-verified::after {
+    content: "✓";
+    position: static;
+    display: inline-block; /* the underline does not run under the mark */
+    height: auto;
+    margin-left: 1px;
+    background: none;
+    font-family: var(--font-display);
+    font-size: 0.85em;
+  }
+  .num-verified[data-pending="true"] {
+    text-decoration: none;
+  }
+  .num-verified[data-pending="true"]::after {
+    content: none;
+  }
+  /* a blanked value: bracketed text in the report language, no hatch */
+  .hole[data-print-label] {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ink);
+    font-size: 0; /* the screen words give way to the bracketed print label */
+  }
+  .hole[data-print-label]::before {
+    content: attr(data-print-label);
+    font: 600 9pt/1.4 var(--font-display);
+  }
+  /* the number marked in its source sentence: no highlight colour on paper */
+  mark {
+    background: none !important;
+    color: inherit !important;
+    font-weight: 600;
+    text-decoration: underline;
+  }
+}
+
 /* Finding-direction glyphs (DESIGN.md): shape + color, never color alone. */
 .g {
   display: inline-block;
@@ -330,9 +685,10 @@ h4 {
   background: var(--harm);
   transform: rotate(45deg) scale(0.85);
 }
+/* 14 x 5, the same aspect as the chart's flat bar (lib/glyphs.ts, 100 x 36) */
 .g-none {
   background: var(--none);
-  height: 4px;
+  height: 5px;
   width: 14px;
 }
 .g-mixed {

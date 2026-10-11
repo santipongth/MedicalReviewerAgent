@@ -21,7 +21,7 @@ class FakeEpmc:
     def __init__(self, records, fail=False):
         self.records, self.fail, self.calls = records, fail, []
 
-    async def lookup(self, *, dois, pmids):
+    async def lookup(self, *, dois, pmids, failures=None):
         self.calls.append((sorted(dois), sorted(pmids)))
         if self.fail:
             raise RuntimeError("epmc down")
@@ -39,7 +39,10 @@ async def test_search_runs_every_query_and_page_and_records_failures():
     assert sorted(sx.calls) == [("q1", 1), ("q1", 2), ("q2", 1), ("q2", 2), ("q3", 1), ("q3", 2)]
     assert [c["doi"] or c["pmid"] for c in out["candidates"]] == ["10.1/a", "2"]
     assert len(out["errors"]) == 2 and "q3" in out["errors"][0]
-    assert out["search_stats"] == {"found": 2}
+    stats = out["search_stats"]
+    assert stats["found"] == 2 and stats["searched_at"].endswith("+00:00")  # Plan 20 Methods: search date
+    # per source, before deduplication; the fake's hits name no engine
+    assert stats["per_source"] == {"unknown": 2}
 
 
 async def test_enrich_merges_epmc_metadata_filters_years_and_caps():

@@ -3,14 +3,23 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyReviewFixture, legacyReviewFixture, metaReviewFixture, narrativeReviewFixture, reviewFixture, scopingReviewFixture, slrReviewFixture } from "@/test/fixtures";
 
-vi.mock("./charts", () => ({ Charts: () => <section aria-labelledby="h-charts"><h2 id="h-charts">แผนภาพหลักฐาน</h2><div data-testid="charts" /></section> }));
+vi.mock("./charts", () => ({
+  Charts: () => <section aria-labelledby="h-charts"><h3 id="h-charts">แผนภาพหลักฐาน</h3><div data-testid="charts" /></section>,
+}));
 
 vi.mock("../charts/echart", () => ({
   EChart: ({ label }: { label: string }) => <div role="img" aria-label={label} />,
   encodeHTML: (s: unknown) => String(s ?? ""),
 }));
 
+import { desktopViewport } from "@/test/viewport";
 import { Report } from "./report";
+
+// Full <Report> renders take about 1 s alone and passed 5 s when three suites shared the CPU (Task 9 stress runs):
+// a hang guard for this file only, not a timing assertion.
+vi.setConfig({ testTimeout: 20_000 });
+
+desktopViewport(); // desktop layouts unless a test stubs a narrow viewport (Plan 20 Task 5: lit-matrix cards, concept outline)
 
 async function openFilters() {
   await userEvent.click(screen.getByRole("button", { name: /^กรอง \(แสดง/ }));
@@ -52,7 +61,7 @@ describe("Report", () => {
 
   it("citations in the summary select the cited paper", async () => {
     render(<Report review={reviewFixture} />);
-    const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    const summary = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
     await userEvent.click(within(summary).getByRole("button", { name: "P4" }));
     expect(rail().getByText(/Short-term metformin initiation/)).toBeInTheDocument();
     expect(rail().getByText("สองโมเดลอ่านต่างกัน")).toBeInTheDocument();
@@ -62,6 +71,8 @@ describe("Report", () => {
     render(<Report review={reviewFixture} />);
     await userEvent.click(screen.getByRole("button", { name: /^P2: / }));
     expect(rail().getAllByText("ไม่ยืนยัน").length).toBeGreaterThan(0);
+    // the one-study mortality row is behind "show all" (Plan 20 Task 5: k >= 2 by default)
+    await userEvent.click(screen.getByRole("button", { name: "แสดงทั้งหมด (2)" }));
     await userEvent.click(screen.getByRole("button", { name: /^P3: .*การเสียชีวิต/ }));
     expect(rail().getByText(/ไม่ได้รายงานตัวเลข/)).toBeInTheDocument();
   });
@@ -69,7 +80,10 @@ describe("Report", () => {
   it("lists a paper whose extraction failed with its reason", () => {
     render(<Report review={reviewFixture} />);
     expect(screen.getByText(/Antidiabetic drugs and adenoma/)).toBeInTheDocument();
-    expect(screen.getByText(/อ่านไม่สำเร็จ/)).toBeInTheDocument();
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
+    expect(within(papers).getByText(/อ่านไม่สำเร็จ/)).toBeInTheDocument();
+    // the title block counts only the studies that were read, and names the one that was not
+    expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("4 ฉบับ (อ่านไม่สำเร็จอีก 1)");
   });
 
   it("filters by study-design category and shows the category with the paper's own description", async () => {
@@ -79,12 +93,13 @@ describe("Report", () => {
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
     expect(within(table).queryByRole("columnheader", { name: /^P1\b/ })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /^P2: / }));
-    expect(rail().getByText("Case-control · nested case-control")).toBeInTheDocument();
+    // the paper's own description is card text, marked with its language in a Thai report (Plan 20 Task 7)
+    expect(rail().getByText("nested case-control").closest("dd")).toHaveTextContent("Case-control · nested case-control");
   });
 
   it("the paper list names each study's design category", () => {
     render(<Report review={reviewFixture} />);
-    const list = screen.getByRole("heading", { name: /งานวิจัยที่วิเคราะห์|งานวิจัยที่อ่าน/ }).closest("section")!;
+    const list = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     expect(within(list).getAllByText("Case-control").length).toBeGreaterThan(0);
     expect(within(list).queryByText("nested case-control")).toBeNull();
   });
@@ -109,7 +124,7 @@ describe("Report", () => {
   it("shows the selected cell as a visible line below the matrix", async () => {
     render(<Report review={reviewFixture} />);
     const table = screen.getByRole("table", { name: /ผลแต่ละการศึกษา/ });
-    const live = table.parentElement!.parentElement!.querySelector("p[aria-live=polite]")!;
+    const live = table.closest("section")!.querySelector("p[aria-live=polite]")!;
     expect(live.textContent).toBe("");
     await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
     expect(live).toHaveTextContent(/^P3 · .*อุบัติการณ์.*:/);
@@ -119,7 +134,7 @@ describe("Report", () => {
     render(<Report review={reviewFixture} />);
     const matrix = screen.getByRole("heading", { name: "ผลแต่ละการศึกษา" }).closest("section")!;
     expect(within(matrix).getAllByText("สองโมเดลอ่านต่างกัน")).toHaveLength(1); // the legend, same wording as the flag
-    const list = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const list = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     expect(within(list).getAllByText("สองโมเดลอ่านต่างกัน").length).toBeGreaterThan(0); // paper list flag
     expect(screen.queryByText(/◆ ไม่แน่นอน/)).toBeNull();
   });
@@ -162,46 +177,54 @@ describe("Report", () => {
     expect(screen.queryByText(/กำลังกรอง/)).toBeNull();
     await openFilters();
     fireEvent.change(screen.getByLabelText(/ความเกี่ยวข้องขั้นต่ำ/), { target: { value: "90" } });
+    // the references list every paper whatever the filters (Plan 20 Task 6), so only the charts carry the status
     const statuses = screen.getAllByText("กำลังกรอง: แสดง 2 จาก 5 ฉบับ");
-    expect(statuses).toHaveLength(2);
+    expect(statuses).toHaveLength(1);
     const chartsWrap = screen.getByTestId("charts").closest("section")!.parentElement!;
     expect(within(chartsWrap).getByText(/กำลังกรอง/).compareDocumentPosition(screen.getByTestId("charts")))
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    const papers = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
-    expect(within(papers).getByText(/กำลังกรอง/)).toBeInTheDocument();
-    await userEvent.click(within(papers).getByRole("button", { name: "ล้างตัวกรอง" }));
+    const papers = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
+    expect(within(papers).queryByText(/กำลังกรอง/)).toBeNull();
+    await userEvent.click(within(chartsWrap).getByRole("button", { name: "ล้างตัวกรอง" }));
     expect(screen.queryByText(/กำลังกรอง/)).toBeNull();
     expect(screen.getByRole("button", { name: "กรอง (แสดง 5 จาก 5 ฉบับ)" })).toBeInTheDocument();
   });
 
-  it("the section nav links exactly the section headings present, in reading order", () => {
+  it("the section nav and the table of contents link exactly the section headings present, in reading order", () => {
     const { container } = render(<Report review={reviewFixture} />);
-    const nav = screen.getByRole("navigation", { name: "ในรายงานนี้" });
-    const links = within(nav).getAllByRole("link");
-    const ids = links.map((a) => a.getAttribute("href")!.slice(1));
+    const ids = navIds(container);
     for (const id of ids) expect(container.querySelector(`h2#${id}`)).not.toBeNull();
     const h2ids = [...container.querySelectorAll("h2[id^='h-']")].map((h) => h.id);
     expect(h2ids).toEqual(ids);
-    expect(ids[0]).toBe("h-summary");
-    expect(ids.at(-1)).toBe("h-method");
-    expect(links.map((a) => a.textContent)).toContain("ดาวน์โหลด");
+    expect(ids[0]).toBe("h-answer");
+    expect(ids.slice(-2)).toEqual(["h-downloads", "h-appendix"]);
+    const toc = screen.getByRole("navigation", { name: "สารบัญ" });
+    expect(within(toc).getAllByRole("link").map((a) => a.getAttribute("href")!.slice(1))).toEqual(ids);
+    expect(within(toc).getAllByRole("link").map((a) => a.textContent)).toContain("ดาวน์โหลด");
   });
 
-  it("a review with no papers has no section nav", () => {
+  it("a review with no papers keeps a short section list, but no left table of contents (Plan 20 Task 7)", () => {
     render(<Report review={emptyReviewFixture} />);
-    expect(screen.queryByRole("navigation", { name: "ในรายงานนี้" })).toBeNull();
+    const nav = screen.getByRole("navigation", { name: "ในรายงานนี้" });
+    expect(nav).not.toHaveClass("xl:hidden");
+    expect(screen.queryByRole("navigation", { name: "สารบัญ" })).toBeNull();
   });
 
-  it("the method section repeats the downloads and holds the disclaimer; offline it has neither link", () => {
+  it("methods hold the disclaimer and downloads have their own section; offline there is no downloads section", () => {
     const { unmount } = render(<Report review={reviewFixture} />);
-    const method = screen.getByRole("heading", { name: "วิธีทำและดาวน์โหลด" }).closest("section")!;
-    expect(within(method).getByRole("link", { name: /HTML/ })).toBeInTheDocument();
-    expect(within(method).getByRole("link", { name: "CSV" })).toBeInTheDocument();
+    const downloads = screen.getByRole("heading", { level: 2, name: "ดาวน์โหลดและการอ้างอิง" }).closest("section")!;
+    expect(within(downloads).getByRole("link", { name: /HTML/ })).toBeInTheDocument();
+    expect(within(downloads).getByRole("link", { name: /^CSV/ })).toBeInTheDocument();
+    const method = screen.getByRole("heading", { name: "วิธีการ" }).closest("section")!;
     expect(within(method).getByText(/ไม่ใช่คำแนะนำทางการแพทย์/)).toBeInTheDocument();
     unmount();
     render(<Report review={reviewFixture} offline />);
-    const offlineMethod = screen.getByRole("heading", { name: "วิธีทำ" }).closest("section")!;
-    expect(screen.getByRole("navigation", { name: "ในรายงานนี้" })).toHaveTextContent("วิธีทำ");
+    const offlineMethod = screen.getByRole("heading", { name: "วิธีการ" }).closest("section")!;
+    expect(screen.getByRole("navigation", { name: "ในรายงานนี้" })).toHaveTextContent("วิธีการ");
+    // offline: no downloads, only how to cite the report (Plan 20 Task 6)
+    expect(screen.queryByRole("heading", { name: /ดาวน์โหลด/ })).toBeNull();
+    expect(screen.queryByRole("list", { name: "ดาวน์โหลดรีวิว" })).toBeNull();
+    expect(screen.getByRole("heading", { level: 2, name: "วิธีอ้างอิงรายงานนี้" })).toBeInTheDocument();
     expect(within(offlineMethod).queryByRole("link")).toBeNull();
     // no site header in the offline file, so the sticky nav and anchor offsets use a zero header height
     expect(offlineMethod.closest<HTMLElement>("[style]")!.style.getPropertyValue("--header-h")).toBe("0px");
@@ -211,7 +234,8 @@ describe("Report", () => {
   it("a review with no papers shows the explicit message and no matrix", () => {
     render(<Report review={emptyReviewFixture} />);
     expect(screen.getByText(/ไม่พบงานวิจัยที่ตรงกับหัวข้อนี้/)).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    // the only table is the selection flow's twin (Plan 20 Task 4: the flow explains the empty result); no matrix
+    expect(screen.queryAllByRole("table").filter((t) => !t.closest("[data-prisma-flow]"))).toHaveLength(0);
     // empty state: a next step instead of a rating for nothing (design review FINDING-003)
     expect(screen.getByRole("link", { name: "ถามคำถามใหม่" })).toHaveAttribute("href", "/");
     expect(screen.queryByText(/ความแข็งแรงของหลักฐาน/)).not.toBeInTheDocument();
@@ -221,7 +245,7 @@ describe("Report", () => {
 
   it("the bottom line shows the direction tally as plain counts, never as verified numbers", () => {
     render(<Report review={reviewFixture} />);
-    const section = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    const section = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
     const tally = within(section).getByRole("list");
     const cards = reviewFixture.result!.papers!.map((p) => (p.card_en ?? p.card)?.overall_direction).filter(Boolean);
     const items = within(tally).getAllByRole("listitem");
@@ -246,6 +270,16 @@ describe("Report", () => {
     expect(screen.getByRole("button", { name: "พิมพ์" })).toBeInTheDocument();
   });
 
+  it("a zero-included report offers a new question online, but the offline file links nowhere (final review M3)", () => {
+    const empty = { ...reviewFixture, result: { ...reviewFixture.result!, papers: [] } };
+    const { unmount } = render(<Report review={empty} />);
+    expect(screen.getByRole("link", { name: "ถามคำถามใหม่" })).toHaveAttribute("href", "/");
+    unmount();
+    render(<Report review={empty} offline />);
+    expect(screen.getByRole("heading", { name: "ลองแบบนี้" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "ถามคำถามใหม่" })).toBeNull();
+  });
+
   it("the summary note points to the source rail and no longer says tape is in the table", () => {
     render(<Report review={reviewFixture} />);
     const note = screen.getByText(/สรุปเขียนโดยโมเดล/);
@@ -268,12 +302,19 @@ function navIds(container: HTMLElement) {
   return within(nav).getAllByRole("link").map((a) => a.getAttribute("href")!.slice(1));
 }
 
+/** Every section and block heading in reading order (H2 groups and the H3 blocks inside them). */
+function headingIds(container: HTMLElement) {
+  return [...container.querySelectorAll("h2[id^='h-'], h3[id^='h-']")].map((h) => h.id);
+}
+
 describe("Report per review type", () => {
   it("a legacy result (no review_type) shows no type badge and keeps its sections and 'very low' fallback", () => {
     const noStrength = { ...reviewFixture, result: { ...reviewFixture.result!, synthesis: { ...reviewFixture.result!.synthesis!, evidence_strength: null } } };
     const { container } = render(<Report review={noStrength} />);
     expect(screen.queryByText(/อ่านเฉพาะบทคัดย่อ/)).toBeNull();
-    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-gaps", "h-papers", "h-method"]);
+    expect(navIds(container)).toEqual(["h-answer", "h-selection", "h-results", "h-rob", "h-claims", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(headingIds(container)).toEqual(["h-answer", "h-selection", "h-results", "h-matrix", "h-charts", "h-rob", "h-claims", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(container.querySelector("#h-key-findings, #h-sof, #h-discussion")).toBeNull(); // no answer, no SoF for legacy
     expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำมาก");
   });
 
@@ -282,7 +323,7 @@ describe("Report per review type", () => {
     const synthesis = { ...slrReviewFixture.result!.synthesis!, evidence_strength: null, grade_baseline: null, evidence_rationale: why };
     const review = { ...slrReviewFixture, result: { ...slrReviewFixture.result!, synthesis } };
     render(<Report review={review} />);
-    const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    const summary = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
     expect(within(summary).getByText(/^ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(/)).toBeInTheDocument();
     expect(within(summary).getByText(why)).toBeInTheDocument();
     expect(within(summary).queryByRole("button", { name: /^ความแข็งแรงของหลักฐาน/ })).toBeNull();
@@ -291,29 +332,33 @@ describe("Report per review type", () => {
 
   it("scoping: badge, PCC, evidence map; no claims, findings matrix, forest or direction tally", () => {
     const { container } = render(<Report review={scopingReviewFixture} />);
-    expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การทบทวนขอบเขต");
-    expect(navIds(container)).toEqual(["h-summary", "h-evidence-map", "h-litmatrix", "h-map", "h-charts", "h-gaps", "h-papers", "h-method"]);
+    expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("การทบทวนขอบเขต");
+    expect(screen.getByText("อัตโนมัติ · อ่านเฉพาะบทคัดย่อ · ไม่ใช่คำแนะนำทางการแพทย์")).toBeInTheDocument();
+    expect(navIds(container)).toEqual(["h-answer", "h-selection", "h-characteristics", "h-landscape", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(headingIds(container)).toEqual(["h-answer", "h-selection", "h-characteristics", "h-evidence-map", "h-litmatrix", "h-landscape", "h-map",
+      "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(container.querySelector("#h-sof")).toBeNull();
     expect(container.querySelector("#h-claims")).toBeNull();
     expect(container.querySelector("#h-matrix")).toBeNull();
     expect(screen.queryByRole("table", { name: /ผลแต่ละการศึกษา/ })).toBeNull();
-    const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    const summary = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
     expect(within(summary).queryByRole("list")).toBeNull();
     expect(within(summary).queryByRole("button", { name: /จำนวนงานวิจัยตามทิศทางผล/ })).toBeNull();
     expect(within(summary).getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนขอบเขต\)/)).toBeInTheDocument();
     expect(screen.queryByText("ต่ำมาก")).toBeNull();
-    expect(screen.getByText(/ไม่ใช่คำแนะนำทางการแพทย์/)).toHaveTextContent("การทบทวนขอบเขต");
+    expect(container.querySelector("[data-disclaimer]")).toHaveTextContent(/การทบทวนขอบเขต.*ไม่ใช่คำแนะนำทางการแพทย์/);
   });
 
   it("scoping: the evidence map counts papers per concept and design, as plain counts", () => {
     render(<Report review={scopingReviewFixture} />);
     const section = screen.getByRole("heading", { name: "แผนที่หลักฐาน" }).closest("section")!;
-    expect(within(section).getByText("จำนวนงานที่พบ ไม่ใช่การประเมินว่าได้ผล")).toBeInTheDocument();
+    expect(within(section).getByText(/^จำนวนงานที่พบ ไม่ใช่การประเมินว่าได้ผล/)).toBeInTheDocument();
     const byConcept = within(section).getByRole("table", { name: /ตามประเด็น/ });
     const row = within(byConcept).getByRole("row", { name: /อุบัติการณ์มะเร็งลำไส้ใหญ่/ });
-    expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["2", "1", "1", "4"]);
+    expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["4", "2", "1", "1"]);
     expect(within(byConcept).getByRole("columnheader", { name: "รวม" })).toBeInTheDocument();
     const byYear = within(section).getByRole("table", { name: /ตามช่วงปี/ });
-    expect(within(within(byYear).getByRole("row", { name: /2015–2019/ })).getAllByRole("cell").map((c) => c.textContent)).toEqual(["1", "1", "–", "2"]);
+    expect(within(within(byYear).getByRole("row", { name: /2015–2019/ })).getAllByRole("cell").map((c) => c.textContent)).toEqual(["2", "1", "1", "–"]);
     expect(section.querySelector(".num-verified")).toBeNull();
     expect(section.querySelectorAll("td.tabular-nums.font-display").length).toBeGreaterThan(0);
   });
@@ -330,7 +375,7 @@ describe("Report per review type", () => {
 
   it("scoping: no direction glyph or risk-of-bias label in the paper list, source drawer or filters", async () => {
     render(<Report review={scopingReviewFixture} />);
-    const list = screen.getByRole("heading", { name: "งานวิจัยที่อ่าน" }).closest("section")!;
+    const list = screen.getByRole("heading", { name: "เอกสารอ้างอิง" }).closest("section")!;
     expect(within(list).queryAllByRole("img")).toHaveLength(0);
     expect(list).not.toHaveTextContent(/อคติ/);
     expect(list).not.toHaveTextContent(/สนับสนุนผล|ตรงข้าม/);
@@ -357,8 +402,13 @@ describe("Report per review type", () => {
     const { container } = render(<Report review={narrativeReviewFixture} />);
     expect(screen.getByText(/ไม่ได้ประเมินความแข็งแรงของหลักฐาน \(การทบทวนแบบบรรยาย\)/)).toBeInTheDocument();
     expect(screen.queryByText("ต่ำมาก")).toBeNull();
-    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-litmatrix", "h-map", "h-charts", "h-gaps", "h-papers", "h-method"]);
-    expect(screen.getByTestId("charts")).toBeInTheDocument();
+    expect(navIds(container)).toEqual(["h-answer", "h-characteristics", "h-results", "h-rob", "h-claims", "h-landscape", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    // Plan 20 Task 5: no outcome has 3 effect sizes and the study map has < 5 points, so the charts block is left out
+    expect(headingIds(container)).toEqual(["h-answer", "h-characteristics", "h-litmatrix", "h-results", "h-matrix", "h-rob", "h-claims",
+      "h-landscape", "h-map", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(screen.queryByTestId("charts")).toBeNull();
+    expect(container.querySelector("[data-prisma-flow]")).toBeNull();
+    expect(container.querySelector("#h-sof")).toBeNull();
   });
 
   it("lit matrix: shown for narrative, slr and scoping, never for legacy; scoping drops direction and bias columns", () => {
@@ -387,9 +437,13 @@ describe("Report per review type", () => {
 
   it("meta-analysis: SLR sections plus the pooled section right after the charts, graded, typed badge", () => {
     const { container } = render(<Report review={metaReviewFixture} />);
-    expect(navIds(container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-meta", "h-litmatrix", "h-map", "h-citations", "h-gaps", "h-papers", "h-method"]);
-    expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การวิเคราะห์อภิมาน");
-    expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำมาก");
+    expect(navIds(container)).toEqual(["h-answer", "h-sof", "h-selection", "h-characteristics", "h-results", "h-rob", "h-claims", "h-landscape",
+      "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(headingIds(container)).toEqual(["h-answer", "h-sof", "h-selection", "h-characteristics", "h-litmatrix", "h-results", "h-matrix",
+      "h-charts", "h-meta", "h-rob", "h-claims", "h-landscape", "h-map", "h-citations", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("การวิเคราะห์อภิมาน");
+    const answer = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
+    expect(within(answer).getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำมาก");
     expect(screen.getByTestId("charts")).toBeInTheDocument();
   });
 
@@ -457,13 +511,16 @@ describe("Report per review type", () => {
   it("meta-analysis: a failed pooling says so; no pools says nothing was pooled; other types have no pooled section", () => {
     const failed = { ...metaReviewFixture, result: { ...metaReviewFixture.result!, meta_analysis: null } };
     const a = render(<Report review={failed} />);
-    expect(screen.getByText(/ขั้นตอนรวมผลทำไม่สำเร็จ/)).toBeInTheDocument();
+    expect(screen.getAllByText(/ขั้นตอนรวมผลทำงานไม่สำเร็จ/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/ไม่ใช่ผลจากงานวิจัยฉบับใด/)).toBeNull();
     a.unmount();
     const none = { ...metaReviewFixture, result: { ...metaReviewFixture.result!, meta_analysis: { ...metaReviewFixture.result!.meta_analysis!, pools: [] } } };
     const b = render(<Report review={none} />);
-    expect(screen.getByText(/จึงไม่ได้คำนวณค่ารวม/)).toBeInTheDocument();
-    expect(b.container.querySelector(".num-computed")).toBeNull();
+    expect(screen.getByRole("heading", { name: "การวิเคราะห์อภิมาน: รวมผลไม่ได้" })).toBeInTheDocument();
+    expect(screen.getByText(/อย่างน้อย 3 ฉบับต่อผลลัพธ์/)).toBeInTheDocument();
+    expect(screen.queryByText(/ไม่ใช่ผลจากงานวิจัยฉบับใด/)).toBeNull();
+    // no pooled value (the SoF participant sums are the only computed numbers left)
+    expect([...b.container.querySelectorAll(".num-computed")].filter((el) => !el.closest("[data-participants]"))).toHaveLength(0);
     b.unmount();
     const slr = render(<Report review={{ ...metaReviewFixture, result: { ...metaReviewFixture.result!, review_type: "slr" as const } }} />);
     expect(slr.container.querySelector("#h-meta")).toBeNull();
@@ -486,8 +543,11 @@ describe("Report per review type", () => {
   it("slr with a grade keeps the strength bar", () => {
     const slr = { ...reviewFixture, result: { ...reviewFixture.result!, review_type: "slr" as const } };
     render(<Report review={slr} />);
-    expect(screen.getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")).toHaveTextContent("ต่ำ");
-    expect(screen.getByText(/อัตโนมัติ · อ่านเฉพาะบทคัดย่อ/)).toHaveTextContent("การทบทวนวรรณกรรมอย่างเป็นระบบ");
+    const answer = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
+    const line = within(answer).getByRole("button", { name: /ความแข็งแรงของหลักฐาน/ }).closest("p")!;
+    expect(line).toHaveTextContent("ต่ำ");
+    expect(line.querySelector("[data-certainty='low']")).not.toBeNull(); // ⊕⊕◯◯
+    expect(screen.getByLabelText("ข้อมูลรายงาน")).toHaveTextContent("การทบทวนวรรณกรรมอย่างเป็นระบบ");
   });
 });
 
@@ -502,7 +562,7 @@ describe("source rail", () => {
 
   it("a citation selects the paper but highlights no outcome", async () => {
     render(<Report review={reviewFixture} />);
-    const summary = screen.getByRole("heading", { name: "สรุป" }).closest("section")!;
+    const summary = screen.getByRole("heading", { name: "คำตอบโดยสรุป" }).closest("section")!;
     await userEvent.click(within(summary).getByRole("button", { name: "P4" }));
     expect(screen.getByRole("complementary", { name: /ต้นฉบับ/ }).querySelector("li[aria-current]")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /^P3: .*อุบัติการณ์/ }));
@@ -591,7 +651,9 @@ describe("mobile source drawer", () => {
   it("concept map: in the type's section order, never for legacy; the outline twin opens the rail", async () => {
     const slr = { ...reviewFixture, result: { ...reviewFixture.result!, review_type: "slr" as const } };
     const a = render(<Report review={slr} />);
-    expect(navIds(a.container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-litmatrix", "h-map", "h-gaps", "h-papers", "h-method"]);
+    expect(navIds(a.container)).toEqual(["h-answer", "h-sof", "h-selection", "h-characteristics", "h-results", "h-rob", "h-claims", "h-landscape",
+      "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(headingIds(a.container).filter((id) => ["h-landscape", "h-map"].includes(id))).toEqual(["h-landscape", "h-map"]);
     expect(screen.getByRole("img", { name: /แผนที่ความรู้ \d+ กลุ่มงานวิจัย/ })).toBeInTheDocument();
     expect(screen.getByText(/เส้นเชื่อมมาจากตารางผลแต่ละการศึกษาเท่านั้น/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "ดูเป็นตาราง" }));
@@ -606,20 +668,20 @@ describe("mobile source drawer", () => {
 
   it("citation network: after the concept map when result.citations exists; never for legacy or without data", async () => {
     const a = render(<Report review={slrReviewFixture} />);
-    expect(navIds(a.container)).toEqual(["h-summary", "h-claims", "h-matrix", "h-charts", "h-litmatrix", "h-map", "h-citations", "h-gaps", "h-papers", "h-method"]);
-    expect(screen.getByRole("link", { name: "เครือข่ายการอ้างอิง" })).toHaveAttribute("href", "#h-citations");
-    const section = screen.getByRole("heading", { level: 2, name: "เครือข่ายการอ้างอิง" }).closest("section")!;
+    expect(headingIds(a.container).slice(-9)).toEqual(["h-landscape", "h-map", "h-citations", "h-limitations", "h-gaps", "h-method", "h-papers", "h-downloads", "h-appendix"]);
+    expect(screen.getAllByRole("link", { name: "ภาพรวมความรู้" })[0]).toHaveAttribute("href", "#h-landscape");
+    const section = screen.getByRole("heading", { level: 3, name: "เครือข่ายการอ้างอิง" }).closest("section")!;
     expect(within(section).getByRole("img", { name: "เครือข่ายการอ้างอิง 5 งานวิจัย 4 เส้นเชื่อม" })).toBeInTheDocument();
     // the twin's ref opens the rail
     await userEvent.click(within(section).getByRole("button", { name: "ดูเป็นตาราง" }));
     await userEvent.click(within(section).getByRole("button", { name: /^P4 / }));
     expect(rail().getByText(/Short-term metformin initiation/)).toBeInTheDocument();
-    // the lit matrix gains the cited-by column
-    expect(within(screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).getByRole("columnheader", { name: "ถูกอ้างอิง" })).toBeInTheDocument();
+    // the lit matrix's study cells gain the cited-by count (Task 5 fix round 1: no column of its own)
+    expect(screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" }).querySelectorAll("[data-cited-by]").length).toBeGreaterThan(0);
     a.unmount();
     const none = render(<Report review={{ ...slrReviewFixture, result: { ...slrReviewFixture.result!, citations: null } }} />);
     expect(none.container.querySelector("#h-citations")).toBeNull();
-    expect(screen.queryByRole("columnheader", { name: "ถูกอ้างอิง" })).toBeNull();
+    expect(none.container.querySelector("[data-cited-by]")).toBeNull();
     none.unmount();
     const legacy = render(<Report review={{ ...legacyReviewFixture, result: { ...legacyReviewFixture.result!, citations: slrReviewFixture.result!.citations } }} />);
     expect(legacy.container.querySelector("#h-citations")).toBeNull();

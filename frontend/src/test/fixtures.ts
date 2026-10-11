@@ -1,5 +1,5 @@
 // Realistic result shaped exactly like the backend's finalize output (sample data for tests and e2e mocks).
-import type { ComparisonCell as Cell, Paper, PaperCard, Review, ReviewResult } from "@/lib/types";
+import type { ComparisonCell as Cell, Paper, PaperCard, Review, ReviewMethods, ReviewResult } from "@/lib/types";
 
 const q3 = "Metformin use was associated with a lower risk of colorectal cancer (HR 0.80, 95% CI 0.71–0.90; p = 0.003).";
 const q1 = "Users of metformin had a lower incidence of colorectal cancer than users of sulfonylureas (HR 0.86, 95% CI 0.77–0.96).";
@@ -190,6 +190,99 @@ export const narrativeReviewFixture: Review = {
   },
 };
 
+// --- Plan 20 P0: qualitative / mixed-methods themes, other comparisons, design mismatch -----------------------------
+// A narrative review where P1 is qualitative and P2 mixed methods (themes: effect_measure "none", numbers null). Their
+// stored directions are deliberately "positive" (as an older or misbehaving extractor might leave them): the UI must
+// still show no direction for them anywhere. P3 is a cohort with one question outcome (HR, verified), one other
+// comparison and a design outside the ticked types; P4 is a cohort whose outcome has no number and no "none" flag.
+
+const themeQuote = "Participants described fear of injections and stigma as the main barriers to starting insulin.";
+const themeCard = (design: "qualitative" | "mixed_methods", theme: string): PaperCard => card({
+  study_design: design === "qualitative" ? "Qualitative interview study" : "Mixed-methods study", design_category: design,
+  population: "adults with type 2 diabetes", intervention_or_exposure: "insulin initiation", comparator: null,
+  outcomes: [{ outcome: theme, result: "Fear of injections and stigma were barriers.", evidence_quote: themeQuote,
+    effect_size: null, effect_measure: "none", effect_value: null, ci_lower: null, ci_upper: null, p_value: null,
+    direction: "positive" }],
+  key_findings: ["Fear of injections", "Stigma"], risk_of_bias: "moderate", overall_direction: "positive",
+});
+const qualP3 = card({
+  sample_size: 1234, sample_size_quote: "We enrolled 1,234 adults with type 2 diabetes in a population-based cohort.",
+  outcomes: [
+    { outcome: "CRC incidence", result: "Lower risk of colorectal cancer", evidence_quote: q3, effect_size: "HR 0.80 (0.71–0.90)",
+      effect_measure: "HR", effect_value: 0.8, ci_lower: 0.71, ci_upper: 0.9, p_value: 0.003, direction: "positive",
+      comparison: "metformin vs no metformin", matches_question: true },
+    { outcome: "CRC incidence vs insulin", result: "Lower than insulin users", evidence_quote: q1, effect_size: "HR 0.86",
+      effect_measure: "HR", effect_value: 0.86, ci_lower: 0.77, ci_upper: 0.96, p_value: null, direction: "positive",
+      comparison: "GLP-1RA vs insulin", matches_question: false },
+  ],
+});
+const qualP4 = card({
+  outcomes: [{ outcome: "Adherence", result: "Adherence was higher with once-daily dosing.",
+    evidence_quote: "Adherence was 82% with once-daily dosing versus 64% with twice-daily dosing.", effect_size: null,
+    effect_measure: null, effect_value: null, ci_lower: null, ci_upper: null, p_value: null, direction: "positive" }],
+});
+
+export const qualitativeReviewFixture: Review = {
+  ...reviewFixture,
+  id: "77777777-8888-9999-aaaa-bbbbbbbbbbbb",
+  result: {
+    ...resultFixture,
+    review_type: "narrative",
+    summary: "ผู้ป่วยกลัวการฉีดยาและการตีตรา [P1, P2] งานเชิงปริมาณพบความเสี่ยงต่ำลง 20% [P3]",
+    synthesis: {
+      ...resultFixture.synthesis!,
+      executive_summary: "ผู้ป่วยกลัวการฉีดยาและการตีตรา [P1, P2] งานเชิงปริมาณพบความเสี่ยงต่ำลง 20% [P3]",
+      comparison: [
+        { outcome: "ความกลัวการฉีดยา", cells: [
+          { ref: "P1", finding: "กลัวเข็มและการตีตรา", direction: "positive", design_category: "qualitative" },
+          { ref: "P2", finding: "กลัวเข็ม", direction: "positive", design_category: "mixed_methods" },
+        ] },
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", cells: [
+          { ref: "P3", finding: "ความเสี่ยงต่ำลง", direction: "positive", effect_measure: "HR", effect_value: 0.8, ci_lower: 0.71, ci_upper: 0.9 },
+        ] },
+      ],
+      consensus: [{ statement: "ความกลัวการฉีดยาพบซ้ำ", refs: ["P1", "P2"], explanation: "สองการศึกษารายงานประเด็นเดียวกัน [P1, P2]" }],
+      conflicts: [],
+      evidence_strength: null, evidence_rationale: "",
+    },
+    synthesis_en: undefined,
+    papers: [
+      { ref: "P1", title: "Barriers to insulin initiation: a qualitative interview study", year: 2022, relevance: 90,
+        card: themeCard("qualitative", "Fear of injections"), card_en: themeCard("qualitative", "Fear of injections"),
+        verification: verification({ numbers_verified: 0, numbers_total: 0 }) },
+      { ref: "P2", title: "Insulin initiation in primary care: a mixed-methods study", year: 2021, relevance: 85,
+        card: themeCard("mixed_methods", "Fear of injections"), card_en: themeCard("mixed_methods", "Fear of injections"),
+        verification: verification({ numbers_verified: 0, numbers_total: 0 }) },
+      { ref: "P3", title: "Metformin use and colorectal cancer risk among adults with type 2 diabetes", year: 2021, relevance: 93,
+        card: qualP3, card_en: qualP3, verification: verification({ design_mismatch: true }) },
+      { ref: "P4", title: "Once-daily dosing and adherence in type 2 diabetes", year: 2019, relevance: 70,
+        card: qualP4, card_en: qualP4, verification: verification({ numbers_verified: 0, numbers_total: 0 }) },
+    ],
+    citations: null,
+  },
+};
+
+/** A meta-analysis whose pooling produced nothing (pools: []): "could not pool" everywhere, no computed banner. */
+export const metaNoPoolReviewFixture: Review = {
+  ...reviewFixture,
+  id: "88888888-9999-aaaa-bbbb-cccccccccccc",
+  result: {
+    ...resultFixture,
+    review_type: "meta_analysis",
+    meta_analysis: {
+      version: "meta-1", pools: [],
+      excluded: [
+        { outcome: "CRC incidence", outcome_display: "อุบัติการณ์มะเร็งลำไส้ใหญ่", ref: "P1", measure: "HR", design_category: "cohort", reason: "too_few_studies", k: 2, design_group: "observational" },
+        { outcome: "CRC incidence", outcome_display: "อุบัติการณ์มะเร็งลำไส้ใหญ่", ref: "P3", measure: "HR", design_category: "cohort", reason: "too_few_studies", k: 2, design_group: "observational" },
+      ],
+      reference: [
+        { outcome: "CRC incidence", outcome_display: "อุบัติการณ์มะเร็งลำไส้ใหญ่", ref: "P4", design_category: "sr_ma_observational", measure: "HR", effect: 1.28, ci_lower: 1.05, ci_upper: 1.56 },
+      ],
+      grade: null,
+    },
+  },
+};
+
 /**
  * result.citations as build_citations (backend app/harness/citations.py) shapes it: later papers cite earlier ones, P3
  * has only a Europe PMC reference list, and P5 has no data at all (null coverage: not "cites nothing").
@@ -343,3 +436,364 @@ export const metaReviewFixture: Review = {
     },
   },
 };
+
+// --- Plan 20: answer-first report (answer, key findings, methods) --------------------------------------------------
+// Each type gets an `answer` and numberless `key_findings` (k = refs, as the backend sets it) plus `result.methods`.
+
+const DEEPSEEK = "openrouter:deepseek/deepseek-v4-pro";
+
+function methodsFixture(over: Partial<ReviewMethods> = {}): ReviewMethods {
+  return {
+    searched_at: "2026-10-05T03:00:30Z",
+    sources: { pubmed: 30, "europe pmc": 12, "europe pmc (rct search)": 4, openalex: 9 },
+    eligibility: { year_from: null, study_types: [], inclusion_criteria: ["Adults with type 2 diabetes"], exclusion_criteria: ["Editorials"] },
+    limits: { candidate_limit: 60, max_papers: 30, min_abstract_chars: 150 },
+    // second_model is null unless the vote is two_models (docs/api.md "Methods")
+    screening: { model: DEEPSEEK, second_model: null, second_vote: "same_model", borderline: [35, 70], relevance_floor: 35 },
+    extraction: { model: DEEPSEEK, second_model: DEEPSEEK, verify_quotes: true, quote_match_threshold: 90, text: "abstract" },
+    synthesis: { model: DEEPSEEK, pooling: null, grading: "GRADE-lite" },
+    ...over,
+  };
+}
+
+const enRows = (rows: { outcome: string; cells: Cell[] }[], names: string[]) => rows.map((r, i) => ({ ...r, outcome: names[i] }));
+
+/** SLR: incidence (P1–P4, a range of two verified HRs; P2 blanked; P4 an SR/MA) and mortality (P3, no number). */
+export const slrP20ReviewFixture: Review = {
+  ...slrReviewFixture,
+  id: "20200000-0000-4000-8000-000000000001",
+  result: {
+    ...slrReviewFixture.result!,
+    synthesis: {
+      ...resultFixture.synthesis!,
+      answer: "เมตฟอร์มินอาจลดอุบัติการณ์มะเร็งลำไส้ใหญ่ในผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2 แต่หลักฐานมีความเชื่อมั่นต่ำ",
+      key_findings: [
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "งานเชิงสังเกตส่วนใหญ่พบอุบัติการณ์ต่ำลงในผู้ใช้เมตฟอร์มิน แต่มีงานหนึ่งพบทิศทางตรงข้าม", refs: ["P1", "P2", "P3", "P4"], k: 4 },
+        { outcome: "การเสียชีวิตจากมะเร็งลำไส้ใหญ่", statement: "งานเดียวที่รายงานพบว่าอัตราตายไม่ต่างกัน", refs: ["P3"], k: 1 },
+      ],
+    },
+    synthesis_en: {
+      ...resultFixture.synthesis_en!,
+      comparison: enRows(resultFixture.synthesis!.comparison!, ["CRC incidence", "CRC mortality"]),
+      answer: "Metformin may reduce colorectal cancer incidence in adults with type 2 diabetes, but the certainty of the evidence is low.",
+      key_findings: [
+        { outcome: "CRC incidence", statement: "Most observational studies found lower incidence among metformin users; one found the opposite.", refs: ["P1", "P2", "P3", "P4"], k: 4 },
+        { outcome: "CRC mortality", statement: "The one study that reported it found no difference in mortality.", refs: ["P3"], k: 1 },
+      ],
+    },
+    // contract-complete Plan 19 stats: unique = year_excluded + non_research + no_abstract + with_abstract
+    stats: { ...resultFixture.stats, found: 55, unique: 41, year_excluded: 2, non_research: 1, no_abstract: 3, with_abstract: 35,
+      candidates: 20, screened: 20, selected: 5,
+      excluded_screening: { off_topic: 8, population: 3, outcome: 2, publication_type: 1 },
+      excluded_selection: { narrative_excluded: 0, over_limit: 0, low_relevance: 1, study_design_relaxed: 0, study_design_corrected: 0 } },
+    methods: methodsFixture(),
+  },
+};
+
+/** Meta-analysis: the primary outcome pooled (computed), the safety outcome a range of two verified HRs. */
+export const metaP20ReviewFixture: Review = {
+  ...metaReviewFixture,
+  id: "20200000-0000-4000-8000-000000000002",
+  result: {
+    ...metaReviewFixture.result!,
+    synthesis: {
+      ...metaReviewFixture.result!.synthesis!,
+      answer: "งานวิจัยเชิงสังเกตอาจไม่พบผลต่อผลลัพธ์หลักเมื่อรวมผลกัน ความเชื่อมั่นของหลักฐานต่ำมาก",
+      key_findings: [
+        { outcome: "ผลลัพธ์หลัก", statement: "ค่ารวมของงานเชิงสังเกตไม่ชัดว่ามีผล และงานให้ผลต่างกันมาก", refs: ["P1", "P2", "P3", "P4", "P7"], k: 5 },
+        { outcome: "ผลด้านความปลอดภัย", statement: "งานที่รายงานไม่พบสัญญาณด้านความปลอดภัย", refs: ["P1", "P3", "P5"], k: 3 },
+      ],
+    },
+    synthesis_en: {
+      ...metaReviewFixture.result!.synthesis_en!,
+      answer: "Pooled observational studies may show no effect on the primary outcome; the evidence is very uncertain.",
+      key_findings: [
+        { outcome: "Primary outcome", statement: "The observational pooled estimate is unclear and the studies differ a lot.", refs: ["P1", "P2", "P3", "P4", "P7"], k: 5 },
+        { outcome: "Safety outcome", statement: "The studies that reported it found no safety signal.", refs: ["P1", "P3", "P5"], k: 3 },
+      ],
+    },
+    methods: methodsFixture({
+      sources: { pubmed: 41, "europe pmc": 30, "semantic scholar": 22, arxiv: 3 },
+      screening: { model: DEEPSEEK, second_model: "openrouter:qwen/qwen3-max", second_vote: "two_models", borderline: [35, 70], relevance_floor: 35 },
+      extraction: { model: DEEPSEEK, second_model: "openrouter:qwen/qwen3-max", verify_quotes: true, quote_match_threshold: 90, text: "abstract" },
+      synthesis: { model: DEEPSEEK, pooling: "DerSimonian-Laird random effects", grading: "GRADE-lite" },
+    }),
+  },
+};
+
+/** Meta-analysis that pooled nothing: the answer leads with "could not pool". */
+export const metaNoPoolP20ReviewFixture: Review = {
+  ...metaNoPoolReviewFixture,
+  id: "20200000-0000-4000-8000-000000000003",
+  result: {
+    ...metaNoPoolReviewFixture.result!,
+    synthesis: {
+      ...metaNoPoolReviewFixture.result!.synthesis!,
+      answer: "รวมผลไม่ได้: ไม่มีผลลัพธ์ใดมีงานวิจัยหลักพอที่จะรวมผล งานแต่ละชิ้นส่วนใหญ่ชี้ว่าความเสี่ยงอาจต่ำลง ความเชื่อมั่นต่ำ",
+      key_findings: [
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "งานหลักสองงานพบความเสี่ยงต่ำลง ส่วนงานทบทวนหนึ่งงานพบทิศทางตรงข้าม", refs: ["P1", "P3", "P4"], k: 3 },
+      ],
+    },
+    methods: methodsFixture({ synthesis: { model: DEEPSEEK, pooling: "DerSimonian-Laird random effects", grading: "GRADE-lite" } }),
+  },
+};
+
+/** Scoping: a mapping answer, no grade, sources not recorded (falls back to the queries). */
+export const scopingP20ReviewFixture: Review = {
+  ...scopingReviewFixture,
+  id: "20200000-0000-4000-8000-000000000004",
+  result: {
+    ...scopingReviewFixture.result!,
+    synthesis: {
+      ...scopingReviewFixture.result!.synthesis!,
+      answer: "งานวิจัยเรื่องเมตฟอร์มินกับมะเร็งลำไส้ใหญ่ส่วนใหญ่เป็นงานเชิงสังเกตในผู้ใหญ่ที่เป็นเบาหวาน",
+      key_findings: [
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "งานส่วนใหญ่ศึกษาอุบัติการณ์ด้วยรูปแบบ cohort", refs: ["P1", "P2", "P3", "P4"], k: 4 },
+      ],
+    },
+    methods: methodsFixture({ sources: null, screening: { model: DEEPSEEK, second_model: null, second_vote: "off", borderline: [35, 70], relevance_floor: 35 },
+      extraction: { model: DEEPSEEK, second_model: null, verify_quotes: true, quote_match_threshold: 90, text: "abstract" },
+      synthesis: { model: DEEPSEEK, pooling: null, grading: null } }),
+  },
+};
+
+/** Narrative with qualitative themes: a theme finding ("found in 2 studies") and a one-study finding with its HR. */
+export const narrativeP20ReviewFixture: Review = {
+  ...qualitativeReviewFixture,
+  id: "20200000-0000-4000-8000-000000000005",
+  result: {
+    ...qualitativeReviewFixture.result!,
+    synthesis: {
+      ...qualitativeReviewFixture.result!.synthesis!,
+      answer: "ผู้ป่วยกลัวการฉีดยาและการตีตรา ซึ่งเป็นอุปสรรคต่อการเริ่มอินซูลิน",
+      key_findings: [
+        { outcome: "ความกลัวการฉีดยา", statement: "งานเชิงคุณภาพและแบบผสมผสานพบความกลัวเข็มและการตีตราซ้ำกัน", refs: ["P1", "P2"], k: 2 },
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "งานเชิงปริมาณงานเดียวพบความเสี่ยงต่ำลง", refs: ["P3"], k: 1 },
+      ],
+    },
+    // The English rows name the outcomes as the cards do, so P3's verified HR matches "CRC incidence" exactly.
+    synthesis_en: {
+      ...qualitativeReviewFixture.result!.synthesis!,
+      executive_summary: "Patients fear injections and stigma [P1, P2]; one quantitative study found a lower risk [P3].",
+      comparison: enRows(qualitativeReviewFixture.result!.synthesis!.comparison!, ["Fear of injections", "CRC incidence"]),
+      consensus: [], conflicts: [],
+      answer: "Patients fear injections and stigma, which hold back starting insulin.",
+      key_findings: [
+        { outcome: "Fear of injections", statement: "Qualitative and mixed-methods studies both found fear of needles and stigma.", refs: ["P1", "P2"], k: 2 },
+        { outcome: "CRC incidence", statement: "One quantitative study found a lower risk.", refs: ["P3"], k: 1 },
+      ],
+    },
+    methods: methodsFixture({ synthesis: { model: DEEPSEEK, pooling: null, grading: null } }),
+  },
+};
+
+// --- Plan 20 Task 5: a diagnostic-accuracy SLR (sensitivity / specificity / AUC as each paper reported them) -------------
+
+function dtaPaper(ref: string, year: number, author: string, n: number | null, sens: [number, number, number] | null,
+  spec: [number, number, number] | null, auc: [number, number, number] | null, percent: boolean, extra: Partial<Paper> = {}): Paper {
+  const f = (v: number) => (percent ? v.toFixed(1) : v.toFixed(2));
+  const u = percent ? "%" : "";
+  const parts = [
+    sens && `sensitivity was ${f(sens[0])}${u} (95% CI ${f(sens[1])}-${f(sens[2])})`,
+    spec && `specificity was ${f(spec[0])}${u} (95% CI ${f(spec[1])}-${f(spec[2])})`,
+    auc && `the AUC was ${auc[0].toFixed(2)} (95% CI ${auc[1].toFixed(2)}-${auc[2].toFixed(2)})`,
+  ].filter(Boolean);
+  const quote = `For AI-assisted reading, ${parts.join(", ")}.`;
+  const o = (outcome: string, v: [number, number, number] | null): PaperCard["outcomes"] => v ? [{
+    outcome, result: `${outcome} of AI-assisted reading`, evidence_quote: quote, effect_size: null, effect_measure: "other",
+    effect_value: v[0], ci_lower: v[1], ci_upper: v[2], p_value: null, direction: "positive",
+  }] : [];
+  const c = card({
+    study_design: "diagnostic accuracy study", design_category: "cross_sectional", population: "adults with suspected hip fracture",
+    sample_size: n, sample_size_quote: n ? `We included ${n.toLocaleString("en-US")} radiographs.` : null,
+    intervention_or_exposure: "AI-assisted radiograph reading", comparator: "radiologists alone",
+    outcomes: [...o("Sensitivity", sens), ...o("Specificity", spec), ...o("AUC", auc)], risk_of_bias: "moderate",
+  });
+  return { ref, title: `AI-assisted detection of hip fractures: study ${ref.slice(1)}`, authors: [author], year, relevance: 90,
+    card: c, card_en: c, verification: verification(), ...extra };
+}
+
+const dtaPapers: Paper[] = [
+  dtaPaper("P1", 2023, "Chen L", 512, [97.4, 94.0, 98.9], [86.5, 82.1, 90.1], [0.93, 0.9, 0.96], true),
+  dtaPaper("P2", 2022, "Okafor N", 1204, [0.79, 0.71, 0.88], [0.87, 0.82, 0.91], null, false),
+  dtaPaper("P3", 2024, "Sato K", 388, [0.91, 0.86, 0.95], [0.78, 0.72, 0.83], [0.89, 0.85, 0.93], false,
+    { verification: verification({ numbers_verified: 2, numbers_total: 3, unverified: [{ field: "effect", outcome: "Specificity" }] }) }),
+  dtaPaper("P4", 2021, "Müller F", 2310, [88.0, 84.2, 91.1], [92.3, 90.0, 94.2], null, true),
+];
+const dtaRow = (outcome: string, refs: string[]): { outcome: string; cells: Cell[] } => ({
+  outcome, cells: refs.map((ref) => ({ ref, finding: `${outcome} of AI-assisted reading`, direction: "positive" as const })),
+});
+
+/** SLR of a diagnostic-accuracy question: sensitivity and specificity panels plus the DTA table (P3's specificity blanked). */
+export const dtaReviewFixture: Review = {
+  ...slrP20ReviewFixture,
+  id: "20200000-0000-4000-8000-000000000006",
+  topic: "AI กับการวินิจฉัยกระดูกสะโพกหัก",
+  result: {
+    ...slrP20ReviewFixture.result!,
+    topic: "AI กับการวินิจฉัยกระดูกสะโพกหัก",
+    question: { ...resultFixture.question!, refined_question: "AI ช่วยเพิ่มความแม่นยำในการวินิจฉัยกระดูกสะโพกหักจากภาพรังสีหรือไม่",
+      pico: { population: "adults with suspected hip fracture", intervention_or_exposure: "AI-assisted reading", comparator: "radiologists alone",
+        outcomes: ["sensitivity", "specificity"], study_designs: ["diagnostic accuracy"], timeframe: null } },
+    synthesis: {
+      ...slrP20ReviewFixture.result!.synthesis!,
+      answer: "AI ช่วยให้ความไวในการวินิจฉัยกระดูกสะโพกหักสูง ความเชื่อมั่นปานกลาง",
+      comparison: [dtaRow("ความไว", ["P1", "P2", "P3", "P4"]), dtaRow("ความจำเพาะ", ["P1", "P2", "P3", "P4"])],
+      key_findings: [{ outcome: "ความไว", statement: "งานทั้งสี่รายงานความไวสูงเมื่อใช้ AI ช่วยอ่าน", refs: ["P1", "P2", "P3", "P4"], k: 4 }],
+      consensus: [], conflicts: [],
+    },
+    synthesis_en: {
+      ...slrP20ReviewFixture.result!.synthesis_en!,
+      comparison: [dtaRow("Sensitivity", ["P1", "P2", "P3", "P4"]), dtaRow("Specificity", ["P1", "P2", "P3", "P4"])],
+      key_findings: [{ outcome: "Sensitivity", statement: "All four studies reported high sensitivity with AI assistance.", refs: ["P1", "P2", "P3", "P4"], k: 4 }],
+    },
+    papers: dtaPapers,
+    citations: null,
+  },
+};
+
+// --- Plan 20 Task 11: the merged engine fields (docs/api.md) ------------------------------------------------------------
+// P6 is a further report of P1's cohort (shared registry number): listed, never a comparison cell, consensus, conflict or
+// key-finding ref, and not a second study anywhere. Per-finding certainty (code-set, the review's grade), a key finding
+// led by the engine's fixed certainty clause, a review-discordant conflict next to an ordinary one, and a trimmed
+// rationale.
+
+const p6card = card({
+  study_design: "cohort (10-year follow-up of a national diabetes cohort)", sample_size: 12004,
+  sample_size_quote: "Of these, 12,004 adults were followed for ten years.", risk_of_bias: "moderate",
+  outcomes: [{ outcome: "CRC incidence", result: "Lower incidence at ten years", evidence_quote: "Incidence remained lower among metformin users at ten years.",
+    effect_size: null, effect_measure: "none", effect_value: null, ci_lower: null, ci_upper: null, p_value: null, direction: "positive" }],
+});
+
+const relatedReport: Paper = {
+  ref: "P6", title: "Metformin and colorectal cancer: ten-year follow-up of a national diabetes cohort", year: 2023,
+  journal: "Diabetes Care", doi: "10.1000/p6", relevance: 84, card: { ...p6card, population: "ผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2" },
+  card_en: p6card, verification: verification({ numbers_verified: 1, numbers_total: 1 }),
+  related_to: "P1", related_reason: "same trial (NCT01234567)", related_reports: [],
+};
+
+const DISCORDANT_TH = "อุบัติการณ์มะเร็งลำไส้ใหญ่: ผลของการทบทวนวรรณกรรมอย่างเป็นระบบและการศึกษาปฐมภูมิไม่สอดคล้องกัน";
+const DISCORDANT_EN = "CRC incidence: systematic reviews and primary studies disagree";
+
+/** SLR (Thai) with every Plan 20 Task 10 engine field the report shows. */
+export const engineP20ReviewFixture: Review = {
+  ...slrP20ReviewFixture,
+  id: "20200000-0000-4000-8000-000000000011",
+  result: {
+    ...slrP20ReviewFixture.result!,
+    papers: [
+      ...slrP20ReviewFixture.result!.papers!.map((p) => ({
+        ...p, related_to: null, related_reason: null, related_reports: p.ref === "P1" ? ["P6"] : [],
+      })),
+      relatedReport,
+    ],
+    synthesis: {
+      ...slrP20ReviewFixture.result!.synthesis!,
+      key_findings: [
+        { outcome: "อุบัติการณ์มะเร็งลำไส้ใหญ่", statement: "หลักฐานที่มีความเชื่อมั่นต่ำชี้ว่า: เมตฟอร์มินลดอุบัติการณ์มะเร็งลำไส้ใหญ่ในงานเชิงสังเกตส่วนใหญ่",
+          refs: ["P1", "P2", "P3", "P4"], k: 4, certainty: "low" },
+        { outcome: "การเสียชีวิตจากมะเร็งลำไส้ใหญ่", statement: "งานเดียวที่รายงานพบว่าอัตราตายไม่ต่างกัน", refs: ["P3"], k: 1, certainty: "low" },
+      ],
+      conflicts: [
+        { ...resultFixture.synthesis!.conflicts![0], review_discordant: false },
+        { statement: DISCORDANT_TH, refs: ["P1", "P3", "P4"], review_discordant: true,
+          explanation: "การทบทวนวรรณกรรมอย่างเป็นระบบ [P4] รายงานผลไปในทิศทางที่ต่างจากการศึกษาปฐมภูมิ [P1, P3]",
+          likely_reasons: ["การทบทวนอาจรวมงานที่การค้นครั้งนี้ไม่พบ"] },
+      ],
+    },
+    synthesis_en: {
+      ...slrP20ReviewFixture.result!.synthesis_en!,
+      key_findings: [
+        { outcome: "CRC incidence", statement: "Low-certainty evidence suggests: Metformin lowers colorectal cancer incidence in most observational studies.",
+          refs: ["P1", "P2", "P3", "P4"], k: 4, certainty: "low" },
+        { outcome: "CRC mortality", statement: "The one study that reported it found no difference in mortality.", refs: ["P3"], k: 1, certainty: "low" },
+      ],
+      conflicts: [
+        { statement: "CRC incidence: studies disagree", refs: ["P1", "P3", "P4"], review_discordant: false,
+          explanation: "[P4] had shorter follow-up and may reflect detection bias.", likely_reasons: ["Short follow-up"] },
+        { statement: DISCORDANT_EN, refs: ["P1", "P3", "P4"], review_discordant: true,
+          explanation: "Systematic reviews [P4] report a different direction from the primary studies [P1, P3].",
+          likely_reasons: ["The review may include studies this search did not find"] },
+      ],
+    },
+    stats: { ...slrP20ReviewFixture.result!.stats!, selected: 6, extracted: 5, related_reports: 1 },
+    quality: { ...slrP20ReviewFixture.result!.quality, prose_check: { rationale_fixed: "trimmed" } },
+  },
+};
+
+/** The engine's empty answer (api.md: e.g. an ungraded review whose every answer sentence carried a number). */
+export const emptyAnswerP20ReviewFixture: Review = {
+  ...engineP20ReviewFixture,
+  id: "20200000-0000-4000-8000-000000000012",
+  result: {
+    ...engineP20ReviewFixture.result!,
+    synthesis: { ...engineP20ReviewFixture.result!.synthesis!, answer: "" },
+    synthesis_en: { ...engineP20ReviewFixture.result!.synthesis_en!, answer: "" },
+  },
+};
+
+/** Every Plan 20 fixture, for e2e mocks and per-type screenshots. */
+export const P20_FIXTURES: Record<"slr" | "meta" | "metaNoPool" | "scoping" | "narrative" | "legacy", Review> = {
+  slr: slrP20ReviewFixture, meta: metaP20ReviewFixture, metaNoPool: metaNoPoolP20ReviewFixture, scoping: scopingP20ReviewFixture,
+  narrative: narrativeP20ReviewFixture, legacy: legacyReviewFixture,
+};
+
+// --- Plan 20 Task 7 fix round 1: long Thai runs joined by slashes and dashes (no space anywhere) ---------------------
+
+const SLASHED = "การใช้ยาเมตฟอร์มินร่วมกับการปรับพฤติกรรม/ยาซัลโฟนิลยูเรีย/ยาหลอก–การรักษามาตรฐานในผู้ป่วยเบาหวานชนิดที่สอง";
+
+/** An SLR whose question, summary-of-findings outcome and literature-matrix cells are long slash/dash-joined Thai. */
+export const slashedThaiReviewFixture: Review = {
+  ...slrP20ReviewFixture,
+  id: "20200000-0000-4000-8000-000000000071",
+  result: {
+    ...slrP20ReviewFixture.result!,
+    question: { ...slrP20ReviewFixture.result!.question!, refined_question: `${SLASHED}ลดอุบัติการณ์มะเร็งลำไส้ใหญ่หรือไม่` },
+    synthesis: {
+      ...slrP20ReviewFixture.result!.synthesis!,
+      key_findings: slrP20ReviewFixture.result!.synthesis!.key_findings!.map((k, i) => (i === 0 ? { ...k, outcome: `อุบัติการณ์/${SLASHED}` } : k)),
+    },
+    papers: slrP20ReviewFixture.result!.papers!.map((p) => (p.card ? { ...p, card: { ...p.card, population: SLASHED, intervention_or_exposure: SLASHED } } : p)),
+  },
+};
+
+// --- Plan 20 Task 7: the same reviews written in English (result.language "en") ------------------------------------------
+
+const THAI = /[฀-๿]/;
+
+/**
+ * The review as an English report: the English synthesis, cards and question (as the engine writes an English review),
+ * and every Thai data string that remains swapped for an English stand-in, the same Thai text always for the same
+ * stand-in (outcome names keep matching across the matrix, key findings and pools). The chrome must then be all English.
+ */
+export function englishReview(review: Review): Review {
+  const names = new Map<string, string>();
+  const swap = (s: string) => {
+    if (!THAI.test(s)) return s;
+    if (!names.has(s)) names.set(s, `Outcome text ${names.size + 1}`);
+    return names.get(s)!;
+  };
+  const deep = <T,>(v: T): T => (typeof v === "string" ? swap(v) : Array.isArray(v) ? v.map(deep)
+    : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x)])) : v) as T;
+  const r = review.result!;
+  const en = r.synthesis_en;
+  const synthesis = en ? { ...r.synthesis!, ...en, comparison: en.comparison?.length ? en.comparison : r.synthesis?.comparison ?? [] } : r.synthesis;
+  const q = r.question;
+  return deep({
+    ...review,
+    id: `e${review.id.slice(1)}`,
+    topic: r.english_topic ?? "metformin and colorectal cancer",
+    language: "en",
+    result: {
+      ...r, language: "en", topic: r.english_topic ?? r.topic, synthesis, synthesis_en: undefined,
+      summary: en?.executive_summary ?? r.summary,
+      question: q && { ...q, ...(q.english ?? {}), original_topic: q.english_topic ?? q.original_topic, english: undefined },
+      papers: r.papers?.map((p) => ({ ...p, card: p.card_en ?? p.card })),
+    },
+  });
+}
+
+/** The P20 fixtures as English reports (Task 7: chrome language, `lang` attributes). */
+export const P20_FIXTURES_EN = Object.fromEntries(
+  Object.entries(P20_FIXTURES).map(([k, v]) => [k, englishReview(v)]),
+) as Record<keyof typeof P20_FIXTURES, Review>;

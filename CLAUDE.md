@@ -35,4 +35,15 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
   charged in `LimitedLLM` (`app/services/budget.py`). Public limits come from `GET /api/v1/status`; never hard-code them
   in docs or UI. Reference docs: `docs/api.md` (keep it in step with routes, events, MCP tools and limits).
 - Load test: `scripts/loadtest.py` against the Caddy front (`:8088`) with `GRAPH_MODE=stub STUB_DELAY_SECONDS=20` (the stub now emits ~80 events per review).
+- Report (Plan 20, frontend): the section order comes from `SECTIONS_BY_TYPE` (answer first). Report chrome is in the
+  `frontend/src/lib/i18n-report.ts` string table (new strings go there) and `<html lang>` follows the report's language. Print: always light, controls
+  hidden, every disclosure open, verified numbers print with ✓ and blanked ones as "[unverified]". The offline file
+  (`/r/{id}/report.html`) makes no network request: it embeds Martian Mono (OFL) and nothing else, and has no links back
+  to the service.
+- Not evidence: a further report of a trial (`related_to`) and a paper read as a design outside the ticked study types
+  (`design_excluded`) stay in `papers` but are out of comparison rows, key findings, SoF, pools and the grade; the
+  report's tallies, RoB summary, study map and DTA table skip them too (`isNotEvidence`). The title block and PRISMA
+  still count them as included reports.
+- `prompt_version` (`app/config.py`) is part of the result cache key: bump it with any prompt or schema change, and keep
+  `docs/api.md` and the pin comments in `tests/unit/test_prompts_by_type.py` in step.
 - Plan 14b: `meta_analysis` is a review type that behaves like `slr` and adds `result.meta_analysis` (DerSimonian-Laird in `app/harness/meta.py`, node `pool_effects`). Pooled numbers are computed, so the UI shows them only through `ComputedNumber` (never `VerifiedNumber`) and the narrative never restates them. Citations (`fetch_citations`, OpenAlex with Europe PMC fallback) are metadata only, soft-fail with null coverage, and never fail a review.

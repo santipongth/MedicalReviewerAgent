@@ -136,7 +136,8 @@ async def test_graph_without_openalex_has_no_citation_step():
 @pytest.mark.parametrize("review_type", ["slr", "narrative", "scoping"])
 def test_stub_result_carries_small_citations_block(review_type):
     c = stub_result("t", "en", review_type)["citations"]
-    refs = {f"P{i}" for i in range(1, 7)}
+    # six studies, plus (Plan 20 Task 11) P7, a further report of P1's trial, except in scoping (links no reports)
+    refs = {f"P{i}" for i in range(1, 7 if review_type == "scoping" else 8)}
     assert set(c["coverage"]) == refs == set(c["cited_by"])
     assert c["edges"] and all(e["from"] in refs and e["to"] in refs and e["from"] != e["to"] for e in c["edges"])
     assert c["coverage"]["P6"] is None and c["cited_by"]["P6"] is None

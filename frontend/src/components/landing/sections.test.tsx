@@ -1,5 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { glossText } from "@/lib/glossary";
 import { SAMPLE } from "@/lib/landing-sample";
 import { AgentBand } from "./agent-band";
 import { Anatomy } from "./anatomy";
@@ -52,5 +53,23 @@ describe("AgentBand", () => {
     }
     expect(screen.getByText(/https:\/\/mra\.example\.org\/mcp/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /API และ MCP/ })).toHaveAttribute("href", "/about");
+  });
+
+  it("glosses MCP and API for readers who are not developers", () => {
+    const { container } = render(<AgentBand api="https://mra.example.org" />);
+    expect(container.textContent).toContain(glossText("mcp"));
+    expect(container.textContent).toContain(glossText("api", "th", { term: "REST API" }));
+  });
+});
+
+describe("plain-language glosses in the walk-through", () => {
+  it("Timeline glosses PICO, PCC and preprint at first use", () => {
+    const { container } = render(<Timeline />);
+    for (const k of ["pico", "pcc", "preprint"] as const) expect(container.textContent).toContain(glossText(k));
+  });
+
+  it("Anatomy says what a language model is", () => {
+    const { container } = render(<Anatomy />);
+    expect(container.textContent).toContain(glossText("llm"));
   });
 });

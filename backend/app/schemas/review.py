@@ -147,6 +147,13 @@ class ReviewSummary(BaseModel):
     verification_rate: float | None = None  # share of numbers verified against paper text (done reviews)
 
 
+def verification_rate_of(result: dict[str, Any] | None) -> float | None:
+    """The share of numbers verified against the paper text, as the result's quality summary records it."""
+    quality = (result or {}).get("quality")
+    rate = quality.get("verification_rate") if isinstance(quality, dict) else None
+    return float(rate) if isinstance(rate, int | float) and not isinstance(rate, bool) else None
+
+
 class ReviewOut(ReviewSummary):
     options: dict[str, Any]
     progress: dict[str, Any] | None = Field(None, description="reserved; progress is reported by the events stream")
@@ -155,6 +162,13 @@ class ReviewOut(ReviewSummary):
     cost_usd: float
     started_at: datetime | None
     queue_position: int | None = None  # 1 = next to start; None once running or finished
+
+    @model_validator(mode="after")
+    def _top_level_verification_rate(self) -> ReviewOut:
+        # Plan 20 Task 10: GET /reviews/{id} left it null (it lives in result.quality); filled like GET /reviews
+        if self.verification_rate is None:
+            self.verification_rate = verification_rate_of(self.result)
+        return self
 
 
 def compute_cache_key(topic: str, language: str, options: dict[str, Any], version: str = "") -> str:

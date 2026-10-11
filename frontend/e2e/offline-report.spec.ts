@@ -19,8 +19,12 @@ test("the single-file HTML report works offline", async ({ page }) => {
   await expect(page.getByRole("complementary", { name: "ต้นฉบับ" })).toContainText("Metformin use was associated");
   // there is no page to link to in a file on disk, so the copy-link button is not rendered
   await expect(page.getByRole("button", { name: "คัดลอกลิงก์" })).toHaveCount(0);
-  // with no site header in the file, the section nav sticks to the very top
+  // with no site header in the file, the section nav sticks to the very top (the table of contents from 1280px)
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
+  const toc = page.getByRole("navigation", { name: "สารบัญ" });
+  await expect(toc.getByRole("link", { name: "คำตอบ" })).toBeInViewport();
+  expect((await toc.getByText("สารบัญ").boundingBox())!.y).toBeLessThanOrEqual(40);
+  await page.setViewportSize({ width: 1024, height: 900 });
   const nav = page.getByRole("navigation", { name: "ในรายงานนี้" });
   await expect(nav).toBeInViewport();
   expect((await nav.boundingBox())!.y).toBeLessThanOrEqual(1);
@@ -42,7 +46,7 @@ test("the offline report renders the meta-analysis section from review.result", 
   const css = readFileSync("standalone-dist/report.css", "utf8");
   await page.route("**/*", (route) => route.abort());
   await page.setContent(buildStandaloneHtml(metaReviewFixture, { js, css }), { waitUntil: "load" });
-  const section = page.locator("section:has(#h-meta)");
+  const section = page.locator("section[aria-labelledby=h-meta]");
   await expect(section.getByText("คำนวณโดยระบบจากตัวเลขที่ตรวจกับบทคัดย่อแล้ว — ไม่ใช่ผลจากงานวิจัยฉบับใด")).toBeVisible();
   await expect(section.getByRole("img", { name: /^0\.96 \(คำนวณโดยระบบ/ }).first()).toBeVisible();
   // the lazy echarts chunk is inlined in the file, so the pooled forest plot draws with no network
@@ -57,7 +61,7 @@ test("the offline report renders the citation network from review.result", async
   const css = readFileSync("standalone-dist/report.css", "utf8");
   await page.route("**/*", (route) => route.abort());
   await page.setContent(buildStandaloneHtml(slrReviewFixture, { js, css }), { waitUntil: "load" });
-  const section = page.locator("section:has(#h-citations)");
+  const section = page.locator("section[aria-labelledby=h-citations]");
   // GraphChart is in the inlined echarts runtime, so the network draws with no network access
   await expect(section.getByRole("img", { name: "เครือข่ายการอ้างอิง 5 งานวิจัย 4 เส้นเชื่อม" }).locator("svg")).toBeVisible();
   await expect(section.getByText("ไม่มีข้อมูล ≠ ไม่อ้างอิง")).toBeVisible();

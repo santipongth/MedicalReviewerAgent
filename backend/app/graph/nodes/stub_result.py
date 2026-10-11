@@ -21,6 +21,13 @@ _PAPERS = (
 # meta_analysis only: a third cohort with a verified HR, so the observational pool reaches k = 3 (P3, P4, P7).
 STUB_BASELINE = {"level": "low", "factors": ["start low: illustrative stub evidence"]}  # the stub's "low" grade
 _META_EXTRA = ("cohort", "Population-based cohort study", 2016, "positive", "moderate", 3410, 0.88, (0.79, 0.99))
+# Plan 20 Task 11: a further report of P1's trial (not scoping, which links no reports). Like the engine, it stays in
+# `papers` with `related_to`, but never reaches the comparison, consensus, conflicts, pools or key findings.
+_RELATED = ("rct", "Prespecified secondary analysis of a randomized controlled trial", 2022, "positive", "low", 198,
+            None, None)
+_RELATED_REASON = "same trial (STUB-1)"
+# The engine's fixed lead clause for a strong causal key finding at low / very low certainty (synthesis._certainty_lead)
+_LEAD = {"low": "Low-certainty evidence suggests: ", "very_low": "Very low-certainty evidence: "}
 
 
 def _card(i: int, topic: str, specs: tuple = _PAPERS) -> dict[str, Any]:
@@ -75,18 +82,31 @@ def _citations(n: int) -> dict[str, Any]:
 
 def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str, Any]:
     meta = review_type == "meta_analysis"
+    scoping = review_type == "scoping"  # a scoping review makes no claims (no consensus or conflicts), links no reports
     specs = (*_PAPERS, _META_EXTRA) if meta else _PAPERS
+    evidence = len(specs)
+    if not scoping:
+        specs = (*specs, _RELATED)
     papers = []
     for i, (_d, _s, year, *_rest) in enumerate(specs):
         card = _card(i, topic, specs)
+        related = i == evidence  # the further report of P1's trial
         papers.append({
-            "ref": f"P{i + 1}", "title": f"Simulated study {i + 1}: {topic}", "authors": ["Stub A", "Stub B"],
+            "ref": f"P{i + 1}",
+            "title": (f"Simulated study 1, prespecified secondary analysis: {topic}" if related
+                      else f"Simulated study {i + 1}: {topic}"),
+            "authors": ["Stub A", "Stub B"],
             "year": year, "journal": "Journal of Simulated Evidence", "doi": None, "pmid": None, "pmcid": None,
             "url": None, "relevance": round(0.95 - 0.05 * i, 2), "screen_reason": "Relevant to the question",
             "card": card, "card_en": card,
             "verification": _verification(card),
             "error": None,
+            "design_excluded": False,  # Plan 20 Task 6 (parity with finalize; the stub ticks no study type)
+            "related_to": "P1" if related else None, "related_reason": _RELATED_REASON if related else None,
+            "related_reports": [],
         })
+    if not scoping:
+        papers[0]["related_reports"] = [f"P{evidence + 1}"]
 
     def cells(outcome: str, refs: tuple[int, ...]) -> dict[str, Any]:
         out = []
@@ -105,20 +125,44 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
                   cells("Safety outcome", (0, 2, 4))]
     summary = f"Stub review for: {topic}"
     graded = review_type in SLR_LIKE  # narrative and scoping reviews are not graded (same rule as write_synthesis)
-    scoping = review_type == "scoping"  # a scoping review makes no claims: no consensus, no conflicts
     meta_analysis, grade = _stub_meta(comparison, papers) if meta else (None, STUB_BASELINE)
+    certainty = grade["level"] if graded else None  # key findings: set in code, the review's final grade
     synthesis = {
         "executive_summary": summary, "comparison": comparison,
         "consensus": [] if scoping else [{"statement": "Most simulated studies point the same way.",
-                                          "refs": ["P1", "P3"], "explanation": "Illustrative."}],
-        "conflicts": [] if scoping else [{"statement": "One simulated study disagrees.", "refs": ["P4"],
-                                          "explanation": "Illustrative.", "likely_reasons": ["Different population"]}],
+                                          "refs": ["P1", "P3"], "explanation": "Illustrative.",
+                                          "likely_reasons": [], "review_discordant": False}],
+        "conflicts": [] if scoping else [
+            {"statement": "One simulated study disagrees.", "refs": ["P4"], "explanation": "Illustrative.",
+             "likely_reasons": ["Different population"], "review_discordant": False},
+            # Plan 20 Task 11: a split between a systematic review and primary studies (engine wording)
+            {"statement": "Safety outcome: systematic reviews and primary studies disagree", "refs": ["P1", "P3", "P5"],
+             "explanation": "Systematic reviews [P5] report a different direction from the primary studies [P1, P3].",
+             "likely_reasons": ["The review may include trials this search did not find"],
+             "review_discordant": True},
+        ],
         "evidence_strength": grade["level"] if graded else None,
         "evidence_rationale": ("Simulated data." + (f" GRADE-lite: {'; '.join(grade['factors'][1:])}."
                                                     if grade["factors"][1:] else ""))
         if graded else f"Certainty of evidence is not graded in a {'scoping' if scoping else 'narrative'} review.",
         "research_gaps": ["No long-term follow-up in the stub data."],
         "grade_baseline": grade["level"] if graded else None,
+        # Plan 20: numberless; the report renders the numbers from the cited cards and the matching pool
+        "answer": (f"Simulated studies map the evidence on {topic}." if scoping else
+                   f"The simulated evidence suggests {topic} may improve the primary outcome."
+                   + (f" The certainty of the evidence is {grade['level'].replace('_', ' ')}." if graded else "")),
+        "key_findings": [
+            {"outcome": row["outcome"], "statement": statement, "refs": refs, "k": len(refs), "certainty": certainty}
+            for row, statement in zip(comparison, (
+                "Simulated studies of several designs cover the primary outcome." if scoping else
+                f"{_LEAD.get(certainty or '', '')}The index intervention reduces the primary outcome in most simulated "
+                "studies; one cohort reports harm." if graded else
+                "Most simulated studies report a benefit on the primary outcome; one cohort reports harm.",
+                "Fewer simulated studies cover safety." if scoping else
+                # consistent with the review-discordant Safety conflict above (Task 11 fix round 1)
+                "Simulated primary studies report no safety concern; a systematic review points elsewhere."),
+                strict=True)
+            for refs in [[c["ref"] for c in row["cells"]]]],
     }
     return {
         "topic": topic, "english_topic": topic, "language": language, "review_type": review_type,
@@ -142,11 +186,29 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
                   "selected": len(papers), "extracted": len(papers), "excluded_screening": {"off_topic": 20, "population": 5, "publication_type": 3},
                   "non_research": 4, "year_excluded": 0, "no_abstract": 2,
                   "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
-                                         "study_design_corrected": 0, "low_relevance": 0}},
-        "quality": {}, "errors": [], "prompt_version": "stub", "llm_preset": "stub", "models": {},
+                                         "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
+                  "related_reports": sum(p["related_to"] is not None for p in papers)},
+        # the lead clause the first graded finding shows is counted like the real check counts it
+        "quality": ({"prose_check": {"key_findings_certainty_lead": 1}} if graded and _LEAD.get(certainty or "")
+                    else {}),
+        "errors": [], "prompt_version": "stub", "llm_preset": "stub", "models": {},
         "external_context": [],
         "citations": _citations(len(papers)),
         "meta_analysis": meta_analysis,
+        "methods": {
+            "searched_at": "2026-10-10T00:00:00+00:00",
+            "sources": {"pubmed": 41, "europe pmc": 30, "semantic scholar": 22, "arxiv": 3},
+            "eligibility": {"year_from": None, "study_types": [],
+                            "inclusion_criteria": ["Studies reporting the primary outcome"],
+                            "exclusion_criteria": ["Editorials and protocols without results"]},
+            "limits": {"candidate_limit": 60, "max_papers": 30, "min_abstract_chars": 150},
+            "screening": {"model": "stub", "second_model": None, "second_vote": "off", "borderline": [35, 70],
+                          "relevance_floor": 35},
+            "extraction": {"model": "stub", "second_model": None, "verify_quotes": True, "quote_match_threshold": 90,
+                           "text": "abstract"},
+            "synthesis": {"model": "stub", "pooling": "DerSimonian-Laird random effects" if meta else None,
+                          "grading": "GRADE-lite" if graded else None},
+        },
     }
 
 

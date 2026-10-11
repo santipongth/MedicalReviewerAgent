@@ -30,12 +30,12 @@ export function EvidenceBoard({ scene }: { scene: Scene }) {
   const detailId = useId();
   if (scene.slots.length === 0) return null;
   const tally = liveTally(scene);
-  const read = tally.counted + tally.noDirection + tally.failed;
+  const read = tally.counted + tally.noDirection + tally.themes + tally.failed;
   const fresh = new Set(
     DIRECTION_ORDER.flatMap((d) => tally.groups[d]).map((it) => it.key).filter((k) => k > mountSeq).sort((a, b) => b - a).slice(0, PACKET_CAP),
   );
   const synthesizing = scene.agents.synth === "active" || scene.agents.synth === "working";
-  const empty = tally.counted === 0 && tally.noDirection === 0 && tally.failed === 0;
+  const empty = tally.counted === 0 && tally.noDirection === 0 && tally.themes === 0 && tally.failed === 0;
   return (
     <section aria-labelledby="h-evidence" className="grid gap-3 rounded-sm border border-rule bg-surface p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -83,10 +83,11 @@ export function EvidenceBoard({ scene }: { scene: Scene }) {
         })}
       </ul>
 
-      {(tally.pooled > 0 || tally.noDirection > 0 || tally.failed > 0 || tally.uncertain > 0 || synthesizing) && (
+      {(tally.pooled > 0 || tally.noDirection > 0 || tally.themes > 0 || tally.failed > 0 || tally.uncertain > 0 || synthesizing) && (
         <div className="grid gap-1 text-[0.82rem] text-muted">
           {tally.pooled > 0 && <p>{POOLED_OVERLAP_TH}</p>}
           {tally.noDirection > 0 && <p>อีก {tally.noDirection} ฉบับอ่านเสร็จแต่ไม่มีข้อมูลทิศทาง</p>}
+          {tally.themes > 0 && <p data-evidence-themes={tally.themes}>อีก {tally.themes} ฉบับเป็นงานเชิงคุณภาพหรือแบบผสมผสาน สรุปเป็นประเด็น ไม่นับตามทิศทางผล</p>}
           {tally.failed > 0 && <p>อ่านไม่สำเร็จ {tally.failed} ฉบับ (ไม่นับ)</p>}
           {tally.uncertain > 0 && <p>มี {tally.uncertain} ฉบับที่<Term k="uncertain">{DISAGREE_TH}</Term></p>}
           {synthesizing && <p>เอเจนต์กำลังเทียบผลเหล่านี้ ผลสรุปจะอยู่ในรายงาน</p>}

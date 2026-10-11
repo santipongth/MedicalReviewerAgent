@@ -1,4 +1,6 @@
 // Review types (Plan 14a): labels, grading and which report sections each type shows. Pure data, no React.
+import { isNonQuantitative } from "./charts-data";
+import { TERM_NAME as N, capitalised } from "./term-names";
 import type { ReviewResult, ReviewType } from "./types";
 
 export const REVIEW_TYPES: ReviewType[] = ["narrative", "slr", "scoping", "meta_analysis"];
@@ -7,27 +9,12 @@ export const DEFAULT_REVIEW_TYPE: ReviewType = "slr";
 /** A result without `review_type` (stored before Plan 14a) behaves as today's SLR report. */
 export type ReviewTypeOrLegacy = ReviewType | "legacy";
 
-export const REVIEW_TYPE_LABEL: Record<ReviewType, { th: string; en: string; description: string }> = {
-  narrative: {
-    th: "การทบทวนแบบบรรยาย",
-    en: "Narrative review",
-    description: "สรุปภาพรวมความรู้จากงานวิจัยหลายชนิด รวมบทความทบทวน เหมาะกับการทำความเข้าใจหัวข้ออย่างรวดเร็ว ไม่ประเมินความแข็งแรงของหลักฐาน",
-  },
-  slr: {
-    th: "การทบทวนวรรณกรรมอย่างเป็นระบบ",
-    en: "Systematic review",
-    description: "ค้นและคัดกรองตามเกณฑ์ที่ชัดเจน รายงานขั้นตอนแบบ PRISMA และประเมินความแข็งแรงของหลักฐาน (ค่าเริ่มต้น)",
-  },
-  scoping: {
-    th: "การทบทวนขอบเขต",
-    en: "Scoping review",
-    description: "สำรวจว่ามีงานวิจัยอะไร ชนิดใด ปีใด ด้วยกรอบ PCC ไม่ประเมินคุณภาพหรือสรุปว่าได้ผลหรือไม่",
-  },
-  meta_analysis: {
-    th: "การวิเคราะห์อภิมาน",
-    en: "Meta-analysis",
-    description: "รวมผลเชิงตัวเลขจากงานวิจัยหลักที่วัดผลแบบเดียวกัน (ตั้งแต่ 3 ฉบับ) ด้วยวิธี random effects ตัวเลขรวมคำนวณโดยระบบ ไม่ใช่ผลจากงานใดงานหนึ่ง",
-  },
+export const REVIEW_TYPE_LABEL: Record<ReviewType, { th: string; en: string }> = {
+  // the shared names (term-names.ts): the home page and the report name each type the same way
+  narrative: { th: N.narrativeReview.th, en: capitalised(N.narrativeReview.en) },
+  slr: { th: N.slr.th, en: capitalised(N.slr.en) },
+  scoping: { th: N.scopingReview.th, en: capitalised(N.scopingReview.en) },
+  meta_analysis: { th: N.metaAnalysis.th, en: capitalised(N.metaAnalysis.en) },
 };
 
 export function isReviewType(v: unknown): v is ReviewType {
@@ -44,31 +31,108 @@ export function isGraded(type: ReviewTypeOrLegacy): boolean {
   return type === "slr" || type === "meta_analysis" || type === "legacy";
 }
 
-export type SectionId =
-  | "summary" | "claims" | "findings" | "evidence_map" | "lit_matrix" | "concept_map" | "forest" | "prisma" | "meta"
-  | "citations";
+/** Top-level report sections (Plan 20 answer-first order). Each gets one H2 and one table-of-contents entry. */
+export type TopSectionId =
+  | "title" | "bottom_line" | "key_findings" | "sof" | "selection" | "characteristics" | "results" | "rob"
+  | "consistency" | "landscape" | "limitations" | "gaps" | "discussion" | "methods" | "references" | "downloads"
+  | "appendix";
 
-/** Report sections per type, in display order; report.tsx renders and numbers its nav from this list (forest and
- * prisma are drawn together by Charts, at the position of whichever comes first). Legacy = today's report exactly. */
+/** Content blocks (Plan 10–14b sections) drawn inside a group section, under their own H3. */
+export type BlockId =
+  | "claims" | "findings" | "evidence_map" | "lit_matrix" | "concept_map" | "forest" | "prisma" | "meta" | "citations";
+
+export type SectionId = TopSectionId | BlockId;
+
+/** The H2 anchor of each top-level section: the table of contents links here (report.tsx) and e2e checks the order. */
+export const SECTION_ANCHOR: Record<Exclude<TopSectionId, "title">, string> = {
+  bottom_line: "h-answer", key_findings: "h-key-findings", sof: "h-sof", selection: "h-selection",
+  characteristics: "h-characteristics", results: "h-results", rob: "h-rob", consistency: "h-claims", landscape: "h-landscape",
+  limitations: "h-limitations", gaps: "h-gaps", discussion: "h-discussion", methods: "h-method", references: "h-papers",
+  downloads: "h-downloads", appendix: "h-appendix",
+};
+
+/** Which blocks each group section may hold (a block is listed in SECTIONS_BY_TYPE right after its group). */
+export const SECTION_BLOCKS: Partial<Record<TopSectionId, readonly BlockId[]>> = {
+  selection: ["prisma"],
+  characteristics: ["evidence_map", "lit_matrix"],
+  results: ["findings", "forest", "meta"],
+  consistency: ["claims"],
+  landscape: ["concept_map", "citations"],
+};
+
+/**
+ * Report sections per type, in display order (Plan 20: answer first, methods and references last). A group section
+ * (selection, characteristics, results, consistency, landscape) is followed by the blocks it holds; report.tsx renders
+ * and builds its table of contents from this list, and a section with nothing to show is left out.
+ * "rob" is the risk-of-bias summary (Plan 20 Task 4; never for scoping, which appraises nothing); "citations" (Plan 14b) shows only when
+ * result.citations is present; "sof" (summary of findings) is for the graded types that pool or grade per outcome.
+ * "appendix" (Plan 20 Task 8) closes every report: each verified number with its source sentence, and the computed
+ * (pooled) numbers apart.
+ */
 export const SECTIONS_BY_TYPE: Record<ReviewTypeOrLegacy, SectionId[]> = {
-  // "citations" (Plan 14b) is the citation network; it shows only when result.citations is present.
-  narrative: ["summary", "claims", "findings", "lit_matrix", "concept_map", "citations", "forest"],
-  slr: ["summary", "claims", "findings", "forest", "prisma", "lit_matrix", "concept_map", "citations"],
-  scoping: ["summary", "evidence_map", "lit_matrix", "concept_map", "citations", "prisma"],
-  // An SLR plus the pooled analysis, right after the per-study findings and forest plot (Charts holds forest + prisma,
-  // so the pooled section follows that block).
-  meta_analysis: ["summary", "claims", "findings", "forest", "meta", "prisma", "lit_matrix", "concept_map", "citations"],
-  // The study map renders with forest/prisma exactly as it does today (charts.tsx).
-  legacy: ["summary", "claims", "findings", "forest", "prisma"],
+  narrative: ["title", "bottom_line", "key_findings", "characteristics", "lit_matrix", "results", "findings", "forest",
+    "rob", "consistency", "claims", "landscape", "concept_map", "citations", "limitations", "gaps", "discussion",
+    "methods", "references", "downloads", "appendix"],
+  slr: ["title", "bottom_line", "key_findings", "sof", "selection", "prisma", "characteristics", "lit_matrix",
+    "results", "findings", "forest", "rob", "consistency", "claims", "landscape", "concept_map", "citations",
+    "limitations", "gaps", "discussion", "methods", "references", "downloads", "appendix"],
+  // Scoping maps what exists: the evidence map is a study characteristic, and there are no results by outcome.
+  scoping: ["title", "bottom_line", "key_findings", "selection", "prisma", "characteristics", "evidence_map",
+    "lit_matrix", "landscape", "concept_map", "citations", "limitations", "gaps", "discussion", "methods",
+    "references", "downloads", "appendix"],
+  // An SLR plus the pooled analysis, after the per-study findings and forest plot in the results.
+  meta_analysis: ["title", "bottom_line", "key_findings", "sof", "selection", "prisma", "characteristics",
+    "lit_matrix", "results", "findings", "forest", "meta", "rob", "consistency", "claims", "landscape",
+    "concept_map", "citations", "limitations", "gaps", "discussion", "methods", "references", "downloads", "appendix"],
+  // Results stored before Plan 14a: the same blocks as before (claims, findings, forest, prisma), in the new order.
+  legacy: ["title", "bottom_line", "key_findings", "selection", "prisma", "results", "findings", "forest", "rob",
+    "consistency", "claims", "limitations", "gaps", "discussion", "methods", "references", "downloads", "appendix"],
 };
 
 export function showsSection(type: ReviewTypeOrLegacy, id: SectionId): boolean {
   return SECTIONS_BY_TYPE[type].includes(id);
 }
 
+export function isBlock(id: SectionId): id is BlockId {
+  return Object.values(SECTION_BLOCKS).some((blocks) => blocks.includes(id as BlockId));
+}
+
+/** SECTIONS_BY_TYPE as top-level sections, each with the blocks listed after it. */
+export function reportLayout(type: ReviewTypeOrLegacy): { id: TopSectionId; blocks: BlockId[] }[] {
+  const out: { id: TopSectionId; blocks: BlockId[] }[] = [];
+  for (const id of SECTIONS_BY_TYPE[type]) {
+    if (isBlock(id)) out.at(-1)?.blocks.push(id);
+    else out.push({ id, blocks: [] });
+  }
+  return out;
+}
+
 /** Scoping reviews map what exists and never tally or draw a direction of effect. */
 export function showsDirection(type: ReviewTypeOrLegacy): boolean {
   return type !== "scoping";
+}
+
+/** Whether one paper shows a direction (glyph, label, tally): never in scoping, never for a qualitative or
+ * mixed-methods card (themes, not effects). Every per-paper direction in the UI goes through this gate. */
+export function showsCardDirection(type: ReviewTypeOrLegacy, card: { design_category?: string | null } | null | undefined): boolean {
+  return showsDirection(type) && !isNonQuantitative(card);
+}
+
+type PoolInput = Pick<ReviewResult, "review_type" | "meta_analysis" | "papers"> | null | undefined;
+
+/**
+ * A meta-analysis with papers but no pooled estimate, and why: "none" = the step ran and no outcome qualified
+ * (`pools: []`); "failed" = the step did not complete (`meta_analysis` null or absent). Null otherwise.
+ */
+export function metaPoolGap(result: PoolInput): "none" | "failed" | null {
+  if (reviewTypeOf(result) !== "meta_analysis" || !result?.papers?.length) return null;
+  if (result.meta_analysis == null) return "failed";
+  return result.meta_analysis.pools?.length ? null : "none";
+}
+
+/** The pooling step ran and pooled nothing (never true when the step failed: that is `metaPoolGap(...) === "failed"`). */
+export function isMetaNotPooled(result: PoolInput): boolean {
+  return metaPoolGap(result) === "none";
 }
 
 /** Scoping does no quality appraisal, so no risk-of-bias label or filter is shown. */

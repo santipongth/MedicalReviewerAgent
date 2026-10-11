@@ -39,8 +39,12 @@ export function paperLines(d: Extract<ThoughtDetail, { kind: "paper" }>): {
 } {
   if (!d.ok) return { lead: `อ่าน ${d.ref} ไม่สำเร็จ`, finding: null, verified: null, flag: null };
   const dir = d.direction ? `${DIRECTION_LABEL.th[d.direction]} ${AS_READ_TH}` : NO_DIRECTION_TH;
-  // A scoping review reports no direction at all (not even "no direction"): only the design, when known.
-  const finding = d.directionless ? (d.design ? DESIGN_LABEL.th[d.design] : null) : d.design ? `${dir} · ${DESIGN_LABEL.th[d.design]}` : dir;
+  // A scoping review reports no direction at all (not even "no direction"): only the design, when known. A qualitative /
+  // mixed-methods paper reports themes, so it gets its design and "themes", never a direction or "no direction".
+  const theme = d.design === "qualitative" || d.design === "mixed_methods";
+  const finding = d.directionless ? (d.design ? DESIGN_LABEL.th[d.design] : null)
+    : theme && d.design ? `${DESIGN_LABEL.th[d.design]} · สรุปเป็นประเด็น`
+    : d.design ? `${dir} · ${DESIGN_LABEL.th[d.design]}` : dir;
   return {
     lead: `อ่านเสร็จล่าสุด ${d.ref}`,
     finding,

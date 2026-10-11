@@ -238,10 +238,25 @@ class EvidenceCluster(BaseModel):
     refs: list[str]
     explanation: str
     likely_reasons: list[str] = Field(default_factory=list)
+    # Plan 20 Task 11: the matrix entry's flag, so clients can tell a split between systematic reviews and primary
+    # studies (or a consensus that significant reviews contradict) from an ordinary one; it never lowers the grade
+    review_discordant: bool = False
+
+
+class KeyFinding(BaseModel):
+    """One key finding of the report (Plan 20): a numberless statement about one outcome. The report renders the
+    numbers from the referenced cards (verified) or the matching pool (computed), never from this text. `k` is the
+    number of cited papers, set in code."""
+    outcome: str
+    statement: str
+    refs: list[str]
+    k: int
+    # set in code (never by the model): the review's final evidence_strength for graded types, null otherwise
+    certainty: Literal["high", "moderate", "low", "very_low"] | None = None
 
 
 class Synthesis(BaseModel):
-    executive_summary: str
+    executive_summary: str  # the discussion (Plan 20); the report leads with `answer` and `key_findings`
     comparison: list[ComparisonRow]
     consensus: list[EvidenceCluster]
     conflicts: list[EvidenceCluster]
@@ -249,6 +264,8 @@ class Synthesis(BaseModel):
     evidence_rationale: str
     research_gaps: list[str]
     grade_baseline: str | None = None
+    answer: str = ""  # Plan 20: 1-2 sentence direct answer ("" for results stored before it or a failed narrative)
+    key_findings: list[KeyFinding] = Field(default_factory=list)
 
 
 # ---- Harness steps (LLM outputs) ---------------------------------------------------------
@@ -273,17 +290,39 @@ class ConflictNote(BaseModel):
     explanation: str
 
 
+class NarrativeFinding(BaseModel):
+    """A key finding as the model writes it; code checks it and adds `k` (KeyFinding)."""
+    outcome: str
+    statement: str
+    refs: list[str]
+
+
+def _require_answer(schema: dict) -> None:
+    # Required for the model (Plan 20); the Python defaults only keep hand-built narratives (tests, fallbacks) short.
+    for name in ("answer", "key_findings"):
+        schema.setdefault("required", []).append(name)
+        schema["properties"][name].pop("default", None)  # strict tool schemas reject "default"
+
+
 class SynthesisNarrative(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_require_answer)
+
     executive_summary: str
     evidence_strength: Literal["high", "moderate", "low", "very_low"]
     evidence_rationale: str
     research_gaps: list[str]
+    answer: str = ""
+    key_findings: list[NarrativeFinding] = Field(default_factory=list)
 
 
 class NarrativeNoGrade(BaseModel):
-    """Narrative and scoping reviews are not graded: the model writes only the summary and the gaps."""
+    """Narrative and scoping reviews are not graded: the model writes the answer, key findings, summary and gaps."""
+    model_config = ConfigDict(json_schema_extra=_require_answer)
+
     executive_summary: str
     research_gaps: list[str]
+    answer: str = ""
+    key_findings: list[NarrativeFinding] = Field(default_factory=list)
 
 
 class TranslationItem(BaseModel):

@@ -10,7 +10,13 @@ from fastapi.responses import JSONResponse, Response
 from app.api.auth import get_identity, require_key
 from app.api.deps import get_deps
 from app.runtime import AppDeps
-from app.schemas.review import CreateReviewRequest, ReviewCreated, ReviewOut, ReviewSummary
+from app.schemas.review import (
+    CreateReviewRequest,
+    ReviewCreated,
+    ReviewOut,
+    ReviewSummary,
+    verification_rate_of,
+)
 from app.services.report import render_csv, render_markdown
 from app.services.review_service import (
     Identity,
@@ -63,9 +69,8 @@ async def list_recent_reviews(
     recent: int = Query(20, ge=1, le=50), deps: AppDeps = Depends(get_deps)
 ) -> list[ReviewSummary]:
     """The most recently finished public reviews (newest first)."""
-    return [ReviewSummary.model_validate(r).model_copy(update={
-        "verification_rate": ((r.result or {}).get("quality") or {}).get("verification_rate")})
-        for r in await deps.service.list_recent(recent)]
+    return [ReviewSummary.model_validate(r).model_copy(update={"verification_rate": verification_rate_of(r.result)})
+            for r in await deps.service.list_recent(recent)]
 
 
 @router.get("/reviews/{review_id}", response_model=ReviewOut, summary="Review status and result",

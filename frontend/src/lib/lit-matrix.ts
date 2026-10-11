@@ -7,7 +7,7 @@ import type { Lang } from "./i18n";
 import { showsDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "./review-type";
 import { surnameOf } from "./author";
 import { citedByCell, type CitedByCell } from "./citation-network";
-import type { Citations, Direction, OutcomeResult, Paper, RiskOfBias } from "./types";
+import type { Citations, Direction, OutcomeResult, Paper, QuestionBlock, RiskOfBias } from "./types";
 
 export type NumberCell =
   | { kind: "value"; text: string }
@@ -20,6 +20,8 @@ export interface LitOutcome {
   /** Plan 19: not the question's intervention vs comparator; shown, never counted as evidence. */
   otherComparison: boolean;
   comparison: string | null;
+  /** The reader explicitly said the abstract states no number (`effect_measure: "none"`); else "not extracted". */
+  reportsNone: boolean;
 }
 
 /** The row's direction: none when every outcome is another comparison; when only some are, the matching outcomes'
@@ -37,6 +39,7 @@ export interface LitRow {
   ref: string;
   title: string;
   byline: string;
+  year: number | null;
   failed: boolean;
   design: { label: string; pooled: boolean } | null;
   population: string;
@@ -46,16 +49,30 @@ export interface LitRow {
   findings: string;
   direction: Direction | null;
   uncertain: boolean;
+  /** Plan 19: kept although its design is outside the ticked study types. */
+  designMismatch: boolean;
+  /** Qualitative / mixed-methods: themes, no numbers and no direction. */
+  theme: boolean;
   risk: RiskOfBias | null;
   n: NumberCell;
   limitations: string;
   /** Cited-by count from OpenAlex / Europe PMC (a count, not a paper number); absent when the review has no citations. */
   citedBy?: CitedByCell;
+  /** Plan 20 Task 11: a further report of this primary report's trial (one study, not another row of evidence). */
+  relatedTo?: string;
 }
 
-export type LitColumn =
-  | "ref" | "design" | "population" | "exposure" | "comparator" | "outcomes" | "findings"
-  | "direction" | "risk" | "n" | "citedBy" | "limitations";
+/**
+ * Compact columns (Plan 20 Task 5): the sample size sits with the population, the comparator with the intervention;
+ * key findings and limitations stay in the source rail and the CSV.
+ */
+export type LitColumn = "ref" | "design" | "population" | "exposure" | "outcomes" | "direction" | "risk";
+
+/**
+ * Column wording for the question's framework: PICO, PCC (scoping), PICo (qualitative: Population, phenomenon of
+ * Interest, Context) and SPIDER-like (qualitative with mixed methods: Sample, Phenomenon of Interest, Design, Evaluation).
+ */
+export type LitFramework = "pico" | "pcc" | "pico_qual" | "spider";
 
 const join = (xs: string[] | undefined) => (xs ?? []).filter(Boolean).join("; ");
 
@@ -65,8 +82,10 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
     const en = p.card_en ?? p.card;
     const byline = [surnameOf(p.authors?.[0]), p.year].filter(Boolean).join(" ");
     const base = {
-      ref: p.ref, title: p.title, byline, uncertain: !!p.verification?.uncertain,
+      ref: p.ref, title: p.title, byline, year: p.year ?? null, uncertain: !!p.verification?.uncertain,
+      designMismatch: !!p.verification?.design_mismatch, theme: isNonQuantitative(p.card_en ?? p.card),
       ...(citations ? { citedBy: citedByCell(citations, p.ref) } : {}),
+      ...(p.related_to ? { relatedTo: p.related_to } : {}),
     };
     if (!card || !en) {
       return { ...base, failed: true, design: null, population: "", exposure: "", comparator: "", outcomes: [], findings: "",
@@ -76,10 +95,14 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
     const outcomes: LitOutcome[] = card.outcomes.map((o, i) => {
       const eo = en.outcomes[i] ?? en.outcomes.find((x) => x.outcome === o.outcome);
       let effect: LitOutcome["effect"] = null;
-      if (eo && isBlankedEffect(p, eo.outcome)) effect = { blanked: true };
+      if (isNonQuantitative(en)) effect = null; // a theme never shows a number, even one that slipped through
+      else if (eo && isBlankedEffect(p, eo.outcome)) effect = { blanked: true };
       else if (eo && eo.effect_value != null) effect = { label: effectLabel(eo), ci: ciLabel(eo) };
       const other = (eo?.matches_question ?? o.matches_question) === false;
-      return { name: o.outcome, effect, otherComparison: other, comparison: other ? o.comparison ?? eo?.comparison ?? null : null };
+      return {
+        name: o.outcome, effect, otherComparison: other, comparison: other ? o.comparison ?? eo?.comparison ?? null : null,
+        reportsNone: (eo ?? o).effect_measure === "none",
+      };
     });
     const sample = en.sample_size ?? card.sample_size;
     const n: NumberCell = isBlankedSampleSize(p) ? { kind: "blanked" }
@@ -95,16 +118,76 @@ export function litRows(papers: Paper[], lang: Lang, citations: Citations | null
   });
 }
 
-/** Columns for this review type; the comparator column goes when no row has one, "cited by" needs a count. */
-export function litColumns(type: ReviewTypeOrLegacy, rows: LitRow[]): LitColumn[] {
-  const cols: LitColumn[] = ["ref", "design", "population", "exposure"];
-  if (rows.some((r) => r.comparator)) cols.push("comparator");
-  cols.push("outcomes", "findings");
-  if (showsDirection(type)) cols.push("direction");
-  if (showsRiskOfBias(type)) cols.push("risk");
-  cols.push("n");
-  // A column of dashes says nothing: it needs at least one count.
-  if (rows.some((r) => r.citedBy?.count != null)) cols.push("citedBy");
-  cols.push("limitations");
+/**
+ * Columns for this review type, in reading order: study (with its year and cited-by count), design, population/sample,
+ * intervention, outcomes, then direction with risk of bias under it (not for scoping or a themes review).
+ */
+export function litColumns(type: ReviewTypeOrLegacy, _rows: LitRow[], framework: LitFramework = "pico"): LitColumn[] {
+  const cols: LitColumn[] = ["ref", "design", "population", "exposure", "outcomes"];
+  // Fix round 1: six columns fit the reading column. The year and the cited-by count sit in the study cell, risk of
+  // bias under the direction; a review without a direction column keeps risk of bias as its own (not for scoping).
+  if (showsDirection(type) && (framework === "pico" || framework === "pcc")) cols.push("direction");
+  else if (showsRiskOfBias(type)) cols.push("risk");
   return cols;
+}
+
+/** Whether the study cell carries a cited-by count (a line of dashes says nothing: it needs at least one count). */
+export function showsCitedBy(rows: LitRow[]): boolean {
+  return rows.some((r) => r.citedBy?.count != null);
+}
+
+/** The framework of the matrix: PCC for scoping, PICo / SPIDER-like when every read study reports themes, else PICO. */
+export function litFramework(type: ReviewTypeOrLegacy, papers: Paper[], question: QuestionBlock | null | undefined): LitFramework {
+  if (type === "scoping" || question?.framework === "PCC") return "pcc";
+  const designs = papers.map((p) => (p.card_en ?? p.card)?.design_category).filter((d): d is NonNullable<typeof d> => d != null);
+  if (!designs.length || !designs.every((d) => d === "qualitative" || d === "mixed_methods")) return "pico";
+  return designs.includes("mixed_methods") ? "spider" : "pico_qual";
+}
+
+const LABELS: Record<LitFramework, Partial<Record<LitColumn, [string, string]>>> = {
+  pico: {
+    population: ["ประชากร / ขนาดตัวอย่าง", "Population / sample"],
+    exposure: ["การรักษาหรือปัจจัย (เทียบกับ)", "Intervention (vs comparator)"],
+  },
+  pcc: {
+    population: ["ประชากร / ขนาดตัวอย่าง", "Population / sample"],
+    exposure: ["แนวคิด", "Concept"],
+    outcomes: ["ประเด็นที่ทำแผนที่", "Aspects charted"],
+  },
+  pico_qual: {
+    population: ["ประชากร (P)", "Population (P)"],
+    exposure: ["ปรากฏการณ์ที่สนใจ (I)", "Phenomenon of interest (I)"],
+    outcomes: ["ประเด็นที่พบ", "Themes"],
+  },
+  spider: {
+    population: ["กลุ่มตัวอย่าง (S)", "Sample (S)"],
+    exposure: ["ปรากฏการณ์ที่สนใจ (PI)", "Phenomenon of interest (PI)"],
+    design: ["รูปแบบการวิจัย (D, R)", "Design (D, R)"],
+    outcomes: ["การประเมิน (E)", "Evaluation (E)"],
+  },
+};
+
+const BASE_LABEL: Record<LitColumn, [string, string]> = {
+  ref: ["งานวิจัย", "Study"], design: ["รูปแบบการศึกษา", "Study design"],
+  population: ["ประชากร", "Population"], exposure: ["สิ่งที่ศึกษา", "Intervention"], outcomes: ["ผลลัพธ์", "Outcomes"],
+  direction: ["ทิศทาง", "Direction"], risk: ["ความเสี่ยงอคติ", "Risk of bias"],
+};
+
+export function litColumnLabel(col: LitColumn, framework: LitFramework, lang: Lang): string {
+  const [th, en] = LABELS[framework][col] ?? BASE_LABEL[col];
+  return lang === "th" ? th : en;
+}
+
+/** The outcomes cell is clamped to two lines (with "show all" opening the paper in the rail) when it is long. */
+export function outcomesClamped(row: LitRow): boolean {
+  return row.outcomes.length > 2 || row.outcomes.reduce((n, o) => n + o.name.length, 0) > 140;
+}
+
+/** One page of `items` (`size` per page), the page clamped to the range; pages is at least 1. */
+export function paginate<T>(items: T[], page: number, size: number): { items: T[]; page: number; pages: number; start: number; end: number } {
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const p = Math.min(Math.max(0, page), pages - 1);
+  const start = p * size;
+  const end = Math.min(items.length, start + size);
+  return { items: items.slice(start, end), page: p, pages, start, end };
 }

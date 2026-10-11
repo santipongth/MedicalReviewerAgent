@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { glossText } from "@/lib/glossary";
 import { SampleBench } from "./sample-bench";
 
 const rail = () => screen.getByRole("region", { name: "แหล่งที่มาของตัวเลขที่เลือก" });
@@ -57,6 +58,16 @@ describe("SampleBench", () => {
   it("never links to the sample review itself (it exists in one database only)", () => {
     render(<SampleBench />);
     for (const a of screen.queryAllByRole("link")) expect(a.getAttribute("href") ?? "").not.toMatch(/^\/r\//);
+  });
+
+  it("glosses MACE, the ratios, 95% CI, n and meta-analysis for a first-time reader", () => {
+    const { container } = render(<SampleBench />);
+    const text = container.textContent ?? "";
+    for (const k of ["mace", "ci95", "sampleSize", "logScale"] as const) expect(text).toContain(glossText(k));
+    expect(text).toContain(glossText("ratios", "th", { full: true })); // what below or above 1 means
+    // a Thai name is still jargon: it gets the plain words in brackets
+    expect(screen.getByTestId("sample-summary")).toHaveTextContent(glossText("metaAnalysis", "th", { named: true }));
+    expect(glossText("metaAnalysis", "th", { named: true })).toBe("การวิเคราะห์อภิมาน (นำตัวเลขจากหลายงานวิจัยมารวมเป็นผลเดียว)");
   });
 
   it("dates the snapshot in the Common Era like every other year on the page", () => {
