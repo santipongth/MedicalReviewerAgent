@@ -90,6 +90,8 @@ export function paperCounts(stats: Stats | null | undefined): PaperCounts | null
   const requested = num(sel?.requested);
   if (!stats || requested == null) return null;
   const eligible = num(sel?.eligible);
+  // A = min(E, N): screening.py keeps `ranked[:max_papers]` as `selected`, so A < N exactly when E < N, and then A = E.
+  // Methods' analysed count reads A (`selected`); the shortfall figures read E (`eligible`) and N (`requested`).
   const analysed = num(stats.selected);
   return {
     requested, screened: num(stats.screened), eligible, analysed,

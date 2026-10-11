@@ -14,9 +14,9 @@ const PRE_READ: Ev[] = [
   ["question_refined", { refined_question: "คำถามที่ปรับแล้ว", interpretation: "ตีความ", sub_questions: [], assumptions: [], elapsed_s: 4 }],
   ["planning", { queries: ["metformin colorectal cancer"], elapsed_s: 6 }],
   ["searching", { found: 87, elapsed_s: 9 }],
-  ["enriching", { candidates: 60, elapsed_s: 11 }],
+  ["enriching", { candidates: 120, elapsed_s: 11 }],
   ["screening", { batch: 10, elapsed_s: 12 }],
-  ["screened", { kept: 30, total: 60, elapsed_s: 16 }],
+  ["screened", { kept: 30, total: 120, requested: 30, elapsed_s: 16 }],
 ];
 const READING: Ev[] = Array.from({ length: 30 }, (_, i): Ev => ["reading", { ref: `P${i + 1}`, title: `Paper ${i + 1}`, elapsed_s: 17 }]);
 const extracted = (i: number): Ev => ["extracted", { ref: `P${i}`, ok: true, verified: 2, uncertain: false, direction: "positive", design: "cohort", elapsed_s: 20 + i }];

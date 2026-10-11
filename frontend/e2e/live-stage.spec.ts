@@ -22,9 +22,9 @@ const PRE_READ: { ev: Ev; agent: string; status: string }[] = [
   { ev: REFINED, agent: "refine", status: "done" },
   { ev: ["planning", { queries: ["metformin colorectal cancer", "metformin colon"], elapsed_s: 6 }], agent: "search", status: "working" },
   { ev: ["searching", { found: 87, elapsed_s: 9 }], agent: "enrich", status: "working" },
-  { ev: ["enriching", { candidates: 60, elapsed_s: 11 }], agent: "screen", status: "working" },
+  { ev: ["enriching", { candidates: 120, elapsed_s: 11 }], agent: "screen", status: "working" },
   { ev: ["screening", { batch: 10, elapsed_s: 12 }], agent: "screen", status: "active" },
-  { ev: ["screened", { kept: 30, total: 60, elapsed_s: 16 }], agent: "read", status: "working" },
+  { ev: ["screened", { kept: 30, total: 120, requested: 30, elapsed_s: 16 }], agent: "read", status: "working" },
 ];
 const READING: Ev[] = Array.from({ length: 30 }, (_, i): Ev => ["reading", { ref: ref(i + 1), title: `Paper ${i + 1}`, elapsed_s: 17 }]);
 const extracted = (i: number): Ev => ["extracted", { ref: ref(i), ok: true, verified: 2, uncertain: false, direction: "positive", design: "cohort", elapsed_s: 20 + i }];
@@ -249,7 +249,7 @@ for (const width of [390, 900, 1024, 1440]) {
       // the detail band is drawn and readable: every source, queries in full (no ellipsis), the screening split
       for (const s of ["PubMed", "Europe PMC", "OpenAlex", "Semantic Scholar", "Crossref", "arXiv", "DOAJ", "OpenAIRE"]) expect(texts.some((t) => t.text === s), s).toBe(true);
       expect(texts.some((t) => t.text === "metformin colorectal cancer")).toBe(true);
-      expect(texts.some((t) => t.text === "ผ่าน 30 · ตัดออก 30")).toBe(true);
+      expect(texts.some((t) => t.text === "ผ่าน 30 · ตัดออก 90")).toBe(true);
       // every node label is one line (no mid-word Thai break)
       const labels = await page.locator("svg[role=img] [data-agent] > text:not([data-count])").evaluateAll((els) => els.map((e) => e.querySelectorAll("tspan").length));
       expect(labels.every((n) => n === 0)).toBe(true);

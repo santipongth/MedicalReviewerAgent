@@ -17,9 +17,9 @@ const PRE: Ev[] = [
   ["question_refined", { refined_question: QUESTION, interpretation: "ตีความ", sub_questions: [], assumptions: [], elapsed_s: 4 }],
   ["planning", { queries: ["metformin colorectal cancer", "metformin colon", "biguanide CRC"], elapsed_s: 6 }],
   ["searching", { found: 87, elapsed_s: 9 }],
-  ["enriching", { candidates: 60, elapsed_s: 11 }],
+  ["enriching", { candidates: 120, elapsed_s: 11 }],
   ["screening", { batch: 10, elapsed_s: 12 }],
-  ["screened", { kept: 30, total: 60, elapsed_s: 16 }],
+  ["screened", { kept: 30, total: 120, requested: 30, elapsed_s: 16 }],
 ];
 const READING: Ev[] = Array.from({ length: 30 }, (_, i): Ev => ["reading", { ref: `P${i + 1}`, title: `Paper ${i + 1}`, elapsed_s: 17 }]);
 const extracted = (i: number, direction = "positive"): Ev =>
@@ -73,11 +73,11 @@ test("the team view is the default: five named agents, phases and speech follow 
   await expect(member(page, "planner").locator('[aria-current="step"]')).toHaveText("วางแผน");
   await expect(member(page, "planner")).toHaveAttribute("data-status", "done", { timeout: 5000 });
   await expect(line(page, "planner")).toHaveText("วางคำค้น 3 คำ");
-  // researcher acts, then the screener scores batches and keeps 30 of 60
+  // researcher acts, then the screener scores batches and keeps 30 of 120
   await expect(line(page, "researcher")).toContainText("พบ 87 รายการ", { timeout: 5000 });
   await expect(member(page, "screener")).toHaveAttribute("data-phase", "analyse", { timeout: 5000 });
   await expect(line(page, "screener")).toHaveText(/^ให้คะแนนชุดที่ 1 จาก \d+$/);
-  await expect(line(page, "screener")).toHaveText("เลือก 30 จาก 60", { timeout: 5000 });
+  await expect(line(page, "screener")).toHaveText("เลือก 30 จาก 120", { timeout: 5000 });
   // the reader speaks of finished papers only, as the agent read them
   await expect(member(page, "reader")).toHaveAttribute("data-speaking", "1");
   await expect(line(page, "reader")).toHaveText("30 ฉบับกำลังอ่านหรือรอคิว");

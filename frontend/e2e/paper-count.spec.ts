@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { reviewFixture } from "../src/test/fixtures";
+import { resultShortfall, reviewFixture } from "../src/test/fixtures";
 import { json, mockApi, OPEN_STATUS, RID, streamSse, type SseFrame } from "./mock-api";
 
 // Plan 21 Task 4: the paper count (5–50, default 30) comes from /status, and the live stage holds 50 readers.
@@ -12,6 +12,17 @@ const slider = (page: Page) => form(page).getByRole("slider", { name: "จำน
 
 async function noHorizontalScroll(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth));
+}
+
+/** No two boxes overlap (a hair of anti-aliasing allowed). */
+function expectApart(boxes: { l: number; r: number; t: number; btm: number }[], what: string) {
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const [a, b] = [boxes[i], boxes[j]];
+      const overlap = Math.min(a.r, b.r) - Math.max(a.l, b.l) > 0.5 && Math.min(a.btm, b.btm) - Math.max(a.t, b.t) > 0.5;
+      expect(overlap, `${what} ${i} and ${j} overlap`).toBe(false);
+    }
+  }
 }
 
 async function formShot(page: Page, name: string) {
@@ -48,6 +59,22 @@ test("home: the paper-count slider runs over /status limits and the chosen count
   expect((body as unknown as { options: Record<string, unknown> }).options.max_papers).toBe(50);
 });
 
+test("home: when /status fails, the slider is hidden and the review still goes out with no count", async ({ page }) => {
+  let body: { options?: Record<string, unknown> } | null = null;
+  await mockApi(page, {
+    "GET /api/v1/status": (route) => json(route, 500, { detail: "boom" }),
+    "POST /api/v1/reviews": (route) => { body = route.request().postDataJSON(); return json(route, 202, { review_id: RID, status: "queued", cached: false }); },
+  });
+  await page.goto("/");
+  await form(page).getByText("ตัวเลือกเพิ่มเติม").click();
+  await expect(form(page).getByText("ภาษาของรายงาน")).toBeVisible();
+  await expect(slider(page)).toHaveCount(0);
+  await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("statins and dementia");
+  await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
+  await expect.poll(() => body).not.toBeNull();
+  expect(body!.options ?? {}).not.toHaveProperty("max_papers");
+});
+
 test("home: when the server cannot read /status, the timeline falls back to number-free wording", async ({ page }) => {
   // the server cannot reach the mock API, so the server-rendered copy uses its number-free wording
   await mockApi(page);
@@ -58,7 +85,8 @@ test("home: when the server cannot read /status, the timeline falls back to numb
   await expect(steps).not.toContainText("สูงสุด 30");
 });
 
-for (const [name, width, height, scheme] of [["slider-1440", 1440, 1000, "light"], ["slider-390", 390, 844, "light"], ["slider-1440-dark", 1440, 1000, "dark"]] as const) {
+for (const [name, width, height, scheme] of [["slider-1440", 1440, 1000, "light"], ["slider-390", 390, 844, "light"],
+  ["slider-1440-dark", 1440, 1000, "dark"], ["slider-390-dark", 390, 844, "dark"]] as const) {
   test(`home: the folded options with the slider fit at ${width}px (${scheme})`, async ({ page }) => {
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
@@ -74,7 +102,12 @@ for (const [name, width, height, scheme] of [["slider-1440", 1440, 1000, "light"
       ].map(async (l) => Math.round((await l.boundingBox())!.y)));
       expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(4);
     }
-    await formShot(page, name);
+    await formShot(page, `${name}-30`);
+    await slider(page).focus();
+    await page.keyboard.press("End"); // the largest count still fits its box and the row
+    await expect(slider(page)).toHaveValue(String(OPEN_STATUS.limits.max_papers.max));
+    await noHorizontalScroll(page);
+    await formShot(page, `${name}-50`);
   });
 }
 
@@ -106,7 +139,8 @@ async function openStage(page: Page, view: "team" | "steps" | "3d", frames: SseF
 async function stageShot(page: Page, name: string) {
   const section = page.locator("section[aria-labelledby=h-stage]");
   await section.scrollIntoViewIfNeeded();
-  await section.screenshot({ path: shot(name) });
+  // the sticky site header would cover the top of an element screenshot on a phone
+  await section.screenshot({ path: shot(name), style: "header, nav, [class*=sticky] { position: static !important; }" });
 }
 
 for (const [width, height] of [[1440, 1000], [1024, 900]] as const) {
@@ -131,6 +165,12 @@ for (const [width, height] of [[1440, 1000], [1024, 900]] as const) {
       const svgSizes = [...pool.querySelectorAll("text")].map((t) => parseFloat(getComputedStyle(t).fontSize) * (t as SVGTextElement).getScreenCTM()!.a);
       return { aspect: boxEl.style.aspectRatio, bottom: b.bottom, cards, viewBox: pool.getAttribute("viewBox"), minSvgFont: Math.min(...svgSizes) };
     });
+    const slots = await reader.locator('[data-testid^="reader-"]').evaluateAll((els) => els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { l: r.left, r: r.right, t: r.top, btm: r.bottom };
+    }));
+    expect(slots).toHaveLength(50);
+    expectApart(slots, "reader slot");
     expect(geo.aspect.replace(/\s/g, "")).toBe("960/344");
     expect(geo.viewBox).toBe("0 0 280 140");
     expect(geo.minSvgFont).toBeGreaterThanOrEqual(10.95);
@@ -179,6 +219,7 @@ for (const [width, height] of [[1440, 1000], [390, 844]] as const) {
       expect(s.r).toBeLessThanOrEqual(geo.b.right + 0.5);
       expect(s.btm).toBeLessThanOrEqual(geo.b.bottom + 0.5);
     }
+    expectApart(geo.slots, "reader slot");
     await noHorizontalScroll(page);
     await stageShot(page, `stage-steps-50-${width}`);
   });
@@ -205,7 +246,7 @@ for (const [name, frames] of [["stage-3d-50-1440", fifty()], ["stage-3d-50-one-p
 
 // I1: one box per run in every view. The default fixture (no max_papers) is the 960/288 box; 50 asked is 960/344.
 const defaultReview = (route: Route) => json(route, 200, { ...reviewFixture, status: "running", result: null });
-const thirty: SseFrame[] = [{ delayMs: 0, events: [...PRE.slice(0, 9), ["screened", { kept: 30, total: 60, elapsed_s: 16 }], ...READING.slice(0, 30),
+const thirty: SseFrame[] = [{ delayMs: 0, events: [...PRE.slice(0, 9), ["screened", { kept: 30, total: 120, elapsed_s: 16 }], ...READING.slice(0, 30),
   ...Array.from({ length: 5 }, (_, i) => extracted(i + 1))] }];
 for (const [label, review, frames, ratio] of [["max_papers 50", running, fifty(), 960 / 344], ["default fixture", defaultReview, thirty, 960 / 288]] as const) {
   test(`switching team / steps / 3D keeps one stage box (${label})`, async ({ page }) => {
@@ -244,4 +285,16 @@ test("steps view 1440px with 50 readers while synthesizing: the caption sits und
   expect(c.y).toBeGreaterThanOrEqual(z.y + z.height - 0.5);
   expect(c.y + c.height).toBeLessThanOrEqual(b.y + b.height + 0.5);
   await stageShot(page, "stage-steps-50-synth-1440");
+});
+
+// --- the report when fewer than asked met the criteria (fixture resultShortfall: N 50, E = A 22) ---------------------
+
+test("report: the shortfall is said in Methods and shown in PRISMA", async ({ page }) => {
+  await mockApi(page, { [`GET /api/v1/reviews/${resultShortfall.id}`]: (route) => json(route, 200, resultShortfall) });
+  await page.goto(`/r/${resultShortfall.id}`);
+  await expect(page.locator("section[aria-labelledby=h-method] [data-methods-line=max]"))
+    .toContainText("ผ่านเกณฑ์เพียง 22 ฉบับ จึงวิเคราะห์น้อยกว่าที่กำหนด (ไม่เติมงานที่ไม่ผ่านเกณฑ์)");
+  const flow = page.locator("[data-prisma-flow]");
+  await expect(flow.locator("[data-flow-box=included] [data-count-note]")).toHaveText("ผ่านเกณฑ์ 22 จากที่ขอ 50");
+  await expect(flow.locator("[data-flow-line=over_limit]")).toContainText("ผ่านเกณฑ์แต่เกินจำนวนที่กำหนด (50 ฉบับ)");
 });

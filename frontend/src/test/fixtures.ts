@@ -814,7 +814,8 @@ function paperCountReview(id: string, over: { selected: number; eligible: number
       // contract-complete: unique = year_excluded + non_research + no_abstract + with_abstract
       stats: { found: 240, unique: 175, year_excluded: 6, non_research: 9, no_abstract: 20, with_abstract: 140,
         candidates: 120, screened: 120, selected: over.selected, extracted: over.selected,
-        excluded_screening: { off_topic: 22, population: 8, outcome: 5, publication_type: 3 },
+        // balances: screened 120 − screening exclusions − low_relevance 2 = eligible
+        excluded_screening: { off_topic: 120 - 2 - over.eligible - 16, population: 8, outcome: 5, publication_type: 3 },
         excluded_selection: { narrative_excluded: 0, over_limit: over.over_limit, low_relevance: 2, study_design_relaxed: 0,
           study_design_corrected: 0, requested: 50, eligible: over.eligible } },
       methods: methodsFixture({ limits: { candidate_limit: 120, max_papers: 50, min_abstract_chars: 150 } }),

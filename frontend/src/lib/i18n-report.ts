@@ -232,6 +232,10 @@ export const RC = {
   limits: {
     screened: ["คัดกรองเฉพาะ {n} ฉบับที่เกี่ยวข้องที่สุด{cap}{pool} งานที่อยู่นอกอันดับนี้ไม่ได้อ่าน",
       "Only the {n} most relevant records were screened{cap}{pool}; records ranked lower were not read"],
+    // Plan 21 results: the rank cut is the records sent to screening (PRISMA's line), which can exceed Methods'
+    // screened count when a screening batch fails
+    sentToScreening: ["ส่งเข้าคัดกรองเฉพาะ {n} ฉบับที่เกี่ยวข้องที่สุด{cap}{pool} งานที่อยู่นอกอันดับนี้ไม่ได้อ่าน",
+      "Only the {n} most relevant records were sent to screening{cap}{pool}; records ranked lower were not read"],
     cap: [" (เพดาน {n})", " (cap {n})"],
     poolAbstract: [" จาก {n} ฉบับที่มีบทคัดย่อ", " out of {n} with an abstract"],
     poolFound: [" จาก {n} ฉบับที่ค้นพบ", " out of {n} found"],

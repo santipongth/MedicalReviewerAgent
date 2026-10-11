@@ -32,11 +32,14 @@ function capText(result: ReviewResult, lang: Lang): ReactNode {
   const related = s.related_reports ?? 0;
   if (screened == null && s.selected == null) return null;
   // Plan 21: the cap is the requested N when the result records it (the same source as Methods and PRISMA)
-  const requested = paperCounts(s)?.requested ?? lim?.max_papers;
+  const counts = paperCounts(s);
+  const requested = counts?.requested ?? lim?.max_papers;
   const max = requested != null ? fill(lang, M.max, { n: <N>{requested}</N> }) : null;
+  // the figure is the records sent to screening (the rank cut), so a Plan 21 result says so; Methods' "screened" is
+  // stats.screened, which is smaller when a batch fails. Results from before Plan 21 keep their wording.
   return (
     <>
-      {screened != null && fill(lang, M.screened, {
+      {screened != null && fill(lang, counts ? M.sentToScreening : M.screened, {
         n: <N>{screened}</N>,
         cap: lim ? fill(lang, M.cap, { n: <N>{lim.candidate_limit}</N> }) : null,
         pool: pool != null ? fill(lang, s.with_abstract != null ? M.poolAbstract : M.poolFound, { n: <N>{pool}</N> }) : null,

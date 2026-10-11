@@ -140,3 +140,64 @@ describe("the shortfall figures are the same in Methods, PRISMA and Limitations"
     }
   }
 });
+
+// --- Plan 21 Task 6: the parked Task 5 review items -----------------------------------------------------------------
+
+describe("M1: the paper-count fixtures balance their PRISMA flow", () => {
+  for (const [name, review] of [["resultN50", resultN50], ["resultShortfall", resultShortfall]] as const) {
+    it(`${name}: screened − screening exclusions − low relevance = eligible`, () => {
+      const s = review.result!.stats!;
+      const out = Object.values(s.excluded_screening ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+      expect(s.screened! - out - (s.excluded_selection!.low_relevance ?? 0)).toBe(s.excluded_selection!.eligible);
+      expect(s.excluded_selection!.eligible! - (s.excluded_selection!.over_limit ?? 0)).toBe(s.selected);
+    });
+  }
+
+  it("with further reports of one trial, the included headline is the studies (A − related) and the note still reads N (or E of N)", () => {
+    const related = (review: Review): Review => ({ ...review, result: { ...review.result!, stats: { ...review.result!.stats!, related_reports: 2 } } });
+    for (const [review, note, headline] of [[resultN50, "50 requested", 48], [resultShortfall, "22 eligible of 50 requested", 20]] as const) {
+      const r = related(review);
+      const { prisma } = renderAll(englishReview(r), "en");
+      const box = prisma.querySelector("[data-flow-box='included']");
+      expect(text(box?.querySelector("[data-count-note]") ?? null)).toBe(note);
+      expect(text(box)).toContain(`n = ${headline}Reports of included studies`); // the headline is the studies, A − 2
+    }
+  });
+});
+
+describe("M2: which field each sentence reads when A ≠ E", () => {
+  // Never produced by the engine (A = min(E, N), so on a shortfall A = E), but it pins the fields: the analysed count
+  // reads `selected` (A), the shortfall figures read `eligible` (E) and the requested `requested` (N).
+  const odd: Review = { ...resultShortfall, result: { ...resultShortfall.result!, stats: { ...resultShortfall.result!.stats!, selected: 20, extracted: 20 } } };
+  it("Methods: A in the analysed count, E in the shortfall sentence; PRISMA and Limitations: E of N", () => {
+    for (const lang of ["th", "en"] as const) {
+      const { methods, prisma, limits } = renderAll(lang === "en" ? englishReview(odd) : odd, lang);
+      expect(text(line(methods, "max"))).toBe(lang === "th"
+        ? "ผู้ใช้กำหนดให้วิเคราะห์ 50 ฉบับ คัดกรอง 120 ฉบับที่มีบทคัดย่อ วิเคราะห์ 20 ฉบับตามอันดับความเกี่ยวข้อง ผ่านเกณฑ์เพียง 22 ฉบับ จึงวิเคราะห์น้อยกว่าที่กำหนด (ไม่เติมงานที่ไม่ผ่านเกณฑ์)"
+        : "The user asked for 50 records; 120 records with abstracts were screened and 20 were analysed, in order of relevance. Only 22 met the criteria, so fewer than requested were analysed (none were added to make up the number)");
+      expect(text(prisma.querySelector("[data-flow-box='included'] [data-count-note]"))).toBe(lang === "th" ? "ผ่านเกณฑ์ 22 จากที่ขอ 50" : "22 eligible of 50 requested");
+      expect(text(limits.querySelector("[data-limitation='shortfall']"))).toMatch(lang === "th" ? /ผ่านเกณฑ์ 22 จาก 50 ฉบับ/ : /22 eligible of 50/);
+      expect(text(limits.querySelector("[data-limitation='cap']"))).toMatch(lang === "th" ? /วิเคราะห์ 20 ฉบับ \(สูงสุด 50\)/ : /20 studies were analysed \(at most 50\)/);
+      cleanup();
+    }
+  });
+});
+
+describe("M4: Limitations names the records sent to screening, as PRISMA does, not Methods' screened count", () => {
+  const failedBatch = (review: Review): Review => ({ ...review, result: { ...review.result!, stats: { ...review.result!.stats!, screened: 110 } } });
+  it("a Plan 21 result: 'sent to screening' with the candidates (120), never the screened 110", () => {
+    let { limits } = renderAll(englishReview(failedBatch(resultN50)), "en");
+    let cap = text(limits.querySelector("[data-limitation='cap']"));
+    expect(cap).toMatch(/^Only the 120 most relevant records were sent to screening \(cap 120\) out of 140 with an abstract; records ranked lower were not read/);
+    expect(cap).not.toMatch(/110/);
+    cleanup();
+    ({ limits } = renderAll(failedBatch(resultN50), "th"));
+    cap = text(limits.querySelector("[data-limitation='cap']"));
+    expect(cap).toMatch(/^ส่งเข้าคัดกรองเฉพาะ 120 ฉบับที่เกี่ยวข้องที่สุด \(เพดาน 120\) จาก 140 ฉบับที่มีบทคัดย่อ งานที่อยู่นอกอันดับนี้ไม่ได้อ่าน/);
+  });
+
+  it("a result from before Plan 21 keeps its wording", () => {
+    const { limits } = renderAll(englishReview(slrP20ReviewFixture), "en");
+    expect(text(limits.querySelector("[data-limitation='cap']"))).toMatch(/^Only the \d+ most relevant records were screened/);
+  });
+});

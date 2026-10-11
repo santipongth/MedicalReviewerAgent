@@ -34,7 +34,7 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
   `sse_slots.py`), so any number of API processes behave as one; per-review LLM spend is capped by a contextvar budget
   charged in `LimitedLLM` (`app/services/budget.py`); the cap scales with the request (`review_cost_cap`: `review_cost_base_usd` + `review_cost_per_paper_usd`·N + `review_cost_per_candidate_usd`·C, at most `max_cost_per_review_usd`; all in `app/config.py`); admission reserves the worst-case cap for each queued/running review and the request's own cap for the new one. Public limits come from `GET /api/v1/status`; never hard-code them
   in docs or UI. Reference docs: `docs/api.md` (keep it in step with routes, events, MCP tools and limits).
-- Load test: `scripts/loadtest.py` against the Caddy front (`:8088`) with `GRAPH_MODE=stub STUB_DELAY_SECONDS=20` (the stub now emits ~80 events per review).
+- Load test: `scripts/loadtest.py` against the Caddy front (`:8088`) with `GRAPH_MODE=stub STUB_DELAY_SECONDS=20` (the stub emits 125 SSE events per review at `max_papers` 50, measured in Plan 21; `--max-papers` sets the count).
 - Report (Plan 20, frontend): the section order comes from `SECTIONS_BY_TYPE` (answer first). Report chrome is in the
   `frontend/src/lib/i18n-report.ts` string table (new strings go there) and `<html lang>` follows the report's language. Print: always light, controls
   hidden, every disclosure open, verified numbers print with ✓ and blanked ones as "[unverified]". The offline file

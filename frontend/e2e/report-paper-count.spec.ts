@@ -9,7 +9,7 @@ import { json, mockApi } from "./mock-api";
 // figures, never Martian Mono; axe clean. P21_SHOTS=1 saves the Methods and PRISMA screenshots to ../.superpowers/p21-t5/.
 
 const SHOTS = process.env.P21_SHOTS === "1";
-const shot = (name: string) => `../.superpowers/p21-t5/${name}.png`;
+const shot = (name: string) => `${process.env.MRA_SHOTS_DIR ?? "../.superpowers/p21-t5"}/${name}.png`;
 
 async function open(page: Page, review: Review) {
   await mockApi(page, { [`GET /api/v1/reviews/${review.id}`]: (route) => json(route, 200, review) });
@@ -74,13 +74,14 @@ test("a result from before Plan 21 keeps the old Methods line, PRISMA label and 
   await expect(page.locator("[data-limitation=shortfall]")).toHaveCount(0);
 });
 
-for (const width of [1440, 390]) {
+// M5 (Task 6): the longer English note in the included box at 390px too
+for (const [width, lang] of [[1440, "th"], [390, "th"], [390, "en"]] as const) {
   for (const scheme of ["light", "dark"] as const) {
-    test(`shortfall at ${width}px, ${scheme}, the flow's table open: axe clean`, async ({ page }) => {
+    test(`shortfall (${lang}) at ${width}px, ${scheme}, the flow's table open: axe clean`, async ({ page }) => {
       await page.setViewportSize({ width, height: 1000 });
       await page.emulateMedia({ colorScheme: scheme });
-      await open(page, resultShortfall);
-      await page.locator("[data-prisma-flow]").getByText("ดูแผนภาพนี้เป็นตาราง").click();
+      await open(page, CASES.shortfall[lang]);
+      await page.locator("[data-prisma-flow]").getByText(lang === "th" ? "ดูแผนภาพนี้เป็นตาราง" : "Show the flow as a table").click();
       const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
       expect(r.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`)).toEqual([]);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
