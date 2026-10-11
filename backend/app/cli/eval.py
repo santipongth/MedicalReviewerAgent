@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -24,7 +25,8 @@ from app.evals.select import select
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m app.cli.eval")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("select", help="build the draft manifest (owner checks it before freeze)")
+    sl = sub.add_parser("select", help="build the draft manifest (owner checks it before freeze)")
+    sl.add_argument("--force", action="store_true", help="rebuild a non-empty manifest (keeps a .bak copy)")
     f = sub.add_parser("freeze", help="freeze the candidate pool of every checked review")
     f.add_argument("--ids", nargs="*")
     f.add_argument("--force", action="store_true")
@@ -59,8 +61,15 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
     args = _parser().parse_args(argv)
     manifest = load_manifest(models.EVAL_ROOT / "manifest.yaml")
     if args.cmd == "select":
-        out = await select(deps, http, base_url, manifest)
-        save_manifest(out, models.EVAL_ROOT / "manifest.yaml")
+        path = models.EVAL_ROOT / "manifest.yaml"
+        if manifest.reviews:
+            if not args.force:
+                print(f"manifest already has {len(manifest.reviews)} reviews; re-run with --force to rebuild "
+                      "(a .bak copy is kept)")
+                return 1
+            shutil.copyfile(path, path.with_name(path.name + ".bak"))
+        out = await select(deps, http, base_url, manifest.model_copy(update={"reviews": []}))
+        save_manifest(out, path)
         eligible = sum(1 for r in out.reviews if r.status == "eligible")
         print(f"{eligible} eligible, {len(out.reviews) - eligible} excluded; set checked_by_owner after review")
         return 0
@@ -85,11 +94,20 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
             print(f"missing fixtures (run freeze): {', '.join(s.missing_fixture)}")
         return 0
     pv = deps.settings.prompt_version
+    if args.compare_run and "/" not in args.compare_run:
+        print("--compare-run must look like PROMPT_VERSION/RUN_ID")
+        return 1
     rows, meta = _load_rows(pv, args.run_id, manifest)
+    if not rows:
+        print(f"no run files for {pv}/{args.run_id}")
+        return 1
     compare = None
     if args.compare_run:
         other_pv, other_run = args.compare_run.split("/", 1)
         other_rows, _ = _load_rows(other_pv, other_run, manifest)
+        if not other_rows:
+            print(f"no run files for {args.compare_run}")
+            return 1
         compare = {"label": args.compare_run, "aggregate": aggregate(other_rows), "rows": other_rows}
     path = models.EVAL_ROOT / "reports" / f"{pv}-{args.run_id}.md"
     path.parent.mkdir(parents=True, exist_ok=True)

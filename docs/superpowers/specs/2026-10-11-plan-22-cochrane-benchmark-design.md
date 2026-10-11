@@ -126,18 +126,18 @@ checked_by: "<initials>"
 
 | Command | Does | Network / LLM |
 |---|---|---|
-| `select` | Builds the sampling frame and draws the sample (steps below). Writes a draft manifest with `checked_by_owner: false`. | PubMed + LLM, once |
+| `select [--force]` | Builds the sampling frame and draws the sample (steps below). Writes a draft manifest with `checked_by_owner: false`. Refuses to run when the manifest already has reviews; `--force` keeps a `.bak` copy and rebuilds. | Europe PMC + LLM, once |
 
 How `select` builds the sample:
-1. **Sampling frame:** for each stratum, one Europe PMC REST search (deviation 2026-10-11: same Cochrane records, abstracts in one call, no NCBI key): `"Cochrane Database Syst Rev"[Journal] AND 2020:2025[dp]` plus the stratum's MeSH terms (listed in `PROTOCOL.md`). The PMIDs are saved with the query and run date.
-2. **Draw:** shuffle the PMIDs of each stratum with the seed, then go through them in that order.
+1. **Sampling frame:** for each stratum, one Europe PMC REST search (deviation 2026-10-11: same Cochrane records, abstracts in one call, no NCBI key): `JOURNAL:"Cochrane Database Syst Rev" AND PUB_YEAR:[2020 TO 2025] AND (<stratum terms>)`, where the stratum terms are in `manifest.yaml`. The record ids are saved with the query and run date.
+2. **Draw:** shuffle the record ids of each stratum with the seed, then go through them in that order.
 3. **Eligibility:** the LLM reads each abstract through the harness runner and decides whether it is an intervention review, reports GRADE certainty, and has ≥ 3 RCTs for the primary outcome. It also fills `question`, `primary_outcome`, `search_date` and `review_type`, and records the reason for every exclusion.
 4. **Stop:** when a stratum has 10 eligible reviews.
 
 The owner checks every entry, including the exclusions.
 | `freeze [--ids …]` | For each checked review: `topic_guard` → `refine_question` → `plan_queries` → `search` → `enrich`, with the `year_to` cutoff. Writes the fixture. Skips existing fixtures unless `--force`. | Search + LLM, once per pool version |
 | `run --repeats 2 [--max-usd 10] [--ids …]` | For each fixture × repeat: runs the eval graph, then makes one small LLM call that picks which engine outcome (the English synthesis's comparison rows) matches the manifest's `primary_outcome` (or "none"), and records it as `primary_match` with its direction. Writes the run file. Resumable (skips files that exist). Stops when cumulative cost passes `--max-usd`. | LLM only |
-| `report [--compare <prompt_version>]` | Computes the metrics (section 5) and writes `reports/<prompt_version>.md`. With `--compare`, adds a delta column. | None |
+| `report --run-id ID [--compare-run PROMPT_VERSION/RUN_ID]` | Computes the metrics (section 5) and writes `reports/<prompt_version>-<run_id>.md`. With `--compare-run`, adds a comparison column and the verdict changes. | None |
 
 ### 4.2 Engine changes (kept minimal)
 
