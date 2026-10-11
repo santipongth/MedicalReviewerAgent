@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
+import { TYPICAL_DURATION_TH } from "@/lib/copy";
 import { GLOSS, glossText } from "@/lib/glossary";
 import { STATUS_FIXTURE } from "@/test/status-fixture";
 
@@ -247,11 +248,12 @@ describe("RequestSlip", () => {
     expect(summary).toHaveTextContent("แก้ไข");
   });
 
-  it("glosses PICO in the question hint and keeps the free, no-sign-up note in the submit row", () => {
+  it("glosses PICO in the question hint and keeps only the typical duration in the submit row", () => {
     render(<RequestSlip />);
     expect(screen.getByText(/ลองคิดตาม/).textContent).toContain(glossText("pico"));
-    const submit = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ });
-    expect(submit.closest("[data-testid=submit-row]")).toHaveTextContent("ฟรี · ไม่ต้องสมัคร");
+    const row = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }).closest("[data-testid=submit-row]");
+    expect(row).toHaveTextContent(TYPICAL_DURATION_TH);
+    expect(row).not.toHaveTextContent("ไม่ต้องสมัคร");
   });
 
   it("sends the chosen review type", async () => {

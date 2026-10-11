@@ -8,20 +8,20 @@ import { Gloss } from "../ui/gloss";
  * paper counts and rate limits come from GET /api/v1/status.
  */
 
-/** "ระบบนี้คืออะไร": the hero's answer, beside the headline. */
+/** The hero: "ระบบนี้คืออะไร" is the page's h1, answered in plain words, with a link down to the intro. */
 export function WhatItIs() {
   return (
-    <div className="grid min-w-0 content-start gap-3">
-      <h2 className="font-display text-[1.15rem] font-semibold">ระบบนี้คืออะไร</h2>
-      <p data-testid="what-it-is" className="max-w-[60ch] text-[1.0625rem] leading-[1.75]">
+    <section aria-labelledby="h-home" className="grid min-w-0 content-start gap-4">
+      <h1 id="h-home" className="text-[clamp(2rem,4.2vw,3rem)] font-bold leading-[1.15]">ระบบนี้คืออะไร</h1>
+      <p data-testid="what-it-is" className="text-[1.125rem] leading-[1.8]">
         Medical Reviewer Agent คือผู้ช่วย AI ที่หาคำตอบจากงานวิจัยทางการแพทย์ให้คุณ แค่พิมพ์สิ่งที่สงสัย เช่น
         “ยาลดไขมันช่วยลดความเสี่ยงสมองเสื่อมได้ไหม” ระบบจะค้นงานวิจัยจากฐานข้อมูลวิชาการแบบเปิด อ่าน<Gloss k="abstract" />
-        {" "}แล้วสรุปให้ว่าหลักฐานที่มีอยู่ตอบคำถามของคุณว่าอย่างไร <span className="nw">ใช้ฟรี ไม่ต้องสมัคร</span>
+        {" "}แล้วสรุปให้ว่าหลักฐานที่มีอยู่ตอบคำถามของคุณว่าอย่างไร
       </p>
       <a href="#intro" className="inline-flex min-h-11 w-fit items-center text-primary underline underline-offset-2 hover:decoration-2">
         ดูว่าระบบทำอะไรให้บ้าง<span aria-hidden="true">&nbsp;↓</span>
       </a>
-    </div>
+    </section>
   );
 }
 

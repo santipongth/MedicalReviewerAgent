@@ -25,7 +25,7 @@ async function read(page: Page) {
 test("a gated frame is sent once its selector matches through an attribute change", async ({ page }) => {
   await streamSse(page, [{ delayMs: 0, events: [["queued", {}]] }, { delayMs: 0, after: "body[data-ready='yes']", events: [["started", {}]] }]);
   await mockApi(page);
-  await page.goto("/about");
+  await page.goto("/developers");
   await read(page);
   await expect.poll(() => page.evaluate(() => (window as unknown as { __got: string[] }).__got)).toEqual(["queued"]);
   await page.evaluate(() => document.body.setAttribute("data-ready", "yes"));
@@ -36,7 +36,7 @@ test("a gated frame is sent once its selector matches through an attribute chang
 test("a gate that never opens fails naming its selector", async ({ page }) => {
   await streamSse(page, [{ delayMs: 0, events: [["queued", {}]] }, { delayMs: 0, after: "#never-there", events: [["started", {}]] }]);
   await mockApi(page);
-  await page.goto("/about");
+  await page.goto("/developers");
   await read(page);
   await expect(sseGatesOpen(page, 500)).rejects.toThrow('the frame gated on "#never-there" was never sent');
 });

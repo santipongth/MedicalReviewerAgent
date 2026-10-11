@@ -17,7 +17,7 @@ export const SAMPLE = data as unknown as LandingSample;
 
 // Copy that assumes this particular review (update it if the snapshot is rebuilt from another one): the Thai heading
 // and the FOUND wording in components/landing/sample-bench.tsx, the colchicine footnote in mini-forest.tsx, and
-// SAMPLE_OUTCOME below. P1 must keep a passed MACE value and a blanked one for components/landing/anatomy.tsx.
+// SAMPLE_OUTCOME below.
 
 /** The plotted outcome (papers word it slightly differently, so rows match on this prefix). */
 export const SAMPLE_OUTCOME = "Major Adverse Cardiovascular Events";

@@ -32,7 +32,7 @@ test("landing: receipt from a real verified number, then submit opens the live r
     },
   });
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("แตะที่ตัวเลข");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("ระบบนี้คืออะไร");
   const rail = page.getByRole("region", { name: "แหล่งที่มาของตัวเลขที่เลือก" });
   await expect(rail.locator("mark")).toHaveText("0.77");
   await page.getByRole("button", { name: /^P2 HR 0\.99/ }).click();
@@ -213,9 +213,9 @@ test("rejected and missing reviews explain themselves", async ({ page }) => {
   await expect(page.getByText(/ไม่พบงานวิจัยที่ตรงกับหัวข้อนี้/)).toBeVisible();
 });
 
-test("about page renders the deployment's API address in every snippet", async ({ page }) => {
+test("developers page renders the deployment's API address in every snippet", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/about");
+  await page.goto("/developers");
   await expect(page.getByText("claude mcp add --transport http medical-reviewer http://api.mock/mcp")).toBeVisible();
   // limits come from GET /api/v1/status, not hard-coded text
   await expect(page.getByText(/5 รีวิวต่อชั่วโมง/)).toBeVisible();

@@ -25,7 +25,6 @@ export function Capabilities() {
         <h2 id="h-capabilities" className="text-[1.75rem] font-bold">รีวิวได้ 4 แบบ รายงานมีอะไรบ้าง</h2>
         <p className="text-muted">
           เลือกรูปแบบการทบทวนให้ตรงกับคำถาม ระบบจะปรับวิธีคัดกรอง การสรุป และส่วนของรายงานให้เข้ากับรูปแบบนั้น
-          ทุกแบบอ่านจากบทคัดย่อเท่านั้นและตรวจตัวเลขทุกตัว
         </p>
       </div>
       <ul aria-label="รูปแบบการทบทวนที่มี" className="grid gap-x-8 border-t border-rule sm:grid-cols-2">
@@ -56,7 +55,7 @@ export function Capabilities() {
           </ul>
           <p className="text-[0.92rem] leading-[1.7] text-muted">
             ฐานข้อมูลงานวิจัยวิชาการแบบเปิด ค้นผ่าน <Gloss k="searxng" /> ตัดงานซ้ำด้วย <Gloss k="doiPmid" />{" "}
-            แล้วเติมข้อมูลจาก Europe PMC ไม่ดาวน์โหลดบทความฉบับเต็ม
+            แล้วเติมข้อมูลจาก Europe PMC
           </p>
         </div>
       </div>

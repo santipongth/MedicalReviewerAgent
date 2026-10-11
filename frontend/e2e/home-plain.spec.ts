@@ -24,7 +24,8 @@ test("home: plain-language intro and glossed terms, axe-clean in light and dark 
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "ระบบนี้คืออะไร" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "ระบบนี้คืออะไร" })).toBeVisible();
+    await expect(page.getByText("อย่าเพิ่งเชื่อเรา")).toHaveCount(0);
     await expect(page.getByTestId("what-it-is")).toContainText("บทคัดย่อ (ย่อหน้าสรุปสั้น ๆ");
     const intro = page.getByRole("region", { name: "รู้จักระบบนี้ใน 1 นาที" });
     await expect(intro.getByRole("list", { name: "ระบบทำอะไรให้บ้าง" }).getByRole("listitem")).toHaveCount(5);

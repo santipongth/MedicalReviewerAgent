@@ -57,7 +57,7 @@ function waitText(seconds?: number): string {
 
 function errorMessage(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 429) return `ส่งคำถามได้อีกครั้งในอีก ${waitText(e.retryAfter)} (จำกัดจำนวนรีวิวต่อชั่วโมงเพื่อให้บริการฟรีได้)`;
+    if (e.status === 429) return `ส่งคำถามได้อีกครั้งในอีก ${waitText(e.retryAfter)} (จำกัดจำนวนรีวิวต่อชั่วโมง)`;
     if (e.status === 422) return `ตรวจหัวข้ออีกครั้ง: ${e.message}`;
     if (e.status === 503) return capacityText(e.reason, e.retryAfter);
     if (e.status === 403) return "ยืนยันว่าเป็นผู้ใช้จริงไม่สำเร็จ โหลดหน้านี้ใหม่แล้วลองอีกครั้ง";
@@ -293,10 +293,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
           </div>
         </details>
         <div data-testid="submit-row" className="flex flex-col gap-3 border-t border-rule px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="grid gap-0.5 text-[0.92rem] text-muted">
-            <span className="font-display font-semibold text-ink">ฟรี · ไม่ต้องสมัคร</span>
-            <span>{TYPICAL_DURATION_TH} และจะเห็นว่าระบบตีความคำถามอย่างไรก่อนเริ่มค้น</span>
-          </p>
+          <p className="text-[0.92rem] text-muted">{TYPICAL_DURATION_TH} และจะเห็นว่าระบบตีความคำถามอย่างไรก่อนเริ่มค้น</p>
           <button type="submit" disabled={busy || closed || (!!siteKey && !token)}
             aria-describedby={tokenPending ? `${id}-wait` : undefined}
             className="min-h-12 w-full flex-none rounded-sm border border-primary bg-primary px-8 font-display text-[1.05rem] font-semibold text-on-primary hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto">

@@ -31,7 +31,7 @@ export function SectionHeading({ id, children, className = "" }: { id: string; c
 }
 
 /** The section in view (aria-current), skipped where IntersectionObserver is missing (jsdom, old browsers). */
-function useCurrentSection(items: NavItem[], offsetOf: () => number): string | null {
+export function useCurrentSection(items: NavItem[], offsetOf: () => number): string | null {
   const [current, setCurrent] = useState<string | null>(null);
   const key = items.map((i) => i.id).join("|");
   const offset = useRef(offsetOf);

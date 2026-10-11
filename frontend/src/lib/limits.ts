@@ -11,7 +11,7 @@ function isRange(r: unknown): r is Range {
   return [min, max, d].every((v) => typeof v === "number" && Number.isFinite(v)) && (min as number) <= (d as number) && (d as number) <= (max as number);
 }
 
-/** "(min–max ฉบับ ค่าเริ่มต้น d)": the paper-count range as the home timeline and the About page state it. */
+/** "(min–max ฉบับ ค่าเริ่มต้น d)": the paper-count range as the developer page states it. */
 export function paperRangeTh(limits: ServiceLimits): string {
   const m = limits.max_papers;
   return `(${m.min}–${m.max} ฉบับ ค่าเริ่มต้น ${m.default})`;
