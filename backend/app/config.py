@@ -42,7 +42,13 @@ class Settings(BaseSettings):
     max_queued_reviews: int = 50
     max_reviews_per_day: int = 500
     max_usd_per_day: float = 10.0
-    max_cost_per_review_usd: float = 0.25  # LLM steps beyond this are skipped; the review finishes with what it has
+    # Per-review LLM spend cap scales with the request (Plan 21): base + per analysed paper + per screened candidate.
+    # Steps beyond the cap are skipped; the review finishes with what it has. max_cost_per_review_usd is only the
+    # hard ceiling no computed cap may exceed.
+    review_cost_base_usd: float = 0.04
+    review_cost_per_paper_usd: float = 0.006
+    review_cost_per_candidate_usd: float = 0.0005
+    max_cost_per_review_usd: float = 0.60
     # Cloudflare Turnstile for anonymous web submissions (empty secret = off; API keys and MCP never need it).
     turnstile_secret: str = ""
     turnstile_site_key: str = ""

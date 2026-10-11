@@ -20,7 +20,7 @@ def _runner(ctx: dict) -> ReviewRunner:
     queue = ctx.get("queue")
     notify = queue.enqueue_webhook if queue is not None else None
     return ReviewRunner(ctx["session_factory"], ctx["event_sink"], ctx["graph"], notify=notify,
-                        capacity=ctx.get("capacity"), cost_cap_usd=(ctx.get("settings") or get_settings()).max_cost_per_review_usd)
+                        capacity=ctx.get("capacity"), settings=ctx.get("settings") or get_settings())
 
 
 async def run_review(ctx: dict, review_id: str) -> dict:

@@ -75,9 +75,10 @@ def wants_qualitative(options: dict[str, Any] | None) -> bool:
 
 class ReviewOptions(BaseModel):
     review_type: ReviewType = "slr"
-    # Abstract-only: up to 60 candidates with abstracts are screened and the 30 most relevant are analysed.
-    max_papers: int = Field(30, ge=5, le=30)
-    candidate_limit: int = Field(60, ge=20, le=100)
+    # Abstract-only (Plan 21): about 120 candidates with abstracts are screened and the user's N (5-50, default 30)
+    # most relevant are analysed. The field bounds here are the single source for /status, the stub and the docs.
+    max_papers: int = Field(30, ge=5, le=50)
+    candidate_limit: int = Field(120, ge=20, le=120)
     year_from: int | None = Field(None, ge=1950, le=2100)
     study_types: list[str] = Field(default_factory=list, max_length=10)
 

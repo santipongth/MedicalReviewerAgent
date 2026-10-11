@@ -7,11 +7,13 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.config import Settings
 from app.db.models import TERMINAL_STATUSES, ReviewStatus
 from app.db.repositories import ReviewRepository
 from app.graph.graph import initial_state
 from app.logging import get_logger
-from app.services.budget import ReviewBudget, use_budget
+from app.schemas.review import ReviewOptions
+from app.services.budget import ReviewBudget, review_cost_cap, use_budget
 from app.services.events import EventSink
 
 log = get_logger(__name__)
@@ -26,8 +28,8 @@ class ReviewRunner:
     """
 
     def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph, notify=None,
-                 capacity=None, cost_cap_usd: float | None = None) -> None:
-        self.cost_cap_usd = cost_cap_usd  # per-review LLM spend cap (None → uncapped)
+                 capacity=None, settings: Settings | None = None) -> None:
+        self.settings = settings  # sizes each review's LLM spend cap from its options (None → uncapped)
         self.capacity = capacity  # app.services.capacity.Capacity: finished reviews count toward the daily spend
         self.session_factory = session_factory
         self.event_sink = event_sink
@@ -74,7 +76,8 @@ class ReviewRunner:
         state_input = None if resume else initial_state(str(review_id), topic, language, options)
 
         # Every LLM call of this run (any node or branch) is charged to this review's budget.
-        budget = ReviewBudget(cap_usd=self.cost_cap_usd) if self.cost_cap_usd else None
+        budget = (ReviewBudget(cap_usd=review_cost_cap(self.settings, ReviewOptions.clamped(options)))
+                  if self.settings is not None else None)
         try:
             with use_budget(budget):
                 async for mode, chunk in self.graph.astream(

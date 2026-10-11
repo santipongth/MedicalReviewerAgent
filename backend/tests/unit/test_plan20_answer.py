@@ -200,7 +200,7 @@ async def test_finalize_adds_the_methods_payload():
         "sources": {"pubmed": 25, "europe pmc": 20},
         "eligibility": {"year_from": 2015, "study_types": ["RCT"], "inclusion_criteria": ["adults"],
                         "exclusion_criteria": ["editorials"]},
-        "limits": {"candidate_limit": 60, "max_papers": 30, "min_abstract_chars": 150},
+        "limits": {"candidate_limit": 120, "max_papers": 30, "min_abstract_chars": 150},
         "screening": {"model": "openrouter:qwen", "second_model": "openrouter:gemini", "second_vote": "two_models",
                       "borderline": [40, 70], "relevance_floor": 40},
         "extraction": {"model": "openrouter:qwen", "second_model": "openrouter:gemini", "verify_quotes": True,

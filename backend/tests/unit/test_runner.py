@@ -1,5 +1,6 @@
 import uuid
 
+import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
@@ -12,10 +13,10 @@ from app.services.events import EventSink
 from app.worker.runner import ReviewRunner
 
 
-async def _queued_review(session_factory):
+async def _queued_review(session_factory, options=None):
     async with session_factory() as s, s.begin():
         return await ReviewRepository(s).create(
-            topic="metformin", language="en", options={"max_papers": 5}, cache_key="k"
+            topic="metformin", language="en", options=options or {"max_papers": 5}, cache_key="k"
         )
 
 
@@ -145,8 +146,27 @@ async def test_each_review_runs_under_the_configured_cost_cap(session_factory, r
 
     review = await _queued_review(session_factory)
     sink = EventSink(session_factory, redis, 60)
-    assert await ReviewRunner(session_factory, sink, _single_node_graph(fin), cost_cap_usd=0.25).run(review.id) == "done"
-    assert seen["cap"] == 0.25
+    settings = Settings(_env_file=None)
+    assert await ReviewRunner(session_factory, sink, _single_node_graph(fin), settings=settings).run(review.id) == "done"
+    assert seen["cap"] == pytest.approx(0.13)  # the helper review asks for 5 papers: cap(5, 120)
+
+
+async def test_the_cap_follows_the_review_options(session_factory, redis):
+    from app.schemas.review import ReviewOptions
+    from app.services.budget import current_budget, review_cost_cap
+    settings = Settings(_env_file=None)
+    seen = {}
+
+    async def fin(state: ReviewState) -> dict:
+        seen["cap"] = current_budget().cap_usd
+        return {"result": {"summary": "s"}}
+
+    for options in ({"max_papers": 50}, {"max_papers": 10}):
+        review = await _queued_review(session_factory, options)
+        sink = EventSink(session_factory, redis, 60)
+        runner = ReviewRunner(session_factory, sink, _single_node_graph(fin), settings=settings)
+        assert await runner.run(review.id) == "done"
+        assert seen["cap"] == review_cost_cap(settings, ReviewOptions.clamped(options))
 
 
 async def test_an_errored_review_still_counts_what_it_spent(session_factory, redis):
@@ -160,7 +180,7 @@ async def test_an_errored_review_still_counts_what_it_spent(session_factory, red
     capacity = Capacity(redis, Settings(_env_file=None))
     review = await _queued_review(session_factory)
     sink = EventSink(session_factory, redis, 60)
-    runner = ReviewRunner(session_factory, sink, _single_node_graph(boom), capacity=capacity, cost_cap_usd=0.25)
+    runner = ReviewRunner(session_factory, sink, _single_node_graph(boom), capacity=capacity, settings=Settings(_env_file=None))
     assert await runner.run(review.id) == "error"
     assert round(await capacity.usd_today(), 4) == 0.07
     async with session_factory() as s:

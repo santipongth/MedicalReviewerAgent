@@ -56,7 +56,8 @@ async def test_status_reports_limits_and_queue(client, app):
     await client.post("/api/v1/reviews", json={"topic": "metformin colorectal cancer", "language": "en"})
     s = (await client.get("/api/v1/status")).json()
     assert s["accepting"] is True and s["queue_depth"] == 1 and s["reviews_today"] == 1
-    assert s["limits"]["max_papers"] == {"min": 5, "max": 30, "default": 30}
+    assert s["limits"]["max_papers"] == {"min": 5, "max": 50, "default": 30}
+    assert s["limits"]["candidate_limit"] == {"min": 20, "max": 120, "default": 120}
     assert s["limits"]["review_rate_limit"] == "5/hour" and "max_usd_per_day" not in str(s)
     assert s["limits"]["sse_max_per_ip"] == 5
 
@@ -83,11 +84,23 @@ async def test_concurrent_submissions_cannot_overfill_the_queue(client, app):
 
 
 async def test_daily_budget_reserves_the_cap_of_every_admitted_review(redis):
-    cap = Capacity(redis, settings(max_usd_per_day=10.0, max_cost_per_review_usd=0.25, max_reviews_per_day=1000))
-    await cap.note_cost(9.0)
-    assert await cap.check(queued=0, running=0) is None            # 9 + 0.25 for the new review fits
-    refused = await cap.check(queued=2, running=2)                 # 9 + 5 x 0.25 = 10.25 > 10
+    cap = Capacity(redis, settings(max_usd_per_day=10.0, max_reviews_per_day=1000))
+    await cap.note_cost(8.0)
+    assert await cap.check(queued=0, running=0) is None            # 8 + worst case 0.40 for the new review fits
+    refused = await cap.check(queued=4, running=1)                 # 8 + 6 x 0.40 = 10.4 > 10
     assert refused is not None and refused.reason == "daily_budget"
+
+
+async def test_reservation_uses_worst_case_for_admitted_and_own_cap_for_the_new_one(redis):
+    # Worst case = cap(50, 120) = 0.40. With 3.0 spent in a 4.0 day, k = 2 worst-case reviews fit beside a
+    # cheap new review (cap(5, 120) = 0.13); the (k+1)th is refused with daily_budget.
+    cap = Capacity(redis, settings(max_usd_per_day=4.0, max_reviews_per_day=1000))
+    await cap.note_cost(3.0)
+    assert await cap.check(queued=1, running=1, this_cap=0.13) is None
+    refused = await cap.check(queued=2, running=1, this_cap=0.13)  # 3 + 1.2 + 0.13 > 4
+    assert refused is not None and refused.reason == "daily_budget"
+    assert await cap.check(queued=2, running=0, this_cap=0.13) is None  # 3 + 0.8 + 0.13 fits
+    assert await cap.check(queued=2, running=0) is not None  # no own cap: worst case 3 + 3 x 0.40 = 4.2 > 4
 
 
 async def test_a_held_admission_lock_is_a_short_honest_503(client, redis, monkeypatch):

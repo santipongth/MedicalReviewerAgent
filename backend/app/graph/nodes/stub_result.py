@@ -7,7 +7,7 @@ from typing import Any
 from app.harness.design import POOLED_CATEGORIES
 from app.harness.grade import analyse_meta
 from app.harness.meta import with_display
-from app.schemas.review import SLR_LIKE
+from app.schemas.review import SLR_LIKE, ReviewOptions
 
 # (design_category, study_design, year, direction, risk_of_bias, sample_size, effect_value, ci)
 _PAPERS = (
@@ -80,7 +80,9 @@ def _citations(n: int) -> dict[str, Any]:
     }
 
 
-def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str, Any]:
+def stub_result(topic: str, language: str, review_type: str = "slr",
+                options: ReviewOptions | None = None) -> dict[str, Any]:
+    opts = options or ReviewOptions()
     meta = review_type == "meta_analysis"
     scoping = review_type == "scoping"  # a scoping review makes no claims (no consensus or conflicts), links no reports
     specs = (*_PAPERS, _META_EXTRA) if meta else _PAPERS
@@ -201,7 +203,8 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
             "eligibility": {"year_from": None, "study_types": [],
                             "inclusion_criteria": ["Studies reporting the primary outcome"],
                             "exclusion_criteria": ["Editorials and protocols without results"]},
-            "limits": {"candidate_limit": 60, "max_papers": 30, "min_abstract_chars": 150},
+            "limits": {"candidate_limit": opts.candidate_limit, "max_papers": opts.max_papers,
+                       "min_abstract_chars": 150},
             "screening": {"model": "stub", "second_model": None, "second_vote": "off", "borderline": [35, 70],
                           "relevance_floor": 35},
             "extraction": {"model": "stub", "second_model": None, "verify_quotes": True, "quote_match_threshold": 90,

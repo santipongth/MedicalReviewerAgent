@@ -7,6 +7,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.config import Settings
+    from app.schemas.review import ReviewOptions
 
 _current: ContextVar[ReviewBudget | None] = ContextVar("review_budget", default=None)
 
@@ -35,3 +40,10 @@ def use_budget(budget: ReviewBudget | None) -> Iterator[ReviewBudget | None]:
         yield budget
     finally:
         _current.reset(token)
+
+
+def review_cost_cap(settings: Settings, options: ReviewOptions) -> float:
+    """USD cap for one review: base + per analysed paper + per screened candidate, never above the hard ceiling."""
+    cap = (settings.review_cost_base_usd + settings.review_cost_per_paper_usd * options.max_papers
+           + settings.review_cost_per_candidate_usd * options.candidate_limit)
+    return min(cap, settings.max_cost_per_review_usd)

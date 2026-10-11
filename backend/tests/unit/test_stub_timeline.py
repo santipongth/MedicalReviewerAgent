@@ -49,7 +49,7 @@ def types(events):
 async def test_event_types_arrive_in_pipeline_order():
     events, _, final = await run(language="th")
     seq = types(events)
-    assert seq.count("screening") == 6 and seq.count("reading") == 30 and seq.count("extracted") == 30
+    assert seq.count("screening") == 12 and seq.count("reading") == 30 and seq.count("extracted") == 30
     # order-insensitive inside a fan-out, ordered between phases
     collapsed = [t for i, t in enumerate(seq) if i == 0 or seq[i - 1] != t]
     assert collapsed[:7] == ["checking_topic", "refining", "question_refined", "planning", "searching",
@@ -72,7 +72,7 @@ async def test_payload_keys_match_the_real_events():
         assert set(e) - {"type"} == REAL_KEYS[e["type"]], e
     by = {e["type"]: e for _, e in events}
     assert by["searching"] == {"type": "searching", "found": 87, "queries": 4, "failed": 0}
-    assert by["enriching"]["candidates"] == 60 and by["screened"] == {"type": "screened", "kept": 30, "total": 60}
+    assert by["enriching"]["candidates"] == 120 and by["screened"] == {"type": "screened", "kept": 30, "total": 120}
     assert len(by["planning"]["queries"]) == 4
     assert len(by["question_refined"]["sub_questions"]) == 2 and len(by["question_refined"]["assumptions"]) == 1
     assert by["synthesizing"]["papers"] == sum(1 for _, e in events if e["type"] == "extracted" and e["ok"])
@@ -101,6 +101,14 @@ async def test_options_scale_candidates_and_kept():
     by = {e["type"]: e for _, e in events}
     assert by["screened"] == {"type": "screened", "kept": 10, "total": 30}
     assert seq.count("screening") == 3 and seq.count("reading") == 10
+
+
+async def test_fifty_papers_emit_fifty_extracted_events_within_the_delay():
+    events, total, _ = await run(options={"max_papers": 50}, delay=1.0)
+    by = {e["type"]: e for _, e in events}
+    assert types(events).count("extracted") == 50
+    assert by["screened"] == {"type": "screened", "kept": 50, "total": 120}
+    assert 0.8 <= total <= 1.2 + 0.1
 
 
 async def test_reads_are_staggered_behind_the_semaphore():
