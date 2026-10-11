@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initialScene, reduceScene, type Scene } from "@/lib/agent-scene";
 import { memberLabel, PHASE_NOTE, teamOf, teamSummary } from "@/lib/agent-team";
 import type { ReviewEvent } from "@/lib/types";
+import { StagePlaceholder, StageRequested } from "../stage/stage-placeholder";
 import { WIDE_QUERY } from "../stage/use-wide";
 import { TeamStage } from "./team-stage";
 
@@ -84,15 +85,39 @@ describe("TeamStage", () => {
     expect(document.querySelector("[aria-live]")).toBeNull(); // no new live regions
   });
 
-  it("wide: five cards in the steps view's constant 960/288 box; narrow: a vertical list", () => {
+  it("wide: five cards in the steps view's 960/288 box; narrow: a vertical list", () => {
     const { container, unmount } = render(<TeamStage scene={upTo(3)} />);
-    expect(container.querySelector("[data-stage-box]")).toHaveClass("aspect-[960/288]");
+    expect((container.querySelector("[data-stage-box]") as HTMLElement).style.aspectRatio.replace(/\s/g, "")).toBe("960/288");
     expect(container.querySelector("[data-team-stage]")).toHaveAttribute("data-team-stage", "wide");
     unmount();
     mockWide(false);
     const narrow = render(<TeamStage scene={upTo(3)} />).container;
     expect(narrow.querySelector("[data-stage-box]")?.className).not.toMatch(/aspect-/);
     expect(narrow.querySelector("[data-team-stage]")).toHaveAttribute("data-team-stage", "narrow");
+  });
+
+  it("Plan 21: the reader pool reserves rows for the requested count, and the box matches its loading placeholder", () => {
+    const requested = (n: number | null) => (n == null ? upTo(3) : reduceScene(upTo(3), { kind: "requested", value: n }));
+    const aspectOf = (el: Element | null) => (el as HTMLElement).style.aspectRatio.replace(/\s/g, "");
+    const rowsOf = (c: HTMLElement) => Number(c.querySelector("[data-pool]")!.getAttribute("viewBox")!.split(" ")[3]) / 28;
+    for (const [n, rows] of [[null, 3], [20, 3], [40, 4], [50, 5]] as const) {
+      const live = render(<TeamStage scene={requested(n)} />);
+      expect(rowsOf(live.container), String(n)).toBe(rows);
+      const ph = render(<StageRequested.Provider value={n}><StagePlaceholder view="team" /></StageRequested.Provider>);
+      expect(aspectOf(live.container.querySelector("[data-stage-box]"))).toBe(aspectOf(ph.container.querySelector('[data-placeholder="team-wide"]')));
+      live.unmount();
+      ph.unmount();
+    }
+    // with 50 papers being read: 50 slots in the same five rows and the same box
+    const fifty = EVENTS.slice(0, 9).map(([t, p], i) => ev(i + 1, t, p));
+    let s = reduceScene(initialScene({ language: "th" }), { kind: "requested", value: 50 });
+    for (const e of [...fifty, ev(20, "screened", { kept: 50, total: 120, requested: 50 }),
+      ...Array.from({ length: 50 }, (_, i) => ev(30 + i, "reading", { ref: `P${i + 1}` }))]) s = reduceScene(s, { kind: "event", ev: e });
+    const live = render(<TeamStage scene={s} />);
+    expect(live.container.querySelectorAll('[data-member="reader"] [data-testid^="reader-"]')).toHaveLength(50);
+    expect(rowsOf(live.container)).toBe(5);
+    const ph = render(<StageRequested.Provider value={50}><StagePlaceholder view="team" /></StageRequested.Provider>);
+    expect(aspectOf(live.container.querySelector("[data-stage-box]"))).toBe(aspectOf(ph.container.querySelector('[data-placeholder="team-wide"]')));
   });
 
   it("shows the waiting caption while queued", () => {

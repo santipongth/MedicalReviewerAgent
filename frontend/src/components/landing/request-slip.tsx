@@ -5,7 +5,8 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { ApiError, createReview, getStatus } from "@/lib/api";
 import { TYPICAL_DURATION_TH } from "@/lib/copy";
 import { GLOSS } from "@/lib/glossary";
-import type { ReviewType, ServiceStatus } from "@/lib/types";
+import { usableLimits } from "@/lib/limits";
+import type { ReviewType, ServiceLimits, ServiceStatus } from "@/lib/types";
 import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { Gloss } from "../ui/gloss";
 import { ThaiText } from "../ui/thai-text";
@@ -103,13 +104,15 @@ function Tile({ id, checked, onChange, name, term, plain }: {
 
 /** The review request "กำหนดขอบเขตการทบทวน", full page width: steps 1 (question) and 2 (review type) on the left, step 3
  * (study designs as tiles) on the right from 1024px, then the folded extras (report language, number of papers, start
- * year) and a full-width submit row. One column below 1024px; the DOM order (and so the keyboard order) is unchanged. */
-export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
+ * year) and a full-width submit row. One column below 1024px; the DOM order (and so the keyboard order) is unchanged.
+ * The paper-count slider's range and start come from /status (`limits`: server-rendered, then the browser's own read);
+ * with no usable limits it is not shown and the request leaves the count to the API. */
+export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTopic?: string; limits?: ServiceLimits | null }) {
   const router = useRouter();
   const id = useId();
   const [topic, setTopic] = useState(initialTopic ?? "");
   const [language, setLanguage] = useState<"th" | "en">("th");
-  const [maxPapers, setMaxPapers] = useState(30);
+  const [chosenPapers, setChosenPapers] = useState<number | null>(null); // null: the service default
   const [yearFrom, setYearFrom] = useState("");
   const [types, setTypes] = useState<string[]>([]);
   const [otherOn, setOtherOn] = useState(false);
@@ -151,9 +154,12 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
   }, [siteKey]);
 
   const tokenPending = !!siteKey && !token && !widgetFailed;
+  const limits = usableLimits(status?.limits) ?? usableLimits(serverLimits);
+  const range = limits?.max_papers;
+  const maxPapers = range ? Math.min(range.max, Math.max(range.min, chosenPapers ?? range.default)) : null;
   const summary = [
     language === "th" ? "ภาษาไทย" : "English",
-    `สูงสุด ${maxPapers} ฉบับ`,
+    ...(maxPapers != null ? [`วิเคราะห์ ${maxPapers} ฉบับ`] : []),
     yearFrom ? `ตั้งแต่ปี ${yearFrom}` : "ทุกปี",
   ].join(" · ");
   const otherText = otherOn ? other.trim().slice(0, OTHER_MAX) : "";
@@ -166,7 +172,7 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
     setBusy(true);
     setError(null);
     try {
-      const options: Record<string, unknown> = { max_papers: maxPapers, review_type: reviewType };
+      const options: Record<string, unknown> = { ...(maxPapers != null ? { max_papers: maxPapers } : {}), review_type: reviewType };
       if (yearFrom) options.year_from = Number(yearFrom);
       if (studyTypes.length) options.study_types = studyTypes;
       const body = { topic: topic.trim(), language, options };
@@ -261,16 +267,22 @@ export function RequestSlip({ initialTopic }: { initialTopic?: string }) {
                   onChange={() => setLanguage("en")} className="size-4 accent-primary" />English</label>
               </div>
             </fieldset>
-            <div className="grid gap-1">
-              <label className="label" htmlFor={`${id}-papers`}>จำนวนงานวิจัยที่วิเคราะห์ (สูงสุด)</label>
-              <div className="flex min-h-11 items-center gap-4">
-                <input id={`${id}-papers`} type="range" min={5} max={30} value={maxPapers} aria-valuetext={`${maxPapers} ฉบับ`}
-                  onChange={(e) => setMaxPapers(Number(e.target.value))} className="min-w-0 flex-1 accent-primary" />
-                <span aria-hidden="true" className="nw w-[5.5rem] flex-none rounded-sm border border-rule bg-ground px-2 py-1 text-center font-display font-semibold tabular-nums">
-                  {maxPapers} ฉบับ
-                </span>
+            {range && maxPapers != null && limits && (
+              <div className="grid gap-1">
+                <label className="label" htmlFor={`${id}-papers`}>จำนวนงานวิจัยที่ต้องการวิเคราะห์</label>
+                <div className="flex min-h-11 items-center gap-4">
+                  <input id={`${id}-papers`} type="range" min={range.min} max={range.max} value={maxPapers} aria-valuetext={`${maxPapers} ฉบับ`}
+                    aria-describedby={`${id}-papers-help`}
+                    onChange={(e) => setChosenPapers(Number(e.target.value))} className="min-w-0 flex-1 accent-primary" />
+                  <span aria-hidden="true" className="nw w-[5.5rem] flex-none rounded-sm border border-rule bg-ground px-2 py-1 text-center font-display font-semibold tabular-nums">
+                    {maxPapers} ฉบับ
+                  </span>
+                </div>
+                <p id={`${id}-papers-help`} className="text-[0.88rem] leading-[1.7] text-muted">
+                  ระบบคัดกรองราว {limits.candidate_limit.default} ฉบับที่มีบทคัดย่อ แล้ววิเคราะห์ฉบับที่เกี่ยวข้องที่สุดตามจำนวนนี้ ถ้าผ่านเกณฑ์ไม่ถึงจะวิเคราะห์เท่าที่มีและแจ้งในรายงาน
+                </p>
               </div>
-            </div>
+            )}
             <div className="grid gap-1">
               <label className="label" htmlFor={`${id}-year`}>ตั้งแต่ปี (ไม่บังคับ)</label>
               <input id={`${id}-year`} inputMode="numeric" pattern="(19[5-9][0-9]|20[0-9][0-9])" placeholder="เช่น 2015"

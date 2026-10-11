@@ -1,5 +1,6 @@
 import type { Page, Route } from "@playwright/test";
 import { emptyReviewFixture, reviewFixture } from "../src/test/fixtures";
+import { STATUS_FIXTURE } from "../src/test/status-fixture";
 
 export const API = "http://api.mock";
 export const RID = reviewFixture.id;
@@ -14,11 +15,7 @@ export function sse(events: [string, Record<string, unknown>][]): string {
   return events.map(([type, payload], i) => `id: ${i + 1}\nevent: ${type}\ndata: ${JSON.stringify(payload)}\n\n`).join("");
 }
 
-export const OPEN_STATUS = {
-  accepting: true, reason: null, retry_after: null, queue_depth: 0, running: 1, reviews_today: 12, turnstile_site_key: null,
-  limits: { review_rate_limit: "5/hour", api_key_rate_limit: "60/hour", paper_search_rate_limit: "30/minute",
-    max_papers: { min: 5, max: 30, default: 30 }, candidate_limit: { min: 20, max: 100, default: 60 }, max_queued_reviews: 50, sse_max_per_ip: 5 },
-};
+export const OPEN_STATUS = STATUS_FIXTURE;
 
 export const LIVE_EVENTS: [string, Record<string, unknown>][] = [
   ["queued", { topic: reviewFixture.topic }], ["started", { resume: false, elapsed_s: 0.1 }],

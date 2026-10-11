@@ -157,6 +157,23 @@ describe("prismaFlow", () => {
     expect(side.notes.join(" ")).toMatch(/2 records whose design matched no ticked type were kept/);
   });
 
+  it("Plan 21: requested and eligible are not exclusion counts, so every box and line is unchanged by them", () => {
+    const shortfall: Stats = { ...full, excluded_selection: { ...full.excluded_selection!, requested: 30, eligible: 22 } };
+    const nulls: Stats = { ...full, excluded_selection: { ...full.excluded_selection!, requested: null, eligible: null } };
+    for (const lang of ["th", "en"] as const) {
+      for (const type of ["slr", "scoping"] as const) {
+        const before = prismaFlow({ stats: full, methods, type, lang })!;
+        expect(prismaFlow({ stats: shortfall, methods, type, lang })).toEqual(before);
+        expect(prismaFlow({ stats: nulls, methods, type, lang })).toEqual(before);
+        expect(flowRows(prismaFlow({ stats: shortfall, methods, type, lang })!)).toEqual(flowRows(before));
+      }
+    }
+    const keys = prismaFlow({ stats: shortfall, methods, type: "slr", lang: "en" })!.stages.flatMap((st) =>
+      [st.main, ...(st.side ? [st.side] : [])].flatMap((b) => b.lines.map((l) => l.key)));
+    expect(keys).not.toContain("requested");
+    expect(keys).not.toContain("eligible");
+  });
+
   it("labels follow the report language", () => {
     const th = prismaFlow({ stats: full, methods, type: "slr", lang: "th" })!;
     expect(th.stages.map((s) => s.label)).toEqual(["การระบุ", "การคัดกรอง", "การคัดเลือก", "ที่รวมในการทบทวน"]);

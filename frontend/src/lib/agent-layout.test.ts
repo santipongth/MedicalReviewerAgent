@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { AGENT_LABEL, PIPELINE, initialScene, reduceScene, type EdgeId } from "./agent-scene";
+import { STATUS_FIXTURE } from "@/test/status-fixture";
+import { AGENT_LABEL, PIPELINE, STAGE_MAX_PAPERS, initialScene, reduceScene, type EdgeId } from "./agent-scene";
 import type { ReviewEvent } from "./types";
 import {
   SATELLITES,
@@ -59,7 +60,7 @@ describe.each(["wide", "narrow"] as LayoutKind[])("layoutFor %s", (kind) => {
   it("keeps everything inside the viewBox and nodes apart", () => {
     for (const showLocalize of [true, false]) {
       for (const showExternal of [true, false]) {
-        for (let slots = 0; slots <= 30; slots += 3) {
+        for (let slots = 0; slots <= STAGE_MAX_PAPERS + 1; slots += 3) {
           for (let batches = 0; batches <= 10; batches += 2) {
             for (let queries = 0; queries <= 12; queries += 3) {
               const l = layoutFor(kind, { showLocalize, showExternal, slots, batches, queries });
@@ -71,7 +72,7 @@ describe.each(["wide", "narrow"] as LayoutKind[])("layoutFor %s", (kind) => {
                   expect(Math.hypot(ns[i]!.x - ns[j]!.x, ns[i]!.y - ns[j]!.y)).toBeGreaterThanOrEqual(44);
                 }
               }
-              expect(l.slots).toHaveLength(Math.min(slots, 30));
+              expect(l.slots).toHaveLength(Math.min(slots, STAGE_MAX_PAPERS));
             }
           }
         }
@@ -79,7 +80,7 @@ describe.each(["wide", "narrow"] as LayoutKind[])("layoutFor %s", (kind) => {
     }
   });
   it("covers every slot/batch/query count edge", () => {
-    for (let s = 0; s <= 30; s++) inside(layoutFor(kind, { ...base, slots: s, batches: 10, queries: 12 }));
+    for (let s = 0; s <= STAGE_MAX_PAPERS + 1; s++) inside(layoutFor(kind, { ...base, slots: s, batches: 10, queries: 12 }));
     for (let b = 0; b <= 10; b++) inside(layoutFor(kind, { ...base, batches: b }));
     for (let q = 0; q <= 12; q++) inside(layoutFor(kind, { ...base, queries: q }));
   });
@@ -103,7 +104,7 @@ describe.each(["wide", "narrow"] as LayoutKind[])("layoutFor %s", (kind) => {
     expect(l.satellites).toHaveLength(SATELLITES.length);
     expect(l.queryChips).toHaveLength(5);
     expect(l.batchChips).toHaveLength(10);
-    expect(l.slots).toHaveLength(30);
+    expect(l.slots).toHaveLength(STAGE_MAX_PAPERS);
   });
 });
 
@@ -111,7 +112,7 @@ describe.each(["wide", "narrow"] as LayoutKind[])("edges avoid zones (%s)", (kin
   it("no sampled edge point falls inside a zone rect, chip or slot box", () => {
     for (const showLocalize of [true, false]) {
       for (const showExternal of [true, false]) {
-        for (let slots = 0; slots <= 30; slots++) {
+        for (let slots = 0; slots <= STAGE_MAX_PAPERS + 1; slots++) {
           const l = layoutFor(kind, { showLocalize, showExternal, slots, batches: 10, queries: 12 });
           const rects = [...Object.values(l.zone), ...l.queryChips, ...l.batchChips];
           const bad: string[] = [];
@@ -158,11 +159,13 @@ describe.each(["wide", "narrow"] as LayoutKind[])("scene edge ids exist in layou
 });
 
 const full = { slots: 30, batches: 6, queries: 9 };
+const fullest = { slots: STAGE_MAX_PAPERS, batches: 10, queries: 12 };
 const lane = (l: StageLayout) => Object.entries(l.nodes).filter(([k]) => k !== "external").map(([, p]) => p!);
 const overlap = (a: Rect, b: Rect) => Math.min(a.x + a.w, b.x + b.w) > Math.max(a.x, b.x) && Math.min(a.y + a.h, b.y + b.h) > Math.max(a.y, b.y);
 
 describe("wide composition", () => {
-  const opts = [true, false].flatMap((showLocalize) => [true, false].map((showExternal) => ({ ...full, showLocalize, showExternal })));
+  // a typical run (30 readers) and the most the stage shows (STAGE_MAX_PAPERS readers, five rows)
+  const opts = [full, fullest].flatMap((f) => [true, false].flatMap((showLocalize) => [true, false].map((showExternal) => ({ ...f, showLocalize, showExternal }))));
 
   it("is a single, evenly spaced lane centred in the viewBox", () => {
     for (const o of opts) {
@@ -180,7 +183,7 @@ describe("wide composition", () => {
 
   it("keeps one constant box: the height never depends on external tools, localize or the detail counts", () => {
     const h = layoutFor("wide", { ...base, showExternal: false, slots: 0, batches: 0, queries: 0 }).height;
-    for (const o of opts) for (const slots of [0, 1, 30]) expect(layoutFor("wide", { ...o, slots }).height).toBe(h);
+    for (const o of opts) for (const slots of [0, 1, 30, STAGE_MAX_PAPERS, STAGE_MAX_PAPERS + 1]) expect(layoutFor("wide", { ...o, slots }).height).toBe(h);
     expect(layoutFor("wide", { ...base, showExternal: true }).height).toBe(h);
   });
 
@@ -261,8 +264,9 @@ describe("wide composition", () => {
 });
 
 describe.each(["wide", "narrow"] as LayoutKind[])("reader slots (%s)", (kind) => {
-  it("fit an 11px 'P30' inside the ring and never touch", () => {
-    const l = layoutFor(kind, { ...base, slots: 30 });
+  it("fit an 11px 'P50' inside the ring and never touch", () => {
+    const l = layoutFor(kind, { ...base, slots: STAGE_MAX_PAPERS });
+    expect(l.slots).toHaveLength(STAGE_MAX_PAPERS);
     expect(REF_FONT).toBeGreaterThanOrEqual(11);
     expect(3 * 0.62 * REF_FONT).toBeLessThanOrEqual(2 * (l.slotR - 1.5)); // three glyphs inside the stroke
     for (let i = 1; i < l.slots.length; i++) {
@@ -299,6 +303,30 @@ describe("narrow composition", () => {
     for (const r of Object.values(l.zone)) {
       const nextTile = ys.find((y) => y - 22 > r!.y);
       if (nextTile !== undefined) expect(nextTile - 22 - (r!.y + r!.h)).toBeGreaterThanOrEqual(6);
+    }
+  });
+});
+
+describe("Plan 21: the stage holds every paper the service lets a user ask for", () => {
+  it("STAGE_MAX_PAPERS covers /status max_papers.max", () => {
+    expect(STAGE_MAX_PAPERS).toBeGreaterThanOrEqual(STATUS_FIXTURE.limits.max_papers.max);
+  });
+
+  it.each(["wide", "narrow"] as LayoutKind[])("%s: 50 readers in five rows, clear of each other and the next block; a 51st is clamped", (kind) => {
+    const l = layoutFor(kind, { ...base, slots: 51, batches: 10, queries: 12 });
+    expect(l.slots).toHaveLength(50);
+    expect(new Set(l.slots.map((p) => p.y)).size).toBe(5);
+    const pool = l.zone.read!;
+    for (const p of l.slots) {
+      expect(p.y + l.slotR).toBeLessThanOrEqual(pool.y + pool.h);
+      expect(p.x + l.slotR).toBeLessThanOrEqual(pool.x + pool.w);
+    }
+    for (const [id, z] of Object.entries(l.zone)) if (id !== "read") expect(overlap(z!, pool), id).toBe(false);
+    // no tile (at the active scale) sits on the pool
+    for (const [id, p] of Object.entries(l.nodes)) expect(overlap({ x: p!.x - 23, y: p!.y - 23, w: 46, h: 46 }, pool), id).toBe(false);
+    if (kind === "wide") {
+      expect(pool.y + pool.h).toBeLessThanOrEqual(l.height);
+      expect(l.notes.synth.y).toBeGreaterThan(Math.max(...l.slots.map((s) => s.y + l.slotR)));
     }
   });
 });

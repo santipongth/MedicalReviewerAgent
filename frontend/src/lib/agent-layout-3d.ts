@@ -3,6 +3,7 @@
 // keep in view. Plain tuples only (no three import) so it stays tiny, testable and out of every eager chunk.
 // Attribution: see NOTICE.md (AI-Agent-observatory by sakshigupta372, used with permission).
 // The arc formula (lifted midpoint, quadratic control through it) is adapted from the AI-Agent-observatory project.
+import { STAGE_MAX_PAPERS } from "./agent-scene";
 import type { MemberId } from "./agent-team";
 import { DIRECTION_ORDER } from "./i18n";
 import type { Direction } from "./types";
@@ -46,13 +47,14 @@ const RING_Z = 2.8;
 const RING_DEG = [180, 136, 90, 44, 0];
 const FACE_Z = 3.5; // robots turn toward a point in front of the table (toward the viewer), not straight at its centre
 
-// --- evidence piles on the table: one per direction, 5 tokens high, later tokens start stacks further back ----------
-// 0.75 apart, so the one-line per-pile DOM labels (glyph, count, flag count) never sit on each other.
+// --- evidence piles on the table: one per direction, 6 tokens high, later tokens start stacks further back ----------
+// 0.75 apart, so the one-line per-pile DOM labels (glyph, count, flag count) never sit on each other. Six high (Plan 21):
+// a full pile of 50 then takes 9 stacks, and the back stacks of the outer piles still sit on the table.
 export const PILE_PITCH = 0.75;
 export const PILE_RISE = 0.12;
-export const PILE_STACK = 5;
+export const PILE_STACK = 6;
 export const PILE_STACK_DZ = 0.27; // deeper than the widest token (0.24), so stacks behind never intersect
-export const PILE_CAP = 30;
+export const PILE_CAP = STAGE_MAX_PAPERS;
 /** Half-width of the widest pile token (the flat "no association" bar is 0.33 wide). */
 export const PILE_HALF = 0.165;
 const PILE_FRONT_Z = 0.85; // the first stack sits toward the table's front edge, later stacks behind it

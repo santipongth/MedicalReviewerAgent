@@ -4,6 +4,7 @@ import {
   TABLE_R, TABLE_STRETCH, TABLE_TOP, TEAM_ORDER, TILE, TILE_RAISE, arc3, arc3X, arc3Y, arc3Z, arcKey, bubbleSpan,
   pileSpot, teamLayout3D, type Vec3,
 } from "./agent-layout-3d";
+import { STAGE_MAX_PAPERS } from "./agent-scene";
 import { TEAM } from "./agent-team";
 import { DIRECTION_ORDER } from "./i18n";
 
@@ -118,6 +119,10 @@ describe("teamLayout3D", () => {
         expect(tableR(Math.abs(p[0]) + PILE_HALF, Math.abs(p[2]) + PILE_HALF), `${d} ${i}`).toBeLessThan(1);
       }
     }
+  });
+
+  it("a pile holds as many tokens as the stage holds readers (Plan 21: 50)", () => {
+    expect(PILE_CAP).toBe(STAGE_MAX_PAPERS);
   });
 
   it("pileSpot stacks PILE_STACK high at PILE_RISE, then starts stacks further back, without allocating", () => {

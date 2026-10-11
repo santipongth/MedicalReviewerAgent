@@ -1,7 +1,7 @@
 "use client";
 import { animate, useReducedMotion } from "motion/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { SYNTH_CAPTION, showSynthCaption, stageCaption, type ReaderSlot, type Scene } from "@/lib/agent-scene";
+import { STAGE_MAX_PAPERS, SYNTH_CAPTION, showSynthCaption, stageCaption, type ReaderSlot, type Scene } from "@/lib/agent-scene";
 import { arc, REF_FONT, SLOT_R, type Pt } from "@/lib/agent-layout";
 import {
   PHASE_NOTE, TEAM, handoffs, memberLabel, teamOf, teamSummary, type MemberState, type TeamOpts,
@@ -10,6 +10,7 @@ import { handoffDots, lookToward } from "@/lib/team-motion";
 import type { Connection } from "@/lib/use-review";
 import { numbersIn, withNumbers } from "../stage/count-up";
 import { StageMotion } from "../stage/motion";
+import { teamPoolRows, teamWideSize } from "../stage/stage-placeholder";
 import { PacketDot, type DotHandle } from "../stage/packet-layer";
 import { ReaderPool } from "../stage/reader-pool";
 import { useWide } from "../stage/use-wide";
@@ -25,7 +26,7 @@ const PITCH = 28;
 
 /** Reader slots in a 10-column grid (the steps view's pool geometry, in the card's own svg). */
 function poolSlots(n: number): Pt[] {
-  return Array.from({ length: Math.min(n, 30) }, (_, i) => ({ x: PITCH / 2 + (i % POOL_COLS) * PITCH, y: PITCH / 2 + Math.floor(i / POOL_COLS) * PITCH }));
+  return Array.from({ length: Math.min(n, STAGE_MAX_PAPERS) }, (_, i) => ({ x: PITCH / 2 + (i % POOL_COLS) * PITCH, y: PITCH / 2 + Math.floor(i / POOL_COLS) * PITCH }));
 }
 
 /** A count in a tally that counts up to its new value (display only; React always renders the final text). */
@@ -67,14 +68,15 @@ function Avatar({ m, wide }: { m: MemberState; wide: boolean }) {
   );
 }
 
-function Pool({ slots, fixedRows }: { slots: ReaderSlot[]; fixedRows: boolean }) {
-  const rows = fixedRows ? 3 : Math.max(1, Math.ceil(slots.length / POOL_COLS));
+/** `fixedRows`: the rows the wide card reserves (teamPoolRows), so the pool never grows mid-run; null: fit the slots. */
+function Pool({ slots, fixedRows }: { slots: ReaderSlot[]; fixedRows: number | null }) {
+  const rows = fixedRows ?? Math.max(1, Math.ceil(slots.length / POOL_COLS));
   const layout = useMemo(() => ({ slots: poolSlots(slots.length), slotR: SLOT_R }), [slots.length]);
   // The pool scales with its card (about 0.8 at 1024px), so refs get a larger font in user units to stay >= 11px on
   // screen. At 13.75 units a three-character ref still fits inside the 24-unit slot circle.
   const svg = useRef<SVGSVGElement>(null);
   const [scale, setScale] = useState(1);
-  const present = fixedRows || slots.length > 0;
+  const present = fixedRows !== null || slots.length > 0;
   useLayoutEffect(() => {
     const el = svg.current;
     if (!present || !el || typeof ResizeObserver === "undefined") return;
@@ -98,7 +100,9 @@ function toneOf(m: MemberState, speaking: boolean): BubbleTone {
   return m.status === "working" || m.status === "paused" ? "working" : "quiet";
 }
 
-function MemberCard({ m, speaking, wide, slots }: { m: MemberState; speaking: boolean; wide: boolean; slots: ReaderSlot[] }) {
+function MemberCard({ m, speaking, wide, slots, poolRows }: {
+  m: MemberState; speaking: boolean; wide: boolean; slots: ReaderSlot[]; poolRows: number;
+}) {
   const name = TEAM.find((t) => t.id === m.id)!.name;
   const reader = m.id === "reader";
   const tone = toneOf(m, speaking);
@@ -132,7 +136,7 @@ function MemberCard({ m, speaking, wide, slots }: { m: MemberState; speaking: bo
           <div className="grid min-w-0 gap-1">{head}{phases}</div>
         </div>
         <div className="mt-1.5"><SpeechBubble text={m.line} tone={tone} tail="up" tailAt="calc(var(--av) / 2)" lines={3} /></div>
-        <div className="flex flex-1 items-center justify-center"><Pool slots={slots} fixedRows /></div>
+        <div className="flex flex-1 items-center justify-center"><Pool slots={slots} fixedRows={poolRows} /></div>
       </li>
     );
   }
@@ -146,7 +150,7 @@ function MemberCard({ m, speaking, wide, slots }: { m: MemberState; speaking: bo
           <div className="ml-1.5 mt-1"><SpeechBubble text={m.line} tone={tone} tail="left" /></div>
         </div>
       </div>
-      {reader && <Pool slots={slots} fixedRows={false} />}
+      {reader && <Pool slots={slots} fixedRows={null} />}
     </li>
   );
 }
@@ -210,7 +214,8 @@ function TeamPackets({ scene, box, label, wide }: { scene: Scene; box: RefObject
 /**
  * The live run as a team of five AI agents (Plan 18): each a flat robot head with a four-phase ring, its phase names
  * as text, and a speech bubble built only from received events (agent-team.ts). Wide: five cards in a row inside the
- * steps view's constant 960/288 box (the reader's card is wider and holds the reader pool). Narrow: a vertical list.
+ * steps view's 960/288 box, one pool row taller per 10 papers asked for beyond 30 (teamWideSize; the reader's card is
+ * wider and holds the reader pool). Narrow: a vertical list.
  */
 // Known and accepted: the view preference is read after hydration (useSyncExternalStore, server snapshot "team"), so a
 // user whose stored view is "steps" or "3d" sees the team placeholder first and then a swap. The wide box is the same
@@ -223,15 +228,19 @@ export function TeamStage({ scene, connection, ...opts }: { scene: Scene; connec
   const team = useMemo(() => teamOf(scene, { framework, question }), [scene, framework, question]);
   const label = useMemo(() => teamSummary(scene, { framework, question }), [scene, framework, question]);
   const caption = stageCaption(scene, connection);
+  // Plan 21: rows for the requested count (as the loading placeholder reserves), or more if more papers arrive
+  const poolRows = Math.max(teamPoolRows(scene.requested), Math.ceil(Math.min(scene.slots.length, STAGE_MAX_PAPERS) / POOL_COLS));
+  const size = teamWideSize(poolRows);
   return (
     <StageMotion>
       <figure className="grid gap-2" data-team-stage={wide ? "wide" : "narrow"}>
-        <div ref={box} data-stage-box className={`relative w-full ${wide ? "@container aspect-[960/288]" : "mx-auto max-w-[560px]"}`}>
+        <div ref={box} data-stage-box className={`relative w-full ${wide ? "@container" : "mx-auto max-w-[560px]"}`}
+          style={wide ? { aspectRatio: `${size.width} / ${size.height}` } : undefined}>
           <TeamPackets scene={scene} box={box} label={label} wide={wide} />
           <ol aria-label="สมาชิกทีมเอเจนต์" style={wide ? { ["--av" as string]: AV_WIDE, ["--gap" as string]: "clamp(6px, 0.9cqw, 12px)" } : undefined}
             className={wide ? "grid h-full grid-cols-[1fr_1fr_1fr_1.45fr_1fr] gap-2.5" : "grid gap-2"}>
             {team.members.map((m) => (
-              <MemberCard key={m.id} m={m} speaking={team.speaking === m.id} wide={wide} slots={m.id === "reader" ? scene.slots : []} />
+              <MemberCard key={m.id} m={m} speaking={team.speaking === m.id} wide={wide} slots={m.id === "reader" ? scene.slots : []} poolRows={poolRows} />
             ))}
           </ol>
         </div>

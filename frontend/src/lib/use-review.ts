@@ -58,7 +58,10 @@ export function useReview(id: string, { pollMs = 4000 }: { pollMs?: number } = {
         if (alive) setPhase(e instanceof ApiError && e.status === 404 ? "notfound" : "unavailable");
         return;
       }
-      if (alive) dispatchScene({ kind: "lang", language: r.language });
+      if (alive) {
+        dispatchScene({ kind: "lang", language: r.language });
+        dispatchScene({ kind: "requested", value: r.options?.max_papers }); // old streams' `screened` has no `requested`
+      }
       if (!alive || settle(r)) return;
       setPhase("live");
       const outcome = await followReview(id, {

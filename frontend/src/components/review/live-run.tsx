@@ -10,7 +10,7 @@ import { AS_READ_TH, READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
 import type { Connection } from "@/lib/use-review";
 import { MilestoneStatus } from "./stage/milestone-status";
-import { StageLocalize } from "./stage/stage-placeholder";
+import { StageLocalize, StageRequested } from "./stage/stage-placeholder";
 import { StageView } from "./stage-view";
 import { ThoughtCard } from "./thought-card";
 import { TraceLog } from "./stage/trace-log";
@@ -91,12 +91,14 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
 
         <section aria-labelledby="h-stage" className="grid gap-4 rounded-sm md:border md:border-rule md:bg-surface md:p-4 xl:p-5">
           <StageLocalize.Provider value={scene.expectLocalize}>
-            <StageView
-              scene={viewScene} connection={connection}
-              heading={<h2 id="h-stage" className="label">เวทีเอเจนต์</h2>}
-              lead={<ThoughtCard scene={viewScene} framework={framework} />}
-              question={run.question?.refined_question} framework={framework}
-            />
+            <StageRequested.Provider value={scene.requested}>
+              <StageView
+                scene={viewScene} connection={connection}
+                heading={<h2 id="h-stage" className="label">เวทีเอเจนต์</h2>}
+                lead={<ThoughtCard scene={viewScene} framework={framework} />}
+                question={run.question?.refined_question} framework={framework}
+              />
+            </StageRequested.Provider>
           </StageLocalize.Provider>
           <MilestoneStatus scene={scene} />
         </section>

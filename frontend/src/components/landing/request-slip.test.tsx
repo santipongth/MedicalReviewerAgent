@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import { GLOSS, glossText } from "@/lib/glossary";
+import { STATUS_FIXTURE } from "@/test/status-fixture";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -11,10 +12,7 @@ const getStatus = vi.fn();
 vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()),
   createReview: (...a: unknown[]) => createReview(...a), getStatus: (...a: unknown[]) => getStatus(...a) }));
 
-const OPEN = { accepting: true, reason: null, retry_after: null, queue_depth: 0, running: 0, reviews_today: 3,
-  turnstile_site_key: null, limits: { review_rate_limit: "5/hour", api_key_rate_limit: "60/hour",
-    paper_search_rate_limit: "30/minute", max_papers: { min: 5, max: 30, default: 30 },
-    candidate_limit: { min: 20, max: 100, default: 60 }, max_queued_reviews: 50 } };
+const OPEN = STATUS_FIXTURE;
 
 import { RequestSlip } from "./request-slip";
 
@@ -54,11 +52,56 @@ describe("RequestSlip", () => {
     expect(push).toHaveBeenCalledWith("/r/r-1");
   });
 
-  it("analyses up to 30 abstracts by default", () => {
+  it("takes the slider's range and starting value from /status (5–50, default 30)", async () => {
     render(<RequestSlip />);
-    const slider = screen.getByLabelText(/จำนวนงานวิจัยที่วิเคราะห์/);
-    expect(slider).toHaveAttribute("max", "30");
+    const slider = await screen.findByRole("slider", { name: "จำนวนงานวิจัยที่ต้องการวิเคราะห์" });
+    expect(slider).toHaveAttribute("min", "5");
+    expect(slider).toHaveAttribute("max", "50");
     expect(slider).toHaveValue("30");
+    expect(slider).toHaveAttribute("aria-valuetext", "30 ฉบับ");
+    const help = document.getElementById(slider.getAttribute("aria-describedby")!);
+    expect(help).toHaveTextContent(
+      "ระบบคัดกรองราว 120 ฉบับที่มีบทคัดย่อ แล้ววิเคราะห์ฉบับที่เกี่ยวข้องที่สุดตามจำนวนนี้ ถ้าผ่านเกณฑ์ไม่ถึงจะวิเคราะห์เท่าที่มีและแจ้งในรายงาน");
+  });
+
+  it("submits the count the slider is moved to", async () => {
+    createReview.mockResolvedValue({ review_id: "r-1", status: "queued", cached: false });
+    render(<RequestSlip />);
+    const slider = await screen.findByRole("slider", { name: "จำนวนงานวิจัยที่ต้องการวิเคราะห์" });
+    fireEvent.change(slider, { target: { value: "50" } });
+    expect(slider).toHaveAttribute("aria-valuetext", "50 ฉบับ");
+    await typeTopic();
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    expect(createReview).toHaveBeenCalledWith({
+      topic: "statins and dementia", language: "th", options: { max_papers: 50, review_type: "slr" },
+    });
+  });
+
+  it("follows whatever maximum the service reports (never hard-coded)", async () => {
+    getStatus.mockResolvedValue({ ...OPEN, limits: { ...OPEN.limits, max_papers: { min: 5, max: 40, default: 20 } } });
+    render(<RequestSlip />);
+    const slider = await screen.findByRole("slider", { name: "จำนวนงานวิจัยที่ต้องการวิเคราะห์" });
+    expect(slider).toHaveAttribute("max", "40");
+    expect(slider).toHaveValue("20");
+  });
+
+  it("uses the server-rendered limits before the browser's own status read lands", () => {
+    getStatus.mockReturnValue(new Promise(() => {})); // never settles
+    render(<RequestSlip limits={OPEN.limits} />);
+    const slider = screen.getByRole("slider", { name: "จำนวนงานวิจัยที่ต้องการวิเคราะห์" });
+    expect(slider).toHaveAttribute("max", "50");
+    expect(slider).toHaveValue("30");
+  });
+
+  it("with no limits known (status unreadable), shows no slider and lets the API pick the count", async () => {
+    getStatus.mockRejectedValue(new ApiError(0, "network"));
+    createReview.mockResolvedValue({ review_id: "r-1", status: "queued", cached: false });
+    render(<RequestSlip />);
+    await typeTopic();
+    expect(screen.queryByRole("slider")).toBeNull();
+    expect(screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary")?.textContent).not.toMatch(/\d+ ฉบับ/);
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    expect(createReview).toHaveBeenCalledWith({ topic: "statins and dementia", language: "th", options: { review_type: "slr" } });
   });
 
   it("tells people when the service is full and does not let them submit", async () => {
@@ -169,10 +212,10 @@ describe("RequestSlip", () => {
   it("summarises the folded options as they change", async () => {
     render(<RequestSlip />);
     const summary = screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary") as HTMLElement;
-    expect(summary).toHaveTextContent("ภาษาไทย · สูงสุด 30 ฉบับ · ทุกปี");
+    await waitFor(() => expect(summary).toHaveTextContent("ภาษาไทย · วิเคราะห์ 30 ฉบับ · ทุกปี"));
     await user.click(screen.getByLabelText("English"));
     await user.type(screen.getByLabelText(/ตั้งแต่ปี/), "2015");
-    expect(summary).toHaveTextContent("English · สูงสุด 30 ฉบับ · ตั้งแต่ปี 2015");
+    expect(summary).toHaveTextContent("English · วิเคราะห์ 30 ฉบับ · ตั้งแต่ปี 2015");
   });
 
   it("shows the three numbered steps of the scope form", () => {

@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { glossText } from "@/lib/glossary";
 import { SAMPLE } from "@/lib/landing-sample";
+import { STATUS_FIXTURE } from "@/test/status-fixture";
 import { AgentBand } from "./agent-band";
 import { Anatomy } from "./anatomy";
 import { Timeline } from "./timeline";
@@ -33,6 +34,23 @@ describe("Timeline", () => {
     const steps = within(screen.getByRole("list", { name: "ขั้นตอนของรีวิว" })).getAllByRole("listitem");
     expect(steps.map((s) => s.querySelector("h3")?.textContent)).toEqual(
       ["ตีความคำถาม", "ค้นหลายฐานข้อมูล", "คัดกรอง", "อ่านและตรวจ", "รายงานพร้อม"]);
+  });
+
+  it("states the pool and the paper-count range from /status", () => {
+    render(<Timeline limits={STATUS_FIXTURE.limits} />);
+    const steps = screen.getByRole("list", { name: "ขั้นตอนของรีวิว" });
+    expect(steps).toHaveTextContent("ตัดเรื่องซ้ำ เก็บราว 120 ฉบับที่มีบทคัดย่อ");
+    expect(steps).toHaveTextContent("เลือกฉบับที่เกี่ยวข้องที่สุดตามจำนวนที่คุณกำหนด (5–50 ฉบับ ค่าเริ่มต้น 30)");
+  });
+
+  it("without limits, the steps name no paper counts", () => {
+    render(<Timeline />);
+    const steps = screen.getByRole("list", { name: "ขั้นตอนของรีวิว" });
+    const search = within(steps).getAllByRole("listitem")[1].querySelector("p")!.textContent!;
+    const screenStep = within(steps).getAllByRole("listitem")[2].querySelector("p")!.textContent!;
+    expect(search.replace("8 แหล่ง", "")).not.toMatch(/\d/); // the eight sources are a fact, not a limit
+    expect(screenStep).not.toMatch(/\d/);
+    expect(screenStep).toContain("เลือกฉบับที่เกี่ยวข้องที่สุดตามจำนวนที่คุณกำหนด");
   });
 
   it("shows the sample review's real pipeline counts", () => {

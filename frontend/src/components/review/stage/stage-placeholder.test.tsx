@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { layoutFor } from "@/lib/agent-layout";
-import { PLACEHOLDER_SIZE, StageLocalize, StagePlaceholder, TEAM_NARROW_HEIGHT } from "./stage-placeholder";
+import { PLACEHOLDER_SIZE, StageLocalize, StagePlaceholder, StageRequested, TEAM_NARROW_HEIGHT, teamPoolRows, teamWideSize } from "./stage-placeholder";
 
 const FIRST = { showExternal: false, slots: 0, batches: 0, queries: 0 }; // what the first render lays out
 const size = (kind: "wide" | "narrow", showLocalize: boolean) => {
@@ -51,17 +51,23 @@ describe("StagePlaceholder", () => {
     expect(wrap).not.toMatch(/\bborder\b/);
   });
 
-  it("team view: the same constant wide box, and a fixed narrow height", () => {
+  it("team view: the steps view's wide box for up to 30 papers, and a fixed narrow height", () => {
     const { container } = render(<StagePlaceholder view="team" />);
     const w = PLACEHOLDER_SIZE.wide;
+    expect(teamWideSize(teamPoolRows(null))).toEqual(w);
     expect(aspect(container.querySelector('[data-placeholder="team-wide"]'))).toBe(`${w.width}/${w.height}`);
     expect(container.querySelector('[data-placeholder="team-wide"]')).toHaveClass("hidden", "lg:block", "w-full");
     const n = container.querySelector('[data-placeholder="team-narrow"]') as HTMLElement;
     expect(n).toHaveClass("lg:hidden");
     expect(n.style.height).toBe(`${TEAM_NARROW_HEIGHT}px`);
-    // the loaded team box uses the same wide aspect
-    const src = readFileSync(resolve(process.cwd(), "src/components/review/team/team-stage.tsx"), "utf8");
-    expect(src).toContain(`aspect-[${w.width}/${w.height}]`);
+  });
+
+  it("team view (Plan 21): the reader pool reserves max(3, ceil(requested / 10)) rows, and the wide box grows with them", () => {
+    expect([null, undefined, 1, 5, 30, 31, 40, 41, 50].map(teamPoolRows)).toEqual([3, 3, 3, 3, 3, 4, 4, 5, 5]);
+    expect(teamWideSize(5)).toEqual({ width: 960, height: PLACEHOLDER_SIZE.wide.height + 2 * 28 });
+    const { container } = render(<StageRequested.Provider value={50}><StagePlaceholder view="team" /></StageRequested.Provider>);
+    const w = teamWideSize(5);
+    expect(aspect(container.querySelector('[data-placeholder="team-wide"]'))).toBe(`${w.width}/${w.height}`);
   });
 
   it("does not import the layout module (keeps it out of the eager chunk)", () => {
