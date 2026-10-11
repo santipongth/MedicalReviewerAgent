@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.evals.leakage import drop_target
 from app.evals.models import Fixture, PrimaryMatch, RunRecord
 from app.graph.graph import build_eval_graph, initial_state
 from app.graph.nodes.intake import harness_runner
@@ -28,8 +29,9 @@ MATCH_SYSTEM = ("You match outcome names. Given a target outcome from a Cochrane
 
 def eval_state(fixture: Fixture, options: dict[str, Any], language: str = "th") -> dict[str, Any]:
     state = dict(initial_state(f"eval-{fixture.id}", fixture.topic, language, options))
+    candidates, _ = drop_target(fixture.candidates, fixture.id, fixture.pmid)  # belt and braces for old fixtures
     state.update(english_topic=fixture.english_topic, question=fixture.question, plan=fixture.plan,
-                 candidates=fixture.candidates, search_stats=fixture.search_stats, eval_year_to=fixture.year_to)
+                 candidates=candidates, search_stats=fixture.search_stats, eval_year_to=fixture.year_to)
     return state
 
 

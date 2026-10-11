@@ -22,7 +22,7 @@ decision.
 ## Index test
 The engine at a recorded `prompt_version`, git SHA, preset and per-role models. Input: the review question as one
 English sentence. Candidate pools are frozen once per pool version with a cutoff at the year of Cochrane's last
-search (studies from that year are kept; their number is reported). Each review is run twice. Citation metadata (OpenAlex) and external MCP tools are disabled in eval runs so that
+search (studies from that year are kept; their number is reported). Every version of the target Cochrane review is removed from its candidate pool before the engine sees it (count reported per review). Each review is run twice. Citation metadata (OpenAlex) and external MCP tools are disabled in eval runs so that
 replays stay deterministic.
 
 ## Outcomes

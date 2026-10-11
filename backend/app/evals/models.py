@@ -53,6 +53,7 @@ class Fixture(BaseModel):
     prompt_version: str
     engines: list[str]
     year_to: int
+    pmid: str = ""  # the target review's PMID, so replay can drop it again
     topic: str
     english_topic: str | None
     question: dict[str, Any] | None

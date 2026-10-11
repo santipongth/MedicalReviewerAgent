@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.evals import models
+from app.evals.leakage import drop_target
 from app.evals.models import Fixture, Manifest, ManifestEntry
 from app.graph.graph import build_freeze_graph, initial_state
 
@@ -15,7 +16,7 @@ def entry_options(entry: ManifestEntry) -> dict:
 async def freeze_one(deps, entry: ManifestEntry, *, pool_version: str, git_sha: str, engines: list[str]) -> Fixture:
     base = {"id": entry.id, "pool_version": pool_version, "frozen_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "git_sha": git_sha, "prompt_version": deps.settings.prompt_version, "engines": engines,
-            "year_to": entry.year_to or 9999, "topic": entry.question}
+            "year_to": entry.year_to or 9999, "pmid": entry.pmid, "topic": entry.question}
     state = {**initial_state(f"freeze-{entry.id}", entry.question, "en", entry_options(entry)),
              "eval_year_to": entry.year_to}
     try:
@@ -24,9 +25,10 @@ async def freeze_one(deps, entry: ManifestEntry, *, pool_version: str, git_sha: 
         return Fixture(**base, english_topic=None, question=None, plan=None, candidates=[], search_stats={},
                        status="error", error=f"{type(exc).__name__}: {exc}")
     status = "rejected" if values.get("rejected") else "ok"
+    candidates, removed = drop_target(values.get("candidates") or [], entry.id, entry.pmid)
     return Fixture(**base, english_topic=values.get("english_topic"), question=values.get("question"),
-                   plan=values.get("plan"), candidates=values.get("candidates") or [],
-                   search_stats=values.get("search_stats") or {}, status=status,
+                   plan=values.get("plan"), candidates=candidates,
+                   search_stats={**(values.get("search_stats") or {}), "target_removed": removed}, status=status,
                    error=str(values.get("rejected") or ""))
 
 
