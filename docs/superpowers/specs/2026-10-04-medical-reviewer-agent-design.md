@@ -315,3 +315,10 @@ D:\MedicalReviewerAgent\
   blocks are appended only when the user asks for them, so SLR prompts stay byte-identical.
 - Umbrella reviews (reviews of systematic reviews) were considered and deferred: they need review-level extraction, overlap
   handling and quality appraisal that the pipeline does not have yet.
+
+## Revision 2026-10-11: user-chosen paper count (Plan 21)
+
+- The user chooses how many papers are analysed (`max_papers`, 5-50, default 30) from a screened pool of about 120
+  candidates (`candidate_limit` 20-120), with one SearXNG top-up page when the pool is short. The per-review cost cap
+  scales with both numbers. Reading stays abstract-only. This supersedes the earlier "about 60 screened, up to 30
+  analysed" figures.

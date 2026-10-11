@@ -89,21 +89,37 @@ async def test_http_transport_shares_rate_limits_and_rejects_bad_keys(app, monke
 
 
 async def test_start_review_uses_the_abstract_only_paper_range(mcp, client):
+    from app.schemas.review import ReviewOptions
+    lo, hi = ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le")
+    default = ReviewOptions.model_fields["max_papers"].default
     async with Client(mcp) as c:
         asked = {}
-        for topic, n in (("statins and dementia risk", 3), ("aspirin and colorectal adenoma", 30),
-                         ("sglt2 inhibitors and heart failure", None)):
+        for topic, n in (("statins and dementia risk", 1), ("aspirin and colorectal adenoma", hi),
+                         ("sglt2 inhibitors and heart failure", None), ("warfarin and atrial fibrillation", 99)):
             args = {"topic": topic, "language": "en"} | ({"max_papers": n} if n is not None else {})
             rid = data(await c.call_tool("start_review", args))["review_id"]
             asked[n] = (await client.get(f"/api/v1/reviews/{rid}")).json()["options"]["max_papers"]
-    assert asked == {3: 5, 30: 30, None: 30}  # clamped into 5-30, default 30
+    assert asked == {1: lo, hi: hi, None: default, 99: hi}  # clamped into the bounds, not rejected
+    assert (lo, hi, default) == (5, 50, 30)
+
+
+async def test_tool_description_and_instructions_show_the_bounds_from_review_options(mcp):
+    from app.mcp.server import INSTRUCTIONS
+    from app.schemas.review import ReviewOptions
+    lo, hi = ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le")
+    pool = ReviewOptions.model_fields["candidate_limit"].default
+    async with Client(mcp) as c:
+        tool = next(t for t in await c.list_tools() if t.name == "start_review")
+    for text in (INSTRUCTIONS, tool.description):
+        assert str(lo) in text and str(hi) in text and str(pool) in text
+        assert "5-30" not in text and "~60" not in text and "about 60" not in text
 
 
 async def test_instructions_and_prompt_describe_the_current_service(mcp):
     from app.mcp.server import INSTRUCTIONS
     for text in (INSTRUCTIONS,):
         assert all(s in text for s in ("done", "error", "rejected", "cancelled"))  # every terminal status
-        assert "5-30" in text and "abstract" in text and "1-3 minutes" in text
+        assert "abstract" in text and "1-3 minutes" in text
     async with Client(mcp) as c:
         prompt = await c.get_prompt("literature_review", {"topic": "statins"})
     body = prompt.messages[0].content.text

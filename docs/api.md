@@ -3,7 +3,7 @@
 This reference describes what the running service does, as of `prompt_version 2026-10-11.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
-- It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 60 candidate papers that have abstracts, and analyses the abstracts of up to 30. It never fetches full text.
+- It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 120 candidate papers that have abstracts, and analyses the abstracts of the 5–50 you choose (default 30). It never fetches full text.
 - Four review types: systematic review (`slr`, default), meta-analysis (`meta_analysis`), scoping review (`scoping`) and narrative review (`narrative`).
 - Every number it shows is checked against the abstract it came from. A number that cannot be checked is left empty, never estimated. The only numbers the system computes itself are meta-analysis pooled estimates, and they are always labelled as computed.
 - Borderline papers get a second screening vote, and every paper a second, independent extraction, from a model of a different family (`result.models`: `screener_secondary`, `extractor_secondary`). When a deployment configures the same model for both, that second pass is skipped rather than repeated, and an escalation never goes back to a model that already answered.
@@ -80,7 +80,7 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 
 ```json
 {"topic": "metformin and colorectal cancer", "language": "th",
- "options": {"review_type": "slr", "max_papers": 30, "candidate_limit": 60, "year_from": 2015, "study_types": ["RCT"]},
+ "options": {"review_type": "slr", "max_papers": 30, "candidate_limit": 120, "year_from": 2015, "study_types": ["RCT"]},
  "callback_url": "https://your-app.example.org/hooks/review"}
 ```
 
@@ -88,8 +88,8 @@ Field rules:
 - `topic`: 3–600 characters, with at least one letter or digit. A short topic ("metformin and colorectal cancer") or a full question or objective; the agent turns either into a structured question.
 - `language`: `th` (default) or `en`.
 - `review_type`: `slr` (default, systematic review), `narrative`, `scoping` or `meta_analysis` (Plan 14b: a systematic review plus pooled effects). Anything else gets 422. It is part of the cache key. The allowed values are in `GET /api/v1/status → limits.review_types`.
-- `max_papers`: 5–30, default 30.
-- `candidate_limit`: 20–100, default 60. Must be at least `max_papers`.
+- `max_papers`: 5–50, default 30. How many papers are analysed (see "Paper count and pool"). REST rejects 4 or 51 with 422; the MCP `start_review` tool clamps into 5–50 instead.
+- `candidate_limit`: 20–120, default 120. Must be at least `max_papers`.
 - `year_from`: 1950–2100.
 - `study_types`: up to 10 entries, normalised to canonical names:
   - The canonical names are `RCT`, `Cohort`, `Case-control`, `Cross-sectional`, `Non-randomized trial`, `Qualitative`, `Mixed methods`, `Systematic review` and `Meta-analysis`.
@@ -210,7 +210,7 @@ It is absent from results stored before Plan 20.
   the counts can sum to more than `stats.found`. null when not recorded.
 - `eligibility`: `{year_from, study_types[], inclusion_criteria[], exclusion_criteria[]}` (the criteria are the
   planner's, in English).
-- `limits`: `{candidate_limit, max_papers, min_abstract_chars}`.
+- `limits`: `{candidate_limit, max_papers, min_abstract_chars}` (the values this review ran with: `max_papers` is the requested count, 5–50, default 30; `candidate_limit` is the pool size, 20–120, default 120).
 - `screening`: `{model, second_model, second_vote, borderline: [low, high], relevance_floor}`. `second_vote` is
   `two_models`, `same_model` (skipped: the secondary screener is the screener's model) or `off`, as the screening
   batches logged it (`quality` stage `screen`, `second_vote`), else derived from the configured models;
@@ -316,7 +316,7 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 
 **Citations.** `citations` is `{edges[], cited_by{}, cited_by_source{}, coverage{}, source_note, partial}` (null for results stored before Plan 14b and for reviews where the step did not run). `edges[]` is `{from, to}` (citing paper -> cited paper), only between papers of the same review, no self-loops, deduplicated. `cited_by[ref]` is the cited-by count over all literature (not just this review): OpenAlex's, else Europe PMC's `citedByCount`, else null. `cited_by_source[ref]` says which (`"openalex"`, `"europepmc"` or null); the two sources count differently, so do not compare across sources. On a timeout of the whole step the data gathered so far is kept, `partial` is `true` and `source_note` says so (`partial` is `false` otherwise, and is absent from results stored before it was added). OpenAlex gets at most half of the step budget and is not retried, so a slow OpenAlex still leaves time for the Europe PMC fallback. `coverage[ref]` is `"openalex"`, `"europepmc"` (reference list fallback) or null; null means no data, so a missing edge for such a paper does not mean it cites nothing. Metadata only (no full text); a failure gives null coverage and never fails the review; a timeout (about 20 s) keeps whatever arrived (coverage null for the rest, `partial: true`). Under `GRAPH_MODE=stub` the citation data is illustrative. Optional `OPENALEX_API_KEY` / `OPENALEX_MAILTO`.
 
-**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). Papers dropped at selection because their design matches no ticked study type are added to `excluded_screening.study_design`. `excluded_selection` is `{narrative_excluded, over_limit, study_design_relaxed, study_design_corrected, low_relevance}`; `study_design_relaxed` is the number of design mismatches kept (after the matches, flagged `verification.design_mismatch`) because fewer than 3 papers matched the ticked types; `study_design_corrected` (Plan 19 final review) is the number of selected papers whose design as read is outside the ticked types, kept in `papers` but not used as evidence (`stats.extracted` still counts them). `low_relevance` (Plan 19) counts papers the screener included with relevance below the lower edge of the borderline band (35 by default, `screen_borderline` in llm.yaml); they are not analysed, unless the two screening votes disagreed (kept for recall, flagged `uncertain`) or dropping them would leave fewer than 3 papers. Plan 19 also adds `year_excluded` (dropped by `year_from`) and `no_abstract` (no usable abstract), so that `unique = year_excluded + non_research + no_abstract + with_abstract`. Plan 20 Task 10 adds `excluded_selection.off_focus` (themes reviews only, every ticked study type Qualitative or Mixed methods: included papers whose title and abstract never name the question's intervention/exposure, by its words or the synonyms of a key term that shares one; not analysed unless dropping them would leave fewer than 3 papers; 0 otherwise) and `stats.related_reports` (see "Reports of the same trial"). Results stored before Plan 14a have none of these keys, and results stored before Plan 19 lack the Plan 19 ones.
+**Stats.** `stats` has `found, unique, with_abstract, candidates, screened, selected, extracted`, plus (Plan 14a) `non_research` (records dropped as not research), `excluded_screening` and `excluded_selection`. `excluded_screening` is sparse: a map of reason to count, where the reason is one of `off_topic, population, intervention_exposure, outcome, study_design, publication_type, other` (reasons with no records are absent; the counts can sum to less than the screened-out total). Papers dropped at selection because their design matches no ticked study type are added to `excluded_screening.study_design`. `excluded_selection` is `{narrative_excluded, over_limit, study_design_relaxed, study_design_corrected, low_relevance}`; `study_design_relaxed` is the number of design mismatches kept (after the matches, flagged `verification.design_mismatch`) because fewer than 3 papers matched the ticked types; `study_design_corrected` (Plan 19 final review) is the number of selected papers whose design as read is outside the ticked types, kept in `papers` but not used as evidence (`stats.extracted` still counts them). `low_relevance` (Plan 19) counts papers the screener included with relevance below the lower edge of the borderline band (35 by default, `screen_borderline` in llm.yaml); they are not analysed, unless the two screening votes disagreed (kept for recall, flagged `uncertain`) or dropping them would leave fewer than 3 papers. Plan 19 also adds `year_excluded` (dropped by `year_from`) and `no_abstract` (no usable abstract), so that `unique = year_excluded + non_research + no_abstract + with_abstract`. Plan 20 Task 10 adds `excluded_selection.off_focus` (themes reviews only, every ticked study type Qualitative or Mixed methods: included papers whose title and abstract never name the question's intervention/exposure, by its words or the synonyms of a key term that shares one; not analysed unless dropping them would leave fewer than 3 papers; 0 otherwise) and `stats.related_reports` (see "Reports of the same trial"). Plan 21 adds `excluded_selection.requested` (the `max_papers` the user asked for) and `excluded_selection.eligible` (papers that were eligible for analysis). These two are not exclusion counts: never add them to the other `excluded_selection` values. `eligible < requested` is a shortfall (see "Paper count and pool"). Results stored before Plan 21 have them null or absent. Results stored before Plan 14a have none of these keys, and results stored before Plan 19 lack the Plan 19 ones.
 
 **Review type (Plan 14a).** `result.review_type` is `narrative`, `slr`, `scoping` or (Plan 14b) `meta_analysis`, which is graded like `slr`; a result stored before Plan 14a has no `review_type` and is a legacy systematic review.
 - `question` always has the PICO fields. It also has `framework` (`PICO` or `PCC`; `null` when the question was not refined), `key_terms` (`[{term, synonyms[], mesh}]`) and, for scoping, `concept` and `context` (a scoping `comparator` may be empty and `outcomes` are the aspects to chart).
@@ -606,11 +606,19 @@ The web app also serves the whole interactive report as one HTML file that works
  "turnstile_site_key": null,
  "limits": {"review_rate_limit": "5/hour", "api_key_rate_limit": "60/hour", "paper_search_rate_limit": "30/minute",
             "review_types": ["narrative", "slr", "scoping", "meta_analysis"],
-            "max_papers": {"min": 5, "max": 30, "default": 30}, "candidate_limit": {"min": 20, "max": 100, "default": 60},
+            "max_papers": {"min": 5, "max": 50, "default": 30}, "candidate_limit": {"min": 20, "max": 120, "default": 120},
             "max_queued_reviews": 50, "sse_max_per_ip": 5}}
 ```
 
 The daily budget figures are private. When the budget runs out, the status shows only `accepting: false` with `reason: "daily_budget"`.
+
+## Paper count and pool (Plan 21)
+
+- The agent screens a pool of up to `candidate_limit` (default 120) candidates that have abstracts and analyses the `max_papers` (5–50, default 30) most relevant. Reading is on abstracts only.
+- Top-up: when fewer than `candidate_limit` candidates keep a usable abstract after the first search round, `enrich` runs one single top-up of the next SearXNG page (bounded by `searxng_pages_max`). The `searching` event's `found` counts the first round only; `stats.found` (PRISMA "identified") also counts the top-up hits.
+- Shortfall: when fewer than `max_papers` papers are eligible, all eligible papers are analysed and nothing is padded; `stats.excluded_selection.eligible` is then lower than `requested`. Both are informational, not exclusion counts.
+- Cost cap: each review is capped at `0.04 + 0.006 * max_papers + 0.0005 * candidate_limit` USD, never above `max_cost_per_review_usd` (0.60). Admission reserves the worst-case cap for queued and running reviews and the request's own cap for the new one, so a large request can be refused while a small one is still accepted.
+- Limits for clients come from `GET /api/v1/status → limits`, never hard-code them.
 
 ## Event stream (SSE)
 
@@ -633,7 +641,7 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 | `searching` | `{found, queries, failed}` | marks the end of the search step |
 | `enriching` | `{candidates}` | marks the end of the enrich step |
 | `screening` | `{batch}` | once per batch of 10 |
-| `screened` | `{kept, total}` | marks the end of screening |
+| `screened` | `{kept, total, requested}` | marks the end of screening |
 | `external_lookup` | `{}` | only when external MCP servers are configured |
 | `citations_fetched` | `{edges, covered, total}` | once, in parallel with reading; `covered` = papers with reference data. Always sent when the citation step runs, also when it soft-fails (`covered: 0`) |
 | `reading` | `{ref, title}` | once per paper; sent when the paper's read starts, and all arrive together at fan-out start (papers then wait for the LLM concurrency limit) |
@@ -677,7 +685,7 @@ The server name is `medical-reviewer-agent`, version 0.8.0. The `Host` header mu
 | Tool | Returns | Notes |
 |---|---|---|
 | `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | Searches the same eight engines as reviews. `limit` is clamped to 1–25. Shares the paper-search limit |
-| `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None)` | `{review_id, status, cached, status_url}` | `topic`: up to 600 characters. `max_papers`: clamped to 5–30. `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. Capacity errors include the reason and the wait time |
+| `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None)` | `{review_id, status, cached, status_url}` | `topic`: up to 600 characters. `max_papers`: clamped into 5–50 (not rejected; default 30). `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. Capacity errors include the reason and the wait time |
 | `get_review_status(review_id)` | `{review_id, status, error, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled` |
 | `get_review_result(review_id)` | `{review_id, status, result}` | The `result` shape is the same as REST: `citations` and, for `meta_analysis`, `meta_analysis`. If the review is not done: `{…, result: null, message, error}` |
 

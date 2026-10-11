@@ -34,8 +34,8 @@ class McpPathMiddleware:
 API_DESCRIPTION = """Automated rapid literature reviews of published medical research.
 
 Submit a topic (POST /api/v1/reviews), follow it live (GET /api/v1/reviews/{id}/events, Server-Sent Events) and read
-or download the result. The agent refines the question, screens about 60 candidate papers that have abstracts,
-analyses the abstracts of up to 30 (no full-text fetching) and checks every number against the abstract; numbers it
+or download the result. The agent refines the question, screens about 120 candidate papers that have abstracts,
+analyses the abstracts of the 5-50 you choose, default 30 (no full-text fetching) and checks every number against the abstract; numbers it
 cannot verify are left empty, never estimated.
 
 Limits and capacity are published at GET /api/v1/status. Refusals always say why and when to retry: 429 (rate limit,

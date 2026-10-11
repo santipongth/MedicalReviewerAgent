@@ -19,10 +19,14 @@ from app.schemas.review import CreateReviewRequest, ReviewOptions
 from app.services.report import render_markdown
 from app.services.review_service import Identity, RateLimited, ServiceError, Unavailable
 
-INSTRUCTIONS = """Medical literature review agent (abstracts only). It turns a topic or question into a structured
+_MIN_PAPERS, _MAX_PAPERS = ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le")
+_DEFAULT_PAPERS = ReviewOptions.model_fields["max_papers"].default
+_POOL = ReviewOptions.model_fields["candidate_limit"].default
+
+INSTRUCTIONS = f"""Medical literature review agent (abstracts only). It turns a topic or question into a structured
 question (PICO, or PCC for scoping reviews), searches PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv,
-DOAJ and OpenAIRE through its own SearXNG, screens about 60 candidates that have abstracts and analyses the abstracts
-of the best 5-30 (default 30); every number shown is checked against the abstract, and numbers that fail are blanked.
+DOAJ and OpenAIRE through its own SearXNG, screens about {_POOL} candidates that have abstracts and analyses the abstracts
+of the {_MIN_PAPERS}-{_MAX_PAPERS} most relevant (default {_DEFAULT_PAPERS}); every number shown is checked against the abstract, and numbers that fail are blanked.
 Review types: slr (default), meta_analysis (adds labelled, system-computed pooled estimates), scoping, narrative.
 Reports include a comparison matrix, a literature matrix, a concept map and, when metadata is available, a citation
 network between the reviewed papers (OpenAlex / Europe PMC reference lists).
@@ -32,6 +36,24 @@ review://{id}/report.md); on error/rejected/cancelled read the error field. sear
 questions without starting a review. When the service is busy, start_review fails with a reason (queue_full,
 daily_reviews, daily_budget) and how many seconds to wait. Results are a rapid, automated review of published
 papers, not medical advice."""
+
+START_REVIEW_DOC = f"""Start a literature review of a topic or question (e.g. "metformin and colorectal cancer", up to 600 characters).
+The agent refines the question, screens about {_POOL} papers that have abstracts, analyses the abstracts of the
+{_MIN_PAPERS}-{_MAX_PAPERS} most relevant (`max_papers`, default {_DEFAULT_PAPERS}; values outside the range
+are clamped into it) and compares their findings.
+`review_type` picks the kind of review:
+- "slr" (default): systematic review, PICO question, PRISMA flow and an evidence-strength grade.
+- "narrative": thematic overview across study types including narrative reviews; no evidence grade.
+- "scoping": maps what research exists (types, years) with a PCC question; no quality or effect judgement.
+- "meta_analysis": a systematic review plus DerSimonian-Laird random-effects pools of the verified effect
+  estimates (result.meta_analysis); pooled numbers are computed by the system, not reported by any study.
+`study_types` (optional) limits the designs: RCT, Cohort, Case-control, Cross-sectional, Non-randomized trial,
+Qualitative, Mixed methods (qualitative/mixed are summarised as themes, never with numbers), Systematic
+review, Meta-analysis, or one "Other: <text>" (60 characters). `year_from` keeps studies from that year on.
+Returns review_id, status, cached
+and status_url. The same topic, language and options within 24 hours (or still running) return that review
+(cached=true). Fails with a reason and a wait time when the service is busy."""
+
 
 
 def _error(exc: Exception) -> ToolError:
@@ -105,27 +127,12 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
         except ServiceError as exc:
             raise _error(exc) from exc
 
-    @mcp.tool()
+    @mcp.tool(description=START_REVIEW_DOC)
     async def start_review(topic: str, ctx: Context, language: Literal["th", "en"] = "th",
-                           max_papers: int = 30,
+                           max_papers: int = _DEFAULT_PAPERS,
                            review_type: Literal["narrative", "slr", "scoping", "meta_analysis"] = "slr",
                            study_types: list[str] | None = None, year_from: int | None = None
                            ) -> dict[str, Any]:
-        """Start a literature review of a topic or question (e.g. "metformin and colorectal cancer", up to 600 characters).
-        The agent refines the question, screens ~60 papers that have abstracts, analyses the abstracts of the best
-        `max_papers` (clamped into 5-30, default 30) and compares their findings.
-        `review_type` picks the kind of review:
-        - "slr" (default): systematic review, PICO question, PRISMA flow and an evidence-strength grade.
-        - "narrative": thematic overview across study types including narrative reviews; no evidence grade.
-        - "scoping": maps what research exists (types, years) with a PCC question; no quality or effect judgement.
-        - "meta_analysis": a systematic review plus DerSimonian-Laird random-effects pools of the verified effect
-          estimates (result.meta_analysis); pooled numbers are computed by the system, not reported by any study.
-        `study_types` (optional) limits the designs: RCT, Cohort, Case-control, Cross-sectional, Non-randomized trial,
-        Qualitative, Mixed methods (qualitative/mixed are summarised as themes, never with numbers), Systematic
-        review, Meta-analysis, or one "Other: <text>" (60 characters). `year_from` keeps studies from that year on.
-        Returns review_id, status, cached
-        and status_url. The same topic, language and options within 24 hours (or still running) return that review
-        (cached=true). Fails with a reason and a wait time when the service is busy."""
         try:
             req = CreateReviewRequest(topic=topic, language=language,
                                       options=ReviewOptions.clamped({"max_papers": max_papers,
