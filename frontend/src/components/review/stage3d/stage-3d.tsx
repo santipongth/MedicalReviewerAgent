@@ -10,6 +10,7 @@ import { Canvas, useThree, type RootState } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Scene } from "@/lib/agent-scene";
 import { teamLayout3D, type TeamLayout3D } from "@/lib/agent-layout-3d";
+import { stageSizeFor } from "@/lib/stage-size";
 import { teamOf, teamSummary, type Team, type TeamOpts } from "@/lib/agent-team";
 import { CameraRig } from "./camera-rig";
 import { EvidencePiles3D } from "./evidence-piles-3d";
@@ -51,14 +52,15 @@ function layoutOnce(): TeamLayout3D {
   return shared;
 }
 
-function World({ scene, team, tokens }: { scene: Scene; team: Team; tokens: Tokens3D }) {
+function World({ scene, team, tokens, aspect }: { scene: Scene; team: Team; tokens: Tokens3D; aspect: number }) {
   const layout = layoutOnce();
   // drei's Html drops the first label's content when it mounts in the Canvas's very first commit (the first agent's
   // label stayed empty in a real browser), so the labels mount one commit later.
   const [labelsReady, setLabelsReady] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate one-commit deferral, see above
   useEffect(() => { setLabelsReady(true); }, []);
-  const goal = useMemo(() => teamCameraGoal(layout, team.speaking), [layout, team.speaking]);
+  // fitted to the box it is drawn in (the run's wide box, Plan 21)
+  const goal = useMemo(() => teamCameraGoal(layout, team.speaking, undefined, aspect), [layout, team.speaking, aspect]);
   return (
     <>
       <color attach="background" args={[tokens.surface]} />
@@ -87,6 +89,7 @@ export function Stage3D({ scene, question, framework }: { scene: Scene } & TeamO
   const tokens = useTokens3D();
   const team = useMemo(() => teamOf(scene, { framework, question }), [scene, framework, question]);
   const label = useMemo(() => teamSummary(scene, { framework, question }), [scene, framework, question]);
+  const size = stageSizeFor(scene.requested); // the run's wide box, the same as the 2D views
 
   // A lost WebGL context (GPU reset, too many contexts, driver hiccup) throws during render, so StageView's error
   // boundary falls back to the team view with its note instead of leaving a frozen or blank canvas.
@@ -103,12 +106,12 @@ export function Stage3D({ scene, question, framework }: { scene: Scene } & TeamO
   if (lost) throw new Error("WebGL context lost");
 
   return (
-    <div role="img" aria-label={label} className="mx-auto aspect-[960/288] w-full rounded-sm" data-stage3d>
+    <div role="img" aria-label={label} className="mx-auto w-full rounded-sm" style={{ aspectRatio: `${size.width} / ${size.height}` }} data-stage3d>
       <Canvas
         aria-hidden="true" frameloop="demand" dpr={[1, 2]} camera={{ position: CAMERA_BASE, fov: STAGE_FOV }}
         gl={{ antialias: true, powerPreference: "low-power" }} onCreated={onCreated}
       >
-        <World scene={scene} team={team} tokens={tokens} />
+        <World scene={scene} team={team} tokens={tokens} aspect={size.width / size.height} />
       </Canvas>
     </div>
   );

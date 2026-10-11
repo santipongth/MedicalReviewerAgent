@@ -22,6 +22,7 @@
 import { asDesign, asDirection, isThemeDesign } from "./live-evidence";
 import type { DesignCategory, Direction, ReviewEvent } from "./types";
 import type { Connection } from "./use-review"; // type only (erased): no runtime cycle
+import { STAGE_MAX_PAPERS } from "./stage-size";
 
 export type AgentId =
   | "guard" | "refine" | "plan" | "search" | "enrich" | "screen" | "read" | "external" | "synth" | "localize" | "finish";
@@ -72,7 +73,12 @@ export interface Scene {
     pools: number | null; // meta_analysis: `pooled.pools` (pooled analyses computed); null until the event arrives
   };
   queries: string[];
-  slots: ReaderSlot[]; // <= MAX_SLOTS (30)
+  slots: ReaderSlot[]; // <= STAGE_MAX_PAPERS
+  /**
+   * The paper count the user asked for (Plan 21), clamped to STAGE_MAX_PAPERS: the `screened` event's `requested`, else
+   * review.options.max_papers (old streams and replays), else null. The team view reserves reader-pool rows from it.
+   */
+  requested: number | null;
   pulses: Pulse[]; // ring, <= MAX_PULSES (24)
   trace: TraceRow[]; // <= MAX_TRACE (80), newest last
   external: boolean;
@@ -81,9 +87,10 @@ export interface Scene {
   spans: Partial<Record<AgentId, StepSpan>>;
   directionless?: boolean; // scoping: the view shows no direction anywhere (set by LiveRun on a derived scene)
 }
-export type SceneAction = { kind: "event"; ev: ReviewEvent } | { kind: "lang"; language: string };
+export type SceneAction = { kind: "event"; ev: ReviewEvent } | { kind: "lang"; language: string } | { kind: "requested"; value: unknown };
 
-export const MAX_SLOTS = 30;
+/** The most papers the stage shows (reader slots, 3D pile tokens); single-sourced in stage-size.ts (Plan 21). */
+export { STAGE_MAX_PAPERS };
 export const MAX_PULSES = 24;
 export const MAX_TRACE = 80;
 
@@ -99,7 +106,7 @@ export function initialScene(opts?: { language?: string }): Scene {
       queries: 0, found: 0, searchFailed: 0, candidates: 0, batches: 0, batchesExpected: 0, kept: 0, screenedTotal: 0,
       readOk: 0, readFailed: 0, uncertain: 0, synthPapers: null, pools: null,
     },
-    queries: [], slots: [], pulses: [], trace: [], external: false, expectLocalize: opts?.language === "th", elapsed: 0,
+    queries: [], slots: [], requested: null, pulses: [], trace: [], external: false, expectLocalize: opts?.language === "th", elapsed: 0,
     spans: {},
   };
 }
@@ -242,7 +249,7 @@ function slotFor(s: Scene, ref: string | null): number {
   }
   const free = s.slots.findIndex((sl) => sl.ref === null);
   if (free >= 0) return free;
-  if (s.slots.length < MAX_SLOTS) {
+  if (s.slots.length < STAGE_MAX_PAPERS) {
     s.slots.push(emptySlot(ref));
     return s.slots.length - 1;
   }
@@ -346,9 +353,19 @@ function updateSpans(prev: Scene, next: Scene, el: number | null): void {
   if (changed) next.spans = spans;
 }
 
+/** A requested paper count from untrusted JSON: a positive finite number, clamped to the stage's cap; else null. */
+function paperCount(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) && v >= 1 ? Math.min(Math.floor(v), STAGE_MAX_PAPERS) : null;
+}
+
 // --- reducer -----------------------------------------------------------------------------------------------------
 
 export function reduceScene(state: Scene, a: SceneAction): Scene {
+  if (a.kind === "requested") {
+    // options are known before any event; an event's own count is never overwritten by them
+    const n = paperCount(a.value);
+    return n === null || state.requested !== null ? state : { ...state, requested: n };
+  }
   if (a.kind === "lang") {
     const expect = a.language === "th";
     return expect === state.expectLocalize ? state : { ...state, expectLocalize: expect };
@@ -423,7 +440,9 @@ export function reduceScene(state: Scene, a: SceneAction): Scene {
       s.counts.kept = kept;
       s.counts.screenedTotal = num(p.total);
       // Idempotent (a restarted worker may re-emit `screened`): keep slots that have a ref, resize only the waiting tail.
-      const want = Math.min(Math.max(kept, 0), MAX_SLOTS);
+      const asked = paperCount(p.requested);
+      if (asked !== null) s.requested = asked;
+      const want = Math.min(Math.max(kept, 0), STAGE_MAX_PAPERS);
       while (s.slots.length > want && s.slots[s.slots.length - 1].ref === null) s.slots.pop();
       while (s.slots.length < want) s.slots.push(emptySlot(null));
       recountSlots(s);

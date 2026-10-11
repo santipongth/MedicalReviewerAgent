@@ -29,9 +29,10 @@ export function AgentStage({ scene, connection }: { scene: Scene; connection?: C
   const slots = scene.slots.length;
   const batches = scene.counts.batchesExpected;
   const queries = scene.queries.length;
+  const requested = scene.requested; // sets the run's box and reserved pool rows (Plan 21)
   const layout = useMemo(
-    () => layoutFor(kind, { showLocalize, showExternal, slots, batches, queries }),
-    [kind, showLocalize, showExternal, slots, batches, queries],
+    () => layoutFor(kind, { showLocalize, showExternal, slots, batches, queries, requested }),
+    [kind, showLocalize, showExternal, slots, batches, queries, requested],
   );
   const cur = currentAgent(scene);
   const tinted: AgentId | null = cur === "synth" ? "read" : cur; // synth has no zone of its own; the pool stays tinted

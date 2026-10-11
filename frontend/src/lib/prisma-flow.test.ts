@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { legacyReviewFixture, P20_FIXTURES } from "@/test/fixtures";
-import { prismaFlow, flowRows, sourceRows, type FlowBox, type PrismaFlowView } from "./prisma-flow";
+import { legacyReviewFixture, P20_FIXTURES, resultN50, resultShortfall } from "@/test/fixtures";
+import { paperCounts, prismaFlow, flowRows, sourceRows, type FlowBox, type PrismaFlowView } from "./prisma-flow";
 import type { ReviewMethods, Stats } from "./types";
 
 const full: Stats = {
@@ -157,6 +157,27 @@ describe("prismaFlow", () => {
     expect(side.notes.join(" ")).toMatch(/2 records whose design matched no ticked type were kept/);
   });
 
+  it("Plan 21: requested and eligible are not exclusion counts, so every box's counts and lines are unchanged by them", () => {
+    const shortfall: Stats = { ...full, excluded_selection: { ...full.excluded_selection!, requested: 30, eligible: 22 } };
+    const nulls: Stats = { ...full, excluded_selection: { ...full.excluded_selection!, requested: null, eligible: null } };
+    // Task 5 words the over-limit line and the included box's note from them: only labels and notes may differ
+    const counts = (v: PrismaFlowView) => v.stages.map((st) => [st.main, st.side].map((b) => b && { value: b.value,
+      lines: b.lines.map((l) => [l.key, l.value]) }));
+    for (const lang of ["th", "en"] as const) {
+      for (const type of ["slr", "scoping"] as const) {
+        const before = prismaFlow({ stats: full, methods, type, lang })!;
+        expect(counts(prismaFlow({ stats: shortfall, methods, type, lang })!)).toEqual(counts(before));
+        expect(prismaFlow({ stats: nulls, methods, type, lang })).toEqual(before);
+        expect(flowRows(prismaFlow({ stats: shortfall, methods, type, lang })!).filter((r) => !r.note).map((r) => r.value))
+          .toEqual(flowRows(before).filter((r) => !r.note).map((r) => r.value));
+      }
+    }
+    const keys = prismaFlow({ stats: shortfall, methods, type: "slr", lang: "en" })!.stages.flatMap((st) =>
+      [st.main, ...(st.side ? [st.side] : [])].flatMap((b) => b.lines.map((l) => l.key)));
+    expect(keys).not.toContain("requested");
+    expect(keys).not.toContain("eligible");
+  });
+
   it("labels follow the report language", () => {
     const th = prismaFlow({ stats: full, methods, type: "slr", lang: "th" })!;
     expect(th.stages.map((s) => s.label)).toEqual(["การระบุ", "การคัดกรอง", "การคัดเลือก", "ที่รวมในการทบทวน"]);
@@ -191,5 +212,75 @@ describe("sourceRows", () => {
     const m: ReviewMethods["sources"] = { pubmed: 3, "semantic scholar": 2, "europe pmc (rct search)": 1, unknown: 4 };
     expect(sourceRows(m, "th").map((r) => r.label)).toEqual(["PubMed", "Semantic Scholar", "Europe PMC (ค้นเฉพาะ RCT)", "ไม่ระบุแหล่ง"]);
     expect(sourceRows(null, "en")).toEqual([]);
+  });
+});
+
+// --- Plan 21 Task 5: requested N, screened S, eligible E, analysed A ------------------------------------------------
+
+const flowOf = (review: typeof resultN50, lang: "th" | "en") =>
+  prismaFlow({ stats: review.result!.stats, methods: review.result!.methods, options: review.options, type: "slr", lang })!;
+const overLimit = (v: PrismaFlowView) => box(v, "selection", "side").lines.find((l) => l.key === "over_limit")!;
+
+describe("paperCounts", () => {
+  it("N = 50, S = 120, E = 80, A = 50: no shortfall", () => {
+    const r = resultN50.result!;
+    expect(paperCounts(r.stats))
+      .toEqual({ requested: 50, screened: 120, eligible: 80, analysed: 50, shortfall: null });
+  });
+
+  it("a shortfall (A < N) carries E and N", () => {
+    const r = resultShortfall.result!;
+    expect(paperCounts(r.stats))
+      .toEqual({ requested: 50, screened: 120, eligible: 22, analysed: 22, shortfall: { eligible: 22, requested: 50 } });
+  });
+
+  it("A == N is never a shortfall", () => {
+    const s: Stats = { ...full, selected: 30, excluded_selection: { ...full.excluded_selection!, requested: 30, eligible: 30 } };
+    expect(paperCounts(s)!.shortfall).toBeNull();
+  });
+
+  it("legacy (no `requested`, or null keys): null, even when A is below methods.limits.max_papers", () => {
+    expect(paperCounts(full)).toBeNull(); // A 22 < methods.limits.max_papers 30
+    const nulls: Stats = { ...full, excluded_selection: { ...full.excluded_selection!, requested: null, eligible: null } };
+    expect(paperCounts(nulls)).toBeNull();
+    expect(paperCounts(undefined)).toBeNull();
+  });
+});
+
+describe("prismaFlow with the requested count (Plan 21)", () => {
+  it("N=50, S=120, E=80, A=50: over_limit 30 labelled with 50, and the included box notes the 50 requested", () => {
+    const en = flowOf(resultN50, "en");
+    expect(overLimit(en)).toMatchObject({ value: 30, label: "Eligible but beyond the requested 50" });
+    expect(box(en, "screening", "main").value).toBe(120);
+    expect(box(en, "included", "main").value).toBe(50);
+    expect(box(en, "included", "main").countNote).toBe("50 requested");
+    const th = flowOf(resultN50, "th");
+    expect(overLimit(th).label).toBe("ผ่านเกณฑ์แต่เกินจำนวนที่กำหนด (50 ฉบับ)");
+    expect(box(th, "included", "main").countNote).toBe("ขอ 50 ฉบับ");
+    // the candidates box's cap note still comes from candidate_limit
+    expect(box(en, "screening", "main").notes.join(" ")).toMatch(/top 120 of 140 .*\(cap 120\)/);
+  });
+
+  it("shortfall N=50, E=22, A=22: the note carries 22 and 50, and over_limit is 0", () => {
+    const en = flowOf(resultShortfall, "en");
+    expect(overLimit(en).value).toBe(0);
+    expect(box(en, "included", "main").countNote).toBe("22 eligible of 50 requested");
+    expect(box(flowOf(resultShortfall, "th"), "included", "main").countNote).toBe("ผ่านเกณฑ์ 22 จากที่ขอ 50");
+  });
+
+  it("the table twin lists the count note as a note row with no count", () => {
+    const rows = flowRows(flowOf(resultShortfall, "en"));
+    expect(rows.filter((r) => r.stage === "Included" && r.note).map((r) => [r.label, r.value]))
+      .toEqual([["22 eligible of 50 requested", undefined]]);
+  });
+
+  it("legacy without the keys: unchanged output (old over-limit label, no count note)", () => {
+    for (const lang of ["th", "en"] as const) {
+      const v = prismaFlow({ stats: full, methods, type: "slr", lang })!;
+      expect(overLimit(v).label).toBe(lang === "th" ? "เกินจำนวนที่วิเคราะห์ (สูงสุด 30)" : "Over the analysis limit (at most 30)");
+      expect(v.stages.every((st) => st.main.countNote === undefined && st.side?.countNote === undefined)).toBe(true);
+    }
+    const legacy = legacyReviewFixture.result!;
+    expect(prismaFlow({ stats: legacy.stats, type: "legacy", lang: "th" })!.stages.some((st) => st.main.countNote !== undefined)).toBe(false);
   });
 });

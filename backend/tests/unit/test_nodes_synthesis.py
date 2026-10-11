@@ -310,7 +310,9 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
     assert r["stats"] == {"found": 40, "unique": 25, "with_abstract": 22, "candidates": 20, "screened": 20, "selected": 2,
                           "extracted": 2, "non_research": 0, "year_excluded": 0, "no_abstract": 0,
                           "excluded_screening": {},
-                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 0, "study_design_relaxed": 0,
+                          # selection stats from before Plan 21 carry no requested/eligible: null, never a guess
+                          "excluded_selection": {"narrative_excluded": 0, "over_limit": 0, "requested": None,
+                                                 "eligible": None, "study_design_relaxed": 0,
                                                  "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
                           "related_reports": 0}  # Plan 20 Task 10
     assert r["question"]["refined_question"] == "คำถาม?" and r["question"]["english"]["refined_question"] == "RQ?"

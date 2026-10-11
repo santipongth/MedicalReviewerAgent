@@ -14,6 +14,8 @@ from datetime import UTC, datetime, timedelta
 from redis.exceptions import WatchError
 
 from app.config import Settings
+from app.schemas.review import ReviewOptions
+from app.services.budget import review_cost_cap
 
 KEY_TTL_SECONDS = 48 * 3600
 QUEUE_FULL_RETRY_SECONDS = 60
@@ -98,7 +100,12 @@ class Capacity:
     async def usd_today(self) -> float:
         return float(await self.redis.get(self._key("usd")) or 0)
 
-    async def check(self, *, queued: int, running: int = 0) -> Refusal | None:
+    def worst_case_cap(self) -> float:
+        return review_cost_cap(self.settings, ReviewOptions(
+            max_papers=ReviewOptions.bound("max_papers"),
+            candidate_limit=ReviewOptions.bound("candidate_limit")))
+
+    async def check(self, *, queued: int, running: int = 0, this_cap: float | None = None) -> Refusal | None:
         s = self.settings
         if queued >= s.max_queued_reviews:
             return Refusal("queue_full", QUEUE_FULL_RETRY_SECONDS,
@@ -106,9 +113,11 @@ class Capacity:
         if await self.reviews_today() >= s.max_reviews_per_day:
             return Refusal("daily_reviews", seconds_until_utc_midnight(),
                            "today's review capacity is used up; new reviews open at 00:00 UTC")
-        # Spend is booked when a review ends, so reserve the per-review cap for every review already admitted
-        # (queued or running) plus this one: the daily budget is then a real bound, not a lagging counter.
-        reserved = (queued + running + 1) * s.max_cost_per_review_usd
+        # Spend is booked when a review ends, so reserve the cap for every review already admitted (queued or
+        # running; their options are not loaded, so the worst case) plus this one's own cap: the daily budget is
+        # then a real bound, not a lagging counter.
+        worst_cap = self.worst_case_cap()
+        reserved = (queued + running) * worst_cap + (this_cap if this_cap is not None else worst_cap)
         if await self.usd_today() + reserved > s.max_usd_per_day:
             return Refusal("daily_budget", seconds_until_utc_midnight(),
                            "today's review budget is used up; new reviews open at 00:00 UTC")

@@ -4,6 +4,9 @@ import { LiveLimits } from "@/components/about/live-limits";
 import { CodeBlock } from "@/components/code-block";
 import { Gloss } from "@/components/ui/gloss";
 import { publicApiUrl } from "@/lib/public-api";
+import { paperRangeTh } from "@/lib/limits";
+import { getServerStatus } from "@/lib/server-api";
+import type { ServiceLimits } from "@/lib/types";
 
 export const metadata: Metadata = { title: "API และ MCP" };
 
@@ -17,7 +20,9 @@ curl ${api}/api/v1/status
 curl -X POST ${api}/api/v1/reviews \\
   -H "Content-Type: application/json" \\
   -d '{"topic": "metformin and colorectal cancer", "language": "en",
-       "options": {"review_type": "slr", "max_papers": 30, "study_types": ["RCT", "Cohort"], "year_from": 2015}}'
+       "options": {"review_type": "slr", "study_types": ["RCT", "Cohort"], "year_from": 2015}}'
+
+# ไม่ส่ง max_papers = วิเคราะห์ตามค่าเริ่มต้น (ช่วงที่ส่งได้อยู่ใน limits.max_papers ของ /status)
 
 # 2) ติดตามความคืบหน้าแบบสด (Server-Sent Events)
 curl -N ${api}/api/v1/reviews/<review_id>/events
@@ -54,10 +59,25 @@ export function verify(body: Buffer, signatureHeader: string, apiKey: string): b
   };
 }
 
+/** Paper counts as the running service reports them (GET /api/v1/status), or number-free wording when unknown. */
+function limitsCopy(l: ServiceLimits | null) {
+  const m = l?.max_papers;
+  const c = l?.candidate_limit;
+  return {
+    screen: c ? `ราว ${c.default} ฉบับ` : "",
+    read: l ? `ตามจำนวนที่ผู้ใช้กำหนด ${paperRangeTh(l)}` : "ตามจำนวนที่ผู้ใช้กำหนด",
+    mcpRange: m ? `ปรับให้อยู่ในช่วง ${m.min}–${m.max}` : "ปรับให้อยู่ในช่วงที่ระบบรับ ดู limits ใน /status",
+    scope: c && m
+      ? `คัดกรองงานที่มีบทคัดย่อราว ${c.default} ฉบับ (ปรับได้ ${c.min}–${c.max}) แล้ววิเคราะห์ฉบับที่เกี่ยวข้องที่สุดตามจำนวนที่ผู้ใช้กำหนด ${m.min}–${m.max} ฉบับ (ค่าเริ่มต้น ${m.default}) ถ้าผ่านเกณฑ์ไม่ถึงจะวิเคราะห์เท่าที่มีและแจ้งในรายงาน`
+      : "คัดกรองงานที่มีบทคัดย่อ แล้ววิเคราะห์ฉบับที่เกี่ยวข้องที่สุดตามจำนวนที่ผู้ใช้กำหนด (ช่วงที่รับอยู่ในหัวข้อ “ขีดจำกัดตอนนี้”) ถ้าผ่านเกณฑ์ไม่ถึงจะวิเคราะห์เท่าที่มีและแจ้งในรายงาน",
+  };
+}
+
 export default async function AboutPage() {
   await connection();
   const api = await publicApiUrl();
   const s = snippets(api);
+  const lc = limitsCopy((await getServerStatus())?.limits ?? null);
   return (
     <div className="grid max-w-[880px] gap-12 pt-12">
       <header className="grid gap-3">
@@ -74,8 +94,8 @@ export default async function AboutPage() {
         <ol className="grid max-w-[65ch] list-decimal gap-2 pl-5">
           <li>รับหัวข้อหรือคำถาม (ไม่เกิน 600 ตัวอักษร) แล้วตีความเป็นคำถามวิจัยตาม <Gloss k="pico" /> หรือ <Gloss k="pcc" /> สำหรับการทบทวนขอบเขต</li>
           <li>ค้น 8 แหล่ง: PubMed, Europe PMC (รวม <Gloss k="preprint" /> จาก medRxiv/bioRxiv), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ และ OpenAIRE ผ่าน <Gloss k="searxng" /> แล้วตัดงานซ้ำ</li>
-          <li>คัดกรองงานที่มี<Gloss k="abstract" /> ราว 60 ฉบับตามเกณฑ์ของรูปแบบการทบทวน พร้อมเหตุผลที่คัดออกตาม <Gloss k="prisma" /></li>
-          <li>อ่านบทคัดย่อสูงสุด 30 ฉบับ สกัดผล ตัวเลข และ<Gloss k="riskOfBias" /> ตรวจตัวเลขทุกตัวกับประโยคต้นฉบับ</li>
+          <li>คัดกรองงานที่มี<Gloss k="abstract" />{lc.screen && ` ${lc.screen}`} ตามเกณฑ์ของรูปแบบการทบทวน พร้อมเหตุผลที่คัดออกตาม <Gloss k="prisma" /></li>
+          <li>อ่านบทคัดย่อของฉบับที่เกี่ยวข้องที่สุด{lc.read} สกัดผล ตัวเลข และ<Gloss k="riskOfBias" /> ตรวจตัวเลขทุกตัวกับประโยคต้นฉบับ</li>
           <li>เทียบผลข้ามงานวิจัย อธิบายจุดที่ขัดกัน สรุปผล (ประเมินระดับความแข็งแรงของหลักฐานเฉพาะ <Gloss k="slr" /> และ <Gloss k="metaAnalysis" />{" "}
             ไม่ประเมินใน <Gloss k="narrativeReview" /> หรือ <Gloss k="scopingReview" />) และแปลเป็นภาษาไทยโดยตัวเลขไม่เปลี่ยน</li>
         </ol>
@@ -130,7 +150,7 @@ export default async function AboutPage() {
           เครื่องมือ: <b>search_papers</b>, <b>start_review</b>, <b>get_review_status</b>, <b>get_review_result</b> ·
           resources: <code className="font-code">review://&lt;id&gt;</code> และ <code className="font-code">review://&lt;id&gt;/report.md</code> ·
           prompt: <b>literature_review</b> · รอสถานะจนเป็น done, error, rejected หรือ cancelled (ปกติ 1–3 นาที)
-          <code className="font-code">start_review</code> รับ topic, language, max_papers (ปรับให้อยู่ในช่วง 5–30), review_type, study_types และ year_from
+          <code className="font-code">start_review</code> รับ topic, language, max_papers ({lc.mcpRange}), review_type, study_types และ year_from
           เหมือน REST และเมื่อระบบเต็มเครื่องมือจะบอกเหตุผลและเวลาที่ควรลองใหม่
         </p>
         <CodeBlock label="Claude Code" code={s.claudeCode} />
@@ -141,7 +161,7 @@ export default async function AboutPage() {
         <h2 id="h-limits" className="text-2xl font-bold">ขอบเขตและข้อจำกัด</h2>
         <ul className="grid max-w-[65ch] list-disc gap-2 pl-5">
           <li>เป็นการทบทวนงานวิจัยแบบเร่งด่วนโดยอัตโนมัติจากบทคัดย่อ แม้เลือกรูปแบบ systematic review ก็ไม่แทน systematic review ที่ผู้เชี่ยวชาญทำตามมาตรฐานเต็ม และไม่ใช่คำแนะนำทางการแพทย์</li>
-          <li>ใช้เฉพาะบทคัดย่อ ไม่ดาวน์โหลดฉบับเต็ม: ค่าเริ่มต้นคัดกรองงานที่มีบทคัดย่อ 60 ฉบับ (ปรับได้ 20–100) แล้ววิเคราะห์สูงสุด 30 ฉบับ (ปรับได้ 5–30) รายละเอียดที่มีแต่ในฉบับเต็มจึงอาจไม่ปรากฏ</li>
+          <li>ใช้เฉพาะบทคัดย่อ ไม่ดาวน์โหลดฉบับเต็ม: {lc.scope} รายละเอียดที่มีแต่ในฉบับเต็มจึงอาจไม่ปรากฏ</li>
           <li>ระบบรับรีวิวใหม่วันละจำนวนจำกัดและจำกัดค่าใช้จ่ายต่อวันและต่อรีวิว เมื่อคิวเต็มหรือครบกำหนดวันจะได้ 503 พร้อมเหตุผลและเวลาที่เปิดรับอีกครั้ง (รีวิวที่เคยทำยังเปิดดูได้)</li>
           <li>ตัวเลขที่ตรวจกับประโยคในบทคัดย่อไม่ผ่านจะถูกเว้นว่างและแสดงเป็น “ไม่ยืนยัน” ไม่มีการเดาค่า</li>
           <li>ความแข็งแรงของหลักฐาน (เฉพาะ systematic review และ meta-analysis) เป็นแบบ <Gloss k="grade" suffix="แบบย่อ">GRADE-lite</Gloss> ที่คำนวณจากรูปแบบการศึกษา ความเสี่ยงอคติ ความสอดคล้อง และขนาดตัวอย่าง</li>

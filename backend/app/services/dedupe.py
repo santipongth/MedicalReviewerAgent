@@ -15,7 +15,8 @@ SCALARS = ("title", "doi", "pmid", "pmcid", "arxiv_id", "year", "journal", "url"
 _SOURCE_RANK = {"europepmc": 2, "arxiv": 1, "engine": 1, "snippet": 0}
 
 
-def _identifiers(c: Candidate) -> list[str]:
+def identifiers(c: Candidate) -> list[str]:
+    """The ids two records of one paper can share: DOI, PMID, PMCID, arXiv id and a long normalised title."""
     ids = [f"doi:{c.doi}" if c.doi else "", f"pmid:{c.pmid}" if c.pmid else "",
            f"pmcid:{c.pmcid}" if c.pmcid else "", f"arxiv:{c.arxiv_id}" if c.arxiv_id else ""]
     title = normalize_title(c.title)
@@ -71,7 +72,7 @@ def merge_candidates(cands: Iterable[Candidate], *, fuzzy_threshold: int = 95, r
 
     seen: dict[str, int] = {}
     for i, c in enumerate(items):
-        for ident in _identifiers(c):
+        for ident in identifiers(c):
             if ident.startswith("t:") and ident in seen and not _years_compatible(items[seen[ident]], c):
                 continue
             if ident in seen:
@@ -96,3 +97,28 @@ def merge_candidates(cands: Iterable[Candidate], *, fuzzy_threshold: int = 95, r
         if i >= rank_from and root not in rank:
             rank[root] = i
     return [_combine(groups[root]) for root in sorted(groups, key=lambda r: (r not in rank, rank.get(r, r)))]
+
+
+class PaperIndex:
+    """The papers already in hand, to tell whether another record is one of them by the same rules as
+    merge_candidates: a shared identifier, or a near-identical title (same numbers, compatible years)."""
+
+    def __init__(self, cands: Iterable[Candidate], *, fuzzy_threshold: int = 95) -> None:
+        self.threshold = fuzzy_threshold
+        self.ids: set[str] = set()
+        self.titles: list[tuple[str, list[str], Candidate]] = []
+        for c in cands:
+            self.ids.update(identifiers(c))
+            title = normalize_title(c.title)
+            if title:
+                self.titles.append((title, _numbers(title), c))
+
+    def __contains__(self, c: Candidate) -> bool:
+        if self.ids & set(identifiers(c)):
+            return True
+        title = normalize_title(c.title)
+        if not title:
+            return False
+        numbers = _numbers(title)
+        return any(n == numbers and _years_compatible(k, c) and fuzz.ratio(t, title) >= self.threshold
+                   for t, n, k in self.titles)

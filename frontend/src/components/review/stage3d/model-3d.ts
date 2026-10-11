@@ -160,7 +160,7 @@ export const VIEW_BACK = 7;
 const VIEW_LEN = Math.hypot(VIEW_UP, VIEW_BACK);
 const DIR_Y = VIEW_UP / VIEW_LEN;
 const DIR_Z = VIEW_BACK / VIEW_LEN;
-export const STAGE_ASPECT = 960 / 288; // = PLACEHOLDER_SIZE.wide (pinned by stage-3d.test.tsx)
+export const STAGE_ASPECT = 960 / 288; // = PLACEHOLDER_SIZE.wide, the box up to 30 papers (pinned by stage-3d.test.tsx)
 // A modest vertical FOV: in the flat 960/288 box a 45-degree one spans ~106 degrees across, so the end members leaned
 // visibly (keystone); at 30 the camera simply stands further back.
 export const STAGE_FOV = 30;
@@ -256,12 +256,14 @@ export function framePoints(layout: TeamLayout3D, speaking: MemberId | null): Ve
  * reserved for the largest pan, so easing toward an end member never crops the far one. Called on a speaker change
  * only, never per frame.
  */
-export function teamCameraGoal(layout: TeamLayout3D, speaking: MemberId | null, out: number[] = new Array(6).fill(0)): number[] {
+export function teamCameraGoal(
+  layout: TeamLayout3D, speaking: MemberId | null, out: number[] = new Array(6).fill(0), aspect = STAGE_ASPECT,
+): number[] {
   const { min, max } = layout.bounds;
   const cx = Number.isFinite(min[0] + max[0]) ? (min[0] + max[0]) / 2 : 0;
   let reach = 0;
   for (const m of Object.values(layout.members)) reach = Math.max(reach, Math.abs(m.feet[0] - cx) * PAN);
-  fitCamera(layout.bounds, STAGE_ASPECT, STAGE_FOV, out, framePoints(layout, speaking), reach);
+  fitCamera(layout.bounds, aspect, STAGE_FOV, out, framePoints(layout, speaking), reach);
   const m = speaking ? layout.members[speaking] : undefined;
   const pan = m ? (m.feet[0] - cx) * PAN : 0;
   out[0] += pan;

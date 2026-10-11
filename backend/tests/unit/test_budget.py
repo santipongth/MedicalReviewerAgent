@@ -40,3 +40,15 @@ async def test_each_run_has_its_own_budget():
         return round(b.spent, 3)
 
     assert await asyncio.gather(run(0.005), run(1.0)) == [0.01, 0.03]
+
+
+def test_review_cost_cap_scales_with_papers_and_pool_and_the_ceiling_clamps():
+    from app.config import Settings
+    from app.schemas.review import ReviewOptions
+    from app.services.budget import review_cost_cap
+    s = Settings(_env_file=None)
+    assert review_cost_cap(s, ReviewOptions(max_papers=30, candidate_limit=60)) == pytest.approx(0.25)
+    assert review_cost_cap(s, ReviewOptions(max_papers=50, candidate_limit=120)) == pytest.approx(0.40)
+    assert review_cost_cap(s, ReviewOptions(max_papers=5, candidate_limit=120)) == pytest.approx(0.13)
+    tight = Settings(_env_file=None, max_cost_per_review_usd=0.30)
+    assert review_cost_cap(tight, ReviewOptions(max_papers=50, candidate_limit=120)) == 0.30

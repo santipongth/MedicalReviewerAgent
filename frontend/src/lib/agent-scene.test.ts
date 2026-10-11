@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type AgentId, type Pulse, type Scene, AGENT_LABEL, MAX_DOTS, PACKET_CAP, SYNTH_CAPTION, countFor, currentAgent, emptySlot, formatElapsed,
-  initialScene, planDots, readDone, reduceScene, sceneSummary, showSynthCaption, stageCaption, stageStep, takeFreshPulses, traceAgent,
+  STAGE_MAX_PAPERS, initialScene, planDots, readDone, reduceScene, sceneSummary, showSynthCaption, stageCaption, stageStep, takeFreshPulses, traceAgent,
 } from "./agent-scene";
 import type { ReviewEvent } from "./types";
 import { STEP_TITLE } from "./agent-thought";
@@ -147,9 +147,10 @@ describe("reader slots", () => {
     s = run([ev(32, "reading", { ref: "P7" })], s);
     expect(s.slots.filter((x) => x.ref === "P7")).toHaveLength(1);
   });
-  it("appends when screened was never seen, capped at 30", () => {
-    const s = run(reading(35));
-    expect(s.slots).toHaveLength(30);
+  it("appends when screened was never seen, capped at STAGE_MAX_PAPERS (50)", () => {
+    expect(STAGE_MAX_PAPERS).toBe(50);
+    const s = run(reading(55));
+    expect(s.slots).toHaveLength(50);
     expect(s.slots.every((x) => x.state === "reading")).toBe(true);
   });
   it("repeated extracted is idempotent for slots and counts", () => {
@@ -548,5 +549,38 @@ describe("plan 13: slot details, trace agents, step spans", () => {
     const c = run([ev(7, "planning", { queries: ["a"], elapsed_s: 6 })], b);
     expect(c.spans).not.toBe(b.spans);
     expect(b.spans.plan).toBeUndefined();
+  });
+});
+
+describe("Plan 21: the requested paper count", () => {
+  const opts = (v: unknown, s: Scene = initialScene({ language: "th" })) => reduceScene(s, { kind: "requested", value: v });
+
+  it("is unknown at first", () => {
+    expect(initialScene().requested).toBeNull();
+  });
+
+  it("comes from review.options.max_papers, then from the screened event (which wins)", () => {
+    const s = opts(40);
+    expect(s.requested).toBe(40);
+    expect(run([ev(1, "screened", { kept: 12, total: 120, requested: 50 })], s).requested).toBe(50);
+  });
+
+  it("an old stream (no requested) keeps the options' count; nothing known stays null", () => {
+    expect(run([ev(1, "screened", { kept: 12, total: 60 })], opts(20)).requested).toBe(20);
+    expect(run([ev(1, "screened", { kept: 12, total: 60 })]).requested).toBeNull();
+  });
+
+  it("options never overwrite an event's count, and bad values are ignored; counts clamp to the stage's cap", () => {
+    const fromEvent = run([ev(1, "screened", { kept: 3, total: 9, requested: 10 })]);
+    expect(opts(40, fromEvent).requested).toBe(10);
+    for (const bad of [null, undefined, "30", NaN, 0, -5]) expect(opts(bad).requested).toBeNull();
+    expect(opts(99).requested).toBe(STAGE_MAX_PAPERS);
+    expect(run([ev(1, "screened", { kept: 50, total: 120, requested: 70 })]).requested).toBe(STAGE_MAX_PAPERS);
+  });
+
+  it("50 kept papers get 50 waiting slots; a 51st reading is not added", () => {
+    const s = run([ev(1, "screened", { kept: 50, total: 120, requested: 50 }), ...reading(51, 10)]);
+    expect(s.slots).toHaveLength(50);
+    expect(s.slots.filter((x) => x.state === "reading")).toHaveLength(50);
   });
 });

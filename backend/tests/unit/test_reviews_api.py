@@ -25,8 +25,8 @@ async def test_create_review_enqueues_and_emits_queued(client, queue, session_fa
     got = await client.get(f"/api/v1/reviews/{review_id}")
     assert got.status_code == 200
     assert got.json()["topic"] == "metformin colorectal cancer"
-    assert got.json()["options"]["max_papers"] == 30  # abstract-only: 60 candidates -> up to 30 analysed
-    assert got.json()["options"]["candidate_limit"] == 60
+    assert got.json()["options"]["max_papers"] == 30  # abstract-only: 120 candidates -> up to 30 analysed
+    assert got.json()["options"]["candidate_limit"] == 120
 
     async with session_factory() as s:
         events = await EventRepository(s).list_since(review_id, 0)
@@ -71,10 +71,21 @@ async def test_validation_rejects_blank_long_and_bad_language(client):
             "/api/v1/reviews", json={"topic": "ok topic", "options": {"max_papers": 99}}
         )
     ).status_code == 422
-    for bad in ({"max_papers": 31}, {"max_papers": 4}, {"candidate_limit": 101}, {"candidate_limit": 19},
-                {"max_papers": 30, "candidate_limit": 25}):  # fewer candidates than papers to analyse
+    # the last two have fewer candidates than papers to analyse
+    for bad in ({"max_papers": 51}, {"max_papers": 4}, {"candidate_limit": 121}, {"candidate_limit": 19},
+                {"max_papers": 30, "candidate_limit": 25}, {"max_papers": 50, "candidate_limit": 40}):
         resp = await client.post("/api/v1/reviews", json={"topic": "ok topic", "options": bad})
         assert resp.status_code == 422, bad
+
+
+async def test_fifty_papers_is_accepted_and_clamped_bounds_hold(client):
+    resp = await client.post("/api/v1/reviews", json={"topic": "ok topic fifty", "options": {"max_papers": 50}})
+    assert resp.status_code == 202
+    from app.schemas.review import ReviewOptions
+    assert ReviewOptions.clamped({"max_papers": 99}).max_papers == 50
+    low = ReviewOptions.clamped({"max_papers": 3, "candidate_limit": 10})
+    assert (low.max_papers, low.candidate_limit) == (5, 20)
+    assert ReviewOptions.model_validate({"candidate_limit": 60}).candidate_limit == 60  # an old stored option
 
 
 async def test_symbol_only_topic_is_rejected(client):

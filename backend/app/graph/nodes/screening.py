@@ -219,9 +219,12 @@ def make_select_top(deps):
                      **({"design_mismatch": True} if d.get("design_mismatch") else {}),
                      "candidate": by_key[d["key"]]}
                     for i, d in enumerate(chosen)]
-        progress_writer()({"type": "screened", "kept": len(selected), "total": len(best)})
+        # Plan 21: the requested count and the eligible papers are recorded, so a shortfall (eligible < requested)
+        # is reported, never padded.
+        progress_writer()({"type": "screened", "kept": len(selected), "total": len(best),
+                           "requested": options.max_papers})
         stats = {"excluded_screening": dict(excluded_screening), "narrative_excluded": narrative_excluded,
-                 "over_limit": len(ranked) - len(chosen)}
+                 "over_limit": len(ranked) - len(chosen), "requested": options.max_papers, "eligible": len(ranked)}
         if relaxed:
             stats["study_design_relaxed"] = relaxed
         if screening_failed:

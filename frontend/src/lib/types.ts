@@ -350,6 +350,12 @@ export interface Stats {
     study_design_relaxed?: number; // design mismatches kept because fewer than 3 papers matched the ticked types
     study_design_corrected?: number; // Plan 19: read as a design outside the ticked types; listed, not evidence
     off_focus?: number; // Plan 20 Task 10: themes reviews only, included papers that never name the question's focus
+    /**
+     * Plan 21: the `max_papers` the user asked for, and the papers eligible for analysis (`eligible < requested` is a
+     * shortfall). Not exclusion counts: never add them to the values above. Null or absent before Plan 21.
+     */
+    requested?: number | null;
+    eligible?: number | null;
   };
   /** Plan 20 Task 10: analysed papers that are further reports of a trial already analysed (not counted again). */
   related_reports?: number;
@@ -404,6 +410,9 @@ export interface ServiceStatus {
     sse_max_per_ip?: number;
   };
 }
+
+/** GET /api/v1/status `limits`: read them, never hard-code them (Plan 21: paper count and pool size). */
+export type ServiceLimits = ServiceStatus["limits"];
 
 export interface ReviewSummary {
   id: string;

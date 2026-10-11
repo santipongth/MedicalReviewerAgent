@@ -3,6 +3,7 @@
 // Attribution: see NOTICE.md (AI-Agent-observatory by sakshigupta372, used with permission).
 // The arc formula (lifted midpoint, quadratic control through it) is adapted from the AI-Agent-observatory project.
 import { PIPELINE, type AgentId, type EdgeId } from "./agent-scene";
+import { POOL_COLS, POOL_PITCH, STAGE_MAX_PAPERS, stageRowsFor, stageSizeFor } from "./stage-size";
 
 export interface Pt { x: number; y: number }
 export interface Rect { x: number; y: number; w: number; h: number }
@@ -33,30 +34,32 @@ export interface StageLayout {
   /** Caption anchors: the screening split ("ผ่าน n · ตัดออก n") and the indeterminate synth caption (stacked = two lines). */
   notes: { screen: Pt & { anchor: Anchor }; synth: Pt & { anchor: Anchor; stacked: boolean } };
 }
-export interface LayoutOpts { showLocalize: boolean; showExternal: boolean; slots: number; batches: number; queries: number }
+export interface LayoutOpts {
+  showLocalize: boolean; showExternal: boolean; slots: number; batches: number; queries: number;
+  /** The run's requested paper count (scene.requested): it sets the reserved pool rows and the wide box (stage-size.ts). */
+  requested?: number | null;
+}
 
 /** Search engines configured for SearXNG (backend/app/config.py `searxng_engines`), in display form. */
 export const SATELLITES = ["PubMed", "Europe PMC", "OpenAlex", "Semantic Scholar", "Crossref", "arXiv", "DOAJ", "OpenAIRE"] as const;
 
-const MAX_SLOTS = 30;
 const MAX_QUERY_CHIPS = 4;
 const MAX_BATCH_CHIPS = 10;
 const HALF = 22; // half a 44px tile
 const ROW = 18; // detail row pitch (12px text)
 const TEXT_BASE = 13; // a detail row's text baseline below the row's top (dots sit 4px above it)
-const POOL_COLS = 10;
-const SLOT_PITCH = 28;
+const SLOT_PITCH = POOL_PITCH;
 // Wide box: the height never depends on what the run turns on, so the page never shifts mid-run.
 const LANE_Y = 62; // tile row centre; the headroom above holds the external node (when shown)
 const EXT_RISE = 38; // external node centre above the row, nested in the gap between the read and synth tiles
 const BAND_GAP = 72; // row centre -> band top: under the tiles (+22), labels (baseline +38) and counts (baseline +55)
 const TAIL = 10; // under the band (the source list is its tallest block)
-const BLOCK_H = 5 * ROW; // queries (4 + "+n") and the 3-row reader pool; the synth caption hangs under them
+const BLOCK_H = 5 * ROW; // queries (4 + "+n") and a reader pool of up to 3 rows; the synth caption hangs under them
 const BAR_W_WIDE = 84;
 const BAR_W_NARROW = 96;
 const SRC_W = 126; // wide source list width (dot + the longest name, "Semantic Scholar")
 const SRC_COL = 140; // narrow: second source column offset
-/** Reader slot radius and ref font: "P30" (about 3 x 0.6em at 11px) fits inside the ring, clear of its stroke. */
+/** Reader slot radius and ref font: "P50" (about 3 x 0.6em at 11px) fits inside the ring, clear of its stroke. */
 export const SLOT_R = 12;
 export const REF_FONT = 11;
 /** How many 12px code characters (~7.2px each) fit a query row of width `w`, after the check mark and padding. */
@@ -161,7 +164,9 @@ function wideLayout(o: LayoutOpts): StageLayout {
 
   // reader pool: 10 columns centred on the read..finish columns (clamped to the row's right edge); a partial pool
   // fills from the same origin, so slots never move as papers arrive
-  const ns = clampInt(o.slots, 0, MAX_SLOTS);
+  // the run reserves its rows up front (stage-size.ts); a stray extra slot never grows the pool past them
+  const rows = stageRowsFor(o.requested);
+  const ns = clampInt(o.slots, 0, Math.min(STAGE_MAX_PAPERS, rows * POOL_COLS));
   const slots: Pt[] = [];
   const full = POOL_COLS * SLOT_PITCH;
   const fin = nodes.finish!;
@@ -182,11 +187,13 @@ function wideLayout(o: LayoutOpts): StageLayout {
     label.external = "right";
   }
   return {
-    kind: "wide", width, height: bandY + bandH + TAIL, nodes, label, edges: buildEdges(vis, nodes, o.showExternal, 10),
+    // the run's box: bandY + bandH + TAIL (= 288) for up to three pool rows, one pitch taller per reserved row above
+    kind: "wide", width, height: Math.max(bandY + bandH + TAIL, stageSizeFor(o.requested).height), nodes, label, edges: buildEdges(vis, nodes, o.showExternal, 10),
     band: { y: bandY, h: bandH }, satellites, queryChips, queryAlign: "end", batchChips, slots, slotR: SLOT_R, zone,
     notes: {
       screen: { x: screen.x, y: bandY + TEXT_BASE + ROW - 1, anchor: "middle" }, // the row under the bar
-      synth: { x: px0 + full / 2, y: bandY + BLOCK_H + 18, anchor: "middle", stacked: false },
+      // under the query rows, or (Plan 21) under the reserved 4- or 5-row pool, clear of its tint, inside the run's box
+      synth: { x: px0 + full / 2, y: bandY + Math.max(BLOCK_H + 18, rows * SLOT_PITCH + 22), anchor: "middle", stacked: false },
     },
   };
 }
@@ -200,7 +207,7 @@ function narrowLayout(o: LayoutOpts): StageLayout {
   const q = clampInt(o.queries, 0, 1000);
   const nq = q > MAX_QUERY_CHIPS ? MAX_QUERY_CHIPS + 1 : q;
   const nb = clampInt(o.batches, 0, MAX_BATCH_CHIPS);
-  const ns = clampInt(o.slots, 0, MAX_SLOTS);
+  const ns = clampInt(o.slots, 0, Math.min(STAGE_MAX_PAPERS, stageRowsFor(o.requested) * POOL_COLS));
 
   const nodes: Partial<Record<AgentId, Pt>> = {};
   const label: Partial<Record<AgentId, "below" | "right">> = {};

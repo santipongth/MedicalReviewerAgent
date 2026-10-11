@@ -15,6 +15,7 @@ from app.config import Settings, get_settings
 from app.logging import configure_logging
 from app.mcp.server import build_mcp, transport_security
 from app.runtime import AppDeps
+from app.schemas.review import ReviewOptions
 
 __all__ = ["AppDeps", "app", "create_app"]
 
@@ -31,11 +32,14 @@ class McpPathMiddleware:
         await self.app(scope, receive, send)
 
 
-API_DESCRIPTION = """Automated rapid literature reviews of published medical research.
+_PAPERS = (ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le"),
+           ReviewOptions.model_fields["max_papers"].default)
+API_DESCRIPTION = f"""Automated rapid literature reviews of published medical research.
 
-Submit a topic (POST /api/v1/reviews), follow it live (GET /api/v1/reviews/{id}/events, Server-Sent Events) and read
-or download the result. The agent refines the question, screens about 60 candidate papers that have abstracts,
-analyses the abstracts of up to 30 (no full-text fetching) and checks every number against the abstract; numbers it
+Submit a topic (POST /api/v1/reviews), follow it live (GET /api/v1/reviews/{{id}}/events, Server-Sent Events) and read
+or download the result. The agent refines the question, screens about {ReviewOptions.model_fields["candidate_limit"].default}
+candidate papers that have abstracts, analyses the abstracts of the {_PAPERS[0]}-{_PAPERS[1]} you choose (default
+{_PAPERS[2]}; no full-text fetching) and checks every number against the abstract; numbers it
 cannot verify are left empty, never estimated.
 
 Limits and capacity are published at GET /api/v1/status. Refusals always say why and when to retry: 429 (rate limit,

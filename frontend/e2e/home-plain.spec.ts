@@ -68,10 +68,10 @@ test("home: the scope form spans the content width, two columns from 1024, even 
     if (width >= 640 && width < 1024) expect(new Set(heights).size).toBe(1);
     expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
     await form(page).getByText("ตัวเลือกเพิ่มเติม").click();
-    await expect(form(page).getByLabel(/จำนวนงานวิจัยที่วิเคราะห์/)).toBeVisible();
+    await expect(form(page).getByLabel(/จำนวนงานวิจัยที่ต้องการวิเคราะห์/)).toBeVisible();
     if (width >= 1024) { // language, paper count and year sit in one aligned row
       const tops = await Promise.all([
-        form(page).getByText("ภาษาของรายงาน"), form(page).getByText("จำนวนงานวิจัยที่วิเคราะห์ (สูงสุด)"),
+        form(page).getByText("ภาษาของรายงาน"), form(page).getByText("จำนวนงานวิจัยที่ต้องการวิเคราะห์"),
         form(page).getByText("ตั้งแต่ปี (ไม่บังคับ)"),
       ].map(async (l) => Math.round((await l.boundingBox())!.y)));
       expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(4);

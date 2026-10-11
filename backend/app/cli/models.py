@@ -12,6 +12,7 @@ from typing import TextIO
 
 from app.compat import run_async
 from app.config import get_settings
+from app.schemas.review import ReviewOptions
 from app.services.http import HttpClient
 from app.services.llm_config import LLMConfigError, load_llm_config
 from app.services.model_catalog import (
@@ -21,16 +22,20 @@ from app.services.model_catalog import (
     validate_role,
 )
 
-# Rough token budget of one review (60 candidates → 30 abstracts), used for the cost estimate in `check`.
+_PAPERS = ReviewOptions.model_fields["max_papers"].default
+_POOL = ReviewOptions.model_fields["candidate_limit"].default
+
+# Rough token budget of one default review (a full pool screened, the default paper count analysed), used for the
+# cost estimate in `check`.
 TYPICAL_CALLS: dict[str, tuple[int, int, int]] = {  # role: (calls, input tokens, output tokens) per call
     "guard": (1, 400, 100),
     "refiner": (2, 1500, 1200),                 # draft + one self-critique round
     "planner": (1, 900, 700),
-    "screener": (6, 6000, 900),                 # 60 candidates in 6 parallel batches
-    "extractor": (30, 1200, 700),               # up to 30 abstracts
+    "screener": (_POOL // 10, 6000, 900),       # the pool in parallel batches of 10
+    "extractor": (_PAPERS, 1200, 700),           # one abstract per analysed paper
     "synthesizer": (1, 20000, 3000),
     "screener_secondary": (8, 3000, 500),       # only borderline papers get a second vote
-    "extractor_secondary": (30, 1200, 700),     # dual extraction
+    "extractor_secondary": (_PAPERS, 1200, 700),     # dual extraction
     "normalizer": (1, 6000, 2000),
     "conflict_explainer": (4, 6000, 600),
     "localizer": (8, 1500, 2000),               # small chunks, run in parallel
@@ -91,7 +96,7 @@ def _check(args, catalog: dict[str, ModelInfo], out: TextIO) -> int:
         out.write(f"  {name:<12} {role.provider}:{role.spec.model:<40} method={method:<16} effort={effort:<7} "
                   f"~${cost:.4f}\n")
         problems += validate_role(role, catalog)
-    out.write(f"Estimated cost per review (60 candidates -> 30 abstracts, OpenRouter roles): ~${total:.3f}\n")
+    out.write(f"Estimated cost per review ({_POOL} candidates -> {_PAPERS} abstracts, OpenRouter roles): ~${total:.3f}\n")
     out.writelines(f"PROBLEM {p}\n" for p in problems)
     return 1 if problems else 0
 

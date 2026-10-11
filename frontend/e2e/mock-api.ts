@@ -1,5 +1,6 @@
 import type { Page, Route } from "@playwright/test";
 import { emptyReviewFixture, reviewFixture } from "../src/test/fixtures";
+import { STATUS_FIXTURE } from "../src/test/status-fixture";
 
 export const API = "http://api.mock";
 export const RID = reviewFixture.id;
@@ -14,11 +15,7 @@ export function sse(events: [string, Record<string, unknown>][]): string {
   return events.map(([type, payload], i) => `id: ${i + 1}\nevent: ${type}\ndata: ${JSON.stringify(payload)}\n\n`).join("");
 }
 
-export const OPEN_STATUS = {
-  accepting: true, reason: null, retry_after: null, queue_depth: 0, running: 1, reviews_today: 12, turnstile_site_key: null,
-  limits: { review_rate_limit: "5/hour", api_key_rate_limit: "60/hour", paper_search_rate_limit: "30/minute",
-    max_papers: { min: 5, max: 30, default: 30 }, candidate_limit: { min: 20, max: 100, default: 60 }, max_queued_reviews: 50, sse_max_per_ip: 5 },
-};
+export const OPEN_STATUS = STATUS_FIXTURE;
 
 export const LIVE_EVENTS: [string, Record<string, unknown>][] = [
   ["queued", { topic: reviewFixture.topic }], ["started", { resume: false, elapsed_s: 0.1 }],
@@ -26,7 +23,7 @@ export const LIVE_EVENTS: [string, Record<string, unknown>][] = [
   ["question_refined", { refined_question: "ในผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2 เมตฟอร์มินลดอุบัติการณ์มะเร็งลำไส้ใหญ่หรือไม่",
     interpretation: "คุณอยากรู้ว่าเมตฟอร์มินลดความเสี่ยงหรือไม่", sub_questions: ["ผลขึ้นกับระยะเวลาการใช้ยาหรือไม่"], assumptions: [], elapsed_s: 4 }],
   ["planning", { queries: ["metformin colorectal cancer"], elapsed_s: 6 }], ["searching", { found: 41, elapsed_s: 9 }],
-  ["enriching", { candidates: 60, elapsed_s: 11 }], ["screening", { batch: 10, elapsed_s: 12 }], ["screened", { kept: 30, total: 60, elapsed_s: 16 }],
+  ["enriching", { candidates: 120, elapsed_s: 11 }], ["screening", { batch: 10, elapsed_s: 12 }], ["screened", { kept: 30, total: 120, requested: 30, elapsed_s: 16 }],
   ["reading", { ref: "P1", title: "Metformin and incident colorectal cancer in a national diabetes cohort", elapsed_s: 17 }],
   ["extracted", { ref: "P1", ok: true, verified: 2, uncertain: false, direction: "positive", design: "cohort", elapsed_s: 30 }],
 ];

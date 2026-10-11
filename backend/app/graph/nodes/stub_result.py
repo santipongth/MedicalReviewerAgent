@@ -7,7 +7,7 @@ from typing import Any
 from app.harness.design import POOLED_CATEGORIES
 from app.harness.grade import analyse_meta
 from app.harness.meta import with_display
-from app.schemas.review import SLR_LIKE
+from app.schemas.review import SLR_LIKE, ReviewOptions
 
 # (design_category, study_design, year, direction, risk_of_bias, sample_size, effect_value, ci)
 _PAPERS = (
@@ -80,13 +80,32 @@ def _citations(n: int) -> dict[str, Any]:
     }
 
 
-def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str, Any]:
+def stub_found(candidates: int) -> int:
+    """Records identified by the simulated search: always at least the candidates that reach screening."""
+    return -(-candidates * 145 // 100)
+
+
+def stub_result(topic: str, language: str, review_type: str = "slr",
+                options: ReviewOptions | None = None) -> dict[str, Any]:
+    opts = options or ReviewOptions()
+    found = stub_found(opts.candidate_limit)
+    sources = {"europe pmc": round(found * 0.31), "semantic scholar": round(found * 0.23), "arxiv": round(found * 0.03)}
+    sources = {"pubmed": found - sum(sources.values()), **sources}
     meta = review_type == "meta_analysis"
     scoping = review_type == "scoping"  # a scoping review makes no claims (no consensus or conflicts), links no reports
     specs = (*_PAPERS, _META_EXTRA) if meta else _PAPERS
     evidence = len(specs)
     if not scoping:
         specs = (*specs, _RELATED)
+    # The illustrative paper list is fixed (6-8 studies), so `selected` is its length whatever max_papers asks for;
+    # the rest of the pool is split so the PRISMA flow balances exactly: screened - excluded = selected.
+    # Plan 21: when the fixed list is shorter than the requested count it is a shortfall, so nothing is over the limit.
+    gap = max(0, opts.candidate_limit - len(specs))
+    over_limit = min(2, gap) if len(specs) >= opts.max_papers else 0
+    excluded = gap - over_limit
+    off_topic, population = excluded * 7 // 10, excluded * 2 // 10
+    excluded_screening = {"off_topic": off_topic, "population": population,
+                          "publication_type": excluded - off_topic - population}
     papers = []
     for i, (_d, _s, year, *_rest) in enumerate(specs):
         card = _card(i, topic, specs)
@@ -182,10 +201,13 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
         },
         "summary": summary, "synthesis": synthesis, "synthesis_en": synthesis,
         "papers": papers, "queries": [f"{topic} randomized controlled trial", f"{topic} cohort study"],
-        "stats": {"found": 87, "unique": 70, "with_abstract": 64, "candidates": 60, "screened": 60,
-                  "selected": len(papers), "extracted": len(papers), "excluded_screening": {"off_topic": 20, "population": 5, "publication_type": 3},
+        "stats": {"found": found, "unique": found * 3 // 4 + 6, "with_abstract": found * 3 // 4,
+                  "candidates": opts.candidate_limit, "screened": opts.candidate_limit,
+                  "selected": len(papers), "extracted": len(papers), "excluded_screening": excluded_screening,
                   "non_research": 4, "year_excluded": 0, "no_abstract": 2,
-                  "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
+                  "excluded_selection": {"narrative_excluded": 0, "over_limit": over_limit,
+                                         "requested": opts.max_papers, "eligible": len(specs) + over_limit,
+                                         "study_design_relaxed": 0,
                                          "study_design_corrected": 0, "low_relevance": 0, "off_focus": 0},
                   "related_reports": sum(p["related_to"] is not None for p in papers)},
         # the lead clause the first graded finding shows is counted like the real check counts it
@@ -197,11 +219,12 @@ def stub_result(topic: str, language: str, review_type: str = "slr") -> dict[str
         "meta_analysis": meta_analysis,
         "methods": {
             "searched_at": "2026-10-10T00:00:00+00:00",
-            "sources": {"pubmed": 41, "europe pmc": 30, "semantic scholar": 22, "arxiv": 3},
+            "sources": sources,
             "eligibility": {"year_from": None, "study_types": [],
                             "inclusion_criteria": ["Studies reporting the primary outcome"],
                             "exclusion_criteria": ["Editorials and protocols without results"]},
-            "limits": {"candidate_limit": 60, "max_papers": 30, "min_abstract_chars": 150},
+            "limits": {"candidate_limit": opts.candidate_limit, "max_papers": opts.max_papers,
+                       "min_abstract_chars": 150},
             "screening": {"model": "stub", "second_model": None, "second_vote": "off", "borderline": [35, 70],
                           "relevance_floor": 35},
             "extraction": {"model": "stub", "second_model": None, "verify_quotes": True, "quote_match_threshold": 90,

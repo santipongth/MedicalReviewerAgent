@@ -1,6 +1,6 @@
 # Medical Reviewer Agent
 
-Public literature-review agent: type a topic or a full question (≤ 600 characters), pick a review type (systematic review, meta-analysis, scoping or narrative) and, optionally, study designs → the agent refines the question (PICO, or PCC for scoping), searches PubMed, Europe PMC (incl. medRxiv/bioRxiv preprints), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ and OpenAIRE through a self-hosted searxng-LDR-academic with our own engine modules in `infra/searxng/engines/` (AGPL-3.0; PLOS is opt-in through `SEARXNG_ENGINES`), screens ~60 candidates that have abstracts with PRISMA exclusion reasons, analyses up to the 30 most relevant abstracts (no full-text fetching), checks every number against its abstract, and reports agreeing / conflicting findings with a GRADE-lite rating, a literature review matrix, a concept map, a citation network (OpenAlex / Europe PMC metadata) and, for meta-analyses, labelled DerSimonian-Laird pooled estimates. Backend: Python + LangGraph; LLMs via OpenRouter (models and presets in `backend/config/llm.yaml`). Exposed as a web app, a REST API and an MCP server. Optional source keys in `.env`: `NCBI_API_KEY`, `OPENALEX_API_KEY`, `S2_API_KEY`, `CORE_API_KEY`.
+Public literature-review agent: type a topic or a full question (≤ 600 characters), pick a review type (systematic review, meta-analysis, scoping or narrative) and, optionally, study designs → the agent refines the question (PICO, or PCC for scoping), searches PubMed, Europe PMC (incl. medRxiv/bioRxiv preprints), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ and OpenAIRE through a self-hosted searxng-LDR-academic with our own engine modules in `infra/searxng/engines/` (AGPL-3.0; PLOS is opt-in through `SEARXNG_ENGINES`), screens a pool of candidates that have abstracts (about 120 by default) with PRISMA exclusion reasons, analyses the most relevant abstracts, as many as you choose (limits and default from `GET /api/v1/status`; no full-text fetching), checks every number against its abstract, and reports agreeing / conflicting findings with a GRADE-lite rating, a literature review matrix, a concept map, a citation network (OpenAlex / Europe PMC metadata) and, for meta-analyses, labelled DerSimonian-Laird pooled estimates. Backend: Python + LangGraph; LLMs via OpenRouter (models and presets in `backend/config/llm.yaml`). Exposed as a web app, a REST API and an MCP server. Optional source keys in `.env`: `NCBI_API_KEY`, `OPENALEX_API_KEY`, `S2_API_KEY`, `CORE_API_KEY`.
 
 **Reference for every route, event, limit, webhook and MCP tool: [`docs/api.md`](docs/api.md)** (live limits on any
 deployment: `GET /api/v1/status`; interactive OpenAPI at `/api/docs`).
@@ -26,7 +26,7 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 2. `docker compose up -d --build`
 3. `bash scripts/smoke.sh "metformin and colorectal cancer risk"`. Progress events:
    checking_topic → refining → question_refined → planning → searching → enriching → screening → screened →
-   reading/extracted ×(up to 30) ∥ citations_fetched → synthesizing → pooled (meta-analysis only) → localizing (Thai only) → finalizing → done (or error / rejected /
+   reading/extracted ×(one per analysed paper) ∥ citations_fetched → synthesizing → pooled (meta-analysis only) → localizing (Thai only) → finalizing → done (or error / rejected /
    cancelled). Events from the worker carry `elapsed_s`; the full list with payloads is in `docs/api.md`.
 4. The result's `quality` block reports number verification, model agreement, escalations and per-stage timings.
 5. Live LLM check: `cd backend && OPENROUTER_API_KEY=... uv run pytest -m live`
@@ -70,7 +70,7 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 - Plan 3 (integrations) done: MCP server, external MCP tools, API keys, webhooks, cancellation, paper search.
 - Plan 4 (web) done: landing request slip, live run, interactive evidence report (matrix, verbatim source rail, forest plot,
   PRISMA, study map, filters), /about; design system in `DESIGN.md` ("Theatre Green").
-- Plan 5 (abstract-only) done: full-text/crawling stack removed, ~60 candidates → up to 30 abstracts, shared LLM
+- Plan 5 (abstract-only) done: full-text/crawling stack removed, a screened pool → a user-chosen number of abstracts (Plan 21 made it adjustable), shared LLM
   concurrency limit, parallel Thai localization, budget preset retuned from live latency measurements.
 - Plan 6 (harness round 2) done: fixed study-design categories, non-research filter, clustering repair, consensus
   with dissent, design-aware search, versioned cache.

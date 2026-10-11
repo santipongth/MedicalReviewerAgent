@@ -42,7 +42,13 @@ class Settings(BaseSettings):
     max_queued_reviews: int = 50
     max_reviews_per_day: int = 500
     max_usd_per_day: float = 10.0
-    max_cost_per_review_usd: float = 0.25  # LLM steps beyond this are skipped; the review finishes with what it has
+    # Per-review LLM spend cap scales with the request (Plan 21): base + per analysed paper + per screened candidate.
+    # Steps beyond the cap are skipped; the review finishes with what it has. max_cost_per_review_usd is only the
+    # hard ceiling no computed cap may exceed.
+    review_cost_base_usd: float = 0.04
+    review_cost_per_paper_usd: float = 0.006
+    review_cost_per_candidate_usd: float = 0.0005
+    max_cost_per_review_usd: float = 0.60
     # Cloudflare Turnstile for anonymous web submissions (empty secret = off; API keys and MCP never need it).
     turnstile_secret: str = ""
     turnstile_site_key: str = ""
@@ -50,13 +56,16 @@ class Settings(BaseSettings):
 
     graph_mode: str = "real"  # "stub" = Plan 1 placeholder graph (plumbing tests without Claude)
     stub_delay_seconds: float = 0.0  # stub graph only: simulated review duration for load tests
-    prompt_version: str = "2026-10-10.8"
+    prompt_version: str = "2026-10-11.1"
 
     searxng_engines: str = "pubmed,europe pmc,openalex,semantic scholar,crossref,arxiv,doaj,openaire"
     searxng_pages: int = 1
     # Meta-analysis needs k >= 3 trials per outcome, so it searches deeper (audit I-9): more SearXNG pages per query
     # plus a most-cited-first Europe PMC search restricted to randomized controlled trials.
     searxng_pages_meta: int = 2
+    # Plan 21 top-up: when fewer than candidate_limit candidates keep a usable abstract, enrich reads the next pages
+    # of each planner query once, up to this page (meta-analysis, which already reads 2 pages, reads one more).
+    searxng_pages_max: int = 2
     trial_search_queries: int = 3  # Europe PMC RCT searches per meta-analysis review (0 = off)
     trial_search_page_size: int = 25
     # Must exceed every requested engine's SearXNG timeout (infra/searxng/settings.yml: pubmed 12 s, crossref 10 s,

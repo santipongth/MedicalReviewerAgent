@@ -20,10 +20,10 @@ const AgentStage = dynamic(() => import("./stage/agent-stage").then((m) => m.Age
 });
 
 // three.js / R3F / drei live only in this lazily loaded chunk. The placeholder is the loaded wrapper's box (borderless,
-// the 2D stage's aspect), so nothing changes when the chunk lands.
+// the run's wide box, as in the 2D views), so nothing changes when the chunk lands.
 const Stage3D = dynamic(() => import("./stage3d/stage-3d"), {
   ssr: false,
-  loading: () => <div aria-hidden data-placeholder="3d" className="mx-auto aspect-[960/288] w-full rounded-sm bg-surface" />,
+  loading: () => <StagePlaceholder view="3d" />,
 });
 
 // The 2D team view (Plan 18, the default) is its own lazy chunk; its placeholder reserves the team box.

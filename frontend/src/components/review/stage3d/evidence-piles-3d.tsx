@@ -1,5 +1,5 @@
 "use client";
-// Evidence piles: one InstancedMesh per direction (cap 30), one token per finished read on the live evidence board,
+// Evidence piles: one InstancedMesh per direction (cap PILE_CAP), one token per finished read on the live evidence board,
 // stacked in the order they finished. Shapes match the 2D glyphs (PILE_SHAPE) and colours come from the finding tokens,
 // so a pile is never colour-only. Direction is the reading model's judgement of one abstract (labels say
 // "ตามที่เอเจนต์อ่าน"); piles are in a fixed order and nothing ranks them.

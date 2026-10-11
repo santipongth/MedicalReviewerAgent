@@ -250,7 +250,7 @@ class MissingKeyLLM:
 
 class LimitedLLM:
     """Runs the wrapped model's calls under a semaphore shared by every role of one worker process, so a
-    review's fan-out (30 papers x 2 extractors, parallel localization) stays under provider rate limits."""
+    review's fan-out (up to 50 papers x 2 extractors, parallel localization) stays under provider rate limits."""
 
     def __init__(self, inner: StructuredLLM, sem: asyncio.Semaphore) -> None:
         self.inner = inner
