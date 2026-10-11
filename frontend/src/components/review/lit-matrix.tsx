@@ -116,16 +116,16 @@ function Cell({ col, row, lang, onSelect, risk }: { col: LitColumn; row: LitRow;
     case "population":
       return (
         <span className="grid gap-0.5">
-          <span className={CLAMP} title={row.population} lang={fieldLang(row.population, lang)}>{row.population || "–"}</span>
+          <span className={CLAMP} title={row.population} lang={fieldLang(row.population, lang)}><ThaiText>{row.population || "–"}</ThaiText></span>
           <span className="text-[0.8rem]"><span className="text-muted">n = </span><NCell cell={row.n} lang={lang} /></span>
         </span>
       );
     case "exposure":
       return (
         <span className="grid gap-0.5">
-          <span className={CLAMP} title={row.exposure} lang={fieldLang(row.exposure, lang)}>{row.exposure || "–"}</span>
+          <span className={CLAMP} title={row.exposure} lang={fieldLang(row.exposure, lang)}><ThaiText>{row.exposure || "–"}</ThaiText></span>
           {row.comparator && <span className="line-clamp-2 text-[0.8rem] break-words" title={row.comparator}>
-            <span className="text-muted">{L(lang, T.vs)}</span><span lang={fieldLang(row.comparator, lang)}>{row.comparator}</span></span>}
+            <span className="text-muted">{L(lang, T.vs)}</span><span lang={fieldLang(row.comparator, lang)}><ThaiText>{row.comparator}</ThaiText></span></span>}
         </span>
       );
     case "outcomes": return <Outcomes row={row} lang={lang} onSelect={onSelect} />;
@@ -207,7 +207,8 @@ function MatrixTable({ rows, cols, framework, lang, onSelect, caption, citedBy, 
 
 /** Column shares of the fixed layout (they sum to 100%): outcomes get the most room. */
 const COL_WIDTH: Record<LitColumn, string> = {
-  ref: "14%", design: "12%", population: "16%", exposure: "14%", outcomes: "26%", direction: "18%", risk: "18%",
+  // the intervention column fits "Intervention (vs comparator)" without breaking a word (Task 9)
+  ref: "12%", design: "12%", population: "15%", exposure: "18%", outcomes: "25%", direction: "18%", risk: "18%",
 };
 
 /** Below 1280px (phones and 1024–1279 alike): one ruled card per study (no nested card chrome), the same cells. */

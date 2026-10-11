@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { isGraded, REVIEW_TYPE_LABEL, REVIEW_TYPES, reportLayout, reviewTypeOf, SECTION_BLOCKS, SECTIONS_BY_TYPE, type SectionId } from "./review-type";
+import { isGraded, REVIEW_TYPE_LABEL, REVIEW_TYPES, reportLayout, reviewTypeOf, SECTION_ANCHOR, SECTION_BLOCKS, SECTIONS_BY_TYPE, type SectionId } from "./review-type";
 
 describe("review-type", () => {
   it("lists the types with SLR as the default label", () => {
     expect(REVIEW_TYPES.slice(0, 3)).toEqual(["narrative", "slr", "scoping"]);
     expect(REVIEW_TYPE_LABEL.slr.th).toBe("การทบทวนวรรณกรรมอย่างเป็นระบบ");
     expect(REVIEW_TYPE_LABEL.scoping.en).toBe("Scoping review");
-    expect(REVIEW_TYPE_LABEL.narrative.description).toContain("ไม่ประเมินความแข็งแรงของหลักฐาน");
+    // names only: the plain-language descriptions live in landing/type-description.tsx (Task 9 removed the unused copy)
+    for (const t of REVIEW_TYPES) expect(Object.keys(REVIEW_TYPE_LABEL[t]).sort(), t).toEqual(["en", "th"]);
   });
   it("reads the type from a result and treats a missing one as legacy", () => {
     expect(reviewTypeOf({ review_type: "scoping" })).toBe("scoping");
@@ -66,10 +67,7 @@ describe("review-type", () => {
   });
   it("adds the meta-analysis: SLR sections plus the pooled section right after the forest plot, graded", () => {
     expect(REVIEW_TYPES).toEqual(["narrative", "slr", "scoping", "meta_analysis"]);
-    expect(REVIEW_TYPE_LABEL.meta_analysis).toEqual({
-      th: "การวิเคราะห์อภิมาน", en: "Meta-analysis",
-      description: "รวมผลเชิงตัวเลขจากงานวิจัยหลักที่วัดผลแบบเดียวกัน (ตั้งแต่ 3 ฉบับ) ด้วยวิธี random effects ตัวเลขรวมคำนวณโดยระบบ ไม่ใช่ผลจากงานใดงานหนึ่ง",
-    });
+    expect(REVIEW_TYPE_LABEL.meta_analysis).toEqual({ th: "การวิเคราะห์อภิมาน", en: "Meta-analysis" });
     expect(reviewTypeOf({ review_type: "meta_analysis" })).toBe("meta_analysis");
     expect(isGraded("meta_analysis")).toBe(true);
     const meta = SECTIONS_BY_TYPE.meta_analysis;
@@ -77,5 +75,13 @@ describe("review-type", () => {
     expect(meta.indexOf("meta")).toBe(meta.indexOf("forest") + 1);
     expect(meta).toContain("citations");
     for (const t of ["narrative", "slr", "scoping", "legacy"] as const) expect(SECTIONS_BY_TYPE[t]).not.toContain("meta");
+  });
+  it("names one anchor per top-level section, shared by the report and its e2e checks (Task 9)", () => {
+    for (const t of ["narrative", "slr", "scoping", "meta_analysis", "legacy"] as const) {
+      for (const { id } of reportLayout(t)) if (id !== "title") expect(SECTION_ANCHOR[id], `${t} ${id}`).toMatch(/^h-[a-z-]+$/);
+    }
+    expect(SECTION_ANCHOR.bottom_line).toBe("h-answer");
+    expect(SECTION_ANCHOR.references).toBe("h-papers");
+    expect(new Set(Object.values(SECTION_ANCHOR)).size).toBe(Object.keys(SECTION_ANCHOR).length);
   });
 });

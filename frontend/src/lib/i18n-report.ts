@@ -224,6 +224,8 @@ export const RC = {
     participants: ["ผู้เข้าร่วม", "Participants"],
     reviewLevel: ["ระดับของทั้งรีวิว", "review-level"],
     notAssessed: ["ไม่ได้ประเมิน", "Not assessed"],
+    more_: ["อ่านต่อ", "More"],
+    less: ["ย่อลง", "Less"],
   },
 
   /** Limitations (limitations.tsx); {n} slots are counts. */

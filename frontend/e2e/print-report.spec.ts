@@ -132,6 +132,9 @@ for (const [name, review, lang] of CASES) {
     expect(blankPagesInside(pages)).toEqual([]);
   });
 
+  // A quick in-browser smoke check only (Task 9): print emulation has no pages, so this DOM rect check passed on the
+  // Task 8 build whose PDF had blocks drawn over each other. The authoritative overlap check is the PDF read-back
+  // (pdfTextRuns + overlappingText) in the tests around it; keep this one as an early, cheap signal.
   test(`print ${name} at A4 width: the blocks of every section and every figure follow each other, none overlaps`, async ({ page }) => {
     await page.setViewportSize({ width: 688, height: 1000 }); // the A4 text block (182mm)
     await open(page, review);
@@ -253,7 +256,9 @@ async function openOffline(page: Page, review: Review) {
   return requests;
 }
 
-for (const [name, review, lang] of [["slr-th", slrP20ReviewFixture, "th"], ["meta-en", P20_FIXTURES_EN.meta, "en"]] as const) {
+// Task 9: the offline file for slr and meta in both languages
+for (const [name, review, lang] of [["slr-th", slrP20ReviewFixture, "th"], ["slr-en", P20_FIXTURES_EN.slr, "en"],
+  ["meta-th", metaP20ReviewFixture, "th"], ["meta-en", P20_FIXTURES_EN.meta, "en"]] as const) {
   test(`offline ${name}: renders fully with no network, metadata line, theme toggle, embedded verified face, axe clean`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const withPrompt = { ...review, result: { ...review.result!, prompt_version: "2026-10-10.7" } };

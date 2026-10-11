@@ -37,6 +37,18 @@ describe("cells to card outcomes and verified effects", () => {
     expect(cellOutcomeExact(byRef.get("P3"), rows[0], "P3", "CRC incidence")?.en.outcome).toBe("CRC incidence");
     expect(cellOutcomeExact(byRef.get("P3"), rows[1], "P3", "CRC mortality")?.en.outcome).toBe("CRC mortality");
   });
+  it("the finding-text match wins over an earlier outcome that only shares the row's name (Task 9, T3 N3)", () => {
+    const a: OutcomeResult = { outcome: "Weight", result: "weight fell", direction: "positive", evidence_quote: null };
+    const b: OutcomeResult = { outcome: "Body weight at 12 months", result: "weight fell by 3 kg", direction: "positive", evidence_quote: null };
+    const p = paper("P1", a);
+    p.card = { ...p.card!, outcomes: [a, b] };
+    p.card_en = p.card;
+    const row: ComparisonRow = { outcome: "Weight", cells: [{ ref: "P1", finding: "weight fell by 3 kg", direction: "positive" }] };
+    expect(cellOutcomeExact(p, row, "P1")?.en.outcome).toBe("Body weight at 12 months");
+    // with no finding-text match, the name match still holds
+    const byName: ComparisonRow = { outcome: "Weight", cells: [{ ref: "P1", finding: "something else", direction: "positive" }] };
+    expect(cellOutcomeExact(p, byName, "P1")?.en.outcome).toBe("Weight");
+  });
   it("a verified effect keeps the paper's spelling; a blanked one is a gap; none is null", () => {
     expect(studyEffect(byRef.get("P3"), rows[0], "P3", "CRC incidence")).toEqual({ kind: "verified", effect: {
       ref: "P3", outcomeKey: "CRC incidence", measure: "HR", value: 0.8, num: "0.80", text: "HR 0.80", ci: "0.71–0.90" } });

@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { P20_FIXTURES } from "../src/test/fixtures";
 import type { Review } from "../src/lib/types";
@@ -62,19 +61,7 @@ for (const [type, review] of Object.entries(P20_FIXTURES) as [keyof typeof P20_F
   });
 }
 
-for (const width of [1440, 390]) {
-  for (const scheme of ["light", "dark"] as const) {
-    for (const type of ["slr", "meta", "metaNoPool", "scoping", "narrative", "legacy"] as const) {
-      test(`${type} at ${width}px, ${scheme}: axe clean`, async ({ page }) => {
-        await page.setViewportSize({ width, height: 1000 });
-        await page.emulateMedia({ colorScheme: scheme });
-        await open(page, P20_FIXTURES[type]);
-        const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-        expect(r.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`)).toEqual([]);
-      });
-    }
-  }
-}
+// axe in light and dark at 1440 and 390 for every type and both languages: e2e/report-matrix.spec.ts (Task 9)
 
 test("the bottom line and key findings: computed pool, verified range, the rationale behind a disclosure", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });

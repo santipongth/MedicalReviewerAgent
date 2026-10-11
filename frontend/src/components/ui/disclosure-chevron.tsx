@@ -5,7 +5,7 @@
  */
 export function DisclosureChevron() {
   return (
-    <span data-chevron aria-hidden="true" className="inline-flex w-4 flex-none justify-center text-muted">
+    <span data-chevron aria-hidden="true" className="inline-flex w-4 flex-none justify-center text-muted print:hidden">
       <span className="inline-block transition-transform duration-200 ease-in-out group-open:rotate-90 motion-reduce:hidden">▸</span>
       <span className="hidden motion-reduce:inline-block group-open:motion-reduce:hidden">▸</span>
       <span className="hidden group-open:motion-reduce:inline-block">▾</span>

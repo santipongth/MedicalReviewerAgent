@@ -74,8 +74,13 @@ def _non_latin(s: str) -> bool:
     return any(ch.isalpha() and not unicodedata.name(ch, "").startswith("LATIN") for ch in s)
 
 
+def _bare_initials(t: str) -> str:
+    """Hyphens between initials are dropped: "S-H" -> "SH" ("Lee S-H" -> "Lee SH")."""
+    return t.replace(".", "").replace("-", "")
+
+
 def _is_initials(t: str) -> bool:
-    bare = t.replace(".", "")
+    bare = _bare_initials(t)
     return 1 <= len(bare) <= 3 and bare.isalpha() and bare.isupper()
 
 
@@ -103,7 +108,7 @@ def _is_organisation(name: str) -> bool:
 def _initials_of(token: str) -> str:
     """"J.A." -> "JA", "Jean-Pierre" -> "JP", "Andrew" -> "A"; "" when a part has no letter."""
     if _is_initials(token):
-        return token.replace(".", "")
+        return _bare_initials(token)
     return "".join(next((ch for ch in part if ch.isalpha()), "") for part in token.split("-")).upper()
 
 
@@ -121,6 +126,10 @@ def vancouver_name(name: Any) -> str:
         suffix = _suffix_text(tokens.pop())
         while tokens and tokens[-1] == ",":
             tokens.pop()
+    # a suffix written with the surname, before the comma ("Smith Jr, John") goes there too
+    first_comma = tokens.index(",") if "," in tokens else -1
+    if not suffix and first_comma > 1 and _SUFFIX.match(tokens[first_comma - 1]):
+        suffix = _suffix_text(tokens.pop(first_comma - 1))
 
     def with_suffix(s: str) -> str:
         return f"{s} {suffix}" if suffix else s
@@ -136,7 +145,7 @@ def vancouver_name(name: Any) -> str:
         if len(words) == 1:
             return with_suffix(rest)
         if _is_initials(words[-1]):
-            return with_suffix(f"{' '.join(words[:-1])} {words[-1].replace('.', '')}")
+            return with_suffix(f"{' '.join(words[:-1])} {_bare_initials(words[-1])}")
         start = len(words) - 1
         while start > 1 and words[start - 1].lower() in _PARTICLES:  # "De La Cruz" too
             start -= 1

@@ -10,7 +10,7 @@ import { fieldLang, RC, type Pair } from "@/lib/i18n-report";
 import { robSummary } from "@/lib/rob-summary";
 import { cellOutcome, keyFindingViews, sameModelReadings, sofRows, type OutcomeContext } from "@/lib/report-view";
 import {
-  isGraded, metaPoolGap, reportLayout, reviewTypeOf, showsRiskOfBias, showsSection,
+  isGraded, metaPoolGap, reportLayout, reviewTypeOf, SECTION_ANCHOR, showsRiskOfBias, showsSection,
   type BlockId, type TopSectionId,
 } from "@/lib/review-type";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
@@ -51,22 +51,22 @@ function outcomeFor(paper: Paper | undefined, row: ComparisonRow, ref: string): 
 /** Top-level sections: anchor id, short table-of-contents label and the H2 of a group section. */
 const N = RC.nav;
 const TOP: Record<Exclude<TopSectionId, "title">, { id: string; nav: Pair; h2?: Pair }> = {
-  bottom_line: { id: "h-answer", nav: N.answer },
-  key_findings: { id: "h-key-findings", nav: N.keyFindings },
-  sof: { id: "h-sof", nav: N.sof },
-  selection: { id: "h-selection", nav: N.selection, h2: N.selectionH2 },
-  characteristics: { id: "h-characteristics", nav: N.characteristics, h2: N.characteristicsH2 },
-  results: { id: "h-results", nav: N.results, h2: N.resultsH2 },
-  rob: { id: "h-rob", nav: N.rob },
-  consistency: { id: "h-claims", nav: N.consistency, h2: N.consistencyH2 },
-  landscape: { id: "h-landscape", nav: N.landscape, h2: N.landscapeH2 },
-  limitations: { id: "h-limitations", nav: N.limitations },
-  gaps: { id: "h-gaps", nav: N.gaps },
-  discussion: { id: "h-discussion", nav: N.discussion },
-  methods: { id: "h-method", nav: N.methods },
-  references: { id: "h-papers", nav: N.references },
-  downloads: { id: "h-downloads", nav: N.downloads },
-  appendix: { id: "h-appendix", nav: N.appendix },
+  bottom_line: { id: SECTION_ANCHOR.bottom_line, nav: N.answer },
+  key_findings: { id: SECTION_ANCHOR.key_findings, nav: N.keyFindings },
+  sof: { id: SECTION_ANCHOR.sof, nav: N.sof },
+  selection: { id: SECTION_ANCHOR.selection, nav: N.selection, h2: N.selectionH2 },
+  characteristics: { id: SECTION_ANCHOR.characteristics, nav: N.characteristics, h2: N.characteristicsH2 },
+  results: { id: SECTION_ANCHOR.results, nav: N.results, h2: N.resultsH2 },
+  rob: { id: SECTION_ANCHOR.rob, nav: N.rob },
+  consistency: { id: SECTION_ANCHOR.consistency, nav: N.consistency, h2: N.consistencyH2 },
+  landscape: { id: SECTION_ANCHOR.landscape, nav: N.landscape, h2: N.landscapeH2 },
+  limitations: { id: SECTION_ANCHOR.limitations, nav: N.limitations },
+  gaps: { id: SECTION_ANCHOR.gaps, nav: N.gaps },
+  discussion: { id: SECTION_ANCHOR.discussion, nav: N.discussion },
+  methods: { id: SECTION_ANCHOR.methods, nav: N.methods },
+  references: { id: SECTION_ANCHOR.references, nav: N.references },
+  downloads: { id: SECTION_ANCHOR.downloads, nav: N.downloads },
+  appendix: { id: SECTION_ANCHOR.appendix, nav: N.appendix },
 };
 
 /**

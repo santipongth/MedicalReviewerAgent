@@ -11,6 +11,7 @@ import { CopyTextButton } from "../ui/copy-text";
 import { StudyButton, type Select } from "./report-parts";
 import { SECTION_H2 as H2 } from "./report-nav";
 import { L, Lw } from "./text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const R = RC.refs;
 
@@ -114,8 +115,9 @@ export function ExcludedAtScreening({ stats, lang }: { stats?: Stats | null; lan
   const total = rows.reduce((s, r) => s + r.n, 0);
   const caption = L(lang, R.excludedCaption);
   return (
-    <details data-excluded-screening className="text-[0.92rem]">
-      <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold text-primary md:min-h-0">
+    <details data-excluded-screening className="group text-[0.92rem]">
+      <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 font-display font-semibold text-primary md:min-h-0">
+        <DisclosureChevron />
         {L(lang, R.excluded(total))}
       </summary>
       <div className="mt-2 grid gap-2">

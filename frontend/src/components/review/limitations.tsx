@@ -1,5 +1,6 @@
 "use client";
 
+import { ThaiNodes } from "../ui/thai-text";
 import type { ReactNode } from "react";
 import type { Lang } from "@/lib/i18n";
 import { RC } from "@/lib/i18n-report";
@@ -107,7 +108,7 @@ export function Limitations({ result, type, lang }: { result: ReviewResult; type
     <section aria-labelledby="h-limitations" className="grid gap-3">
       <h2 id="h-limitations" className={SECTION_H2}>{Lw(lang, M.h2)}</h2>
       <ul className={`grid max-w-[70ch] list-disc gap-1.5 pl-5 ${READING}`}>
-        {items.filter(([, node]) => node != null && node !== "").map(([key, node]) => <li key={key} data-limitation={key}>{node}</li>)}
+        {items.filter(([, node]) => node != null && node !== "").map(([key, node]) => <li key={key} data-limitation={key}><ThaiNodes>{node}</ThaiNodes></li>)}
       </ul>
     </section>
   );

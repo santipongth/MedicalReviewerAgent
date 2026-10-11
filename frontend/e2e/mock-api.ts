@@ -70,18 +70,26 @@ export async function mockApi(page: Page, overrides: Record<string, Handler> = {
 
 export { json };
 
-export interface SseFrame { delayMs: number; events: [string, Record<string, unknown>][] }
+export interface SseFrame {
+  delayMs: number;
+  events: [string, Record<string, unknown>][];
+  /** release this frame only once an element matching this selector is on the page (then wait `delayMs`): a test
+   * that needs the page ready for an event waits on that, not on a guess of how long loading takes (Task 9) */
+  after?: string;
+}
 
 /**
  * Serve `/reviews/${RID}/events` as a stream that releases each frame `delayMs` after the previous one (same SSE
- * wire format and seq numbering as `sse()`). The stream stays open after the last frame, like a running review.
- * Installed as an init script around window.fetch, so it also works when the page clock is faked; every other
- * request passes through to the real fetch (and so to `page.route`).
+ * wire format and seq numbering as `sse()`), or, for a frame with `after`, `delayMs` after its selector appears. The
+ * stream stays open after the last frame, like a running review. The time each frame was sent is kept in
+ * `window.__sseFrameAt`. Installed as an init script around window.fetch, so it also works when the page clock is
+ * faked; every other request passes through to the real fetch (and so to `page.route`).
  */
 export async function streamSse(page: Page, frames: SseFrame[]) {
   let seq = 0;
   const wire = frames.map((f) => ({
     delayMs: f.delayMs,
+    after: f.after ?? null,
     text: f.events.map(([type, payload]) => { seq += 1; return `id: ${seq}\nevent: ${type}\ndata: ${JSON.stringify(payload)}\n\n`; }).join(""),
   }));
   await page.addInitScript(({ wire, rid }) => {
@@ -89,22 +97,44 @@ export async function streamSse(page: Page, frames: SseFrame[]) {
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (!url.endsWith(`/reviews/${rid}/events`)) return realFetch(input, init);
-      (window as unknown as { __sseStart: number }).__sseStart = Date.now(); // lets a test line itself up with the first frame
+      const w = window as unknown as { __sseStart: number; __sseFrameAt: number[] };
+      w.__sseStart = Date.now(); // lets a test line itself up with the first frame
+      w.__sseFrameAt = [];
       const enc = new TextEncoder();
       const timers: number[] = [];
+      let observer: MutationObserver | null = null;
       const stream = new ReadableStream<Uint8Array>({
         start(c) {
-          let at = 0;
-          for (const f of wire) {
-            at += f.delayMs;
-            timers.push(window.setTimeout(() => { try { c.enqueue(enc.encode(f.text)); } catch { /* closed */ } }, at));
+          const send = (text: string) => { w.__sseFrameAt.push(Date.now()); try { c.enqueue(enc.encode(text)); } catch { /* closed */ } };
+          if (!wire.some((f) => f.after)) {
+            let at = 0;
+            for (const f of wire) {
+              at += f.delayMs;
+              timers.push(window.setTimeout(() => send(f.text), at));
+            }
+          } else {
+            // one frame after another: a gated frame waits for its selector first
+            const next = (i: number) => {
+              const f = wire[i];
+              if (!f) return;
+              const go = () => { timers.push(window.setTimeout(() => { send(f.text); next(i + 1); }, f.delayMs)); };
+              if (!f.after || document.querySelector(f.after)) return go();
+              observer = new MutationObserver(() => {
+                if (!document.querySelector(f.after!)) return;
+                observer?.disconnect();
+                go();
+              });
+              observer.observe(document, { subtree: true, childList: true });
+            };
+            next(0);
           }
           init?.signal?.addEventListener("abort", () => {
             timers.forEach((t) => window.clearTimeout(t));
+            observer?.disconnect();
             try { c.error(new DOMException("aborted", "AbortError")); } catch { /* closed */ }
           });
         },
-        cancel() { timers.forEach((t) => window.clearTimeout(t)); },
+        cancel() { timers.forEach((t) => window.clearTimeout(t)); observer?.disconnect(); },
       });
       return Promise.resolve(new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } }));
     };

@@ -29,8 +29,9 @@ describe("SofTable", () => {
     expect(within(table).getAllByRole("columnheader").every((th) => th.getAttribute("scope") === "col")).toBe(true);
     expect(within(table).getAllByRole("rowheader").every((th) => th.getAttribute("scope") === "row")).toBe(true);
     expect(within(table).getAllByRole("columnheader").map((th) => th.textContent)).toEqual(["ผลลัพธ์", "การศึกษาและผู้เข้าร่วม", "ขนาดผล", "ความแข็งแรงของหลักฐาน"]);
-    expect(screen.getByText(/ไม่ใช่การประเมิน GRADE โดยผู้เชี่ยวชาญ/)).toBeInTheDocument();
-    expect(screen.getByText(/ระดับเดียวกันทุกผลลัพธ์ \(ระดับของทั้งรีวิว/)).toBeInTheDocument();
+    // the note is segmented into Thai words (Task 9), so it is read as a whole
+    expect(document.getElementById("sof-note")).toHaveTextContent(/ไม่ใช่การประเมิน GRADE โดยผู้เชี่ยวชาญ/);
+    expect(document.querySelector("[data-review-level]")).toHaveTextContent(/ระดับเดียวกันทุกผลลัพธ์ \(ระดับของทั้งรีวิว/);
     expect(screen.getByRole("region", { name: "ตารางสรุปผลการศึกษาตามผลลัพธ์" })).toHaveAttribute("tabindex", "0");
     // no forced width: the table fits its column (the card layout takes over below md)
     expect(table.className).not.toMatch(/min-w-/);
@@ -102,6 +103,57 @@ describe("SofTable", () => {
     expect(r.effect).toHaveTextContent("Measures differ; no rangeHR 1 · unnamed measure 2 studies");
     expect(r.effect).not.toHaveTextContent(/\bother\b|\bnone\b/);
     expect(r.effect.querySelector(".num-verified")).toBeNull();
+  });
+
+  it("explicit table roles, so the stacked cards below md stay a table to assistive tech (Task 9, T3 N1)", () => {
+    const { container } = render(<SofTable rows={rowsOf(slrP20ReviewFixture)} lang="th" onSelect={() => {}} graded />);
+    const table = container.querySelector("table")!;
+    expect(table).toHaveAttribute("role", "table");
+    expect(table.querySelector("thead")).toHaveAttribute("role", "rowgroup");
+    for (const b of table.querySelectorAll("tbody")) expect(b).toHaveAttribute("role", "rowgroup");
+    for (const tr of table.querySelectorAll("tr")) expect(tr).toHaveAttribute("role", "row");
+    for (const th of table.querySelectorAll("th[scope=col]")) expect(th).toHaveAttribute("role", "columnheader");
+    for (const th of table.querySelectorAll("th[scope=row]")) expect(th).toHaveAttribute("role", "rowheader");
+    for (const td of table.querySelectorAll("td")) expect(td).toHaveAttribute("role", "cell");
+  });
+
+  it("a clamped 'what it means' line has a keyboard 'more' disclosure, not only a title (Task 9, T3 N2)", async () => {
+    // jsdom has no layout: every clamped statement measures as overflowing
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return this.hasAttribute("data-clamp") ? 120 : 0; } });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return this.hasAttribute("data-clamp") ? 60 : 0; } });
+    try {
+      render(<SofTable rows={rowsOf(slrP20ReviewFixture)} lang="th" onSelect={() => {}} graded />);
+      const inc = outcome(/^อุบัติการณ์มะเร็งลำไส้ใหญ่/);
+      const text = inc.means.querySelector("[data-clamp]")!;
+      expect(text).toHaveClass("line-clamp-3");
+      const more = within(inc.means).getByRole("button", { name: "อ่านต่อ" });
+      expect(more).toHaveAttribute("aria-expanded", "false");
+      expect(more).toHaveAttribute("aria-controls", text.id);
+      expect(more).toHaveClass("print:hidden");
+      more.focus();
+      await userEvent.keyboard("{Enter}");
+      expect(text).not.toHaveClass("line-clamp-3");
+      expect(within(inc.means).getByRole("button", { name: "ย่อลง" })).toHaveAttribute("aria-expanded", "true");
+    } finally {
+      // the getters live on Element.prototype; drop the HTMLElement overrides
+      delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+      delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    }
+  });
+
+  it("a statement that fits shows no 'more' button; English says More", () => {
+    render(<SofTable rows={rowsOf(slrP20ReviewFixture, "en")} lang="en" onSelect={() => {}} graded />);
+    expect(screen.queryByRole("button", { name: /^(More|Less|อ่านต่อ)$/ })).toBeNull();
+  });
+
+  it("Thai notes wrap between words and a design keeps its count on its line (Task 9 screenshot review)", () => {
+    render(<SofTable rows={rowsOf(slrP20ReviewFixture)} lang="th" onSelect={() => {}} graded />);
+    const inc = outcome(/^อุบัติการณ์มะเร็งลำไส้ใหญ่/);
+    const seg = (el: HTMLElement, text: RegExp) => [...el.querySelectorAll(".th-seg")].find((s) => text.test(s.textContent ?? ""));
+    expect(seg(inc.studies, /รวมจากที่ตรวจได้/)?.querySelectorAll(".th-w").length).toBeGreaterThan(2);
+    expect(seg(inc.effect, /ช่วงของค่าที่ตรวจผ่าน/)).toBeDefined();
+    for (const li of inc.studies.querySelectorAll("ul li")) expect(li.textContent).toMatch(/ \d+$/);
+    expect(document.getElementById("sof-note")!.querySelector(".th-seg")).not.toBeNull();
   });
 
   it("renders nothing with no rows", () => {

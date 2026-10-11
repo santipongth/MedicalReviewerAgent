@@ -15,6 +15,7 @@ import { ThaiText } from "../ui/thai-text";
 import { CertaintyMark } from "./certainty";
 import { ScrollRegion } from "./scroll-region";
 import { L } from "./text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const P = RC.parts;
 
@@ -166,8 +167,9 @@ export function StrengthLine({ synthesis, lang, quality, type = "legacy", bar = 
       {/* A grade's rationale sits behind a disclosure (Plan 20: the answer comes first); a graded type left ungraded
           (no quantitative studies) says why in the open. Narrative and scoping need no reason. */}
       {rationale && (ungraded ? <p className="max-w-[65ch] text-[0.88rem] text-muted" lang={fieldLang(rationale, lang)}>{rationale}</p> : (
-        <details className="text-[0.9rem]">
-          <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold text-primary md:min-h-0">
+        <details className="group text-[0.9rem]">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 font-display font-semibold text-primary md:min-h-0">
+            <DisclosureChevron />
             {L(lang, P.whyCertainty)}
           </summary>
           <p className="mt-1 max-w-[65ch] text-muted" lang={fieldLang(rationale, lang)}>{rationale}</p>

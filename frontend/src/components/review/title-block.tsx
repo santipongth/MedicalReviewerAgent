@@ -15,6 +15,7 @@ import { Term } from "../ui/term";
 import { ThaiText } from "../ui/thai-text";
 import { QuestionDetails } from "./report-parts";
 import { L } from "./text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const T = RC.title;
 
@@ -114,8 +115,8 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.9rem] print:hidden">
         {!offline && (
-          <details>
-            <summary className={`${BUTTON} list-none`}>{L(lang, T.download)}</summary>
+          <details className="group">
+            <summary className={`${BUTTON} list-none gap-1.5`}><DisclosureChevron />{L(lang, T.download)}</summary>
             <nav aria-label={L(lang, T.downloadNav)} className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
               <a href={`/r/${encodeURIComponent(review.id)}/report.html`} download className={LINK}>
                 {L(lang, T.html)}

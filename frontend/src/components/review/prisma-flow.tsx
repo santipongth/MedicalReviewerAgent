@@ -9,6 +9,7 @@ import { RC } from "@/lib/i18n-report";
 import { Term } from "../ui/term";
 import { ThaiText } from "../ui/thai-text";
 import { L } from "./text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const F = RC.prisma;
 
@@ -103,7 +104,7 @@ export function PrismaFlow({ stats, methods, options, type, lang }: {
             {/* a short box keeps its own height beside a taller exclusion box; the connector line fills the rest */}
             <div className="flex min-w-0 flex-col">
               <Box box={st.main} lang={lang} side={false} />
-              {i < last && <span aria-hidden="true" className="mx-auto hidden w-[1.5px] flex-1 bg-muted @[34rem]:block" />}
+              {i < last && <span aria-hidden="true" data-flow-connector className="mx-auto hidden w-[1.5px] flex-1 bg-muted @[34rem]:block" />}
             </div>
             {st.side && (
               <>
@@ -114,13 +115,15 @@ export function PrismaFlow({ stats, methods, options, type, lang }: {
                 </div>
               </>
             )}
-            {i < last && <span className="@[34rem]:col-start-2"><ArrowDown /></span>}
+            {/* one connector per stage (Task 9, T4 N1): the line above fills a tall row, this arrow continues it */}
+            {i < last && <span className="@[34rem]:col-start-2" data-flow-arrow><ArrowDown /></span>}
           </li>
         ))}
       </ol>
       {/* the boxes above are the printed flow; the table twin would print it twice (Plan 20 Task 8 fix round 1) */}
-      <details className="text-[0.88rem] print:hidden">
-        <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold md:min-h-0">
+      <details className="group text-[0.88rem] print:hidden">
+        <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 font-display font-semibold md:min-h-0">
+          <DisclosureChevron />
           {L(lang, F.asTable)}
         </summary>
         <div className="mt-2 overflow-x-auto">

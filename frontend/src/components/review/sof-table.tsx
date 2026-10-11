@@ -1,11 +1,12 @@
 "use client";
 
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { DIRECTION_LABEL, type Lang } from "@/lib/i18n";
 import { fieldLang, RC } from "@/lib/i18n-report";
 import type { SofEffect, SofRow } from "@/lib/report-view";
 import { ComputedNumber, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
-import { ThaiText } from "../ui/thai-text";
+import { ThaiNodes, ThaiText } from "../ui/thai-text";
 import { CertaintyMark } from "./certainty";
 import { usePrinting } from "./print-mode";
 import { NoEffectText, PooledValue, StudyEffectValue } from "./key-findings";
@@ -48,8 +49,7 @@ function Participants({ row, lang }: { row: SofRow; lang: Lang }) {
           {/* a sum the system added up: a computed number, never a paper's own figure */}
           <ComputedNumber value={COUNT.format(p.total)} lang={lang} />
           <span className={NOTE}>
-            {L(lang, S.sum(p.counted, p.of))}
-            {p.reviews > 0 && L(lang, S.srmaNotCounted)}
+            <ThaiText>{L(lang, S.sum(p.counted, p.of)) + (p.reviews > 0 ? L(lang, S.srmaNotCounted) : "")}</ThaiText>
           </span>
         </span>
       );
@@ -59,7 +59,7 @@ function Participants({ row, lang }: { row: SofRow; lang: Lang }) {
       return (
         <span className="grid gap-0.5" data-participants="reviews_only">
           <span aria-hidden="true">—</span>
-          <span className={NOTE}>{L(lang, S.reviewsOnly)}</span>
+          <span className={NOTE}><ThaiText>{L(lang, S.reviewsOnly)}</ThaiText></span>
         </span>
       );
     default:
@@ -81,8 +81,7 @@ function Effect({ effect, k, lang, onSelect }: { effect: SofEffect; k: number; l
             <VerifiedNumber value={effect.hi.num} onSelect={() => onSelect(effect.hi.ref, effect.hi.outcomeKey)} title={effect.hi.ref} />
           </span>
           <span className={NOTE}>
-            {L(lang, S.range(effect.n, effect.lo.ref, effect.hi.ref))}
-            {effect.other > 0 && L(lang, S.otherMeasure(effect.other))}
+            <ThaiText>{L(lang, S.range(effect.n, effect.lo.ref, effect.hi.ref)) + (effect.other > 0 ? L(lang, S.otherMeasure(effect.other)) : "")}</ThaiText>
           </span>
         </span>
       );
@@ -100,8 +99,7 @@ function Effect({ effect, k, lang, onSelect }: { effect: SofEffect; k: number; l
         <span className="grid gap-0.5" data-effect="mixed">
           <span className="text-[0.88rem]">{L(lang, S.measuresDiffer)}</span>
           <span className={NOTE}>
-            {effect.measures.map((m) => `${m.measure ?? L(lang, S.unnamedMeasure)} ${m.count}`).join(" · ")}
-            {L(lang, S.studiesSuffix)}
+            <ThaiText>{effect.measures.map((m) => `${m.measure ?? L(lang, S.unnamedMeasure)} ${m.count}`).join(" · ") + L(lang, S.studiesSuffix)}</ThaiText>
           </span>
         </span>
       );
@@ -113,10 +111,41 @@ function Effect({ effect, k, lang, onSelect }: { effect: SofEffect; k: number; l
   }
 }
 
+/**
+ * The statement, clamped to three lines with a "more" button when it is longer (Task 9, T3 N2: `title` alone reaches
+ * neither keyboard nor touch). Screen readers get the whole text either way; print unclamps it (globals.css).
+ */
+function ClampedStatement({ text, lang }: { text: string; lang: Lang }) {
+  const id = useId();
+  const ref = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    const measure = () => setClamped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [open, text]);
+  return (
+    <>
+      <span ref={ref} id={id} data-clamp className={`break-words ${open ? "block" : "line-clamp-3"}`} title={open ? undefined : text}
+        lang={fieldLang(text, lang)}>{text}</span>
+      {(clamped || open) && (
+        <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}
+          className="mt-0.5 inline-flex min-h-11 items-center font-display text-[0.85rem] font-semibold text-primary underline underline-offset-2 md:min-h-0 print:hidden">
+          {L(lang, open ? S.less : S.more_)}
+        </button>
+      )}
+    </>
+  );
+}
+
 function Statement({ row, lang }: { row: SofRow; lang: Lang }) {
-  if (row.statement) {
-    return <span className="line-clamp-3 break-words" title={row.statement} lang={fieldLang(row.statement, lang)}>{row.statement}</span>;
-  }
+  if (row.statement) return <ClampedStatement text={row.statement} lang={lang} />;
   if (!row.tally.length && !row.themes) return <span className="text-muted">–</span>;
   return (
     <span className="flex flex-wrap gap-x-3 gap-y-1 font-display text-[0.88rem]">
@@ -155,37 +184,40 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
     <section aria-labelledby="h-sof" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
       <h2 id="h-sof" className={SECTION_H2}>{Lw(lang, S.h2)}</h2>
       <p className="max-w-[65ch] text-[0.85rem] text-muted" id="sof-note">
-        {L(lang, S.note)}
-        {reviewLevel && <>{" "}<b className="font-semibold" data-review-level>{L(lang, S.reviewLevelNote)}</b></>}
+        <ThaiNodes>
+          {L(lang, S.note)}
+          {reviewLevel && <>{" "}<b className="font-semibold" data-review-level>{L(lang, S.reviewLevelNote)}</b></>}
+        </ThaiNodes>
       </p>
       {/* Fits without scrolling since Task 3; the region keeps the scroll cue in case a long word ever widens it. */}
       <ScrollRegion label={caption} lang={lang} bordered={false} className="rounded-sm md:border md:border-rule">
-        <table className={`w-full border-collapse text-[0.9rem] ${c.table}`} aria-describedby="sof-note">
+        <table role="table" className={`w-full border-collapse text-[0.9rem] ${c.table}`} aria-describedby="sof-note">
           <caption className="sr-only">
             {caption} {L(lang, S.captionNote)}
           </caption>
-          <thead className={c.head}>
-            <tr className="bg-ground">
-              <th scope="col" className={`${TH} w-[24%]`}>{L(lang, S.colOutcome)}</th>
-              <th scope="col" className={`${TH} w-[26%]`}>{col.studies}</th>
-              <th scope="col" className={TH}>{col.effect}</th>
-              <th scope="col" className={`${TH} w-[7.5rem]`}><Term k="evidenceStrength" lang={lang}>{col.certainty}</Term></th>
+          <thead role="rowgroup" className={c.head}>
+            <tr role="row" className="bg-ground">
+              <th scope="col" role="columnheader" className={`${TH} w-[24%]`}>{L(lang, S.colOutcome)}</th>
+              <th scope="col" role="columnheader" className={`${TH} w-[26%]`}>{col.studies}</th>
+              <th scope="col" role="columnheader" className={TH}>{col.effect}</th>
+              <th scope="col" role="columnheader" className={`${TH} w-[7.5rem]`}><Term k="evidenceStrength" lang={lang}>{col.certainty}</Term></th>
             </tr>
           </thead>
           {rows.map((r) => (
-            <tbody key={r.key} data-sof-row className={`border-t border-rule ${c.body}`}>
-              <tr className={c.row}>
-                <th scope="row" lang={fieldLang(r.outcome, lang)}
+            <tbody key={r.key} role="rowgroup" data-sof-row className={`border-t border-rule ${c.body}`}>
+              <tr role="row" className={c.row}>
+                <th scope="row" role="rowheader" lang={fieldLang(r.outcome, lang)}
                   className={`px-3 pt-2.5 text-left align-top font-display font-semibold break-words ${c.rowHead}`}>
                   <ThaiText>{r.outcome}</ThaiText>
                 </th>
-                <td className={`${TD} ${c.td}`} data-label={col.studies}>
+                <td role="cell" className={`${TD} ${c.td}`} data-label={col.studies}>
                   <span className="font-display font-semibold nw">
                     <span className="tabular-nums">{r.k}</span> {L(lang, S.studies(r.k))}
                   </span>
                   {r.designs.length > 0 && (
                     <ul className="mt-0.5 grid text-[0.8rem] text-muted" aria-label={L(lang, S.designs)}>
-                      {r.designs.map((d) => <li key={d.label}><ThaiText>{d.label}</ThaiText> <span className="font-display tabular-nums">{d.count}</span></li>)}
+                      {/* a no-break space keeps the count with the design's last word */}
+                      {r.designs.map((d) => <li key={d.label}><ThaiText>{d.label}</ThaiText>{"\u00a0"}<span className="font-display tabular-nums">{d.count}</span></li>)}
                     </ul>
                   )}
                   <span className="mt-1.5 grid gap-0.5">
@@ -193,8 +225,8 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
                     <Participants row={r} lang={lang} />
                   </span>
                 </td>
-                <td className={`${TD} ${c.td}`} data-label={col.effect}><Effect effect={r.effect} k={r.k} lang={lang} onSelect={onSelect} /></td>
-                <td className={`${TD} ${c.td}`} data-label={col.certainty}>
+                <td role="cell" className={`${TD} ${c.td}`} data-label={col.effect}><Effect effect={r.effect} k={r.k} lang={lang} onSelect={onSelect} /></td>
+                <td role="cell" className={`${TD} ${c.td}`} data-label={col.certainty}>
                   {graded && r.certainty ? (
                     <span className="grid gap-0.5">
                       <CertaintyMark level={r.certainty} lang={lang} />
@@ -203,8 +235,8 @@ export function SofTable({ rows, lang, onSelect, graded }: { rows: SofRow[]; lan
                   ) : <span className="text-[0.88rem] text-muted nw">{L(lang, S.notAssessed)}</span>}
                 </td>
               </tr>
-              <tr className={c.row}>
-                <td colSpan={4} className={`px-3 pb-3 text-[0.92rem] ${c.statement}`} data-sof-statement>
+              <tr role="row" className={c.row}>
+                <td role="cell" colSpan={4} className={`px-3 pb-3 text-[0.92rem] ${c.statement}`} data-sof-statement>
                   <span className="label mr-2">{col.means}</span>
                   <Statement row={r} lang={lang} />
                 </td>

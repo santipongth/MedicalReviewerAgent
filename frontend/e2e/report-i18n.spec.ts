@@ -1,4 +1,3 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { THAI_KEEP_WHOLE } from "../src/lib/text-wrap";
 import { emptyReviewFixture, P20_FIXTURES, P20_FIXTURES_EN, slashedThaiReviewFixture } from "../src/test/fixtures";
@@ -69,19 +68,7 @@ for (const type of TYPES) {
   });
 }
 
-for (const width of [1440, 390]) {
-  for (const scheme of ["light", "dark"] as const) {
-    for (const type of TYPES) {
-      test(`${type} in English at ${width}px, ${scheme}: axe clean`, async ({ page }) => {
-        await page.setViewportSize({ width, height: 1000 });
-        await page.emulateMedia({ colorScheme: scheme });
-        await open(page, P20_FIXTURES_EN[type], "en");
-        const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-        expect(r.violations.map((v) => `${v.impact} ${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`)).toEqual([]);
-      });
-    }
-  }
-}
+// axe in light and dark at 1440 and 390 for every type and both languages: e2e/report-matrix.spec.ts (Task 9)
 
 /** Thai words (Intl.Segmenter, plus the report words kept whole) whose glyphs sit on more than one line. */
 async function brokenWords(page: Page, selector: string): Promise<{ broken: string[]; lines: number }> {
@@ -168,9 +155,35 @@ test("an English report paints its first frame with the English header (no Thai 
   expect(first).not.toMatch(THAI);
 });
 
-/** English allowed in a Thai report's chrome: abbreviations and names that the report glosses or that have no Thai form. */
+/** English allowed in a Thai report's chrome: abbreviations and names that the report glosses or that have no Thai form.
+ * Task 9 (T7 parked): a string passes only if every Latin word in it is allow-listed, Thai around it or not; before,
+ * any string containing one Thai letter passed whole ("ตาราง Summary of findings" would have). */
 // The design names "RCT", "Cohort", "Case-control" and "Mendelian randomization" are the Thai labels too (DESIGN_LABEL.th).
-const SHARED_EN = /^(k|n|SE( \(ln\))?|95% CI|AUC|HR|OR|RR|MD|SMD|RD|r|PICO|PCC|PICo|SR\/MA|GRADE-lite|HTML|Markdown|CSV|JSON|Medical Reviewer Agent|P\d+( .*)?|Forest plot.*|PubMed|Europe PMC|OpenAlex|RCT|Cohort|Case-control|Mendelian randomization)$/;
+const SHARED_PHRASES = ["Medical Reviewer Agent", "Europe PMC", "Mendelian randomization", "Case-control", "GRADE-lite", "95% CI",
+  "SR/MA", "SE (ln)", "Forest plot", "PRISMA-ScR", "PRISMA 2020"];
+const SHARED_WORDS = new Set(["k", "n", "SE", "CI", "AUC", "HR", "OR", "RR", "MD", "SMD", "RD", "r", "PICO", "PCC", "PICo", "HTML",
+  "Markdown", "CSV", "JSON", "PubMed", "OpenAlex", "RCT", "Cohort", "PRISMA", "GRADE",
+  // the question framework's letters (PICO, PECO, PCC, SPIDER): "C · ตัวเปรียบเทียบ"
+  "P", "I", "C", "O", "E", "S", "D", "R", "PI", "Q"]);
+/** A study's label: its code, first author and year are names (data), e.g. "P3 Lindqvist 2021". */
+const STUDY_LABEL = /^P\d+(?: |$)/;
+
+/** The English words of `t` that are not allow-listed (study codes such as P3 are names). */
+function unlistedEnglish(t: string): string[] {
+  if (STUDY_LABEL.test(t)) return [];
+  let rest = t;
+  for (const p of SHARED_PHRASES) rest = rest.split(p).join(" ");
+  return (rest.match(/[A-Za-z][A-Za-z'’]*(?:-[A-Za-z]+)*/g) ?? []).filter((w) => !SHARED_WORDS.has(w) && !/^P\d*$/.test(w));
+}
+
+test("the Thai allow-list flags English inside a Thai string (Task 9)", () => {
+  expect(unlistedEnglish("ตาราง Summary of findings")).toEqual(["Summary", "of", "findings"]);
+  expect(unlistedEnglish("ค่า HR (95% CI) จาก P3")).toEqual([]);
+  expect(unlistedEnglish("Forest plot: อุบัติการณ์")).toEqual([]);
+  expect(unlistedEnglish("Cohort 2")).toEqual([]);
+  expect(unlistedEnglish("แนวคิด (Concept)")).toEqual(["Concept"]);
+  expect(unlistedEnglish("P3 Lindqvist 2021")).toEqual([]);
+});
 
 for (const type of TYPES) {
   test(`${type} in Thai: no English in the chrome beyond glossed abbreviations and names`, async ({ page }) => {
@@ -191,7 +204,7 @@ for (const type of TYPES) {
       return out.filter(Boolean);
     });
     expect(english.length).toBeGreaterThan(20);
-    expect(english.filter((t) => !THAI.test(t) && !SHARED_EN.test(t))).toEqual([]);
+    expect(english.filter((t) => unlistedEnglish(t).length).map((t) => `${t} → ${unlistedEnglish(t).join(" ")}`)).toEqual([]);
   });
 }
 

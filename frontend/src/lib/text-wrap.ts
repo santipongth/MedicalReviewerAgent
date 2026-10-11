@@ -35,11 +35,31 @@ export function wordSegments(text: string): string[] {
 export const THAI_KEEP_WHOLE = [
   "ยาหลอก", "อภิมาน", "อุบัติการณ์", "ปฐมภูมิ", "ทุติยภูมิ", "สหสัมพันธ์", "ออดส์", "เอเจนต์", "พรอมต์", "เมตฟอร์มิน",
   "ซัลโฟนิลยูเรีย", "เบาหวาน", "ผสมผสาน", "ภาคตัดขวาง", "คัดกรอง", "ฟันเนล",
+  // Task 9 (screenshot review): split at a line end in the selection flow, the SoF notes and the certainty labels
+  "หลักฐาน", "ตัวอักษร", "การศึกษา", "ความเชื่อมั่น",
 ];
 
 /** A dictionary fragment that cannot start a word: a lone consonant (มิ|น) or a silenced final (ออด|ส์, เอเจน|ต์). */
 function isFragment(seg: string): boolean {
   return /^[ก-ฮ]$/.test(seg) || /^[ก-ฮ][ั-ฺ็-๋]?์$/.test(seg);
+}
+
+/**
+ * `text` in word segments with every kept word as one segment, and the text between kept words segmented on its own:
+ * ICU's own segment can straddle a kept word's end (เมตฟอร์มิ|นร่ว|มกับ), which cut the next word (Task 9).
+ */
+function keptSegments(text: string, kept: [number, number][]): string[] {
+  const spans = [...kept].sort((a, b) => a[0] - b[0] || b[1] - a[1])
+    .filter((s, i, all) => !all.slice(0, i).some((o) => s[0] < o[1] && s[1] > o[0])); // first and longest wins
+  const out: string[] = [];
+  let at = 0;
+  for (const [a, b] of spans) {
+    if (a > at) out.push(...wordSegments(text.slice(at, a)));
+    out.push(text.slice(a, b));
+    at = b;
+  }
+  if (at < text.length) out.push(...wordSegments(text.slice(at)));
+  return out;
 }
 
 /** Punctuation a line may break after (a slash or dash joining two Thai words, a comma, a closing bracket). */
@@ -62,7 +82,7 @@ export function thaiChunks(text: string): string[] {
   const chunks: string[] = [];
   let cur = "";
   let at = 0;
-  for (const seg of wordSegments(text)) {
+  for (const seg of keptSegments(text, kept)) {
     const inside = kept.some(([a, b]) => at > a && at < b);
     const a = text[at - 1] ?? "";
     const b = text[at] ?? "";

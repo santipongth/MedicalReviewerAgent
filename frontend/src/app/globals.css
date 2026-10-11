@@ -244,7 +244,8 @@ h4 {
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
-.th-w {
+.th-w,
+.th-n {
   white-space: nowrap;
 }
 
@@ -512,6 +513,11 @@ h4 {
   }
   body > footer .grid > * + * {
     margin-top: 0.75rem;
+  }
+  /* the footer's last line ends the paper with no padding under it: its bottom padding alone pushed an empty last page
+     after the Thai meta-analysis report (Task 9; some other long Thai reports still get one, see e2e/pdf-layout.ts) */
+  body > footer > div:last-child {
+    padding-bottom: 0 !important;
   }
   [data-report] .sticky {
     position: static !important;

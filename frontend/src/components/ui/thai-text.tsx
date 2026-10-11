@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Children, cloneElement, Fragment, isValidElement, type ReactNode } from "react";
 import { hasThai, thaiChunks } from "@/lib/text-wrap";
 
 /**
@@ -8,10 +8,39 @@ import { hasThai, thaiChunks } from "@/lib/text-wrap";
  */
 export const THAI_WORD_MAX = 16;
 
-/** A chunk with its Thai words kept whole (`th-w`) and its spaces left as ordinary break points. */
+/**
+ * The longest Latin or number run kept on one line ("HR 0.83 (0.71–0.97)" tokens, "COVID-19", "1,234"): longer (a URL)
+ * stays breakable so it never overflows.
+ */
+export const LATIN_RUN_MAX = 24;
+/** A number, a range or a percentage ("0.77–0.96", "1,234", "−0.5", "12.5%"). */
+const NUMBER_RUN = /[−-]?\d[\d.,]*(?:[–—-][−-]?\d[\d.,]*)?%?/g;
+
+/** A long run that may break: its numbers are still kept whole (`th-n`). */
+function numbersWhole(t: string, key: number): ReactNode {
+  const parts: ReactNode[] = [];
+  let at = 0;
+  for (const m of t.matchAll(NUMBER_RUN)) {
+    if (m.index > at) parts.push(t.slice(at, m.index));
+    parts.push(<span key={parts.length} className="th-n">{m[0]}</span>);
+    at = m.index + m[0].length;
+  }
+  if (!parts.length) return t;
+  if (at < t.length) parts.push(t.slice(at));
+  return <Fragment key={key}>{parts}</Fragment>;
+}
+
+/**
+ * A chunk with its Thai words kept whole (`th-w`), its Latin words and numbers kept whole (`th-n`: under the root's
+ * `overflow-wrap: anywhere` an unwrapped "0.77–0.96" could break inside, Task 9) and its spaces left as break points.
+ */
 function chunk(text: string): ReactNode {
-  return text.split(/(\s+)/).filter(Boolean)
-    .map((t, i) => (hasThai(t) && [...t].length <= THAI_WORD_MAX ? <span key={i} className="th-w">{t}</span> : t));
+  return text.split(/(\s+)/).filter(Boolean).map((t, i) => {
+    if (/^\s+$/.test(t)) return t;
+    const n = [...t].length;
+    if (hasThai(t)) return n <= THAI_WORD_MAX ? <span key={i} className="th-w">{t}</span> : numbersWhole(t, i);
+    return n <= LATIN_RUN_MAX ? <span key={i} className="th-n">{t}</span> : numbersWhole(t, i);
+  });
 }
 
 /**
@@ -32,4 +61,18 @@ export function ThaiText({ children }: { children: string | null | undefined }) 
       {chunks.map((c, i) => <Fragment key={i}>{i > 0 && <wbr />}{chunk(c)}</Fragment>)}
     </span>
   );
+}
+
+/**
+ * Mixed content (strings, fragments and plain HTML elements, such as a limitation line with a code span or a bold
+ * label) with every string segmented by ThaiText; components are left as they are (Task 9: Chromium cut ตีพิมพ์ and ตัวอักษร in list prose).
+ */
+export function ThaiNodes({ children }: { children: ReactNode }): ReactNode {
+  return Children.map(children, (c) => {
+    if (typeof c === "string") return <ThaiText>{c}</ThaiText>;
+    if (!isValidElement<{ children?: ReactNode }>(c) || c.props.children == null) return c;
+    if (c.type === Fragment) return <ThaiNodes>{c.props.children}</ThaiNodes>;
+    // a plain HTML element (<b>, <span>): its own text too; components keep their own rendering
+    return typeof c.type === "string" ? cloneElement(c, undefined, <ThaiNodes>{c.props.children}</ThaiNodes>) : c;
+  });
 }

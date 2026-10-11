@@ -8,27 +8,11 @@ export const DEFAULT_REVIEW_TYPE: ReviewType = "slr";
 /** A result without `review_type` (stored before Plan 14a) behaves as today's SLR report. */
 export type ReviewTypeOrLegacy = ReviewType | "legacy";
 
-export const REVIEW_TYPE_LABEL: Record<ReviewType, { th: string; en: string; description: string }> = {
-  narrative: {
-    th: "การทบทวนแบบบรรยาย",
-    en: "Narrative review",
-    description: "สรุปภาพรวมความรู้จากงานวิจัยหลายชนิด รวมบทความทบทวน เหมาะกับการทำความเข้าใจหัวข้ออย่างรวดเร็ว ไม่ประเมินความแข็งแรงของหลักฐาน",
-  },
-  slr: {
-    th: "การทบทวนวรรณกรรมอย่างเป็นระบบ",
-    en: "Systematic review",
-    description: "ค้นและคัดกรองตามเกณฑ์ที่ชัดเจน รายงานขั้นตอนแบบ PRISMA และประเมินความแข็งแรงของหลักฐาน (ค่าเริ่มต้น)",
-  },
-  scoping: {
-    th: "การทบทวนขอบเขต",
-    en: "Scoping review",
-    description: "สำรวจว่ามีงานวิจัยอะไร ชนิดใด ปีใด ด้วยกรอบ PCC ไม่ประเมินคุณภาพหรือสรุปว่าได้ผลหรือไม่",
-  },
-  meta_analysis: {
-    th: "การวิเคราะห์อภิมาน",
-    en: "Meta-analysis",
-    description: "รวมผลเชิงตัวเลขจากงานวิจัยหลักที่วัดผลแบบเดียวกัน (ตั้งแต่ 3 ฉบับ) ด้วยวิธี random effects ตัวเลขรวมคำนวณโดยระบบ ไม่ใช่ผลจากงานใดงานหนึ่ง",
-  },
+export const REVIEW_TYPE_LABEL: Record<ReviewType, { th: string; en: string }> = {
+  narrative: { th: "การทบทวนแบบบรรยาย", en: "Narrative review" },
+  slr: { th: "การทบทวนวรรณกรรมอย่างเป็นระบบ", en: "Systematic review" },
+  scoping: { th: "การทบทวนขอบเขต", en: "Scoping review" },
+  meta_analysis: { th: "การวิเคราะห์อภิมาน", en: "Meta-analysis" },
 };
 
 export function isReviewType(v: unknown): v is ReviewType {
@@ -56,6 +40,14 @@ export type BlockId =
   | "claims" | "findings" | "evidence_map" | "lit_matrix" | "concept_map" | "forest" | "prisma" | "meta" | "citations";
 
 export type SectionId = TopSectionId | BlockId;
+
+/** The H2 anchor of each top-level section: the table of contents links here (report.tsx) and e2e checks the order. */
+export const SECTION_ANCHOR: Record<Exclude<TopSectionId, "title">, string> = {
+  bottom_line: "h-answer", key_findings: "h-key-findings", sof: "h-sof", selection: "h-selection",
+  characteristics: "h-characteristics", results: "h-results", rob: "h-rob", consistency: "h-claims", landscape: "h-landscape",
+  limitations: "h-limitations", gaps: "h-gaps", discussion: "h-discussion", methods: "h-method", references: "h-papers",
+  downloads: "h-downloads", appendix: "h-appendix",
+};
 
 /** Which blocks each group section may hold (a block is listed in SECTIONS_BY_TYPE right after its group). */
 export const SECTION_BLOCKS: Partial<Record<TopSectionId, readonly BlockId[]>> = {

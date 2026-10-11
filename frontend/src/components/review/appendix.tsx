@@ -11,6 +11,7 @@ import { SECTION_H2 as H2 } from "./report-nav";
 import type { Select } from "./report-parts";
 import { ScrollRegion } from "./scroll-region";
 import { L, Lw } from "./text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const A = RC.appendix;
 const TH = "label px-2.5 py-2 text-left align-bottom";
@@ -47,8 +48,9 @@ export function VerifiedAppendix({ papers, meta, metaRows, lang, onSelect, verif
   return (
     <section aria-labelledby="h-appendix" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3" data-appendix>
       <h2 id="h-appendix" className={H2}>{Lw(lang, A.h2)}</h2>
-      <details className="grid gap-3 text-[0.92rem]">
-        <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold text-primary md:min-h-0">
+      <details className="group grid gap-3 text-[0.92rem]">
+        <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 font-display font-semibold text-primary md:min-h-0">
+          <DisclosureChevron />
           {L(lang, A.summary(verified.length, computed.length))}
         </summary>
         <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">

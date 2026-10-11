@@ -69,6 +69,12 @@ NAME_CASES = [
     ("Smith J Jr", "Smith J Jr"),
     ("Henry Ford III", "Ford H III"),
     ("Maria De La Cruz", "De La Cruz M"),
+    # Task 9: hyphenated initials keep both letters; a suffix written before the comma goes after the initials
+    ("Lee S-H", "Lee SH"),
+    ("Lee S.-H.", "Lee SH"),
+    ("Smith Jr, John", "Smith J Jr"),
+    ("Smith Jr., John Andrew", "Smith JA Jr"),
+    ("Ford III, Henry", "Ford H III"),
 ]
 
 

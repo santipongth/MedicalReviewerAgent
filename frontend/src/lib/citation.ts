@@ -42,9 +42,10 @@ const PARTICLES = new Set(["van", "von", "der", "den", "de", "del", "della", "di
 const hasLetter = (s: string): boolean => /\p{L}/u.test(s);
 /** A name with a letter outside the Latin script (Thai, CJK, …) is left as written. */
 const nonLatin = (s: string): boolean => [...s].some((ch) => /\p{L}/u.test(ch) && !/\p{Script=Latin}/u.test(ch));
-/** "JH", "J.H.", "A": initials already. */
+/** "JH", "J.H.", "S-H", "A": initials already (hyphens between initials are dropped: "Lee S-H" → "Lee SH"). */
+const bareInitials = (t: string): string => t.replace(/[.-]/g, "");
 const isInitials = (t: string): boolean => {
-  const bare = t.replace(/\./g, "");
+  const bare = bareInitials(t);
   return bare.length >= 1 && bare.length <= 3 && /^\p{Lu}+$/u.test(bare);
 };
 
@@ -69,7 +70,7 @@ function isOrganisation(name: string): boolean {
 
 /** Initials of one given-name token: "J.A." → "JA", "Jean-Pierre" → "JP", "Andrew" → "A"; "" when it has no letter. */
 function initialsOf(token: string): string {
-  if (isInitials(token)) return token.replace(/\./g, "");
+  if (isInitials(token)) return bareInitials(token);
   return token.split("-").map((part) => [...part].find((ch) => hasLetter(ch)) ?? "").join("").toUpperCase();
 }
 
@@ -91,6 +92,9 @@ export function vancouverName(name: string): string {
     tokens.pop();
     while (tokens[tokens.length - 1] === ",") tokens.pop();
   }
+  // a suffix written with the surname, before the comma ("Smith Jr, John") goes there too
+  const firstComma = tokens.indexOf(",");
+  if (!suffix && firstComma > 1 && SUFFIX.test(tokens[firstComma - 1])) suffix = suffixText(tokens.splice(firstComma - 1, 1)[0]);
   const withSuffix = (s: string) => (suffix ? `${s} ${suffix}` : s);
   const rest = tokens.join(" ").replace(/ ,/g, ",");
   let surname: string[];
@@ -103,7 +107,7 @@ export function vancouverName(name: string): string {
   } else {
     const words = rest.split(" ");
     if (words.length === 1) return withSuffix(rest);
-    if (isInitials(words[words.length - 1])) return withSuffix(`${words.slice(0, -1).join(" ")} ${words[words.length - 1].replace(/\./g, "")}`);
+    if (isInitials(words[words.length - 1])) return withSuffix(`${words.slice(0, -1).join(" ")} ${bareInitials(words[words.length - 1])}`);
     let start = words.length - 1;
     while (start > 1 && PARTICLES.has(words[start - 1].toLowerCase())) start -= 1; // "De La Cruz" too
     surname = words.slice(start);

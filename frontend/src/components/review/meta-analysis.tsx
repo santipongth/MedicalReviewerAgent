@@ -13,6 +13,7 @@ import { ComputedNumber, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { SectionHeading, useNested } from "./report-nav";
 import { L } from "./text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const M = RC.meta;
 
@@ -148,7 +149,7 @@ function PoolBlock({ pool, tokens, lang, onSelect, removed }: {
       {tokens && <MetaForestFigure pool={pool} tokens={tokens} lang={lang} onSelect={onSelect} />}
       <details className="group">
         <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-sm border border-rule px-3 font-display hover:border-ink md:min-h-0 md:py-1.5">
-          <span aria-hidden="true" className="inline-block text-[0.7rem] text-muted group-open:rotate-90">▶</span>
+          <DisclosureChevron />
           <span>{L(lang, M.howComputed)}</span>
         </summary>
         <div className="grid gap-2 pt-2">

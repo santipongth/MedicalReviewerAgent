@@ -49,8 +49,11 @@ describe("Thai segmentation helpers (Plan 20 Task 7)", () => {
 
   it("never breaks inside a report word the dictionary splits, nor before a dictionary fragment", () => {
     // ICU splits these (อภิ|มาน, เมต|ฟอร์มิ|น, ออด|ส์): one piece each
-    for (const w of ["อภิมาน", "เมตฟอร์มิน", "อุบัติการณ์", "ออดส์", "ยาหลอก"]) expect(thaiChunks(w)).toEqual([w]);
+    for (const w of ["อภิมาน", "เมตฟอร์มิน", "อุบัติการณ์", "ออดส์", "ยาหลอก", "หลักฐาน", "ตัวอักษร", "การศึกษา", "ความเชื่อมั่น"]) expect(thaiChunks(w)).toEqual([w]);
     expect(thaiChunks("การวิเคราะห์อภิมาน")).toEqual(["การ", "วิเคราะห์", "อภิมาน"]);
+    // Task 9: ICU's segment can straddle a kept word's end (เมตฟอร์มิ|นร่ว|ม…): the text after a kept word is
+    // segmented on its own, so the next word is never cut ("ร่ว|มกับ" before)
+    expect(thaiChunks("เมตฟอร์มินร่วมกับยาหลอก")).toEqual(["เมตฟอร์มิน", "ร่วม", "กับ", "ยาหลอก"]);
     // a loanword outside the list: a lone final consonant or a silenced final stays with the word before it
     expect(thaiChunks("ซิทากลิปติน").some((c) => /^[ก-ฮ]$/.test(c))).toBe(false);
   });

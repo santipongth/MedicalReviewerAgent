@@ -16,6 +16,14 @@ const show = (ps: Paper[], type: "narrative" | "slr" | "scoping" | "legacy" = "s
 const headers = () => within(screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" })).getAllByRole("columnheader").map((h) => h.textContent);
 
 describe("LitMatrixSection", () => {
+  it("Thai population and intervention cells wrap only between words (Task 9 screenshot review: เบา|หวาน)", () => {
+    const thai = papers.map((p) => (p.card ? { ...p, card: { ...p.card, population: "ผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2", intervention_or_exposure: "เมตฟอร์มินร่วมกับยาหลอก" } } : p));
+    show(thai);
+    const table = screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" });
+    const words = [...table.querySelectorAll(".th-w")].map((w) => w.textContent);
+    expect(words).toContain("เบาหวาน");
+    expect(words).toContain("เมตฟอร์มิน");
+  });
   it("is a scrolling, labelled table with scoped headers and a sticky first column", () => {
     show(papers);
     const table = screen.getByRole("table", { name: "ตารางสรุปงานวิจัย" });

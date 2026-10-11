@@ -30,11 +30,15 @@ export function overlappingText(pages: Run[][]): string[] {
         const w = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0);
         const h = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0);
         // about the same baseline: neighbouring runs of one line (split at a font change, or a Thai tone mark set a
-        // little higher), never two blocks; a vertical line's baseline is its x
+        // little higher) may touch or share a glyph's sliver, but two runs on one baseline that overlap by more than
+        // that are text drawn over text and fail too (Task 9: the old blanket same-line exemption could hide that);
+        // a vertical line's baseline is its x, and along it the overlap is h
         const vertical = p.vertical && q.vertical;
         const size = vertical ? Math.min(p.x1 - p.x0, q.x1 - q.x0) / 0.8 : Math.min(p.y1 - p.y0, q.y1 - q.y0) / 0.8;
         const sameLine = vertical ? Math.abs(p.x0 - q.x0) < size * 0.3 : Math.abs(p.y0 - q.y0) < size * 0.3;
-        if (!sameLine && w > 1.5 && h > 1.5) out.push(`p${i + 1}: «${p.text.slice(0, 30)}» × «${q.text.slice(0, 30)}»`);
+        const along = vertical ? h : w;
+        const overlap = sameLine ? along > Math.max(1.5, size * 0.3) && Math.min(w, h) > 1.5 : w > 1.5 && h > 1.5;
+        if (overlap) out.push(`p${i + 1}: «${p.text.slice(0, 30)}» × «${q.text.slice(0, 30)}»`);
       }
     }
   });
@@ -47,8 +51,10 @@ export function emptyPages(pages: Run[][]): number[] {
 }
 
 /**
- * Empty pages inside the document (a trailing empty page is left out: Chromium adds one after some Thai reports, an
- * engine quirk with no drawing, header or footer, outside the "page X of Y" count; see the Task 8 report).
+ * Empty pages inside the document (a trailing empty page is left out: Chromium adds one after some long Thai reports, an
+ * engine quirk with no drawing, header or footer, outside the "page X of Y" count; see the Task 8 report). Task 9 removed
+ * the footer's bottom padding in print, which cleared it for the meta-analysis reports; the long SLR, the scoping
+ * report and the offline meta-analysis in Thai still end with one (parked).
  */
 export function blankPagesInside(pages: Run[][]): number[] {
   return emptyPages(pages).filter((p) => p !== pages.length);

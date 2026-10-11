@@ -55,7 +55,8 @@ for (const width of [1440, 390]) {
 
       // the excluded-at-screening disclosure: closed, then the reason counts
       const excluded = list.locator("details[data-excluded-screening]");
-      await expect(excluded.locator("summary")).toHaveText("บทความที่คัดออกในขั้นคัดกรอง (14)");
+      // (the summary also holds the aria-hidden chevron glyphs, Task 9)
+      await expect(excluded.locator("summary")).toHaveText(/บทความที่คัดออกในขั้นคัดกรอง \(14\)$/);
       await expect(excluded.getByRole("table")).toBeHidden();
       await excluded.locator("summary").click();
       await expect(excluded.getByRole("table", { name: "เหตุผลที่คัดออกในขั้นคัดกรอง" })).toBeVisible();

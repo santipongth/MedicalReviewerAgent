@@ -112,6 +112,23 @@ describe("prismaFlow", () => {
     expect(box(prismaFlow({ stats: { ...full, selected: 2, related_reports: 3 }, type: "slr", lang: "en" }), "included", "main").value).toBeNull();
   });
 
+  it("the 'of which' line sits directly under the reports it is part of (Task 9, T4 N2)", () => {
+    const v = prismaFlow({ stats: { ...full, selected: 22, related_reports: 3, with_fulltext: 4 }, type: "slr", lang: "en" })!;
+    expect(box(v, "included", "main").lines.map((l) => l.key)).toEqual(["reports_included", "related_reports", "extracted", "with_fulltext"]);
+    const th = prismaFlow({ stats: { ...full, selected: 22, related_reports: 3 }, type: "slr", lang: "th" })!;
+    expect(box(th, "included", "main").lines.map((l) => l.key)).toEqual(["reports_included", "related_reports", "extracted"]);
+  });
+
+  it("scoping: further reports are of a source of evidence, never of 'a trial counted as a study' (Task 9, T4 N3)", () => {
+    for (const lang of ["en", "th"] as const) {
+      const inc = box(prismaFlow({ stats: { ...full, related_reports: 2 }, type: "scoping", lang })!, "included", "main");
+      const label = inc.lines.find((l) => l.key === "related_reports")!.label;
+      expect(label).not.toMatch(/trial|การทดลอง|study\b|การศึกษา/);
+      expect(label).toMatch(lang === "en" ? /further reports of a source of evidence already included/ : /แหล่งหลักฐานที่รวมแล้ว/);
+      expect(inc.lines[0].key).toBe("related_reports");
+    }
+  });
+
   it("the cap note states a screened count only when candidates is recorded", () => {
     const noCand = prismaFlow({ stats: { ...full, candidates: undefined }, options: { candidate_limit: 60 }, type: "slr", lang: "en" })!;
     const note = box(noCand, "screening", "main").notes.join(" ");

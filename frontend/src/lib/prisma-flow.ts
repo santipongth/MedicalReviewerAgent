@@ -195,13 +195,16 @@ export function prismaFlow({ stats, methods, options, type, lang }: {
       : split ? T(lang, "การศึกษาที่รวมในการทบทวน", "Studies included in the review")
         : T(lang, "รายงานที่รวมในการทบทวน", "Reports included in the review"),
     value: split ? diff(selected, related) : selected,
+    // "of which" sits directly under the count it is part of: the reports line (split) or the box's own count (scoping)
     lines: [
       ...(split ? [{ key: "reports_included", label: T(lang, "รายงานของการศึกษาที่รวม", "Reports of included studies"), value: selected }] : []),
+      ...(related != null ? [{ key: "related_reports", value: related,
+        label: scoping
+          ? T(lang, "ในจำนวนนี้ เป็นรายงานเพิ่มเติมของแหล่งหลักฐานที่รวมแล้ว", "of which further reports of a source of evidence already included")
+          : T(lang, "ในจำนวนนี้ เป็นรายงานเพิ่มเติมของการทดลองที่นับเป็นการศึกษาแล้ว", "of which further reports of a trial already counted as a study") }]
+        : []),
       { key: "extracted", label: T(lang, "อ่านและสกัดข้อมูลได้", "Read and data extracted"), value: num(s.extracted) },
       ...(s.with_fulltext != null ? [{ key: "with_fulltext", label: T(lang, "ได้ฉบับเต็ม", "Full text obtained"), value: num(s.with_fulltext) }] : []),
-      ...(related != null ? [{ key: "related_reports", value: related,
-        label: T(lang, "ในจำนวนนี้ เป็นรายงานเพิ่มเติมของการทดลองที่นับเป็นการศึกษาแล้ว",
-          "of which further reports of a trial already counted as a study") }] : []),
     ],
     notes: [],
   };

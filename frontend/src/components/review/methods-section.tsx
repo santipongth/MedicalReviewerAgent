@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
+import { ThaiNodes } from "../ui/thai-text";
 import { isNonQuantitative } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
 import { fieldLang, RC } from "@/lib/i18n-report";
@@ -12,6 +13,7 @@ import type { Review, ReviewResult } from "@/lib/types";
 import { READING } from "./report-parts";
 import { SECTION_H2, SECTION_H3 } from "./report-nav";
 import { fill, L, Lw } from "./text";
+import { DisclosureChevron } from "../ui/disclosure-chevron";
 
 const M = RC.methods;
 
@@ -42,7 +44,7 @@ function Part({ id, title, lines, children }: { id: string; title: ReactNode; li
       <h3 id={id} className={SECTION_H3}>{title}</h3>
       {shown.length > 0 && (
         <ul className={`grid max-w-[70ch] grid-cols-[minmax(0,1fr)] list-disc gap-1 pl-5 ${READING}`}>
-          {shown.map(([key, node]) => <li key={key} data-methods-line={key}>{node}</li>)}
+          {shown.map(([key, node]) => <li key={key} data-methods-line={key}><ThaiNodes>{node}</ThaiNodes></li>)}
         </ul>
       )}
       {children}
@@ -124,8 +126,9 @@ export function MethodsSection({ review, result, type, lang }: {
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5">
       <p className="label">{L(lang, M.queriesN(queries.length))}</p>
       {queries.length > 4 ? (
-        <details>
-          <summary className="inline-flex min-h-11 cursor-pointer items-center font-display text-[0.92rem] font-semibold md:min-h-0">
+        <details className="group">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 font-display text-[0.92rem] font-semibold md:min-h-0">
+            <DisclosureChevron />
             {L(lang, M.showQueries(queries.length))}
           </summary>
           <div className="mt-2">{queryList}</div>

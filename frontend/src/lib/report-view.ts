@@ -46,10 +46,11 @@ export function cellOutcomeExact(paper: Paper | undefined, row: ComparisonRow, r
   if (!cell || !en || !shown) return null;
   const finding = norm(cell.finding);
   const names = [norm(row.outcome), norm(enRow)].filter(Boolean);
-  const i = en.outcomes.findIndex((o, j) => {
+  // the finding text names one outcome; prefer it over an earlier outcome that only shares the row's name (T3 N3)
+  const byFinding = finding ? en.outcomes.findIndex((o, j) => norm(o.result) === finding || norm(shown.outcomes[j]?.result) === finding) : -1;
+  const i = byFinding >= 0 ? byFinding : en.outcomes.findIndex((o, j) => {
     const s = shown.outcomes[j];
-    return (!!finding && (norm(o.result) === finding || norm(s?.result) === finding))
-      || names.includes(norm(o.outcome)) || (!!s && names.includes(norm(s.outcome)));
+    return names.includes(norm(o.outcome)) || (!!s && names.includes(norm(s.outcome)));
   });
   if (i < 0) return null;
   return { en: en.outcomes[i], shown: shown.outcomes[i] ?? en.outcomes[i] };
