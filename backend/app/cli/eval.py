@@ -1,6 +1,6 @@
 """Plan 22a Cochrane harness (run from backend/).
 
-    python -m app.cli.eval select                  # sampling frame + LLM eligibility -> draft manifest
+    python -m app.cli.eval select [--continue | --force]  # sampling frame + LLM eligibility -> draft manifest
     python -m app.cli.eval freeze [--ids ..] [--force]
     python -m app.cli.eval run [--run-id ID] [--repeats 2] [--max-usd 10] [--ids ..]
     python -m app.cli.eval report --run-id ID [--compare-run PROMPT_VERSION/RUN_ID]
@@ -27,7 +27,10 @@ def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m app.cli.eval")
     sub = p.add_subparsers(dest="cmd", required=True)
     sl = sub.add_parser("select", help="build the draft manifest (owner checks it before freeze)")
-    sl.add_argument("--force", action="store_true", help="rebuild a non-empty manifest (keeps a .bak copy)")
+    mode = sl.add_mutually_exclusive_group()
+    mode.add_argument("--force", action="store_true", help="rebuild a non-empty manifest (keeps a .bak copy)")
+    mode.add_argument("--continue", dest="cont", action="store_true",
+                      help="keep existing entries and top each stratum up to per_stratum eligible reviews")
     f = sub.add_parser("freeze", help="freeze the candidate pool of every checked review")
     f.add_argument("--ids", nargs="*")
     f.add_argument("--force", action="store_true")
@@ -80,12 +83,13 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
     if args.cmd == "select":
         path = models.EVAL_ROOT / "manifest.yaml"
         if manifest.reviews:
-            if not args.force:
-                print(f"manifest already has {len(manifest.reviews)} reviews; re-run with --force to rebuild "
-                      "(a .bak copy is kept)")
+            if not args.force and not args.cont:
+                print(f"manifest already has {len(manifest.reviews)} reviews; re-run with --continue to top up "
+                      "the strata, or --force to rebuild (a .bak copy is kept)")
                 return 1
             shutil.copyfile(path, path.with_name(path.name + ".bak"))
-        out = await select(deps, http, base_url, manifest.model_copy(update={"reviews": []}))
+        start = manifest if args.cont else manifest.model_copy(update={"reviews": []})
+        out = await select(deps, http, base_url, start)
         save_manifest(out, path)
         eligible = sum(1 for r in out.reviews if r.status == "eligible")
         print(f"{eligible} eligible, {len(out.reviews) - eligible} excluded; set checked_by_owner after review")

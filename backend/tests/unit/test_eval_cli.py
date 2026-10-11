@@ -55,7 +55,7 @@ async def test_select_refuses_nonempty_manifest_without_force(tmp_path, monkeypa
 
     monkeypatch.setattr("app.cli.eval.select", boom)
     assert await run(["select"], make_deps(), None, "") == 1
-    assert "manifest already has 1 reviews; re-run with --force" in capsys.readouterr().out
+    assert "manifest already has 1 reviews; re-run with --continue" in capsys.readouterr().out
     assert (tmp_path / "manifest.yaml").read_bytes() == before
 
 
@@ -132,3 +132,21 @@ async def test_report_flags_mixed_models(tmp_path, monkeypatch):
     report = (tmp_path / "reports" / f"{pv}-t1.md").read_text(encoding="utf-8")
     assert "**MIXED BATCH:** models:" in report and "m1" in report and "m2" in report
     assert "INCOMPLETE" not in report
+
+
+@pytest.mark.asyncio
+async def test_select_continue_keeps_entries_and_conflicts_with_force(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(models, "EVAL_ROOT", tmp_path)
+    save_manifest(Manifest(seed=1, strata=[Stratum(name="cv", query="x")], reviews=[_entry("CD1")]),
+                  tmp_path / "manifest.yaml")
+    seen = {}
+
+    async def stub(deps, http, base_url, m):
+        seen["ids"] = [r.id for r in m.reviews]
+        return m
+
+    monkeypatch.setattr("app.cli.eval.select", stub)
+    assert await run(["select", "--continue"], make_deps(), None, "") == 0
+    assert seen["ids"] == ["CD1"]
+    with pytest.raises(SystemExit):
+        await run(["select", "--continue", "--force"], make_deps(), None, "")

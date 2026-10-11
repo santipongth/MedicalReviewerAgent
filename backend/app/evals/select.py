@@ -115,7 +115,8 @@ async def select(deps, http, base_url: str, manifest: Manifest) -> Manifest:
             "query": frame_query(manifest, stratum), "run_date": datetime.now(UTC).isoformat(timespec="seconds"),
             "hit_count": hit_count, "collected": len(deduped),
             "ids_in_draw_order": [cochrane_id(r["doi"]) for r in records]})
-        eligible = 0
+        # a top-up (select --continue) starts from the stratum's eligible entries already in the manifest
+        eligible = sum(1 for e in reviews if e.stratum == stratum.name and e.status == "eligible")
         for r in records:
             if eligible >= manifest.per_stratum:
                 break

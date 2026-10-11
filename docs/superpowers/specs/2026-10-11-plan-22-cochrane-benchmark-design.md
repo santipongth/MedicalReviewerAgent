@@ -126,7 +126,7 @@ checked_by: "<initials>"
 
 | Command | Does | Network / LLM |
 |---|---|---|
-| `select [--force]` | Builds the sampling frame and draws the sample (steps below). Writes a draft manifest with `checked_by_owner: false`. Refuses to run when the manifest already has reviews; `--force` keeps a `.bak` copy and rebuilds. | Europe PMC + LLM, once |
+| `select [--continue \| --force]` | Builds the sampling frame and draws the sample (steps below). Writes a draft manifest with `checked_by_owner: false`. Refuses to run when the manifest already has reviews. `--continue` keeps every existing entry (excluded ones stay taken) and tops each stratum up to `per_stratum` eligible reviews; `--force` keeps a `.bak` copy and rebuilds. The two flags exclude each other. | Europe PMC + LLM, once |
 
 How `select` builds the sample:
 1. **Sampling frame:** for each stratum, one Europe PMC REST search (deviation 2026-10-11: same Cochrane records, abstracts in one call, no NCBI key): `JOURNAL:"Cochrane Database Syst Rev" AND PUB_YEAR:[2020 TO 2025] AND (<stratum terms>)`, where the stratum terms are in `manifest.yaml`. The sampling frame is saved to the committed file `frames/<stratum>.json` (query, run date, Europe PMC `hitCount`, number collected after dedupe, record ids in draw order).

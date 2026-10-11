@@ -125,3 +125,19 @@ async def test_frame_file_is_written_with_hit_count_and_draw_order(root):
     assert data["hit_count"] == 4 and data["collected"] == 4 and data["run_date"]
     assert 'JOURNAL:"Cochrane' in data["query"]
     assert len(data["ids_in_draw_order"]) == 4 and data["ids_in_draw_order"][:2] == [r.id for r in out.reviews]
+
+
+@pytest.mark.asyncio
+async def test_continue_tops_up_only_the_missing_count():
+    from app.evals.models import ManifestEntry
+    deps = make_deps()
+    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    kept = [ManifestEntry(id=f"CD00000{i}", stratum="cv", title="t") for i in (1, 2)]
+    kept.append(ManifestEntry(id="CD000003", stratum="cv", title="t", status="excluded", exclusion_reason="x"))
+    records = [rec(i, "Search up to 2023") for i in range(1, 8)]
+    m = Manifest(seed=4, per_stratum=3, strata=[Stratum(name="cv", query="x")], reviews=kept)
+    out = await select(deps, FakeHttp(records), "u", m)
+    assert [r.id for r in out.reviews[:3]] == ["CD000001", "CD000002", "CD000003"]
+    new = out.reviews[3:]
+    assert len(new) == 1 and new[0].status == "eligible"
+    assert new[0].id not in {"CD000001", "CD000002", "CD000003"}
