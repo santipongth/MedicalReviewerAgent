@@ -195,6 +195,7 @@ outcome (intention-to-treat), with a per-protocol figure reported alongside.
    - pool version
    - run dates
    - total cost
+   - Banners when needed: `**INCOMPLETE: k of n runs missing**` (n = selected reviews x the repeat numbers seen, at least 2; lists the missing `id rN`) and `**MIXED BATCH:** <field>: <values>` when models, git SHA, preset, prompt version or pool version differ between run files.
 2. A summary table (all reviews), then the same table per stratum.
 3. A stability table, then the failure list (id, status, error).
 4. With `--compare`, a delta column and a list of reviews whose answer direction changed.

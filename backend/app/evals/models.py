@@ -77,6 +77,8 @@ class RunRecord(BaseModel):
     run_id: str
     prompt_version: str
     git_sha: str
+    pool_version: str = ""
+    fixture_frozen_at: str = ""
     preset: str
     models: dict[str, str]
     started_at: str

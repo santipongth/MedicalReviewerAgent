@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -15,7 +16,7 @@ from datetime import UTC, datetime
 
 from app.evals import models
 from app.evals.batch import run_all
-from app.evals.freeze import freeze_all
+from app.evals.freeze import _selected, freeze_all
 from app.evals.metrics import aggregate, review_metrics
 from app.evals.models import RunRecord, load_manifest, read_model, save_manifest
 from app.evals.report import render_report
@@ -53,7 +54,23 @@ def _load_rows(prompt_version: str, run_id: str, manifest) -> tuple[list, dict]:
     strata = {e.id: e.stratum for e in manifest.reviews}
     folder = models.EVAL_ROOT / "runs" / prompt_version / run_id
     recs = [read_model(p, RunRecord) for p in sorted(folder.glob("*.json"))]
-    meta = {"git_sha": recs[0].git_sha, "preset": recs[0].preset, "models": recs[0].models} if recs else {}
+    meta: dict = {}
+    if recs:
+        meta = {"git_sha": recs[0].git_sha, "preset": recs[0].preset, "models": recs[0].models,
+                "pool_version": recs[0].pool_version}
+        # expected = every selected review x every repeat number seen in the folder (at least r1 and r2)
+        repeats = {1, 2} | {r.repeat for r in recs}
+        have = {(r.id, r.repeat) for r in recs}
+        meta["missing"] = [f"{e.id} r{n}" for e in _selected(manifest, None) for n in sorted(repeats)
+                           if (e.id, n) not in have]
+        meta["expected"] = len(_selected(manifest, None)) * len(repeats)
+        fields = {"models": [json.dumps(r.models, sort_keys=True) for r in recs],
+                  "git_sha": [r.git_sha for r in recs], "preset": [r.preset for r in recs],
+                  "prompt_version": [r.prompt_version for r in recs],
+                  "pool_version": [r.pool_version for r in recs]}
+        # records of rejected/errored fixtures carry no models or pool version: they never make a batch "mixed"
+        distinct = {k: sorted(set(v) - {"{}", ""}) for k, v in fields.items()}
+        meta["mixed"] = {k: v for k, v in distinct.items() if len(v) > 1}
     return [review_metrics(r, strata.get(r.id, "?")) for r in recs], meta
 
 

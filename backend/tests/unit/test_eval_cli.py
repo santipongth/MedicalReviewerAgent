@@ -93,3 +93,42 @@ async def test_report_compare_run_without_slash_fails(tmp_path, monkeypatch, cap
                   tmp_path / "manifest.yaml")
     assert await run(["report", "--run-id", "t1", "--compare-run", "noslash"], make_deps(), None, "") == 1
     assert "PROMPT_VERSION/RUN_ID" in capsys.readouterr().out
+
+
+def _write_rec(root, pv, run_id, rid, n, **kw):
+    from app.evals.models import RunRecord, run_path, write_json_atomic
+    base = dict(id=rid, repeat=n, run_id=run_id, prompt_version=pv, git_sha="s", pool_version="v1", preset="test",
+                models={"extractor": "m1"}, started_at="2026-10-11T00:00:00", elapsed_s=1.0, cost_usd=0.1,
+                status="done", result={})
+    write_json_atomic(run_path(pv, run_id, rid, n), RunRecord(**{**base, **kw}))
+
+
+@pytest.mark.asyncio
+async def test_report_flags_incomplete_batch(tmp_path, monkeypatch):
+    monkeypatch.setattr(models, "EVAL_ROOT", tmp_path)
+    save_manifest(Manifest(seed=1, strata=[Stratum(name="cv", query="x")], reviews=[_entry("CD1"), _entry("CD2")]),
+                  tmp_path / "manifest.yaml")
+    deps = make_deps()
+    pv = deps.settings.prompt_version
+    _write_rec(tmp_path, pv, "t1", "CD1", 1)
+    _write_rec(tmp_path, pv, "t1", "CD1", 2)
+    _write_rec(tmp_path, pv, "t1", "CD2", 1)
+    assert await run(["report", "--run-id", "t1"], deps, None, "") == 0
+    report = (tmp_path / "reports" / f"{pv}-t1.md").read_text(encoding="utf-8")
+    assert "**INCOMPLETE: 1 of 4 runs missing**" in report and "CD2 r2" in report
+    assert "MIXED BATCH" not in report
+
+
+@pytest.mark.asyncio
+async def test_report_flags_mixed_models(tmp_path, monkeypatch):
+    monkeypatch.setattr(models, "EVAL_ROOT", tmp_path)
+    save_manifest(Manifest(seed=1, strata=[Stratum(name="cv", query="x")], reviews=[_entry("CD1")]),
+                  tmp_path / "manifest.yaml")
+    deps = make_deps()
+    pv = deps.settings.prompt_version
+    _write_rec(tmp_path, pv, "t1", "CD1", 1)
+    _write_rec(tmp_path, pv, "t1", "CD1", 2, models={"extractor": "m2"})
+    assert await run(["report", "--run-id", "t1"], deps, None, "") == 0
+    report = (tmp_path / "reports" / f"{pv}-t1.md").read_text(encoding="utf-8")
+    assert "**MIXED BATCH:** models:" in report and "m1" in report and "m2" in report
+    assert "INCOMPLETE" not in report

@@ -56,9 +56,16 @@ def render_report(prompt_version: str, run_id: str, manifest: Manifest, rows: li
     models = ", ".join(f"{k}={v}" for k, v in sorted((meta.get("models") or {}).items())) or EMPTY
     stamps = sorted(r.started_at for r in rows if r.started_at)
     span = f"{stamps[0]} … {stamps[-1]}" if stamps else EMPTY
-    out = [f"# Cochrane harness report: {prompt_version} (run {run_id})", "",
+    missing = meta.get("missing") or []
+    banner: list[str] = []
+    if missing:
+        banner = [f"**INCOMPLETE: {len(missing)} of {meta.get('expected', len(missing))} runs missing**", "",
+                  "Missing: " + ", ".join(missing), ""]
+    for field, values in (meta.get("mixed") or {}).items():
+        banner += [f"**MIXED BATCH:** {field}: {', '.join(values)}", ""]
+    out = [f"# Cochrane harness report: {prompt_version} (run {run_id})", "", *banner,
            (f"- git `{meta.get('git_sha', '')}` · preset `{meta.get('preset', '')}` · "
-            f"pool `{manifest.pool_version}` · seed {manifest.seed}"),
+            f"pool `{meta.get('pool_version') or manifest.pool_version}` · seed {manifest.seed}"),
            f"- models: {models}",
            f"- runs {span} · batch cost ${a['cost_total']:.2f}",
            "", "## Summary", ""]
