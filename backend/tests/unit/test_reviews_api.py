@@ -71,8 +71,9 @@ async def test_validation_rejects_blank_long_and_bad_language(client):
             "/api/v1/reviews", json={"topic": "ok topic", "options": {"max_papers": 99}}
         )
     ).status_code == 422
+    # the last two have fewer candidates than papers to analyse
     for bad in ({"max_papers": 51}, {"max_papers": 4}, {"candidate_limit": 121}, {"candidate_limit": 19},
-                {"max_papers": 30, "candidate_limit": 25}, {"max_papers": 50, "candidate_limit": 40}):  # fewer candidates than papers to analyse
+                {"max_papers": 30, "candidate_limit": 25}, {"max_papers": 50, "candidate_limit": 40}):
         resp = await client.post("/api/v1/reviews", json={"topic": "ok topic", "options": bad})
         assert resp.status_code == 422, bad
 

@@ -21,6 +21,7 @@ from app.schemas.review import (
     hash_ip,
 )
 from app.services.api_keys import ApiKeyInfo, reviews_since
+from app.services.budget import review_cost_cap
 from app.services.capacity import AdmissionBusy
 from app.services.ratelimits import RateLimits
 from app.services.turnstile import TurnstileUnavailable, verify_turnstile
@@ -127,7 +128,9 @@ class ReviewService:
             async with self.session_factory() as session:
                 repo = ReviewRepository(session)
                 queued, running = await repo.count_by_status("queued"), await repo.count_by_status("running")
-            if (refusal := await self.capacity.check(queued=queued, running=running)) is not None:
+            this_cap = review_cost_cap(self.settings, ReviewOptions.model_validate(options))
+            refusal = await self.capacity.check(queued=queued, running=running, this_cap=this_cap)
+            if refusal is not None:
                 raise Unavailable(refusal.detail, refusal.retry_after, refusal.reason)
         rate = self.settings.api_key_rate_limit if identity.api_key else self.settings.review_rate_limit
         decision = await self.limits.hit("review", identity.rate_key, rate)

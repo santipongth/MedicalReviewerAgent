@@ -9,7 +9,7 @@ from typing import Any
 from langgraph.config import get_stream_writer
 from langgraph.types import Send
 
-from app.graph.nodes.stub_result import stub_result
+from app.graph.nodes.stub_result import stub_found, stub_result
 from app.graph.progress import progress_writer
 from app.graph.state import ReviewState
 from app.schemas.review import ReviewOptions
@@ -48,12 +48,8 @@ async def finalize(state: ReviewState) -> dict:
 
 # ---- Realistic timed stub (STUB_DELAY_SECONDS > 0): the real event sequence on a scaled timeline ----
 
-def _bound(name: str) -> int:
-    return next(m.le for m in ReviewOptions.model_fields[name].metadata if getattr(m, "le", None) is not None)
-
-
-MAX_CANDIDATES = _bound("candidate_limit")
-MAX_KEPT = _bound("max_papers")
+MAX_CANDIDATES = ReviewOptions.bound("candidate_limit")
+MAX_KEPT = ReviewOptions.bound("max_papers")
 STUB_DIRECTIONS = ("positive", "positive", "null", "negative", "mixed", "unclear", "positive")
 STUB_DESIGNS = ("rct", "cohort", "sr_ma_rct", "case_control", "cohort")
 
@@ -183,8 +179,9 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
 
     async def normalize_outcomes(state: ReviewState) -> dict:
         ok_count = sum(1 for p in state.get("papers") or [] if p.get("ok"))
-        review_type = ReviewOptions.clamped(state.get("options")).review_type
-        final = stub_result(state["topic"], state["language"], review_type, ReviewOptions.clamped(state.get("options")))  # the result finalize will return
+        opts = ReviewOptions.clamped(state.get("options"))
+        review_type = opts.review_type
+        final = stub_result(state["topic"], state["language"], review_type, opts)  # the result finalize will return
         if state.get("selected"):
             c = final["citations"]
             progress_writer()({"type": "citations_fetched", "edges": len(c["edges"]),
@@ -206,16 +203,16 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
     async def finalize_timed(state: ReviewState) -> dict:
         progress_writer()({"type": "finalizing"})
         await asyncio.sleep(timeline.seconds("finalize", _rng(state, "finalize")))
-        review_type = ReviewOptions.clamped(state.get("options")).review_type
-        return {"result": stub_result(state["topic"], state["language"], review_type,
-                                      ReviewOptions.clamped(state.get("options")))}
+        opts = ReviewOptions.clamped(state.get("options"))
+        return {"result": stub_result(state["topic"], state["language"], opts.review_type, opts)}
 
     return {
         "topic_guard": make_phase("guard", timeline, lambda s: [{"type": "checking_topic"}]),
         "refine_question": refine_question,
         "plan_queries": make_phase("plan", timeline, plan_events),
         "search": make_phase("search", timeline,
-                             lambda s: [{"type": "searching", "found": 87, "queries": 4, "failed": 0}]),
+                             lambda s: [{"type": "searching", "found": stub_found(_candidates(s)), "queries": 4,
+                                                  "failed": 0}]),
         "enrich": enrich,
         "screen_batch": screen_batch,
         "select_top": select_top,

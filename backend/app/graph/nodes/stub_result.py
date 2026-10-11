@@ -80,9 +80,17 @@ def _citations(n: int) -> dict[str, Any]:
     }
 
 
+def stub_found(candidates: int) -> int:
+    """Records identified by the simulated search: always at least the candidates that reach screening."""
+    return -(-candidates * 145 // 100)
+
+
 def stub_result(topic: str, language: str, review_type: str = "slr",
                 options: ReviewOptions | None = None) -> dict[str, Any]:
     opts = options or ReviewOptions()
+    found = stub_found(opts.candidate_limit)
+    sources = {"europe pmc": round(found * 0.31), "semantic scholar": round(found * 0.23), "arxiv": round(found * 0.03)}
+    sources = {"pubmed": found - sum(sources.values()), **sources}
     meta = review_type == "meta_analysis"
     scoping = review_type == "scoping"  # a scoping review makes no claims (no consensus or conflicts), links no reports
     specs = (*_PAPERS, _META_EXTRA) if meta else _PAPERS
@@ -184,7 +192,8 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
         },
         "summary": summary, "synthesis": synthesis, "synthesis_en": synthesis,
         "papers": papers, "queries": [f"{topic} randomized controlled trial", f"{topic} cohort study"],
-        "stats": {"found": 87, "unique": 70, "with_abstract": 64, "candidates": 60, "screened": 60,
+        "stats": {"found": found, "unique": found * 4 // 5, "with_abstract": found * 3 // 4,
+                  "candidates": opts.candidate_limit, "screened": opts.candidate_limit,
                   "selected": len(papers), "extracted": len(papers), "excluded_screening": {"off_topic": 20, "population": 5, "publication_type": 3},
                   "non_research": 4, "year_excluded": 0, "no_abstract": 2,
                   "excluded_selection": {"narrative_excluded": 0, "over_limit": 2, "study_design_relaxed": 0,
@@ -199,7 +208,7 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
         "meta_analysis": meta_analysis,
         "methods": {
             "searched_at": "2026-10-10T00:00:00+00:00",
-            "sources": {"pubmed": 41, "europe pmc": 30, "semantic scholar": 22, "arxiv": 3},
+            "sources": sources,
             "eligibility": {"year_from": None, "study_types": [],
                             "inclusion_criteria": ["Studies reporting the primary outcome"],
                             "exclusion_criteria": ["Editorials and protocols without results"]},

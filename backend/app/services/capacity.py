@@ -101,10 +101,9 @@ class Capacity:
         return float(await self.redis.get(self._key("usd")) or 0)
 
     def worst_case_cap(self) -> float:
-        fields = ReviewOptions.model_fields
-        hi = next(m.le for m in fields["max_papers"].metadata if getattr(m, "le", None) is not None)
-        return review_cost_cap(self.settings,
-                               ReviewOptions(max_papers=hi, candidate_limit=fields["candidate_limit"].default))
+        return review_cost_cap(self.settings, ReviewOptions(
+            max_papers=ReviewOptions.bound("max_papers"),
+            candidate_limit=ReviewOptions.model_fields["candidate_limit"].default))
 
     async def check(self, *, queued: int, running: int = 0, this_cap: float | None = None) -> Refusal | None:
         s = self.settings

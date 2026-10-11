@@ -127,3 +127,14 @@ async def test_admission_release_never_deletes_a_lock_taken_over_after_expiry(re
 async def test_status_lists_review_types(client):
     s = (await client.get("/api/v1/status")).json()
     assert s["limits"]["review_types"] == ["narrative", "slr", "scoping", "meta_analysis"]
+
+
+async def test_create_reserves_the_requests_own_cap(client, app):
+    app.state.deps.service.settings.max_usd_per_day = 0.2  # fits cap(5, 120) = 0.13, not cap(50, 120) = 0.40
+    app.state.deps.service.capacity.settings.max_usd_per_day = 0.2
+    big = await client.post("/api/v1/reviews", json={"topic": "reserve big statins", "language": "en",
+                                                     "options": {"max_papers": 50}})
+    assert big.status_code == 503 and big.json()["reason"] == "daily_budget"
+    small = await client.post("/api/v1/reviews", json={"topic": "reserve small statins", "language": "en",
+                                                       "options": {"max_papers": 5}})
+    assert small.status_code == 202

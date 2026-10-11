@@ -71,11 +71,22 @@ async def test_payload_keys_match_the_real_events():
     for _, e in events:
         assert set(e) - {"type"} == REAL_KEYS[e["type"]], e
     by = {e["type"]: e for _, e in events}
-    assert by["searching"] == {"type": "searching", "found": 87, "queries": 4, "failed": 0}
+    assert by["searching"]["found"] >= by["enriching"]["candidates"] >= by["screened"]["total"] >= by["screened"]["kept"]
     assert by["enriching"]["candidates"] == 120 and by["screened"] == {"type": "screened", "kept": 30, "total": 120}
     assert len(by["planning"]["queries"]) == 4
     assert len(by["question_refined"]["sub_questions"]) == 2 and len(by["question_refined"]["assumptions"]) == 1
     assert by["synthesizing"]["papers"] == sum(1 for _, e in events if e["type"] == "extracted" and e["ok"])
+
+
+async def test_stub_prisma_counts_are_consistent_with_the_pool():
+    for options in ({}, {"max_papers": 50}, {"max_papers": 10, "candidate_limit": 30}):
+        events, _, final = await run(options=options, delay=0.1)
+        by = {e["type"]: e for _, e in events}
+        r = final.values["result"]
+        found = by["searching"]["found"]
+        assert found >= by["screened"]["total"] >= by["screened"]["kept"]
+        assert r["stats"]["found"] == found and sum(r["methods"]["sources"].values()) == found
+        assert r["stats"]["found"] >= r["stats"]["unique"] >= r["stats"]["candidates"] >= r["stats"]["selected"]
 
 
 async def test_extracted_carries_valid_direction_and_design_only_when_ok():
@@ -108,7 +119,7 @@ async def test_fifty_papers_emit_fifty_extracted_events_within_the_delay():
     by = {e["type"]: e for _, e in events}
     assert types(events).count("extracted") == 50
     assert by["screened"] == {"type": "screened", "kept": 50, "total": 120}
-    assert 0.8 <= total <= 1.2 + 0.1
+    assert 0.8 <= total <= 1.2 + 0.1  # spec 1 +/- 0.2, plus 0.1s for Windows timer jitter
 
 
 async def test_reads_are_staggered_behind_the_semaphore():

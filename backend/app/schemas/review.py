@@ -82,6 +82,11 @@ class ReviewOptions(BaseModel):
     year_from: int | None = Field(None, ge=1950, le=2100)
     study_types: list[str] = Field(default_factory=list, max_length=10)
 
+    @classmethod
+    def bound(cls, name: str, which: str = "le") -> int:
+        """A field's `ge`/`le` bound: the single source for /status, the stub and the admission worst case."""
+        return next(getattr(m, which) for m in cls.model_fields[name].metadata if getattr(m, which, None) is not None)
+
     @field_validator("study_types")
     @classmethod
     def canonical_study_types(cls, value: list[str]) -> list[str]:
