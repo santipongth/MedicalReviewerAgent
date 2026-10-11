@@ -4,7 +4,7 @@ import { Fragment, type ReactNode } from "react";
 import { isNonQuantitative } from "@/lib/charts-data";
 import type { Lang } from "@/lib/i18n";
 import { fieldLang, RC } from "@/lib/i18n-report";
-import { sourceRows } from "@/lib/prisma-flow";
+import { paperCounts, sourceRows } from "@/lib/prisma-flow";
 import { extractionReading, modelName, reportDate } from "@/lib/report-view";
 import { REVIEW_TYPE_LABEL, isGraded, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import { ROB_COLUMN, ROB_ORDER } from "@/lib/rob-summary";
@@ -142,6 +142,14 @@ export function MethodsSection({ review, result, type, lang }: {
   const maxPapers = m?.limits.max_papers ?? int(opts.max_papers);
   const sc = m?.screening;
   const slrLike = type === "slr" || type === "meta_analysis";
+  // Plan 21: with the requested N recorded, the line states N, S and A (and a shortfall, said here once); older results
+  // keep the "at most N" line
+  const counts = paperCounts(result.stats);
+  const requestedLine = counts && counts.screened != null && counts.analysed != null
+    ? <>{fill(lang, M.requested(counts.requested, counts.screened, counts.analysed), {
+      n: <N>{counts.requested}</N>, s: <N>{counts.screened}</N>, a: <N>{counts.analysed}</N> })}
+      {counts.shortfall && <span data-shortfall>{fill(lang, M.shortfall, { e: <N>{counts.shortfall.eligible}</N> })}</span>}</>
+    : counts ? fill(lang, M.max(counts.requested), { n: <N>{counts.requested}</N> }) : null;
   const band = sc && { lo: <N>{sc.borderline[0]}</N>, hi: <N>{sc.borderline[1]}</N> };
   const selection: Line[] = [
     ["cap", cap != null ? fill(lang, M.cap, { n: <N>{cap}</N> }) : null],
@@ -152,7 +160,7 @@ export function MethodsSection({ review, result, type, lang }: {
     ["floor", sc ? fill(lang, sc.second_vote !== "off" ? M.floorVotes : M.floor, { n: <N>{sc.relevance_floor}</N> }) : null],
     ["designs", slrLike && studyTypes?.length ? L(lang, M.designs) : null],
     ["narrative", slrLike && m ? L(lang, M.narrative) : null],
-    ["max", maxPapers != null ? fill(lang, M.max(maxPapers), { n: <N>{maxPapers}</N> }) : null],
+    ["max", requestedLine ?? (maxPapers != null ? fill(lang, M.max(maxPapers), { n: <N>{maxPapers}</N> }) : null)],
     ["related", s.related_reports != null ? fill(lang, M.related(s.related_reports), { n: <N>{s.related_reports}</N> }) : null],
   ];
 

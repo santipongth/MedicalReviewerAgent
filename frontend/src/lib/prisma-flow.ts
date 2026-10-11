@@ -27,6 +27,8 @@ export interface FlowBox {
   value?: FlowCount;
   lines: FlowLine[];
   notes: string[];
+  /** Plan 21: a note whose figures are counts (the requested N, a shortfall's E of N), set in the display face. */
+  countNote?: string;
 }
 
 export type FlowStageKey = "identification" | "screening" | "selection" | "included";
@@ -64,6 +66,44 @@ export function sourceRows(sources: Record<string, number> | null | undefined, l
 
 const REASON_ORDER = Object.keys(EXCLUSION_REASON_LABEL) as ExclusionReason[];
 
+/** Plan 21: the paper counts the report states (Methods, PRISMA, Limitations), from one place so they never differ. */
+export interface PaperCounts {
+  /** N: the papers the user asked to have analysed */
+  requested: number;
+  /** S: records screened (title and abstract) */
+  screened: FlowCount;
+  /** E: papers that passed screening and selection (ranked for analysis) */
+  eligible: FlowCount;
+  /** A: papers analysed */
+  analysed: FlowCount;
+  /** set only when fewer than requested were analysed (A < N) because only E were eligible; never at A == N */
+  shortfall: { eligible: number; requested: number } | null;
+}
+
+/**
+ * The requested, screened, eligible and analysed counts, or null for a result from before Plan 21: without a recorded
+ * `excluded_selection.requested` (absent or null) nothing new is said: neither `methods.limits.max_papers` nor
+ * `options.max_papers` stands in for it, so no shortfall is ever inferred for an old report. `requested` and `eligible` are never exclusion counts.
+ */
+export function paperCounts(stats: Stats | null | undefined): PaperCounts | null {
+  const sel = stats?.excluded_selection;
+  const requested = num(sel?.requested);
+  if (!stats || requested == null) return null;
+  const eligible = num(sel?.eligible);
+  const analysed = num(stats.selected);
+  return {
+    requested, screened: num(stats.screened), eligible, analysed,
+    shortfall: analysed != null && eligible != null && analysed < requested ? { eligible, requested } : null,
+  };
+}
+
+/** The PRISMA "included" note: the requested N, or on a shortfall "E eligible of N requested" (figures only). */
+function requestedNote(c: PaperCounts, lang: Lang): string {
+  return c.shortfall
+    ? T(lang, `ผ่านเกณฑ์ ${c.shortfall.eligible} จากที่ขอ ${c.shortfall.requested}`, `${c.shortfall.eligible} eligible of ${c.shortfall.requested} requested`)
+    : T(lang, `ขอ ${c.requested} ฉบับ`, `${c.requested} requested`);
+}
+
 /**
  * The flow for one result, or null when it has no stats. `options` is review.options (the requested caps), used only
  * where result.methods is absent.
@@ -83,6 +123,7 @@ export function prismaFlow({ stats, methods, options, type, lang }: {
   const withAbstract = num(s.with_abstract);
   const candidates = num(s.candidates);
   const screened = num(s.screened);
+  const counts = paperCounts(stats);
 
   // --- Identification -------------------------------------------------------------------------------------------
   const sources = sourceRows(methods?.sources, lang);
@@ -171,7 +212,8 @@ export function prismaFlow({ stats, methods, options, type, lang }: {
       { key: "narrative_excluded", value: num(sel?.narrative_excluded),
         label: T(lang, "บทความทบทวนแบบไม่เป็นระบบ", "Narrative reviews") },
       { key: "over_limit", value: num(sel?.over_limit),
-        label: maxPapers != null ? T(lang, `เกินจำนวนที่วิเคราะห์ (สูงสุด ${maxPapers})`, `Over the analysis limit (at most ${maxPapers})`)
+        label: counts ? T(lang, `ผ่านเกณฑ์แต่เกินจำนวนที่กำหนด (${counts.requested} ฉบับ)`, `Eligible but beyond the requested ${counts.requested}`)
+          : maxPapers != null ? T(lang, `เกินจำนวนที่วิเคราะห์ (สูงสุด ${maxPapers})`, `Over the analysis limit (at most ${maxPapers})`)
           : T(lang, "เกินจำนวนที่วิเคราะห์", "Over the analysis limit") },
       { key: "study_design_corrected", value: num(sel?.study_design_corrected),
         label: T(lang, "อ่านแล้วพบว่ารูปแบบไม่ตรงชนิดที่เลือก (คงไว้ในรายการ ไม่ใช้เป็นหลักฐาน นับอยู่ในรายงานที่รวม)",
@@ -207,6 +249,7 @@ export function prismaFlow({ stats, methods, options, type, lang }: {
       ...(s.with_fulltext != null ? [{ key: "with_fulltext", label: T(lang, "ได้ฉบับเต็ม", "Full text obtained"), value: num(s.with_fulltext) }] : []),
     ],
     notes: [],
+    ...(counts ? { countNote: requestedNote(counts, lang) } : {}),
   };
 
   return {
@@ -241,6 +284,7 @@ export function flowRows(view: PrismaFlowView): FlowRow[] {
       out.push({ stage: st.label, depth: 0, label: b.title, value: b.value });
       for (const l of b.lines) out.push({ stage: st.label, depth: 1, label: l.label, value: l.value, detail: l.note });
       for (const n of b.notes) out.push({ stage: st.label, depth: 1, label: n, value: undefined, note: true });
+      if (b.countNote) out.push({ stage: st.label, depth: 1, label: b.countNote, value: undefined, note: true });
     }
   }
   return out;

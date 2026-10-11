@@ -797,3 +797,33 @@ export function englishReview(review: Review): Review {
 export const P20_FIXTURES_EN = Object.fromEntries(
   Object.entries(P20_FIXTURES).map(([k, v]) => [k, englishReview(v)]),
 ) as Record<keyof typeof P20_FIXTURES, Review>;
+
+// --- Plan 21 Task 5: the requested paper count (N), screened (S), eligible (E) and analysed (A) ----------------------
+// methods.limits {candidate_limit 120, max_papers 50, min_abstract_chars 150}; excluded_selection carries `requested`
+// and `eligible` (never exclusion counts). The papers list stays the SLR fixture's five: these fixtures exercise the
+// counts the report states, not the matrix.
+
+function paperCountReview(id: string, over: { selected: number; eligible: number; over_limit: number }): Review {
+  const base = slrP20ReviewFixture.result!;
+  return {
+    ...slrP20ReviewFixture,
+    id,
+    options: { ...slrP20ReviewFixture.options, max_papers: 50, candidate_limit: 120 },
+    result: {
+      ...base,
+      // contract-complete: unique = year_excluded + non_research + no_abstract + with_abstract
+      stats: { found: 240, unique: 175, year_excluded: 6, non_research: 9, no_abstract: 20, with_abstract: 140,
+        candidates: 120, screened: 120, selected: over.selected, extracted: over.selected,
+        excluded_screening: { off_topic: 22, population: 8, outcome: 5, publication_type: 3 },
+        excluded_selection: { narrative_excluded: 0, over_limit: over.over_limit, low_relevance: 2, study_design_relaxed: 0,
+          study_design_corrected: 0, requested: 50, eligible: over.eligible } },
+      methods: methodsFixture({ limits: { candidate_limit: 120, max_papers: 50, min_abstract_chars: 150 } }),
+    },
+  };
+}
+
+/** N = 50, S = 120, E = 80, A = 50: thirty eligible records were beyond the requested 50. */
+export const resultN50: Review = paperCountReview("21210000-0000-4000-8000-000000000050", { selected: 50, eligible: 80, over_limit: 30 });
+
+/** A shortfall: N = 50, S = 120, only E = 22 eligible, so A = 22 (never padded). */
+export const resultShortfall: Review = paperCountReview("21210000-0000-4000-8000-000000000022", { selected: 22, eligible: 22, over_limit: 0 });

@@ -241,6 +241,8 @@ export const RC = {
       "วิเคราะห์ {selected} ฉบับ ({studies} การศึกษา รายงานเพิ่มเติมของการทดลองเดียวกัน {related} ฉบับไม่นับซ้ำ){max}",
       `{selected} ${pl(selected, "record was", "records were")} analysed ({studies} ${pl(studies, "study", "studies")}; {related} further ${pl(related, "report", "reports")} of the same trial not counted again){max}`],
     max: [" (สูงสุด {n})", " (at most {n})"],
+    /** Plan 21: a shortfall, said in full once in Methods; this line only refers to it, with the same E and N. */
+    shortfall: ["วิเคราะห์น้อยกว่าที่ขอ: ผ่านเกณฑ์ {e} จาก {n} ฉบับ (ดูวิธีการ)", "Fewer than requested were analysed: {e} eligible of {n} (see Methods)"],
     twoModels: ["อ่านแต่ละงานสองครั้งด้วยสองโมเดล", "Each study was read twice by two models"],
     flagged: ["งานที่อ่านต่างกันมีธงกำกับ", "and studies read differently are flagged"],
     studies: (n: number): Pair => ["ฉบับ", pl(n, "study", "studies")],
@@ -327,6 +329,13 @@ export const RC = {
     narrative: ["ตัดบทความทบทวนแบบไม่เป็นระบบออก เมื่อมีงานวิจัยหลักหรือ SR/MA อย่างน้อย 3 ฉบับ",
       "Narrative reviews were left out when at least 3 primary studies or systematic reviews were available"],
     max: (n: number): Pair => ["วิเคราะห์สูงสุด {n} ฉบับตามอันดับความเกี่ยวข้อง", `At most {n} ${pl(n, "record was", "records were")} analysed, in order of relevance`],
+    /** Plan 21: the requested N, the S screened and the A analysed (replaces `max` when the result records N). */
+    requested: (n: number, s: number, a: number): Pair => [
+      "ผู้ใช้กำหนดให้วิเคราะห์ {n} ฉบับ คัดกรอง {s} ฉบับที่มีบทคัดย่อ วิเคราะห์ {a} ฉบับตามอันดับความเกี่ยวข้อง",
+      `The user asked for {n} ${pl(n, "record", "records")}; {s} ${pl(s, "record with an abstract was", "records with abstracts were")} screened and {a} ${pl(a, "was", "were")} analysed, in order of relevance`],
+    /** Plan 21: appended to `requested` when fewer than N were analysed; the only place the shortfall is said in prose. */
+    shortfall: [" ผ่านเกณฑ์เพียง {e} ฉบับ จึงวิเคราะห์น้อยกว่าที่กำหนด (ไม่เติมงานที่ไม่ผ่านเกณฑ์)",
+      ". Only {e} met the criteria, so fewer than requested were analysed (none were added to make up the number)"],
     related: (n: number): Pair => ["รายงานหลายฉบับของการทดลองเดียวกันนับเป็นการศึกษาเดียว ({n} รายงานเพิ่มเติมของการทดลองที่นับเป็นการศึกษาแล้ว)",
       `Several reports of the same trial count as one study ({n} ${pl(n, "further report of a trial already counted as a study", "further reports of a trial already counted as a study")})`],
     fullTextEra: ["รีวิวนี้ทำก่อนเปลี่ยนเป็นอ่านเฉพาะบทคัดย่อ บางงานอ่านจากฉบับเต็ม", "This review predates abstract-only reading: some studies were read in full text"],

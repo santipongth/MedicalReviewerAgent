@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import type { Lang } from "@/lib/i18n";
 import { RC } from "@/lib/i18n-report";
+import { paperCounts } from "@/lib/prisma-flow";
 import { extractionReading, modelsUsed } from "@/lib/report-view";
 import { isGraded, type ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ReviewResult } from "@/lib/types";
@@ -30,7 +31,9 @@ function capText(result: ReviewResult, lang: Lang): ReactNode {
   const screened = s.candidates ?? s.screened;
   const related = s.related_reports ?? 0;
   if (screened == null && s.selected == null) return null;
-  const max = lim ? fill(lang, M.max, { n: <N>{lim.max_papers}</N> }) : null;
+  // Plan 21: the cap is the requested N when the result records it (the same source as Methods and PRISMA)
+  const requested = paperCounts(s)?.requested ?? lim?.max_papers;
+  const max = requested != null ? fill(lang, M.max, { n: <N>{requested}</N> }) : null;
   return (
     <>
       {screened != null && fill(lang, M.screened, {
@@ -47,6 +50,12 @@ function capText(result: ReviewResult, lang: Lang): ReactNode {
       })}
     </>
   );
+}
+
+/** Plan 21: one short line on a shortfall that refers to Methods (where it is said in full), from the same counts. */
+function shortfallText(result: ReviewResult, lang: Lang): ReactNode {
+  const short = paperCounts(result.stats)?.shortfall;
+  return short ? fill(lang, M.shortfall, { e: <N>{short.eligible}</N>, n: <N>{short.requested}</N> }) : null;
 }
 
 function readingText(result: ReviewResult, lang: Lang): ReactNode {
@@ -91,6 +100,7 @@ export function Limitations({ result, type, lang }: { result: ReviewResult; type
       ? L(lang, M.fullTextEra)
       : <>{L(lang, M.abstractOnly)}{s.no_abstract ? fill(lang, M.noAbstract, { n: <N>{s.no_abstract}</N> }) : null}</>],
     ["cap", capText(result, lang)],
+    ["shortfall", shortfallText(result, lang)],
     ["llm", L(lang, M.llm)],
     ["models", models.length ? <>{L(lang, M.models)}: {models.map((m, i) => <span key={m}>{i > 0 && ", "}<Code>{m}</Code></span>)}
       {result.llm_preset && result.llm_preset !== "stub" && <> ({L(lang, M.preset)} <Code>{result.llm_preset}</Code>)</>}</> : null],

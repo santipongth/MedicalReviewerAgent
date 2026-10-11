@@ -7,7 +7,7 @@ import type { ReviewTypeOrLegacy } from "@/lib/review-type";
 import type { ReviewMethods, Stats } from "@/lib/types";
 import { RC } from "@/lib/i18n-report";
 import { Term } from "../ui/term";
-import { ThaiText } from "../ui/thai-text";
+import { ThaiNodes, ThaiText } from "../ui/thai-text";
 import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { L } from "./text";
 
@@ -21,6 +21,16 @@ const COUNT = new Intl.NumberFormat("en-US");
 function Count({ value, lang, n = false }: { value: FlowCount; lang: Lang; n?: boolean }) {
   if (value == null) return <span className="font-display whitespace-nowrap text-muted" data-unknown>{UNKNOWN_COUNT[lang]}</span>;
   return <span className="font-display whitespace-nowrap tabular-nums">{n && "n = "}{COUNT.format(value)}</span>;
+}
+
+/** Plan 21: a note whose figures are counts (requested N, a shortfall's E of N): each figure in the display face. */
+function CountNote({ text }: { text: string }) {
+  return (
+    <p className="text-[0.76rem] leading-snug text-muted" data-count-note>
+      <ThaiNodes>{text.split(/(\d+)/).map((part, i) => (i % 2
+        ? <span key={i} className="font-display whitespace-nowrap tabular-nums">{part}</span> : part))}</ThaiNodes>
+    </p>
+  );
 }
 
 function Box({ box, lang, side }: { box: FlowBox; lang: Lang; side: boolean }) {
@@ -44,6 +54,7 @@ function Box({ box, lang, side }: { box: FlowBox; lang: Lang; side: boolean }) {
         </ul>
       )}
       {box.notes.map((n) => <p key={n} className="text-[0.76rem] leading-snug text-muted"><ThaiText>{n}</ThaiText></p>)}
+      {box.countNote && <CountNote text={box.countNote} />}
     </div>
   );
 }
