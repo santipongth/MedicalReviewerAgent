@@ -54,7 +54,7 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 - **503** from a capacity check returns `{detail, reason}` and a `Retry-After` header. `reason` is one of `queue_full`, `daily_reviews`, `daily_budget` or `verification_unavailable`.
 - **503** when the job could not be queued returns `{detail, review_id}`.
 
-**Cache hits are free.** The same topic (case and spaces ignored), language, options and pipeline version within 24 hours of finishing, or while still queued or running, returns that review with `cached: true`. Cache hits skip every limit, Turnstile and capacity check. The pipeline version is the prompt version plus the model configuration in use, written `<prompt_version>+llm<id>` (`id` is the saved configuration version, or `file` while `llm.yaml` is in use). A saved model configuration therefore starts a new cache generation: after any save, restore or reset in the admin console (see "Model management"), the same question runs again on the new models instead of returning a review made with the old ones.
+**Cache hits are free.** The same topic (case and spaces ignored), language, options and pipeline version within 24 hours of finishing, or while still queued or running, returns that review with `cached: true`. Cache hits skip every limit, Turnstile and capacity check. The pipeline version is the prompt version plus the model configuration in use, written `<prompt_version>+llm<id>` (`id` is the saved configuration version, or `file` while `llm.yaml` is in use). A saved model configuration therefore starts a new cache generation: after any save, restore or reset in the admin console (see "Model management"), the same question runs again on the new models instead of returning a review made with the old ones. Deploying Plan 23b itself starts one new generation too: `<prompt_version>` becomes `<prompt_version>+llmfile`, so reviews cached before the deploy are not returned.
 
 **Turnstile.** This only applies when the deployment sets `TURNSTILE_SECRET`. An anonymous `POST /reviews` must then send the browser token in the `cf-turnstile-response` header:
 - A missing or rejected token gets **403**.
@@ -740,21 +740,31 @@ characters). Send exactly one of them; both, or neither where one is required, i
   `ANTHROPIC_API_KEY` and `openai_compatible` uses `OPENAI_COMPATIBLE_API_KEY`. A draft cannot name another variable,
   so it cannot make the server send another secret, or one provider's key to another host.
 - The `openrouter` and `anthropic` hosts are pinned: a `base_url`, when given, must be `https://openrouter.ai/…` and
-  `https://api.anthropic.com/…` respectively (the whole host; no user info, port or look-alike suffix). An
-  `openai_compatible` `base_url` (a local model server) must be an http(s) URL with a host, for example
-  `http://localhost:11434/v1`. `app_name` (printable ASCII) and `app_url` (an http(s) URL in visible ASCII) are sent as request headers.
+  `https://api.anthropic.com/…` respectively (the whole host; no user info, port or look-alike suffix). The `openrouter`
+  `base_url` may be left out: it defaults to `https://openrouter.ai/api/v1`. An `openai_compatible` `base_url` (a local
+  model server) is **required** and must be an http(s) URL with a host, for example `http://localhost:11434/v1`.
+  `app_name` (visible ASCII words with single spaces between them, no leading or trailing space) and `app_url` (an
+  http(s) URL in visible ASCII, no spaces) are sent as request headers, so a value that could break a header is refused.
+- `extra_body.provider` and `extra_body.reasoning`, when present, must be mappings: the client adds `require_parameters`
+  and the reasoning effort to them.
 - YAML text is read with a restricted loader. Anchors and aliases (`&x`, `*x`), `!!binary` and tags that do not fit
   their value are refused. Nesting is capped (20 levels in the YAML, 8 inside one `extra_body` or one `overrides`
-  entry). A NUL or any character that cannot be encoded as UTF-8, in the document or in the note, is refused, and so
-  are numbers the database cannot store (NaN, infinity, huge integers).
-- Every bad document is **422** with a readable `detail` string, never a 500. A request body that fails the route's
-  own schema (a wrong type, a missing `base_version`, a note over 500 characters) is also 422, with `detail` a list of
-  `{type, loc, msg}`. The admin routes never echo the request back.
+  entry). A NUL or any character that cannot be encoded as UTF-8, in the document or in the note, is refused. So are numbers
+  that are NaN or infinite (YAML `.nan` and `.inf`, a JSON number such as `1e400`) at any depth, `extra_body` and
+  `overrides` included, and integers the database cannot store (over 4300 digits). Nothing is stored as `null` in their
+  place.
+- A bad document never gives a 500. Save, restore, reset and the test call answer **422** with a readable `detail`
+  string. Validate answers **200** `{ok: false, errors, …}` for a document that breaks the schema or a rule above, and
+  **422** only for YAML text it cannot take: text that does not parse, is not a mapping, or holds an alias, an anchor,
+  `!!binary`, a tag that does not fit its value or nesting beyond the cap; a body with both or neither of `config` and
+  `yaml` is 422 too. A request body that fails the route's own schema (a wrong type, a missing `base_version`, a note
+  over 500 characters) is 422 on every route, with `detail` a list of `{type, loc, msg}`. The admin routes never echo
+  the request back.
 
 **Validate.** `POST /admin/llm-config/validate` checks a draft and saves nothing. A document that breaks one of the
-rules above answers **200** `{ok: false, errors: [message], warnings: [], cost: {}, config: null, yaml: null}`. A YAML
-text that does not parse or is not a mapping, and a body with both or neither of `config` and `yaml`, are 422. For a
-valid draft:
+rules above answers **200** `{ok: false, errors: [message], warnings: [], cost: {}, config: null, yaml: null}`. The
+YAML-text refusals listed under "Documents" (text that does not parse, is not a mapping, an alias, `!!binary`, nesting
+too deep), and a body with both or neither of `config` and `yaml`, are 422. For a valid draft:
 - `ok` is true, `config` is the normalised document (defaults left out) and `yaml` is its text, so a form and a YAML
   editor can share one draft.
 - `warnings` never block a save. They cover a model OpenRouter does not list, a setting the model does not support
@@ -782,14 +792,19 @@ answers **201** with the version plus `workers_notified`.
   works; a second one with `null` after someone else saved is 409.
 - `workers_notified` is true when the active version id in Redis (`mra:llm:config_version`) now holds this version or a
   newer one. When it is false, Redis could not be updated. The version is stored and the answer is still 201, and the
-  console and any worker that starts later use it. Running workers read only the Redis key, so they keep their models,
-  and the result-cache key stays on the previous version, until a later save, restore or reset publishes a newer id (or
-  the worker restarts and reads the newest version from the database).
+  console and any worker that starts later use it. Running workers pick it up anyway within 30 seconds: each worker's
+  poller reads the newest version id from the database, publishes it to Redis and reloads (see "Workers"). Until
+  then the result-cache key may stay on the previous version.
 - **There is no action that returns to the file source.** Reset appends a version holding `llm.yaml`'s content as it is
   now. After it the source is still `"db"`, so later edits to `llm.yaml` and `LLM_PRESET` have no effect. To pick up a
   changed `llm.yaml`, run reset again.
 - `LLM_PRESET` (`settings.llm_preset`) replaces the document's `active_preset` only while `llm.yaml` is the source. A
-  saved version always runs its own `active_preset`.
+  saved version always runs its own `active_preset`, so the first save ends the effect of `LLM_PRESET`. For that first
+  save the running preset is the `LLM_PRESET` one: `changes` and the audit row compare the new version with `llm.yaml`
+  **with `LLM_PRESET` applied** (with `LLM_PRESET=better` and a document that keeps `cheap`, `active_preset` reads
+  `"better → cheap"`), and the console starts its draft on the preset the workers run, so a first save keeps that preset
+  unless the admin changes it. An `LLM_PRESET` that names no preset in `llm.yaml` stops the workers from starting; the
+  console warns about it and leaves the draft on the file's own `active_preset`.
 
 **Catalog.** `GET /admin/llm-models` serves the OpenRouter model list, cached in Redis for one hour
 (`mra:llm:catalog`). `q` (up to 100 characters) is a case-insensitive part of the model id, `structured` and
@@ -797,7 +812,9 @@ answers **201** with the version plus `workers_notified`.
 USD per million tokens. Items come cheapest first (then by id):
 `{id, context_length, price_in_per_m, price_out_per_m, structured, tools, reasoning}`. When OpenRouter cannot be
 reached the answer is still 200 `{items: [], available: false}`. That failure is not cached, so the next request tries
-again.
+again. A cache entry that cannot be read (garbage, or an older shape) or that holds no models is discarded and the list
+fetched again, and an empty answer from OpenRouter is never cached and counts as unavailable. Workers use the same cached
+list when they rebuild their models, so a model added since a worker started is built with its real capabilities.
 
 **Test call.** `POST /admin/llm-models/test` makes one small structured-output request to one role's model, which proves
 that the model, provider, key and structured output work together. It spends real money, so it is capped (these are
@@ -808,14 +825,21 @@ admin-only constants, not `/status` limits).
   tests the configuration in use: `preset` if given, otherwise the preset the workers run (`LLM_PRESET` applies while
   `llm.yaml` is the source).
 - `max_tokens` is the role's, at most 512. The timeout is the role's, at most 60 seconds, and the **whole call** is cut
-  off after 60 seconds, retries included. Fallback models are dropped, so the primary model is what is tested. The call
-  has a budget of $0.05.
+  off after 60 seconds, retries included. Fallback models are dropped, so the primary model is what is tested, and the
+  role's `extra_body` cannot lift the caps: its `max_tokens`, `max_completion_tokens` and `models` are left out for the
+  test.
+- The call runs inside a $0.05 budget. That is a **gate**, not a ceiling: it is checked before the call (a spent budget
+  refuses it) and charged after, and a test is one call, so what bounds the spend is the 512-token cap.
 - The answer is `{ok, latency_ms, cost_usd, model, error}`. A model that fails, times out or does not confirm still
-  answers **200**, with `ok: false` and a short `error` (up to 300 characters); `cost_usd` is what the call cost.
+  answers **200**, with `ok: false` and a short `error` (up to 300 characters). `cost_usd` is what the answer cost; for a
+  call that failed or timed out it reads about 0, because the cost is charged only from an answer that was read (the
+  provider may still bill such a call).
   **422** means the request could not be made: a bad document, an unknown preset, a role the preset does not have, or a
   local model server URL that does not parse (checked before any call, so a bad URL never spends).
 - At most **10 tests per minute per admin** (the username, or the key prefix). Above that the answer is **429** with
-  `Retry-After`. The count is taken before the request is checked, so a 422 uses one too.
+  `Retry-After`. The slot is taken in the handler, before the document is checked, so a **handler-level** 422 uses one:
+  a YAML text that cannot be read, a bad document, an unknown preset, a role the preset does not have, a URL that does
+  not parse. A request body that fails the route's own schema, and a refused sign-in or CSRF header (401, 403), use none.
 - Every answered test writes an `llm.test` audit row of its own: `target_type` `llm_model`, `target_id` the model id (cut
   to 64 characters) and `after` `{preset, role, provider, base_url_host, ok, cost_usd}`. `base_url_host` is only the host
   of the role's `base_url` (null without one), never the key or the full URL.
@@ -827,13 +851,19 @@ admin-only constants, not `/status` limits).
 **Workers.** A worker runs the configuration in use and reloads it without a restart.
 - At startup it loads the newest version, or `llm.yaml` (with `LLM_PRESET`) when none is saved. If the version cannot be
   read or built, the worker starts on `llm.yaml` instead, reports the error and keeps retrying the version.
-- At the start of every review job, and every 30 seconds while idle, it compares the Redis key `mra:llm:config_version`
-  (the id of the newest version, as text) with the version it runs. On a change it rebuilds its models and its graph. The
-  per-process LLM semaphore is reused, so `LLM_CONCURRENCY` still bounds every call.
+- At the start of every review job it compares the Redis key `mra:llm:config_version` (the id of the newest version,
+  as text) with the version it runs. Every 30 seconds a poller does the same against the **database**: it reads the
+  newest version id there, and repairs the Redis key to match. A key that is missing or behind (a publish that was lost)
+  is raised to the database's id, a key above the database's newest id (a database restored from a backup) is set back
+  to it, and a key is deleted while the table is empty. So a worker picks a saved version up within 30 seconds even
+  when its publish failed. On a change it rebuilds its models and its graph. The per-process LLM semaphore is reused,
+  so `LLM_CONCURRENCY` still bounds every call. The rebuild uses the OpenRouter catalog the console uses (the Redis
+  cache, fetched live when it is cold) and falls back to the one the worker fetched at startup.
 - **A review that is already running keeps its models** to the end. The next review, or a resumed one, uses the new
   models.
 - If the new version cannot be built, the worker keeps the models it has, reports the error and tries again at the next
-  check. A broken version never takes a worker down.
+  check. A broken version never takes a worker down. A reported error that is out of date, because the worker already
+  runs the database's active version (or `llm.yaml` while the table is empty), is cleared at the next check.
 - A worker started with `GRAPH_MODE=stub` records the version it sees without building any LLM.
 - Each worker reports itself in the Redis hash `mra:llm:loaded`. The field is `<hostname>:<pid>` and the value is JSON
   `{version, preset, loaded_at, error}`. `version` is the id as text or `"file"`, and `error` is null or the last error

@@ -13,6 +13,10 @@ describe("admin copy", () => {
     expect(MODEL_SOURCE_LABEL).toEqual({ edit: "แก้ไข", restore: "ย้อนกลับ", file: "จาก llm.yaml" });
   });
 
+  it("calls a reset what it is: a new version made from llm.yaml, not a way back to the file source", () => {
+    expect(ACTION_LABEL["llm_config.reset"]).toBe("สร้างเวอร์ชันใหม่จาก llm.yaml");
+  });
+
   it("describes a change field by field", () => {
     expect(describeChange({ daily_quota: 10 }, { daily_quota: 25 })).toEqual(["daily_quota: 10 → 25"]);
     expect(describeChange(null, { username: "owner", is_admin: false })).toEqual(["is_admin: false", "username: owner"]);

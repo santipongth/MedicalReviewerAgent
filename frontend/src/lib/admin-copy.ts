@@ -14,7 +14,7 @@ export const ACTION_LABEL: Record<string, string> = {
   "admin.create": "สร้างบัญชีผู้ดูแล", "admin.passwd": "เปลี่ยนรหัสผ่าน", "admin.disable": "ปิดบัญชีผู้ดูแล",
   "admin.enable": "เปิดบัญชีผู้ดูแล",
   "llm_config.save": "บันทึกการตั้งค่าโมเดล", "llm_config.restore": "ย้อนการตั้งค่าโมเดล",
-  "llm_config.reset": "กลับไปใช้ llm.yaml", "llm.test": "ทดสอบโมเดล",
+  "llm_config.reset": "สร้างเวอร์ชันใหม่จาก llm.yaml", "llm.test": "ทดสอบโมเดล",
 };
 
 export const MODEL_SOURCE_LABEL: Record<LlmVersion["source"], string> = {
