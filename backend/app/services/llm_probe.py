@@ -1,6 +1,7 @@
 """One small real call to a role's model (Plan 23b "ทดสอบ"): proves the model, provider, key and structured output
 work together. Output tokens and time are capped (the time cap bounds the whole call, retries included), fallback
-models are dropped so the primary is what gets tested, and the call runs inside a tiny budget; it never raises."""
+models are dropped so the primary is what gets tested, an extra_body cannot lift the caps, and the call runs inside a
+tiny budget; it never raises."""
 from __future__ import annotations
 
 import asyncio
@@ -17,6 +18,8 @@ from app.services.llm_config import ResolvedRole
 PROBE_MAX_TOKENS = 512  # reasoning models need some room before they answer
 PROBE_TIMEOUT_SECONDS = 60.0
 PROBE_BUDGET_USD = 0.05
+# extra_body is merged over the request and would lift the output cap or bring the fallback models back
+UNCAPPED_EXTRA_BODY_KEYS = frozenset({"max_tokens", "max_completion_tokens", "models"})
 PROBE_SYSTEM = "You are a connectivity check for a structured-output API. Set ok to true and word to one English word."
 PROBE_USER = "Answer now."
 
@@ -29,7 +32,9 @@ class ProbeAnswer(BaseModel):
 async def probe(role: ResolvedRole, settings: Settings, catalog=None, *, build=build_role_llm) -> dict[str, Any]:
     capped = role.with_spec(max_tokens=min(role.spec.max_tokens, PROBE_MAX_TOKENS),
                             timeout_seconds=min(role.spec.timeout_seconds, PROBE_TIMEOUT_SECONDS),
-                            fallback_models=[])
+                            fallback_models=[],
+                            extra_body={k: v for k, v in role.spec.extra_body.items()
+                                        if k not in UNCAPPED_EXTRA_BODY_KEYS})
     budget = ReviewBudget(cap_usd=PROBE_BUDGET_USD)
     started = time.monotonic()
 

@@ -197,3 +197,29 @@ async def test_strict_tool_schema_has_no_default_for_required_nullable_fields(fa
             pass  # the empty reply does not validate; only the request body matters here
         params = json.dumps(fake_openai.requests[-1]["tools"][0]["function"]["parameters"])
         assert f'"{name}"' in params and '"default": null' not in params
+
+
+def test_an_openrouter_provider_without_a_base_url_connects_to_openrouter(monkeypatch):
+    from app.services import llm as llm_module
+    from app.services.llm_config import parse_llm_config, resolve_llm_config
+    from tests.llm_helpers import MINIMAL
+
+    seen = []
+    real = llm_module.ChatOpenAI
+
+    def spy(**kwargs):
+        seen.append(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(llm_module, "ChatOpenAI", spy)
+    raw = {**MINIMAL, "providers": {"openrouter": {"api_key_env": "OPENROUTER_API_KEY"}}}
+    resolved = resolve_llm_config(parse_llm_config(raw))
+    assert resolved.roles["guard"].provider_spec.base_url is None
+    llm_module.build_llms(Settings(_env_file=None, openrouter_api_key="sk-or-x"), None, resolved=resolved)
+    assert seen and {k["base_url"] for k in seen} == {"https://openrouter.ai/api/v1"}
+    seen.clear()
+    configured = {**MINIMAL, "providers": {"openrouter": {"api_key_env": "OPENROUTER_API_KEY",
+                                                          "base_url": "https://openrouter.ai/api/v1/"}}}
+    llm_module.build_llms(Settings(_env_file=None, openrouter_api_key="sk-or-x"), None,
+                          resolved=resolve_llm_config(parse_llm_config(configured)))
+    assert {k["base_url"] for k in seen} == {"https://openrouter.ai/api/v1/"}  # what is configured wins

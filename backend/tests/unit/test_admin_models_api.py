@@ -522,3 +522,84 @@ async def test_header_values_with_control_characters_or_a_bad_url_are_422(client
     assert (await client.post(f"{BASE}/llm-models/test", json={"config": draft, "role": "guard"},
                               headers=h)).status_code == 422
     assert probe_calls == [] and await version_count(session_factory) == 0
+
+
+# --- final review fix wave ---------------------------------------------------------------------------------------
+
+
+def yaml_of(draft):
+    return yaml.safe_dump(draft, sort_keys=False)
+
+
+NON_FINITE_BODIES = {
+    "yaml-nan-extra-body": yaml_of(with_model(MINIMAL, "cheap", "guard", "m/a")).replace(
+        "model: m/a", "model: m/a\n      extra_body: {top: .nan}"),
+    "yaml-inf-deep-extra-body": yaml_of(with_model(MINIMAL, "cheap", "guard", "m/a")).replace(
+        "model: m/a", "model: m/a\n      extra_body: {a: {b: [1, .inf]}}"),
+    "yaml-inf-override": yaml_of(MINIMAL) + "overrides:\n  guard:\n    extra_body: {x: -.inf}\n",
+}
+
+
+@pytest.mark.parametrize("text", NON_FINITE_BODIES.values(), ids=NON_FINITE_BODIES.keys())
+async def test_nan_and_infinity_in_yaml_extra_body_or_overrides_are_refused_everywhere(
+        client, session_factory, probe_calls, text):
+    h = await admin_headers(client, session_factory)
+    assert "extra_body" in text
+    checked = await client.post(f"{BASE}/llm-config/validate", json={"yaml": text}, headers=h)
+    assert checked.status_code == 200 and checked.json()["ok"] is False
+    assert "NaN or infinity" in checked.json()["errors"][0]
+    saved = await client.post(f"{BASE}/llm-config", json={"yaml": text, "base_version": None}, headers=h)
+    assert saved.status_code == 422 and "NaN or infinity" in saved.json()["detail"]
+    tested = await client.post(f"{BASE}/llm-models/test", json={"yaml": text, "role": "guard"}, headers=h)
+    assert tested.status_code == 422 and "NaN or infinity" in tested.json()["detail"]
+    assert probe_calls == [] and await version_count(session_factory) == 0
+    assert await count(session_factory, "llm.test") == 0
+
+
+@pytest.mark.parametrize("where", ["extra_body", "overrides"])
+@pytest.mark.parametrize("number", ["1e400", "-1e400", "NaN"])
+async def test_a_json_number_past_the_float_range_is_refused_in_extra_body_and_overrides(
+        client, session_factory, probe_calls, where, number):
+    h = await admin_headers(client, session_factory)
+    draft = copy.deepcopy(MINIMAL)
+    if where == "extra_body":
+        draft["presets"]["cheap"]["guard"]["extra_body"] = {"a": [{"b": "__N__"}]}
+    else:
+        draft["overrides"] = {"guard": {"extra_body": {"a": {"b": "__N__"}}}}
+    plain = json.dumps({"config": draft, "base_version": None, "role": "guard"}).replace('"__N__"', number)
+    for url, expected in ((f"{BASE}/llm-config", 422), (f"{BASE}/llm-models/test", 422),
+                          (f"{BASE}/llm-config/validate", 200)):
+        r = await client.post(url, content=plain, headers={**h, **JSON_BODY})
+        assert r.status_code == expected, (url, r.text)
+        if expected == 200:
+            assert r.json()["ok"] is False and "NaN or infinity" in r.json()["errors"][0]
+        else:
+            assert "NaN or infinity" in r.json()["detail"]
+    assert probe_calls == [] and await version_count(session_factory) == 0
+
+
+@pytest.mark.parametrize("name", ["Medical Reviewer Agent ", "   ", " Medical"])
+async def test_an_app_name_with_edge_spaces_is_refused_before_it_can_break_every_call(
+        client, session_factory, probe_calls, name):
+    h = await admin_headers(client, session_factory)
+    draft = provider_draft(app_name=name)
+    checked = (await client.post(f"{BASE}/llm-config/validate", json={"config": draft}, headers=h)).json()
+    assert checked["ok"] is False and "app_name" in checked["errors"][0]
+    assert (await client.post(f"{BASE}/llm-config", json={"config": draft, "base_version": None},
+                              headers=h)).status_code == 422
+    assert (await client.post(f"{BASE}/llm-models/test", json={"config": draft, "role": "guard"},
+                              headers=h)).status_code == 422
+    assert probe_calls == [] and await version_count(session_factory) == 0
+
+
+async def test_configs_that_would_fail_at_build_time_are_refused_when_checked(client, session_factory, probe_calls):
+    h = await admin_headers(client, session_factory)
+    no_url = provider_draft("openai_compatible", api_key_env="OPENAI_COMPATIBLE_API_KEY")
+    bad_body = with_model(MINIMAL, "cheap", "guard", "m/a")
+    bad_body["presets"]["cheap"]["guard"]["extra_body"] = {"reasoning": "high"}
+    for draft, fragment in ((no_url, "base_url is required"), (bad_body, "extra_body.reasoning must be a mapping")):
+        checked = (await client.post(f"{BASE}/llm-config/validate", json={"config": draft}, headers=h)).json()
+        assert checked["ok"] is False and fragment in checked["errors"][0]
+        saved = await client.post(f"{BASE}/llm-config", json={"config": draft, "base_version": None}, headers=h)
+        assert saved.status_code == 422 and fragment in saved.json()["detail"]
+    assert probe_calls == [] and await version_count(session_factory) == 0

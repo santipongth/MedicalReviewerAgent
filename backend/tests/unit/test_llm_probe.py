@@ -1,10 +1,13 @@
 import asyncio
+import copy
+import json
 
 from app.config import Settings
 from app.services import llm_probe
 from app.services.llm import LLMResult
 from app.services.llm_config import parse_llm_config, resolve_llm_config
 from app.services.llm_probe import PROBE_MAX_TOKENS, ProbeAnswer, probe
+from tests.fake_openai import FakeOpenAIServer, completion_body
 from tests.llm_helpers import MINIMAL, with_model
 
 SETTINGS = Settings(_env_file=None, openrouter_api_key="sk-or-x")
@@ -86,3 +89,42 @@ async def test_fallback_models_are_dropped_so_the_primary_is_what_is_tested():
     assert configured.spec.fallback_models == ["vendor/other"]
     await probe(configured, SETTINGS, None, build=build)
     assert seen == {"fallbacks": []}
+
+
+def role_with_extra_body(extra_body, provider="openrouter", base_url=None):
+    raw = copy.deepcopy(MINIMAL)
+    if provider == "openai_compatible":
+        raw["providers"]["openai_compatible"] = {"base_url": base_url, "api_key_env": "OPENAI_COMPATIBLE_API_KEY"}
+        raw["presets"]["cheap"]["synthesizer"]["provider"] = "openai_compatible"
+    raw["presets"]["cheap"]["synthesizer"].update(max_tokens=8192, extra_body=extra_body)
+    return resolve_llm_config(parse_llm_config(raw)).roles["synthesizer"]
+
+
+async def test_extra_body_cannot_lift_the_probes_caps():
+    seen = {}
+
+    def build(r, settings, catalog, schema=None):
+        seen.update(r.spec.extra_body)
+        return FakeLLM(ProbeAnswer(ok=True, word="x"))
+
+    extra = {"max_tokens": 99999, "max_completion_tokens": 99999, "models": ["vendor/a", "vendor/b"],
+             "provider": {"order": ["acme"]}, "top_k": 5}
+    configured = role_with_extra_body(extra)
+    await probe(configured, SETTINGS, None, build=build)
+    assert seen == {"provider": {"order": ["acme"]}, "top_k": 5}  # the caps and the fallback list are gone
+    assert configured.spec.extra_body == extra  # the configured role itself is untouched
+
+
+async def test_the_request_on_the_wire_still_asks_for_at_most_the_probe_tokens():
+    server = FakeOpenAIServer().start()
+    try:
+        server.replies.append(completion_body(json.dumps({"ok": True, "word": "hi"})))
+        configured = role_with_extra_body({"max_tokens": 99999, "max_completion_tokens": 99999, "models": ["x/y"]},
+                                          provider="openai_compatible", base_url=server.url)
+        out = await probe(configured, SETTINGS, None)
+    finally:
+        server.stop()
+    assert out["ok"] is True, out
+    body = server.requests[0]
+    limits = [body[k] for k in ("max_tokens", "max_completion_tokens") if k in body]
+    assert limits and set(limits) == {PROBE_MAX_TOKENS} and "models" not in body

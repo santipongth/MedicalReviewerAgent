@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,8 +55,11 @@ PROVIDER_KEYS = {"openrouter": "OPENROUTER_API_KEY", "anthropic": "ANTHROPIC_API
                  "openai_compatible": "OPENAI_COMPATIBLE_API_KEY"}
 PINNED_HOSTS = {"openrouter": "openrouter.ai", "anthropic": "api.anthropic.com"}
 VISIBLE_ASCII = re.compile(r"[!-~]+")  # the printable ASCII range without the space
-HEADER_TEXT = re.compile(r"[ -~]*")  # ... with spaces: nothing that could end a header line
+# Visible words with single spaces between them: nothing that could end a header line, and no leading or trailing
+# space (the HTTP client refuses a header value with one, and then every call fails).
+HEADER_TEXT = re.compile(r"[!-~]+( [!-~]+)*")
 MAX_FREEFORM_DEPTH = 8  # nesting of an extra_body or of one overrides entry
+MERGED_EXTRA_BODY_KEYS = ("provider", "reasoning")  # llm.py adds require_parameters / effort to these
 MAX_YAML_DEPTH = 20
 
 
@@ -108,31 +112,50 @@ def _nesting(value: Any) -> int:
     return deepest
 
 
-def has_bad_text(value: Any) -> bool:
-    """True when anywhere in value (a dict key too) there is a string holding a NUL or one that cannot be encoded as
-    UTF-8 (a lone surrogate), or any bytes: Postgres refuses the first two, and bytes (YAML !!binary) would reach a
-    typed field as a str with the NUL intact. They are stopped before anything is stored or paid for."""
+def _leaves(value: Any):
+    """Every scalar anywhere in value, dict keys included, found without recursion (a cycle is visited once)."""
     seen: set[int] = set()
     stack = [value]
     while stack:
         item = stack.pop()
-        if isinstance(item, bytes | bytearray):
-            return True
-        if isinstance(item, str):
-            if "\x00" in item:
-                return True
-            try:
-                item.encode("utf-8")
-            except UnicodeEncodeError:
-                return True
-        elif isinstance(item, dict | list | tuple | set | frozenset) and id(item) not in seen:
+        if isinstance(item, dict | list | tuple | set | frozenset):
+            if id(item) in seen:
+                continue
             seen.add(id(item))
             if isinstance(item, dict):
                 stack.extend(item.keys())
                 stack.extend(item.values())
             else:
                 stack.extend(item)
+        else:
+            yield item
+
+
+def _bad_text(item: Any) -> bool:
+    if isinstance(item, bytes | bytearray):
+        return True
+    if isinstance(item, str):
+        if "\x00" in item:
+            return True
+        try:
+            item.encode("utf-8")
+        except UnicodeEncodeError:
+            return True
     return False
+
+
+def has_bad_text(value: Any) -> bool:
+    """True when anywhere in value (a dict key too) there is a string holding a NUL or one that cannot be encoded as
+    UTF-8 (a lone surrogate), or any bytes: Postgres refuses the first two, and bytes (YAML !!binary) would reach a
+    typed field as a str with the NUL intact. They are stopped before anything is stored or paid for."""
+    return any(_bad_text(item) for item in _leaves(value))
+
+
+def has_non_finite_number(value: Any) -> bool:
+    """True when anywhere in value (a dict key too) there is a float that is NaN or infinite: YAML .nan and .inf, or a
+    JSON number such as 1e400. The typed fields refuse them, but extra_body and overrides take any value, and the JSON
+    dump would turn them into null."""
+    return any(isinstance(item, float) and not math.isfinite(item) for item in _leaves(value))
 
 
 def ensure_storable(value: Any) -> None:
@@ -163,8 +186,8 @@ class ProviderSpec(BaseModel):
     @field_validator("app_name")
     @classmethod
     def _app_name_is_header_safe(cls, value: str | None) -> str | None:
-        if value is not None and not HEADER_TEXT.fullmatch(value):  # sent as the X-Title request header
-            raise ValueError("app_name may only hold visible ASCII characters and spaces")
+        if value and not HEADER_TEXT.fullmatch(value):  # sent as the X-Title request header; empty means none
+            raise ValueError("app_name may only hold visible ASCII characters, with single spaces between words")
         return value
 
     @field_validator("app_url")
@@ -192,6 +215,9 @@ class RoleSpec(BaseModel):
     @field_validator("extra_body")
     @classmethod
     def _extra_body_depth(cls, value: dict[str, Any]) -> dict[str, Any]:
+        for key in MERGED_EXTRA_BODY_KEYS:  # the client merges its own settings into these two, so they must be maps
+            if key in value and not isinstance(value[key], dict):
+                raise ValueError(f"extra_body.{key} must be a mapping")
         return _check_depth(value, "extra_body")
 
 
@@ -240,8 +266,9 @@ class LLMConfig(BaseModel):
             if host and provider_spec.base_url and not _is_https_host(provider_spec.base_url, host):
                 raise ValueError(f"providers.{name}.base_url must be an https://{host}/ address "
                                  f"(the {name} key is only sent there)")
-            if name == "openai_compatible" and provider_spec.base_url and not _is_http_url_with_host(
-                    provider_spec.base_url):
+            if name == "openai_compatible" and not provider_spec.base_url:
+                raise ValueError("providers.openai_compatible.base_url is required, e.g. http://localhost:11434/v1")
+            if name == "openai_compatible" and not _is_http_url_with_host(provider_spec.base_url):
                 raise ValueError("providers.openai_compatible.base_url must be an http(s) URL with a host, "
                                  "e.g. http://localhost:11434/v1")
         for name, roles in self.presets.items():
@@ -336,6 +363,8 @@ def parse_llm_config(raw: Any, *, where: str = "llm config") -> LLMConfig:
         raise LLMConfigError(f"{where}: the config must be a mapping")
     if has_bad_text(raw):
         raise LLMConfigError(f"{where}: the config contains a NUL or an invalid character")
+    if has_non_finite_number(raw):
+        raise LLMConfigError(f"{where}: the config contains a number that is NaN or infinity")
     try:
         return LLMConfig.model_validate(raw)
     except ValidationError as exc:

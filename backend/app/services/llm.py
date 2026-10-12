@@ -303,6 +303,9 @@ class LLMs:
         return self.for_schema(role, schema)
 
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+
 def _api_key(settings: Settings, env_name: str) -> str:
     return str(getattr(settings, env_name.lower(), "") or os.environ.get(env_name, ""))
 
@@ -325,11 +328,12 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
         # Some models reason by default (Qwen3.5 Flash on Alibaba) and then break structured output; an explicit
         # "none" turns that off. Never sent to models without reasoning support (require_parameters would 404).
         effort = "none"
+    base_url = ps.base_url or (OPENROUTER_BASE_URL if role.provider == "openrouter" else "")
     headers = {}
     if role.provider == "openrouter":
         headers = {k: v for k, v in (("HTTP-Referer", ps.app_url), ("X-Title", ps.app_name)) if v}
     return OpenAICompatibleStructuredLLM(
-        schema, model=spec.model, api_key=key or "not-needed", base_url=ps.base_url or "",
+        schema, model=spec.model, api_key=key or "not-needed", base_url=base_url,
         max_tokens=spec.max_tokens, temperature=spec.temperature, top_p=spec.top_p, reasoning_effort=effort,
         method=choose_structured_method(spec.structured_output, info), timeout=spec.timeout_seconds,
         headers=headers or None, require_parameters=ps.require_parameters and role.provider == "openrouter",

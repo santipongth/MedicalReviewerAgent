@@ -1,15 +1,19 @@
 """Hostile or malformed LLM config documents (Plan 23b task 8 fix round 1): secrets stay with their provider, YAML
 cannot blow up memory, and every bad document is an LLMConfigError, never another exception type."""
 import copy
+import json
 from pathlib import Path
 
 import pytest
 import yaml
 
+from app.config import Settings
+from app.services.llm import build_llms
 from app.services.llm_config import (
     LLMConfigError,
     ensure_storable,
     has_bad_text,
+    has_non_finite_number,
     load_llm_config,
     parse_llm_config,
     parse_yaml_text,
@@ -242,3 +246,103 @@ def test_ordinary_header_values_pass():
     parse_llm_config(provider(MINIMAL, app_name="Medical Reviewer Agent v1.2 (prod)", app_url="http://localhost"))
     parse_llm_config(provider(MINIMAL, app_name="", app_url=""))
     load_llm_config(REPO_CONFIG)
+
+
+# --- final review: values that were stored as null, header text, build-time failures -------------------------------
+
+
+def with_extra_body(extra_body: dict) -> dict:
+    raw = copy.deepcopy(MINIMAL)
+    raw["presets"]["cheap"]["guard"]["extra_body"] = extra_body
+    return raw
+
+
+def with_override(override: dict) -> dict:
+    return {**copy.deepcopy(MINIMAL), "overrides": {"guard": override}}
+
+
+NON_FINITE_DOCUMENTS = {
+    "yaml-nan-in-extra-body": "extra_body: {top: .nan}",
+    "yaml-inf-deep-in-extra-body": "extra_body: {a: {b: [1, {c: .inf}]}}",
+    "yaml-minus-inf-in-extra-body": "extra_body: {x: -.inf}",
+    "yaml-nan-in-override": "override: {extra_body: {x: .NaN}}",
+    "yaml-inf-in-override": "override: {temperature_hint: .inf}",
+    "yaml-inf-deep-in-override": "override: {extra_body: {a: [[.inf]]}}",
+}
+
+
+def document_from(text: str) -> dict:
+    parsed = parse_yaml_text(text)
+    if "extra_body" in parsed:
+        return with_extra_body(parsed["extra_body"])
+    return with_override(parsed["override"])
+
+
+@pytest.mark.parametrize("text", NON_FINITE_DOCUMENTS.values(), ids=NON_FINITE_DOCUMENTS.keys())
+def test_nan_and_infinity_inside_extra_body_or_an_override_are_refused_not_stored_as_null(text):
+    raw = document_from(text)
+    with pytest.raises(LLMConfigError, match="NaN or infinity"):
+        parse_llm_config(raw)
+
+
+@pytest.mark.parametrize("value", ["1e400", "-1e400", "NaN", "Infinity", "-Infinity"])
+def test_json_numbers_that_overflow_to_infinity_are_refused_at_any_depth(value):
+    in_body = json.loads('{"a": [{"b": ' + value + "}]}")
+    in_override = json.loads('{"extra_body": {"x": ' + value + "}}")
+    for raw in (with_extra_body(in_body), with_override(in_override)):
+        with pytest.raises(LLMConfigError, match="NaN or infinity"):
+            parse_llm_config(raw)
+    parse_llm_config(with_extra_body({"a": [{"b": 1e300}], "c": 0.5}))  # large and fractional numbers are fine
+
+
+def test_a_non_finite_number_is_found_in_keys_sets_and_tuples_and_a_cycle_is_safe():
+    loop: list = []
+    loop.append(loop)
+    assert has_non_finite_number({1: [float("nan")]}) and has_non_finite_number(({"a": (float("inf"),)},))
+    assert has_non_finite_number({float("nan"): 1}) and has_non_finite_number([{float("-inf")}])
+    assert not has_non_finite_number({"a": [1, 2.5, None, True, "nan"], "b": {"c": 1e308}}) and not has_non_finite_number(loop)
+
+
+@pytest.mark.parametrize("value", ["Medical Reviewer Agent ", " Medical Reviewer Agent", "   ", " ",
+                                   "Medical  Reviewer"])
+def test_app_name_with_leading_trailing_or_only_spaces_is_refused(value):
+    with pytest.raises(LLMConfigError, match="app_name"):
+        parse_llm_config(provider(MINIMAL, app_name=value))
+
+
+@pytest.mark.parametrize("value", [" http://localhost", "http://localhost ", "   "])
+def test_app_url_with_spaces_is_refused(value):
+    with pytest.raises(LLMConfigError, match="app_url"):
+        parse_llm_config(provider(MINIMAL, app_url=value))
+
+
+def test_app_name_words_separated_by_single_spaces_pass():
+    parse_llm_config(provider(MINIMAL, app_name="Medical Reviewer Agent v1.2 (prod)"))
+    parse_llm_config(provider(MINIMAL, app_name="MRA"))
+
+
+def test_a_local_model_server_needs_a_base_url():
+    for fields in ({}, {"base_url": ""}, {"base_url": None}):
+        with pytest.raises(LLMConfigError, match="openai_compatible.base_url is required"):
+            parse_llm_config(provider(MINIMAL, "openai_compatible", api_key_env="OPENAI_COMPATIBLE_API_KEY", **fields))
+    parse_llm_config(provider(MINIMAL, "openai_compatible", api_key_env="OPENAI_COMPATIBLE_API_KEY",
+                              base_url="http://localhost:11434/v1"))
+    parse_llm_config(provider(MINIMAL, "anthropic"))  # the Anthropic SDK has its own default host
+
+
+@pytest.mark.parametrize("key", ["provider", "reasoning"])
+@pytest.mark.parametrize("bad", ["fast", ["a"], 3, None, True])
+def test_extra_body_provider_and_reasoning_must_be_mappings(key, bad):
+    with pytest.raises(LLMConfigError, match=f"extra_body.{key} must be a mapping"):
+        parse_llm_config(with_extra_body({key: bad}))
+    with pytest.raises(LLMConfigError, match=f"extra_body.{key} must be a mapping"):
+        resolve_llm_config(parse_llm_config(with_override({"extra_body": {key: bad}})))
+    parse_llm_config(with_extra_body({key: {"order": ["a"]}}))
+    parse_llm_config(with_extra_body({"other": "fast"}))  # only these two keys are merged by the builder
+
+
+def test_a_config_with_extra_body_mappings_builds(monkeypatch):
+    raw = with_extra_body({"provider": {"order": ["a"]}, "reasoning": {"max_tokens": 10}})
+    raw["presets"]["cheap"]["guard"]["reasoning_effort"] = "high"
+    resolved = resolve_llm_config(parse_llm_config(raw))
+    build_llms(Settings(_env_file=None, openrouter_api_key="sk-or-x"), None, resolved=resolved)
