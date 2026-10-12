@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { EChart } from "@/components/charts/echart";
+import { useTheme } from "@/components/theme-toggle";
 import { adminApi } from "@/lib/admin-api";
 import { STATUS_LABEL, STATUS_ORDER, formatUsd } from "@/lib/admin-copy";
 import { dashboardChartOption, readStatusColors } from "@/lib/admin-dashboard-view";
@@ -34,6 +35,7 @@ export function DashboardView() {
   const [days, setDays] = useState<number>(30);
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
 
   useEffect(() => {
     let alive = true;
@@ -43,7 +45,8 @@ export function DashboardView() {
     return () => { alive = false; };
   }, [days, fail]);
 
-  const option = useMemo(() => (data ? dashboardChartOption(data, readStatusColors()) : null), [data]);
+  // The colours are read from the active theme, so the chart is rebuilt (and EChart redraws) when the theme is toggled.
+  const option = useMemo(() => (data && theme ? dashboardChartOption(data, readStatusColors()) : null), [data, theme]);
   const shown = data ? STATUS_ORDER.filter((s) => (data.totals.by_status[s] ?? 0) > 0) : [];
 
   return (
@@ -89,7 +92,7 @@ export function DashboardView() {
           )}
 
           <details className="mt-3">
-            <summary className="cursor-pointer font-display font-semibold">ดูเป็นตาราง</summary>
+            <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold">ดูเป็นตาราง</summary>
             <div className={TABLE_REGION} role="region" aria-label="ตารางรายวัน" tabIndex={0}>
               <table className="w-full border-collapse text-sm tabular-nums">
                 <caption className="sr-only">รีวิวและค่าใช้จ่ายรายวัน (UTC)</caption>

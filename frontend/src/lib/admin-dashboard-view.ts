@@ -2,15 +2,16 @@ import type { EChartsOption } from "@/components/charts/echart";
 import { STATUS_LABEL, STATUS_ORDER } from "./admin-copy";
 import type { AdminStatus, Dashboard } from "./admin-types";
 
-/** Service-status colours. They come from the theme's status tokens, never from the finding-direction palette. */
+/** Service-status colours: ink, the error and neutral tokens only, never a brand colour or the finding-direction palette
+ * (DESIGN.md keeps those out of charts). Statuses that share a hue are told apart by the decal patterns, not colour alone. */
 export type StatusColors = Record<AdminStatus, string> & { cost: string; text: string; rule: string; font: string };
 
 export function readStatusColors(): StatusColors {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   return {
-    done: v("--ok", "#2e7d4f"), error: v("--err", "#b3261e"), rejected: v("--hatch", "#9aa8a0"),
-    cancelled: v("--muted", "#4a5e57"), running: v("--warn", "#8a5a00"), queued: v("--rule", "#bccac1"),
+    done: v("--ink", "#10241e"), error: v("--err", "#b3261e"), rejected: v("--hatch", "#9aa8a0"),
+    cancelled: v("--muted", "#4a5e57"), running: v("--muted", "#4a5e57"), queued: v("--rule", "#bccac1"),
     cost: v("--ink", "#10241e"), text: v("--ink", "#10241e"), rule: v("--rule", "#bccac1"),
     font: v("--font-bai-jamjuree", "sans-serif"),
   };
@@ -21,6 +22,7 @@ export function dashboardChartOption(d: Dashboard, c: StatusColors): EChartsOpti
   const present = STATUS_ORDER.filter((s) => d.per_day.some((p) => (p.by_status[s] ?? 0) > 0));
   return {
     animation: false,
+    aria: { enabled: true, label: { enabled: false }, decal: { show: true } },
     textStyle: { fontFamily: c.font, color: c.text },
     grid: { left: 44, right: 56, top: 40, bottom: 28 },
     legend: { top: 0, textStyle: { color: c.text } },
