@@ -11,6 +11,7 @@ from app.services.llm import _api_key
 from app.services.llm_config import (
     CONFIG_ERRORS,
     config_error_text,
+    ensure_storable,
     parse_llm_config,
     resolve_llm_config,
 )
@@ -34,6 +35,7 @@ def _validate(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None
     config = parse_llm_config(raw, where="config")
     resolve_llm_config(config, None, where="config")
     normalized = config.model_dump(mode="json", exclude_unset=True)
+    ensure_storable(normalized)  # what save would refuse is not "ok" here either
     warnings: list[str] = []
     cost: dict[str, Any] = {}
     if catalog is None:

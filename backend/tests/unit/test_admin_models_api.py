@@ -365,3 +365,99 @@ async def test_a_body_that_fails_validation_is_a_422_that_does_not_echo_it_back(
             assert "input" not in r.text
     public = await client.post("/api/v1/reviews", json={"topic": 5})  # outside /admin the default error is unchanged
     assert public.status_code == 422 and "input" in public.json()["detail"][0]
+
+
+# --- fix round 2 -------------------------------------------------------------------------------------------------
+
+BINARY_MODEL_YAML = """\
+active_preset: cheap
+default_provider: openrouter
+providers:
+  openrouter: {base_url: "https://openrouter.ai/api/v1", api_key_env: OPENROUTER_API_KEY}
+presets:
+  cheap:
+    guard: {model: !!binary YS8AYg==}
+    planner: {model: a/b}
+    screener: {model: a/b}
+    extractor: {model: a/b}
+    synthesizer: {model: a/b}
+"""
+BINARY_PRESET_YAML = """\
+active_preset: !!binary Y2gAZWFw
+default_provider: openrouter
+providers:
+  openrouter: {base_url: "https://openrouter.ai/api/v1", api_key_env: OPENROUTER_API_KEY}
+presets:
+  ? !!binary Y2gAZWFw
+  : {guard: {model: a/b}, planner: {model: a/b}, screener: {model: a/b}, extractor: {model: a/b},
+     synthesizer: {model: a/b}}
+"""
+
+
+@pytest.mark.parametrize("text", [BINARY_MODEL_YAML, BINARY_PRESET_YAML], ids=["model", "preset-name"])
+async def test_yaml_binary_cannot_carry_a_nul_into_a_config(client, session_factory, probe_calls, text):
+    h = await admin_headers(client, session_factory)
+    body = {"yaml": text, "base_version": None, "role": "guard"}
+    for url in (f"{BASE}/llm-config/validate", f"{BASE}/llm-config", f"{BASE}/llm-models/test"):
+        r = await client.post(url, json=body, headers=h)
+        assert r.status_code == 422 and "binary" in r.json()["detail"], (url, r.text)
+    assert probe_calls == [] and await version_count(session_factory) == 0
+    assert await count(session_factory, "llm.test") == 0 and await count(session_factory, "llm_config.save") == 0
+
+
+BAD_LOCAL_URLS = ["http://[evil", "http://[::1", "http://a]b/", "http://ex℀ample.com/v1", "ftp://x.example.org/v1"]
+
+
+@pytest.mark.parametrize("url", BAD_LOCAL_URLS)
+async def test_a_local_model_server_url_that_does_not_parse_is_a_422_before_the_probe(client, session_factory,
+                                                                                       probe_calls, url):
+    h = await admin_headers(client, session_factory)
+    draft = provider_draft("openai_compatible", base_url=url)
+    draft["presets"]["cheap"]["guard"] = {"model": "local/m", "provider": "openai_compatible"}
+    checked = (await client.post(f"{BASE}/llm-config/validate", json={"config": draft}, headers=h)).json()
+    assert checked["ok"] is False and "base_url" in checked["errors"][0]
+    saved = await client.post(f"{BASE}/llm-config", json={"config": draft, "base_version": None}, headers=h)
+    assert saved.status_code == 422
+    tested = await client.post(f"{BASE}/llm-models/test", json={"config": draft, "role": "guard"}, headers=h)
+    assert tested.status_code == 422
+    assert probe_calls == [] and await version_count(session_factory) == 0
+    assert await count(session_factory, "llm.test") == 0
+
+
+async def test_the_audit_row_names_the_host_of_a_local_model_server(client, session_factory, probe_calls):
+    h = await admin_headers(client, session_factory)
+    draft = provider_draft("openai_compatible", base_url="http://Localhost:11434/v1?x=1")
+    draft["presets"]["cheap"]["guard"] = {"model": "local/m", "provider": "openai_compatible"}
+    r = await client.post(f"{BASE}/llm-models/test", json={"config": draft, "role": "guard"}, headers=h)
+    assert r.status_code == 200 and probe_calls == [("guard", "local/m")]
+    async with session_factory() as s:
+        row = (await s.execute(select(AdminAudit).where(AdminAudit.action == "llm.test"))).scalar_one()
+    assert (row.after["provider"], row.after["base_url_host"]) == ("openai_compatible", "localhost")
+    assert "11434" not in json.dumps(row.after) and "x=1" not in json.dumps(row.after)
+
+
+@pytest.mark.parametrize("name,env", [("openrouter", "ANTHROPIC_API_KEY"), ("openrouter", "OPENALEX_API_KEY"),
+                                      ("anthropic", "OPENROUTER_API_KEY"),
+                                      ("openai_compatible", "OPENROUTER_API_KEY")])
+async def test_a_provider_cannot_name_another_providers_key(client, session_factory, probe_calls, name, env):
+    h = await admin_headers(client, session_factory)
+    draft = provider_draft(name, api_key_env=env)
+    assert (await client.post(f"{BASE}/llm-config/validate", json={"config": draft}, headers=h)).json()["ok"] is False
+    assert (await client.post(f"{BASE}/llm-config", json={"config": draft, "base_version": None},
+                              headers=h)).status_code == 422
+    assert (await client.post(f"{BASE}/llm-models/test", json={"config": draft, "role": "guard"},
+                              headers=h)).status_code == 422
+    assert probe_calls == [] and await version_count(session_factory) == 0
+
+
+async def test_a_value_the_json_column_cannot_store_is_422_not_a_server_error(client, session_factory):
+    h = await admin_headers(client, session_factory)
+    draft = copy.deepcopy(MINIMAL)
+    draft["presets"]["cheap"]["guard"]["extra_body"] = {"n": "__BIG__"}
+    text = yaml.safe_dump(draft, sort_keys=False).replace("__BIG__", "0x" + "f" * 4000)
+    assert "0x" + "f" * 4000 in text
+    saved = await client.post(f"{BASE}/llm-config", json={"yaml": text, "base_version": None}, headers=h)
+    assert saved.status_code == 422 and "stored" in saved.json()["detail"]
+    checked = await client.post(f"{BASE}/llm-config/validate", json={"yaml": text}, headers=h)
+    assert checked.status_code == 200 and checked.json()["ok"] is False
+    assert await version_count(session_factory) == 0

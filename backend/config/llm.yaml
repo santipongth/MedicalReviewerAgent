@@ -30,9 +30,9 @@
 active_preset: budget
 default_provider: openrouter
 
-# api_key_env names the environment variable that holds the key (capital letters, ending in _API_KEY). The openrouter and
-# anthropic keys are only ever sent to https://openrouter.ai and https://api.anthropic.com, so their base_url must stay
-# there; openai_compatible (a local server) may point anywhere but only uses OPENAI_COMPATIBLE_API_KEY.
+# api_key_env must keep its name: OPENROUTER_API_KEY, ANTHROPIC_API_KEY and OPENAI_COMPATIBLE_API_KEY, each only for its
+# own provider. The openrouter and anthropic keys are only ever sent to https://openrouter.ai and https://api.anthropic.com,
+# so their base_url must stay there; openai_compatible (a local server) may use any http(s) URL.
 providers:
   openrouter:
     base_url: https://openrouter.ai/api/v1

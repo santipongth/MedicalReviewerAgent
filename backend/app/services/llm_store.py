@@ -20,6 +20,7 @@ from app.services.audit import record
 from app.services.llm_config import (
     LLMConfig,
     ResolvedLLMConfig,
+    ensure_storable,
     parse_llm_config,
     read_llm_yaml,
     resolve_llm_config,
@@ -115,6 +116,7 @@ async def save_version(session: AsyncSession, actor: AdminPrincipal, raw: Any, *
     config = parse_llm_config(raw, where="config")
     resolve_llm_config(config, None, where="config")
     stored = config.model_dump(mode="json", exclude_unset=True)
+    ensure_storable(stored)
     if session.get_bind().dialect.name == "postgresql":  # READ COMMITTED would let two saves pass the same check
         await session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": LLM_SAVE_LOCK})
     current = await _newest(session)

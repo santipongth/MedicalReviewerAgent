@@ -1,6 +1,7 @@
 """Operator-editable LLM configuration (config/llm.yaml): presets of per-role model settings."""
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,16 +46,26 @@ def config_error_text(exc: BaseException) -> str:
     return str(exc) or type(exc).__name__
 
 
-# A provider key is read from the server's settings or environment by name, so the name is restricted to the shape of
-# a provider key (a draft must not be able to name DATABASE_URL, IP_HASH_SALT, ...), and OpenRouter / Anthropic keys
-# are only ever sent to those providers' own hosts. A local model server (openai_compatible) may be anywhere, but
-# then it gets only its own key.
-API_KEY_ENV = re.compile(r"[A-Z][A-Z0-9_]*_API_KEY")
+# A provider's key is read from the server's settings or environment by name, so a provider may only name its own
+# variable: a draft cannot make the server send DATABASE_URL, or one provider's key to another's host. OpenRouter and
+# Anthropic keys are only ever sent to those providers' own hosts; a local model server (openai_compatible) may be
+# anywhere, but it gets only its own key.
+PROVIDER_KEYS = {"openrouter": "OPENROUTER_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
+                 "openai_compatible": "OPENAI_COMPATIBLE_API_KEY"}
 PINNED_HOSTS = {"openrouter": "openrouter.ai", "anthropic": "api.anthropic.com"}
-FREE_HOST_KEYS = {"openai_compatible": "OPENAI_COMPATIBLE_API_KEY"}
-VISIBLE_ASCII = re.compile(r"[\x21-\x7e]+")
+VISIBLE_ASCII = re.compile(r"[!-~]+")
 MAX_FREEFORM_DEPTH = 8  # nesting of an extra_body or of one overrides entry
 MAX_YAML_DEPTH = 20
+
+
+def url_host(url: str | None) -> str | None:
+    """The host of a base URL (lower case; no port, userinfo, path or query); None when there is no URL. Raises
+    ValueError for a URL that does not parse."""
+    if not url:
+        return None
+    parts = urlsplit(url)
+    parts.port  # noqa: B018 - raises ValueError for a port out of range
+    return parts.hostname
 
 
 def _is_https_host(url: str, host: str) -> bool:
@@ -66,6 +77,15 @@ def _is_https_host(url: str, host: str) -> bool:
     except ValueError:
         return False
     return parts.scheme == "https" and parts.netloc.lower() == host
+
+
+def _is_http_url_with_host(url: str) -> bool:
+    if not VISIBLE_ASCII.fullmatch(url) or "\\" in url:
+        return False
+    try:
+        return urlsplit(url).scheme in ("http", "https") and url_host(url) is not None
+    except ValueError:
+        return False
 
 
 def _nesting(value: Any) -> int:
@@ -88,12 +108,15 @@ def _nesting(value: Any) -> int:
 
 
 def has_bad_text(value: Any) -> bool:
-    """True when a string anywhere in value (a dict key too) holds a NUL or cannot be encoded as UTF-8 (a lone
-    surrogate): Postgres refuses both, so they are stopped before anything is stored or paid for."""
+    """True when anywhere in value (a dict key too) there is a string holding a NUL or one that cannot be encoded as
+    UTF-8 (a lone surrogate), or any bytes: Postgres refuses the first two, and bytes (YAML !!binary) would reach a
+    typed field as a str with the NUL intact. They are stopped before anything is stored or paid for."""
     seen: set[int] = set()
     stack = [value]
     while stack:
         item = stack.pop()
+        if isinstance(item, bytes | bytearray):
+            return True
         if isinstance(item, str):
             if "\x00" in item:
                 return True
@@ -101,7 +124,7 @@ def has_bad_text(value: Any) -> bool:
                 item.encode("utf-8")
             except UnicodeEncodeError:
                 return True
-        elif isinstance(item, dict | list | tuple) and id(item) not in seen:
+        elif isinstance(item, dict | list | tuple | set | frozenset) and id(item) not in seen:
             seen.add(id(item))
             if isinstance(item, dict):
                 stack.extend(item.keys())
@@ -109,6 +132,16 @@ def has_bad_text(value: Any) -> bool:
             else:
                 stack.extend(item)
     return False
+
+
+def ensure_storable(value: Any) -> None:
+    """The JSON column must be able to hold value: no NaN or infinity, no integer json.dumps will not print (over
+    4300 digits, e.g. a long YAML hex number), nothing that is not JSON. Otherwise the INSERT fails in a way that
+    depends on the driver."""
+    try:
+        json.dumps(value, allow_nan=False)
+    except (ValueError, OverflowError, TypeError, RecursionError) as exc:
+        raise LLMConfigError(f"config: cannot be stored as JSON: {exc}") from exc
 
 
 def _check_depth(value: dict[str, Any], what: str) -> dict[str, Any]:
@@ -125,14 +158,6 @@ class ProviderSpec(BaseModel):
     app_name: str | None = None
     app_url: str | None = None
     require_parameters: bool = True
-
-    @field_validator("api_key_env")
-    @classmethod
-    def _key_name(cls, value: str) -> str:
-        if not API_KEY_ENV.fullmatch(value):
-            raise ValueError(f"api_key_env '{value}' must look like OPENROUTER_API_KEY (capital letters, digits and "
-                             "underscores, ending in _API_KEY)")
-        return value
 
 
 class RoleSpec(BaseModel):
@@ -193,14 +218,17 @@ class LLMConfig(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> LLMConfig:
         for name, provider_spec in self.providers.items():
+            if provider_spec.api_key_env != PROVIDER_KEYS[name]:
+                raise ValueError(f"providers.{name}.api_key_env must be {PROVIDER_KEYS[name]}: a provider's key is "
+                                 "only sent to that provider")
             host = PINNED_HOSTS.get(name)
             if host and provider_spec.base_url and not _is_https_host(provider_spec.base_url, host):
                 raise ValueError(f"providers.{name}.base_url must be an https://{host}/ address "
                                  f"(the {name} key is only sent there)")
-            own_key = FREE_HOST_KEYS.get(name)
-            if own_key and provider_spec.api_key_env != own_key:
-                raise ValueError(f"providers.{name}.api_key_env must be {own_key}: a server of your choosing "
-                                 "only receives its own key")
+            if name == "openai_compatible" and provider_spec.base_url and not _is_http_url_with_host(
+                    provider_spec.base_url):
+                raise ValueError("providers.openai_compatible.base_url must be an http(s) URL with a host, "
+                                 "e.g. http://localhost:11434/v1")
         for name, roles in self.presets.items():
             missing = [r for r in ROLES if r not in roles]
             if missing:
@@ -262,6 +290,14 @@ class _DocumentLoader(yaml.SafeLoader):
             return super().compose_node(parent, index)
         finally:
             self._depth -= 1
+
+
+def _refuse_binary(loader: yaml.SafeLoader, node: yaml.Node) -> None:
+    # !!binary loads as bytes, which pydantic turns into a str with any NUL intact: past the text check on str values
+    raise yaml.YAMLError("YAML !!binary values are not allowed in the config")
+
+
+_DocumentLoader.add_constructor("tag:yaml.org,2002:binary", _refuse_binary)  # on the subclass: SafeLoader is untouched
 
 
 def parse_yaml_text(text: str) -> Any:

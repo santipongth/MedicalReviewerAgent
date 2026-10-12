@@ -3,7 +3,6 @@ the probe. Every change writes its audit row in the same transaction; the probe 
 from __future__ import annotations
 
 from typing import Annotated, Any
-from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
@@ -24,6 +23,7 @@ from app.services.llm_config import (
     parse_llm_config,
     parse_yaml_text,
     resolve_llm_config,
+    url_host,
 )
 from app.services.llm_probe import probe
 from app.services.llm_store import (
@@ -212,9 +212,11 @@ async def llm_test(body: TestBody, deps: AppDeps = Depends(get_deps), identity: 
     role = resolved.roles.get(body.role)
     if role is None:
         raise HTTPException(status_code=422, detail=f"preset {resolved.preset} has no {body.role} role")
+    try:  # which host the call goes to is parsed before the probe, so a bad URL can only ever be a 422, never a spend
+        host = url_host(role.provider_spec.base_url)
+    except CONFIG_ERRORS as exc:
+        return _config_error(exc)
     result = await probe(role, settings, await _catalog(deps))
-    # which provider and host the draft pointed the call at (host only: no path or query)
-    host = urlsplit(role.provider_spec.base_url or "").hostname
     async with deps.session_factory() as session, session.begin():
         await record(session, identity.admin, "llm.test", target_type="llm_model", target_id=role.spec.model,
                      after={"preset": resolved.preset, "role": body.role, "provider": role.provider,
