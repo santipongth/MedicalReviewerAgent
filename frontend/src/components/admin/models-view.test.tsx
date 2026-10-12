@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LlmConfigDoc } from "@/lib/admin-types";
+import { WORKERS_NOT_NOTIFIED } from "@/lib/admin-copy";
+import type { LlmConfigDoc, LlmConfigState } from "@/lib/admin-types";
 import { mockAdminFetch, renderAdmin } from "@/test/admin-fetch";
-import { CONFIG, STATE, VERSIONS } from "@/test/admin-model-fixtures";
+import { CONFIG, REPORT_OK, STATE, VERSIONS } from "@/test/admin-model-fixtures";
 import { ModelsHeader, ModelsView } from "./models-view";
 
 const nav = vi.hoisted(() => ({ replace: vi.fn() }));
@@ -137,6 +138,167 @@ describe("ModelsView tabs", () => {
     expect(calls.filter((c) => c === "GET /llm-config")).toHaveLength(2);
     expect(calls.filter((c) => c === "GET /llm-config/versions")).toHaveLength(2);
     expect(calls.indexOf("POST /llm-config/versions/2/restore")).toBeLessThan(calls.lastIndexOf("GET /llm-config"));
+  });
+});
+
+/** A server that can move on: tests change `state` (and `reply`) between the page's requests. */
+function liveServer() {
+  const server = {
+    state: STATE as LlmConfigState,
+    calls: [] as string[],
+    posts: [] as { path: string; body: Record<string, unknown> }[],
+    /** answers a request before the defaults do */
+    reply: ((): [number, unknown] | undefined => undefined) as (method: string, path: string) => [number, unknown] | undefined,
+  };
+  mockAdminFetch((m, p, body) => {
+    server.calls.push(`${m} ${p}`);
+    if (m === "POST") server.posts.push({ path: p, body: body as Record<string, unknown> });
+    const custom = server.reply(m, p);
+    if (custom) return custom;
+    if (m === "GET" && p === "/llm-config") return [200, server.state];
+    if (m === "GET" && p.startsWith("/llm-config/versions")) return [200, VERSIONS];
+    if (p === "/llm-config/validate") return [200, REPORT_OK];
+  });
+  return server;
+}
+
+/** The server's config at `version`, with the guard role on `guardModel`. */
+function movedTo(version: number, guardModel = "vendor/cheap"): LlmConfigState {
+  const cheap = { ...CONFIG.presets.cheap, guard: { ...CONFIG.presets.cheap.guard, model: guardModel } };
+  return {
+    ...STATE, version, config: { ...CONFIG, presets: { ...CONFIG.presets, cheap } },
+    loaded: [{ ...STATE.loaded[0], version: String(version) }],
+  };
+}
+
+const SAVE = { name: "บันทึกเป็นเวอร์ชันใหม่" };
+const MOVED = (from: number | string, to: number | string) => `ร่างนี้แก้จากเวอร์ชัน ${from} แต่ตอนนี้ใช้เวอร์ชัน ${to} อยู่`;
+const guardModel = () => screen.getByLabelText("model ของ guard");
+
+/** Restores version 2 from the history tab; the server moves to `after`. Lands back on the presets tab. */
+async function restoreElsewhere(server: ReturnType<typeof liveServer>, after: LlmConfigState) {
+  server.reply = (m, p) => {
+    if (m === "POST" && p === "/llm-config/versions/2/restore") {
+      server.state = after;
+      return [201, { ...VERSIONS.items[0], id: after.version, source: "restore", restored_from: 2, workers_notified: true }];
+    }
+  };
+  fireEvent.click(screen.getByRole("button", { name: "ประวัติ" }));
+  const v2 = await screen.findByRole("listitem", { name: /เวอร์ชัน 2/ });
+  fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }));
+  fireEvent.click(within(v2).getByRole("button", { name: "ยืนยันย้อนกลับ" }));
+  expect(await screen.findByText(new RegExp(`ใช้เวอร์ชัน ${after.version} จาก DB`))).toBeInTheDocument();
+  expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument(); // the note belongs to the save bar
+  fireEvent.click(screen.getByRole("button", { name: "Presets" }));
+}
+
+describe("ModelsView presets editor", () => {
+  it("opens on the presets tab with the save bar under it", async () => {
+    liveServer();
+    await renderAdmin(<ModelsView />);
+    expect(await screen.findByLabelText("preset ที่กำลังแก้")).toHaveValue("cheap");
+    expect(screen.getByRole("button", SAVE)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ประวัติ" }));
+    expect(screen.queryByRole("button", SAVE)).not.toBeInTheDocument();
+  });
+
+  it("keeps unsaved edits through a reload, says the server moved on, and drops the edits on request", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    await restoreElsewhere(server, movedTo(4, "vendor/restored"));
+    expect(guardModel()).toHaveValue("vendor/mine");
+    expect(screen.getByText(MOVED(3, 4))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ทิ้งการแก้ไข" }));
+    expect(guardModel()).toHaveValue("vendor/restored");
+    expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument();
+    expect(screen.getByText(/ทิ้งการแก้ไขแล้ว: ร่างตรงกับเวอร์ชัน 4/)).toHaveFocus();
+  });
+
+  it("lets a clean draft follow the reload", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    expect(await screen.findByLabelText("model ของ guard")).toHaveValue("vendor/cheap");
+    await restoreElsewhere(server, movedTo(4, "vendor/restored"));
+    expect(guardModel()).toHaveValue("vendor/restored");
+    expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument();
+  });
+
+  it("treats an edit that was put back as clean", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    fireEvent.change(guardModel(), { target: { value: "vendor/cheap" } });
+    await restoreElsewhere(server, movedTo(4, "vendor/restored"));
+    expect(guardModel()).toHaveValue("vendor/restored");
+  });
+
+  it("builds on the latest version when asked, and the next save sends that version as its base", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    await restoreElsewhere(server, movedTo(4, "vendor/restored"));
+    server.reply = (m, p) => (m === "POST" && p === "/llm-config" ? [201, { id: 5, workers_notified: true }] : undefined);
+    fireEvent.click(screen.getByRole("button", { name: "ใช้ร่างนี้ต่อจากเวอร์ชันล่าสุด" }));
+    expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument();
+    expect(guardModel()).toHaveValue("vendor/mine");
+    expect(screen.getByText(/ร่างนี้ใช้เวอร์ชัน 4 เป็นฐานแล้ว/)).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 5 แล้ว")).toBeInTheDocument();
+    const save = server.posts.find((p) => p.path === "/llm-config")!;
+    expect(save.body.base_version).toBe(4);
+    expect((save.body.config as LlmConfigDoc).presets.cheap.guard.model).toBe("vendor/mine");
+  });
+
+  it("without that, a stale draft is saved on its own base and the server's 409 sends it to the YAML tab", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    await restoreElsewhere(server, movedTo(4, "vendor/restored"));
+    server.reply = (m, p) => (m === "POST" && p === "/llm-config" ? [409, { detail: "version 4 is in use now" }] : undefined);
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await waitFor(() => expect(screen.getByRole("button", { name: "YAML ขั้นสูง" })).toHaveAttribute("aria-pressed", "true"));
+    expect(server.posts.find((p) => p.path === "/llm-config")!.body.base_version).toBe(3);
+  });
+
+  it("re-reads after a 409 on save, keeps the draft, and offers both ways forward", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    server.reply = (m, p) => {
+      if (m === "POST" && p === "/llm-config") {
+        server.state = movedTo(5, "vendor/theirs");
+        return [409, { detail: "version 5 is in use now" }];
+      }
+    };
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText(/ใช้เวอร์ชัน 5 จาก DB/)).toBeInTheDocument();
+    expect(server.calls.filter((c) => c === "GET /llm-config")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "YAML ขั้นสูง" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(MOVED(3, 5))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ทิ้งการแก้ไข" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ใช้ร่างนี้ต่อจากเวอร์ชันล่าสุด" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Presets" }));
+    expect(guardModel()).toHaveValue("vendor/mine");
+  });
+
+  it("makes the draft clean after a save, keeps the saved note through the re-read, and names the new version as its base", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    server.reply = (m, p) => {
+      if (m === "POST" && p === "/llm-config") {
+        server.state = movedTo(4, "vendor/normalised"); // what the server stored
+        return [201, { ...VERSIONS.items[0], id: 4, workers_notified: false }];
+      }
+    };
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText(/ใช้เวอร์ชัน 4 จาก DB/)).toBeInTheDocument();
+    expect(guardModel()).toHaveValue("vendor/normalised");
+    expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument();
+    expect(screen.getByText("บันทึกเป็นเวอร์ชัน 4 แล้ว")).toBeInTheDocument();
+    expect(screen.getByText(WORKERS_NOT_NOTIFIED)).toBeInTheDocument();
+    expect(server.calls.filter((c) => c === "GET /llm-config")).toHaveLength(2);
   });
 });
 

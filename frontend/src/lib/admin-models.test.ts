@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CONFIG, STATE } from "@/test/admin-model-fixtures";
-import { missingKeyEnvs, usedProviders } from "./admin-models";
+import { ALL_ROLES, ROLE_ORDER, copyPreset, deletePreset, missingKeyEnvs, setActive, setRole, usedProviders } from "./admin-models";
 import type { LlmConfigDoc, LlmConfigState, LlmRoleSpec } from "./admin-types";
 
 const PROVIDERS = {
@@ -92,5 +92,38 @@ describe("missingKeyEnvs", () => {
     const running = state(THREE, { ...ALL_MISSING, OPENROUTER_API_KEY: true }, { source: "file", version: null, env_preset: "claude", active_preset: "claude" });
     expect(running.config.active_preset).toBe("cheap");
     expect(missingKeyEnvs(running)).toEqual(["ANTHROPIC_API_KEY"]);
+  });
+});
+
+describe("draft helpers", () => {
+  it("never mutate the input", () => {
+    const before = JSON.stringify(CONFIG);
+    setRole(CONFIG, "cheap", "guard", { model: "x/y" });
+    copyPreset(CONFIG, "cheap", "copy");
+    setActive(CONFIG, "better");
+    expect(JSON.stringify(CONFIG)).toBe(before);
+  });
+
+  it("set a role, copy and delete presets, and switch the active one", () => {
+    expect(setRole(CONFIG, "cheap", "guard", { model: "x/y", temperature: 0 }).presets.cheap.guard)
+      .toEqual({ model: "x/y", max_tokens: 4096, temperature: 0 });
+    expect(Object.keys(copyPreset(CONFIG, "cheap", "trial").presets)).toEqual(["cheap", "better", "trial"]);
+    expect(Object.keys(deletePreset(CONFIG, "better").presets)).toEqual(["cheap"]);
+    expect(() => deletePreset(CONFIG, "cheap")).toThrow(/active/);
+    expect(() => copyPreset(CONFIG, "cheap", "better")).toThrow(/exists/);
+    expect(setActive(CONFIG, "better").active_preset).toBe("better");
+  });
+
+  it("add a role the preset does not have yet, and refuse names that exist on every object", () => {
+    expect(setRole(CONFIG, "cheap", "escalation", { model: "x/y" }).presets.cheap.escalation).toEqual({ model: "x/y" });
+    expect(() => copyPreset(CONFIG, "cheap", "constructor")).toThrow(/exists/);
+    expect(() => copyPreset(CONFIG, "cheap", "__proto__")).toThrow(/exists/);
+  });
+});
+
+describe("ROLE_ORDER", () => {
+  it("lists every role the backend resolves exactly once", () => {
+    expect([...ROLE_ORDER].sort()).toEqual([...ALL_ROLES].sort());
+    expect(new Set(ROLE_ORDER).size).toBe(ROLE_ORDER.length);
   });
 });
