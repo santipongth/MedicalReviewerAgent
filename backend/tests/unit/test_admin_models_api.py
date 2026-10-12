@@ -461,3 +461,30 @@ async def test_a_value_the_json_column_cannot_store_is_422_not_a_server_error(cl
     checked = await client.post(f"{BASE}/llm-config/validate", json={"yaml": text}, headers=h)
     assert checked.status_code == 200 and checked.json()["ok"] is False
     assert await version_count(session_factory) == 0
+
+
+# --- fix round 3 -------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text", ["a: !!bool maybe", "a: !!timestamp abc", "a: !!int _"])
+async def test_a_yaml_tag_that_does_not_fit_its_value_is_422_never_a_500(client, session_factory, probe_calls, text):
+    h = await admin_headers(client, session_factory)
+    body = {"yaml": text, "base_version": None, "role": "guard"}
+    for url in (f"{BASE}/llm-config/validate", f"{BASE}/llm-config", f"{BASE}/llm-models/test"):
+        r = await client.post(url, json=body, headers=h)
+        assert r.status_code == 422 and "invalid YAML" in r.json()["detail"], (url, r.text)
+    assert probe_calls == [] and await version_count(session_factory) == 0
+
+
+@pytest.mark.parametrize("field,value", [("app_name", "Reviewer\r\nX-Evil: 1"), ("app_url", "javascript:alert(1)")])
+async def test_header_values_with_control_characters_or_a_bad_url_are_422(client, session_factory, probe_calls,
+                                                                            field, value):
+    h = await admin_headers(client, session_factory)
+    draft = provider_draft(**{field: value})
+    checked = (await client.post(f"{BASE}/llm-config/validate", json={"config": draft}, headers=h)).json()
+    assert checked["ok"] is False and field in checked["errors"][0]
+    assert (await client.post(f"{BASE}/llm-config", json={"config": draft, "base_version": None},
+                              headers=h)).status_code == 422
+    assert (await client.post(f"{BASE}/llm-models/test", json={"config": draft, "role": "guard"},
+                              headers=h)).status_code == 422
+    assert probe_calls == [] and await version_count(session_factory) == 0

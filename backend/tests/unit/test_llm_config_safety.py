@@ -13,6 +13,7 @@ from app.services.llm_config import (
     load_llm_config,
     parse_llm_config,
     parse_yaml_text,
+    read_llm_yaml,
     resolve_llm_config,
 )
 from tests.llm_helpers import MINIMAL
@@ -199,3 +200,45 @@ def test_values_the_json_column_cannot_store_are_refused():
     for bad in ({"a": big}, {"a": float("nan")}, {"a": float("inf")}, {"a": object()}):
         with pytest.raises(LLMConfigError, match="stored"):
             ensure_storable(bad)
+
+
+# --- fix round 3 -------------------------------------------------------------------------------------------------
+
+MISMATCHED_TAGS = [
+    'a: !!bool maybe', 'a: !!bool ""', "? !!bool maybe\n: 1",  # KeyError in SafeConstructor
+    "a: !!timestamp abc", 'a: !!timestamp ""', "a: !!timestamp 2020-01-01 1:2:3 +5", "a: [!!timestamp x]",  # AttributeError
+    'a: !!int ""', 'a: !!int "-"', 'a: !!int "+"', "a: !!int _", 'a: !!int "-_"', 'a: !!float ""', "a: !!float _",  # IndexError
+]
+
+
+@pytest.mark.parametrize("text", MISMATCHED_TAGS)
+def test_a_tag_that_does_not_fit_its_value_is_a_bad_document_not_a_crash(text):
+    with pytest.raises(LLMConfigError, match="invalid YAML"):
+        parse_yaml_text(text)
+
+
+def test_the_operators_file_gets_the_same_treatment(tmp_path):
+    bad = tmp_path / "llm.yaml"
+    bad.write_text("a: !!bool maybe\n", encoding="utf-8")
+    with pytest.raises(LLMConfigError, match="invalid YAML"):
+        read_llm_yaml(bad)
+    bad.write_bytes(b"a: \xff\xfe\n")
+    with pytest.raises(LLMConfigError, match="not valid UTF-8"):
+        read_llm_yaml(bad)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("app_name", "Reviewer\r\nX-Evil: 1"), ("app_name", "Reviewer\n"), ("app_name", "tab\there"),
+    ("app_name", "Réviewer"), ("app_name", "bell\x07"),
+    ("app_url", "javascript:alert(1)"), ("app_url", "http://[x"), ("app_url", "http://host.example.org\r\nX-Evil: 1"),
+    ("app_url", "http://hôst.example.org"), ("app_url", "http://"), ("app_url", "ftp://host.example.org/"),
+])
+def test_header_values_are_visible_ascii_and_the_app_url_is_a_url(field, value):
+    with pytest.raises(LLMConfigError, match=field):
+        parse_llm_config(provider(MINIMAL, **{field: value}))
+
+
+def test_ordinary_header_values_pass():
+    parse_llm_config(provider(MINIMAL, app_name="Medical Reviewer Agent v1.2 (prod)", app_url="http://localhost"))
+    parse_llm_config(provider(MINIMAL, app_name="", app_url=""))
+    load_llm_config(REPO_CONFIG)

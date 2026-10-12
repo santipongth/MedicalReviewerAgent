@@ -53,7 +53,8 @@ def config_error_text(exc: BaseException) -> str:
 PROVIDER_KEYS = {"openrouter": "OPENROUTER_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
                  "openai_compatible": "OPENAI_COMPATIBLE_API_KEY"}
 PINNED_HOSTS = {"openrouter": "openrouter.ai", "anthropic": "api.anthropic.com"}
-VISIBLE_ASCII = re.compile(r"[!-~]+")
+VISIBLE_ASCII = re.compile(r"[!-~]+")  # the printable ASCII range without the space
+HEADER_TEXT = re.compile(r"[ -~]*")  # ... with spaces: nothing that could end a header line
 MAX_FREEFORM_DEPTH = 8  # nesting of an extra_body or of one overrides entry
 MAX_YAML_DEPTH = 20
 
@@ -158,6 +159,20 @@ class ProviderSpec(BaseModel):
     app_name: str | None = None
     app_url: str | None = None
     require_parameters: bool = True
+
+    @field_validator("app_name")
+    @classmethod
+    def _app_name_is_header_safe(cls, value: str | None) -> str | None:
+        if value is not None and not HEADER_TEXT.fullmatch(value):  # sent as the X-Title request header
+            raise ValueError("app_name may only hold visible ASCII characters and spaces")
+        return value
+
+    @field_validator("app_url")
+    @classmethod
+    def _app_url_is_a_url(cls, value: str | None) -> str | None:
+        if value and not _is_http_url_with_host(value):  # sent as the HTTP-Referer request header
+            raise ValueError("app_url must be an http(s) URL with a host, in visible ASCII")
+        return value
 
 
 class RoleSpec(BaseModel):
@@ -266,8 +281,12 @@ def read_llm_yaml(path: str | Path) -> dict[str, Any]:
     if not path.is_file():
         raise LLMConfigError(f"LLM config not found: {path}")
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as exc:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise LLMConfigError(f"{path}: not valid UTF-8") from exc
+    try:
+        raw = yaml.safe_load(text) or {}
+    except Exception as exc:
         raise LLMConfigError(f"{path}: invalid YAML: {exc}") from exc
     if not isinstance(raw, dict):
         raise LLMConfigError(f"{path}: the config must be a mapping")
@@ -304,8 +323,12 @@ def parse_yaml_text(text: str) -> Any:
     """The value of an admin-supplied YAML document; anything that does not load is an LLMConfigError."""
     try:
         return yaml.load(text, Loader=_DocumentLoader)
-    except (yaml.YAMLError, ValueError, RecursionError) as exc:  # ValueError: a date like 2020-13-45, a huge integer
-        raise LLMConfigError(f"invalid YAML: {exc}") from exc
+    except Exception as exc:  # the loader does no I/O, so whatever it raises means the document is bad
+        # YAMLError and ValueError (2020-13-45, a huge integer) say what is wrong; SafeConstructor raises KeyError,
+        # AttributeError and IndexError for a tag that does not fit its value (!!bool maybe, !!timestamp x, !!int _)
+        detail = (str(exc) if isinstance(exc, yaml.YAMLError | ValueError | RecursionError)
+                  else f"a value does not match its tag ({type(exc).__name__})")
+        raise LLMConfigError(f"invalid YAML: {detail}") from exc
 
 
 def parse_llm_config(raw: Any, *, where: str = "llm config") -> LLMConfig:
