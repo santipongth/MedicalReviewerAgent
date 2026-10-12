@@ -43,6 +43,7 @@ async def run_all(deps, manifest: Manifest, *, run_id: str, repeats: int, max_us
                 rec = RunRecord(id=entry.id, repeat=repeat, run_id=run_id, prompt_version=pv, git_sha=git_sha,
                                 pool_version=fixture.pool_version, fixture_frozen_at=fixture.frozen_at,
                                 preset=getattr(deps.llms, "preset", ""), models={},
+                                llm_config=getattr(deps.llms, "config_version", ""),
                                 started_at=datetime.now(UTC).isoformat(timespec="seconds"), elapsed_s=0.0,
                                 cost_usd=0.0, status="rejected" if fixture.status == "rejected" else "error",
                                 error=fixture.error)
