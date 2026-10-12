@@ -233,4 +233,25 @@ describe("ModelsSaveBar", () => {
     await waitFor(() => expect(onConflict).toHaveBeenCalledTimes(1));
     expect(onConflict).toHaveBeenCalledWith(fresh);
   });
+
+  it("is blocked with a visible reason, and a check still works", async () => {
+    const fetch = mockAdminFetch((m, p) => (p === "/llm-config/validate" ? [200, REPORT_OK] : undefined));
+    const reason = "กด \"ใช้ YAML นี้\" ก่อน";
+    await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} blockedReason={reason} onSaved={() => {}} onConflict={() => {}} />);
+    const save = screen.getByRole("button", SAVE);
+    expect(save).toBeDisabled();
+    expect(screen.getByText(reason)).toBeVisible();
+    expect(save).toHaveAccessibleDescription(reason);
+    fireEvent.click(save);
+    expect(saves(fetch)).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
+    expect(await screen.findByText(/cheap: ~\$0\.012/)).toBeInTheDocument();
+  });
+
+  it("is not blocked, and shows no reason, without one", async () => {
+    mockAdminFetch();
+    await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} blockedReason={null} onSaved={() => {}} onConflict={() => {}} />);
+    expect(screen.getByRole("button", SAVE)).toBeEnabled();
+    expect(screen.getByRole("button", SAVE)).not.toHaveAttribute("aria-describedby");
+  });
 });

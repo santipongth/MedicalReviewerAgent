@@ -22,9 +22,11 @@ function costLine(preset: string, c: CostEstimate): string {
  * `base` is the version the draft was edited from (null while llm.yaml is in use): a save on top of a newer version
  * is refused with 409 and handed to the page. `onSaved` gets the document that was saved and the id it was saved as, and
  * returns when the page has re-read; the bar stays busy until then. `serverConfig` is the configuration the page last read: the "saved" note
- * stays while the draft is the saved document or that one, and goes once the draft is edited again. */
-export function ModelsSaveBar({ base, draft, serverConfig, onSaved, onConflict }: {
-  base: number | null; draft: LlmConfigDoc; serverConfig?: LlmConfigDoc;
+ * stays while the draft is the saved document or that one, and goes once the draft is edited again. `blockedReason`
+ * is why the draft cannot be saved right now (the page knows something the draft does not hold yet): the save button is
+ * disabled and the reason is shown next to it; a check still works. */
+export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, onSaved, onConflict }: {
+  base: number | null; draft: LlmConfigDoc; serverConfig?: LlmConfigDoc; blockedReason?: string | null;
   onSaved: (saved: LlmConfigDoc, id: number) => void | Promise<void>; onConflict: (draftYaml: string) => void;
 }) {
   const { fail } = useAdmin();
@@ -34,6 +36,7 @@ export function ModelsSaveBar({ base, draft, serverConfig, onSaved, onConflict }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const noteId = useId();
+  const reasonId = useId();
   const savedRef = useRef<HTMLDivElement>(null);
   const focusSaved = useRef(false);
   /** The draft as it is now, for the end of an await: the closure of a click is from before the admin kept typing. */
@@ -106,8 +109,10 @@ export function ModelsSaveBar({ base, draft, serverConfig, onSaved, onConflict }
           <input id={noteId} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} className={INPUT} />
         </div>
         <button type="button" className={BUTTON_GHOST} disabled={busy} onClick={check}>ตรวจ</button>
-        <button type="button" className={BUTTON_PRIMARY} disabled={busy} onClick={save}>บันทึกเป็นเวอร์ชันใหม่</button>
+        <button type="button" className={BUTTON_PRIMARY} disabled={busy || !!blockedReason} aria-describedby={blockedReason ? reasonId : undefined}
+          onClick={save}>บันทึกเป็นเวอร์ชันใหม่</button>
       </div>
+      {blockedReason && <p id={reasonId} className="rounded-sm bg-warn-bg px-4 py-2">{blockedReason}</p>}
       {saved && savedShown && (
         <div ref={savedRef} tabIndex={-1} role="status" className="grid gap-2">
           <p className="rounded-sm bg-info-bg px-4 py-2">{`บันทึกเป็นเวอร์ชัน ${saved.id} แล้ว`}</p>

@@ -7,13 +7,18 @@ import { missingKeyEnvs, sameConfig } from "@/lib/admin-models";
 import type { LlmConfigDoc, LlmConfigState } from "@/lib/admin-types";
 import { useAdmin } from "./admin-gate";
 import { ConfirmButton } from "./confirm-button";
+import { ModelsCatalog } from "./models-catalog";
 import { ModelsHistory } from "./models-history";
 import { ModelsPresets } from "./models-presets";
 import { ModelsSaveBar } from "./models-save-bar";
+import { ModelsYaml } from "./models-yaml";
 import { BUTTON_GHOST } from "./ui";
 
 export type ModelsTab = "presets" | "yaml" | "history" | "catalog";
 const TABS: [ModelsTab, string][] = [["presets", "Presets"], ["yaml", "YAML ขั้นสูง"], ["history", "ประวัติ"], ["catalog", "Catalog"]];
+
+/** Why the save is refused while the YAML box holds text that is not the draft. */
+const YAML_NOT_APPLIED = 'กด "ใช้ YAML นี้" ก่อน เพื่อให้ข้อความในกล่องเป็นร่างที่จะบันทึก';
 
 /** Workers re-report every 30 s, so `loaded_at` is "last seen": a worker silent for longer than this has probably stopped. */
 const STALE_AFTER_MS = 120_000;
@@ -96,9 +101,13 @@ export function ModelsView() {
   const [edit, setEdit] = useState<Draft | null>(null);
   const [tab, setTab] = useState<ModelsTab>("presets");
   const [error, setError] = useState<string | null>(null);
-  // Task 12 hands this to the YAML tab and drops the underscore; until then nothing reads it.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_conflictYaml, setConflictYaml] = useState<string | null>(null);
+  /** The draft whose save the server refused, as the YAML the check returned: the YAML tab starts from it. It goes when it
+   * stops describing the draft (the draft changes, is discarded or saved, or the admin restarts the text from it). */
+  const [conflictYaml, setConflictYaml] = useState<string | null>(null);
+  /** The YAML box holds text that is not the draft. That text lives in the YAML tab, which stays mounted (hidden) while
+   * it is pending, so leaving the tab loses nothing; `yamlKey` starts it afresh when the draft it was written for goes. */
+  const [yamlPending, setYamlPending] = useState(false);
+  const [yamlKey, setYamlKey] = useState(0);
   /** What the last "discard" or "build on the latest" did, for the base it applies to. Any edit clears it. */
   const [draftNote, setDraftNote] = useState<{ text: string; base: number | null } | null>(null);
   const draftNoteRef = useRef<HTMLParagraphElement>(null);
@@ -143,6 +152,7 @@ export function ModelsView() {
   const reload = useCallback(() => { void load(); }, [load]);
   const setDraft = useCallback((doc: LlmConfigDoc) => {
     setDraftNote(null);
+    setConflictYaml(null);
     setEdit((e) => (e ? { ...e, doc } : e));
   }, []);
 
@@ -153,6 +163,9 @@ export function ModelsView() {
   }
   function discardEdits() {
     setEdit(fresh(state!));
+    setConflictYaml(null);
+    setYamlPending(false);
+    setYamlKey((k) => k + 1);
     answer(`ทิ้งการแก้ไขแล้ว: ร่างตรงกับเวอร์ชัน ${versionName(state!.version)}`);
   }
   function buildOnLatest() {
@@ -175,11 +188,25 @@ export function ModelsView() {
               <button key={key} type="button" aria-pressed={tab === key} onClick={() => setTab(key)}
                 className="inline-flex min-h-11 items-center rounded-sm px-3 font-display font-semibold text-ink hover:bg-rail aria-pressed:bg-rail aria-pressed:text-primary">
                 {label}
+                {key === "yaml" && yamlPending && (
+                  <>
+                    <span aria-hidden="true" className="ml-1">•</span>
+                    {" "}
+                    <span className="sr-only">(มีข้อความที่ยังไม่ได้ใช้)</span>
+                  </>
+                )}
               </button>
             ))}
           </div>
           {tab === "history" && <ModelsHistory base={state.version} onChanged={reload} />}
           {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} />}
+          {(tab === "yaml" || yamlPending) && (
+            <div hidden={tab !== "yaml"}>
+              <ModelsYaml key={yamlKey} draft={edit.doc} setDraft={setDraft} initialText={conflictYaml}
+                onPendingChange={setYamlPending} onFromDraft={() => setConflictYaml(null)} />
+            </div>
+          )}
+          {tab === "catalog" && <ModelsCatalog draft={edit.doc} setDraft={setDraft} />}
           {(tab === "presets" || tab === "yaml") && (
             <>
               {moved && (
@@ -196,11 +223,11 @@ export function ModelsView() {
               {draftNote && draftNote.base === edit.base && (
                 <p ref={draftNoteRef} tabIndex={-1} role="status" className="mt-6 rounded-sm bg-info-bg px-4 py-2">{draftNote.text}</p>
               )}
-              <ModelsSaveBar base={edit.base} draft={edit.doc} serverConfig={state.config} onSaved={(saved, id) => load(saved, id)}
+              <ModelsSaveBar base={edit.base} draft={edit.doc} serverConfig={state.config} blockedReason={yamlPending ? YAML_NOT_APPLIED : null}
+                onSaved={(saved, id) => { setConflictYaml(null); return load(saved, id); }}
                 onConflict={(text) => { setConflictYaml(text); setTab("yaml"); reload(); }} />
             </>
           )}
-          {/* Task 12 renders the YAML and catalog tabs here, sharing `edit.doc`, `setDraft`, `state` and `reload`. */}
         </>
       )}
     </section>
