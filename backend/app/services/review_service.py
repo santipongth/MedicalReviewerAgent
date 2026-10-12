@@ -99,9 +99,10 @@ class Conflict(ServiceError):
 
 class ReviewService:
     def __init__(self, session_factory, queue, event_sink, settings: Settings, limits: RateLimits,
-                 url_check=is_public_http_url, capacity=None) -> None:
+                 url_check=is_public_http_url, capacity=None, llm_version=None) -> None:
         self.url_check = url_check
         self.capacity = capacity  # app.services.capacity.Capacity; None → no admission control (unit tests)
+        self.llm_version = llm_version  # async () -> str: the active LLM config version (Plan 23b); None → prompt_version only
         self.session_factory = session_factory
         self.queue = queue
         self.event_sink = event_sink
@@ -162,7 +163,10 @@ class ReviewService:
                      human_check: bool = True) -> ReviewCreated:
         """human_check=False for MCP: agents cannot solve a browser challenge (they are rate-limited instead)."""
         options = req.options.model_dump()
-        cache_key = compute_cache_key(req.topic, req.language, options, self.settings.prompt_version)
+        version = self.settings.prompt_version
+        if self.llm_version is not None:
+            version = f"{version}+llm{await self.llm_version()}"
+        cache_key = compute_cache_key(req.topic, req.language, options, version)
         if req.callback_url and identity.api_key is None:
             raise Forbidden("callback_url requires an API key")
         if (cached := await self._reuse(cache_key)) is not None:  # cache hits are free; no webhook for them
