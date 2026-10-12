@@ -16,6 +16,7 @@ import socket
 from app.graph.factory import build_graph_deps
 from app.graph.graph import build_graph
 from app.logging import get_logger
+from app.services import model_catalog
 from app.services.llm import build_llms
 from app.services.llm_config import ResolvedLLMConfig, load_llm_config
 from app.services.llm_store import (
@@ -26,10 +27,18 @@ from app.services.llm_store import (
     reconcile_version_key,
     report_loaded,
 )
-from app.services.model_catalog import cached_catalog, load_live_catalog
+from app.services.model_catalog import ModelInfo, cached_catalog
 
 log = get_logger(__name__)
 POLL_SECONDS = 30.0
+RELOAD_CATALOG_TIMEOUT_SECONDS = 10
+
+
+async def load_live_catalog() -> dict[str, ModelInfo]:
+    """The worker's catalog fetch on a cold cache: one attempt with a short timeout, because it runs inside the reload
+    lock that job starts wait on (the shared client's retries would hold it for about two minutes when OpenRouter is
+    unreachable)."""
+    return await model_catalog.load_live_catalog(timeout=RELOAD_CATALOG_TIMEOUT_SECONDS, retries=0)
 
 
 def worker_id() -> str:

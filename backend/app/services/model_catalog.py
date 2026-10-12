@@ -61,8 +61,8 @@ class OpenRouterCatalog:
         return parse_models(resp.json())
 
 
-async def load_live_catalog() -> dict[str, ModelInfo]:
-    http = HttpClient(timeout=30)
+async def load_live_catalog(*, timeout: float = 30, retries: int = 3) -> dict[str, ModelInfo]:
+    http = HttpClient(timeout=timeout, retries=retries)
     try:
         return await OpenRouterCatalog(http).load()
     finally:

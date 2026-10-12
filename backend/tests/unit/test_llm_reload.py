@@ -32,6 +32,7 @@ from app.worker.llm_reload import (
 from tests.llm_helpers import MINIMAL, with_model, write_yaml
 
 OWNER = AdminPrincipal(kind="user", id=None, label="owner")
+WORKER_CATALOG_LOADER = llm_reload.load_live_catalog  # captured before the autouse fixture replaces it
 
 
 @pytest.fixture(autouse=True)
@@ -456,3 +457,16 @@ async def test_a_poll_with_the_db_unreachable_changes_nothing_and_does_not_raise
     graph = ctx["graph"]
     assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is False
     assert ctx["graph"] is graph
+
+
+async def test_the_worker_fetches_a_cold_catalog_once_with_a_short_timeout(monkeypatch):
+    """The fetch runs inside the reload lock that job starts wait on, so it never takes the shared client's retries."""
+    calls = []
+
+    async def live(**kwargs):
+        calls.append(kwargs)
+        return {}
+
+    monkeypatch.setattr("app.services.model_catalog.load_live_catalog", live)
+    await WORKER_CATALOG_LOADER()
+    assert calls == [{"timeout": llm_reload.RELOAD_CATALOG_TIMEOUT_SECONDS, "retries": 0}]
