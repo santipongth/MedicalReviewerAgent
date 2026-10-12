@@ -56,3 +56,8 @@ follows TRIPOD-LLM.
   eligible, made 6 it had excluded eligible, corrected the question or outcome of 35, and marked 3 as beyond their
   stratum's first 10; each entry's `notes` records it. Plan 22b's human check of the reference standard does not
   replace a human check of this manifest.
+- 2026-10-12: budget cap of $5 set by the owner. The 22a baseline (run `baseline`, prompt_version 2026-10-11.1) covers
+  the first 5 eligible reviews of each stratum in draw order (30 reviews x 2 repeats = 60 runs, 0 failed, $3.90); its
+  report's INCOMPLETE banner lists the other 30. A 12-review pilot (run `pilot`, same prompt version) ran before it.
+  prompt_version moved to 2026-10-12.1 the same day (narrative/scoping schema fix; the SLR path is unchanged), so the
+  next full run starts a new batch at the new version rather than topping this one up.
