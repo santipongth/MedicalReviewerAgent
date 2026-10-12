@@ -29,3 +29,22 @@ def test_build_llms_shares_one_semaphore_across_roles_and_escalation():
     assert llms.extractor.sem is llms.localizer.sem is llms.extractor_secondary.sem
     assert llms.escalation(TopicVerdict).sem is llms.extractor.sem
     assert llms.extractor.sem._value == 5
+
+
+def test_with_schema_binds_the_roles_model_to_another_schema():
+    llms = build_llms(Settings(_env_file=None, openrouter_api_key="sk-or-x"))
+    bound = llms.with_schema("planner", TopicVerdict)
+    assert isinstance(bound, LimitedLLM) and bound.sem is llms.planner.sem  # same per-process limit and budget
+    assert bound.model == llms.planner.model and bound.schema is TopicVerdict
+    assert llms.planner.schema is not TopicVerdict  # the role's own LLM keeps its schema
+    assert llms.with_schema("planner", TopicVerdict) is bound
+
+
+def test_with_schema_without_a_factory_is_an_error_never_the_roles_own_llm():
+    import pytest
+
+    from app.services.llm import LLMError, LLMs
+    role = FakeStructuredLLM("m", lambda s, u: None)
+    llms = LLMs(guard=role, planner=role, screener=role, extractor=role, synthesizer=role)
+    with pytest.raises(LLMError, match="planner"):
+        llms.with_schema("planner", TopicVerdict)

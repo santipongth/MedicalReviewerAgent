@@ -89,7 +89,12 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
                 return 1
             shutil.copyfile(path, path.with_name(path.name + ".bak"))
         start = manifest if args.cont else manifest.model_copy(update={"reviews": []})
-        out = await select(deps, http, base_url, start)
+
+        def progress(m, entry) -> None:  # saved after every judged record: an interrupted run resumes with --continue
+            save_manifest(m, path)
+            print(f"{entry.stratum} {entry.id}: {entry.status} {entry.exclusion_reason}".rstrip(), flush=True)
+
+        out = await select(deps, http, base_url, start, on_entry=progress)
         save_manifest(out, path)
         eligible = sum(1 for r in out.reviews if r.status == "eligible")
         print(f"{eligible} eligible, {len(out.reviews) - eligible} excluded; set checked_by_owner after review")

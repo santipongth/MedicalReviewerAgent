@@ -110,6 +110,15 @@ def thai(system, user):
     return TranslationBatch(items=[TranslationItem(id=i["id"], text=to_thai(i["text"])) for i in items])
 
 
+def eval_schema_fakes(role, schema):
+    """The eval harness binds the planner's model to its own schemas; by default the primary-outcome matcher finds no
+    match. Any other schema must be faked by the test that needs it."""
+    from app.evals.run import OutcomeMatch
+    if schema is OutcomeMatch:
+        return FakeStructuredLLM(f"{role}:match", lambda s, u: OutcomeMatch(index=None))
+    raise AssertionError(f"no fake for {role} bound to {schema.__name__}")
+
+
 def make_deps(*, allowed=True, results=None, extractor=None):
     if results is None:
         results = [Candidate(title=f"Paper {i} about metformin and colorectal cancer", doi=f"10.1/{i}",
@@ -130,7 +139,7 @@ def make_deps(*, allowed=True, results=None, extractor=None):
             executive_summary="Metformin is associated with lower CRC risk [P1, P2].", evidence_strength="low",
             evidence_rationale="observational cohorts [P1]", research_gaps=["RCTs"])),
         localizer=FakeStructuredLLM("loc", thai),
-        harness=HarnessSpec(max_repairs=1, dual_extraction=False),
+        harness=HarnessSpec(max_repairs=1, dual_extraction=False), for_schema=eval_schema_fakes,
         preset="test", models={"extractor": "openrouter:ext"},
     )
     return GraphDeps(settings=Settings(_env_file=None, searxng_pages=1), llms=llms,

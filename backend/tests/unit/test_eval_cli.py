@@ -2,7 +2,7 @@ import pytest
 
 from app.cli.eval import run
 from app.evals import models
-from app.evals.models import Manifest, ManifestEntry, Stratum, save_manifest
+from app.evals.models import Manifest, ManifestEntry, Stratum, load_manifest, save_manifest
 from tests.unit.test_review_graph import make_deps
 
 
@@ -67,7 +67,7 @@ async def test_select_force_keeps_backup_and_rebuilds(tmp_path, monkeypatch):
     before = (tmp_path / "manifest.yaml").read_bytes()
     seen = {}
 
-    async def stub(deps, http, base_url, m):
+    async def stub(deps, http, base_url, m, on_entry=None):
         seen["n"] = len(m.reviews)
         return m
 
@@ -141,7 +141,7 @@ async def test_select_continue_keeps_entries_and_conflicts_with_force(tmp_path, 
                   tmp_path / "manifest.yaml")
     seen = {}
 
-    async def stub(deps, http, base_url, m):
+    async def stub(deps, http, base_url, m, on_entry=None):
         seen["ids"] = [r.id for r in m.reviews]
         return m
 
@@ -179,3 +179,25 @@ def test_git_sha_uses_describe_dirty(monkeypatch):
 
     monkeypatch.setattr(cli.subprocess, "run", fake)
     assert cli.git_sha() == "abc123-dirty" and seen["cmd"] == ["git", "describe", "--always", "--dirty"]
+
+
+@pytest.mark.asyncio
+async def test_select_saves_the_manifest_after_every_judged_record(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(models, "EVAL_ROOT", tmp_path)
+    save_manifest(Manifest(seed=1, strata=[Stratum(name="cv", query="x")]), tmp_path / "manifest.yaml")
+    on_disk = []
+
+    async def stub(deps, http, base_url, m, on_entry=None):
+        for e in (_entry("CD1"), ManifestEntry(id="CD2", stratum="cv", title="t", status="excluded",
+                                               exclusion_reason="protocol")):
+            m = m.model_copy(update={"reviews": [*m.reviews, e]})
+            on_entry(m, e)
+            on_disk.append([r.id for r in load_manifest(tmp_path / "manifest.yaml").reviews])
+        raise RuntimeError("Europe PMC 503")  # the run dies after two records
+
+    monkeypatch.setattr("app.cli.eval.select", stub)
+    with pytest.raises(RuntimeError):
+        await run(["select"], make_deps(), None, "")
+    assert on_disk == [["CD1"], ["CD1", "CD2"]]  # nothing judged is lost; select --continue resumes
+    out = capsys.readouterr().out
+    assert "cv CD1: eligible" in out and "cv CD2: excluded protocol" in out

@@ -3,6 +3,7 @@ import pytest
 from app.evals.models import Fixture
 from app.evals.run import eval_state, replay
 from app.graph.graph import build_freeze_graph
+from tests.fakes import FakeStructuredLLM
 from tests.unit.test_review_graph import make_deps
 
 
@@ -51,9 +52,31 @@ async def test_replay_without_match_reports_none():
 
 
 @pytest.mark.asyncio
-async def test_replay_wrong_schema_from_matcher_counts_as_no_match():
-    deps = make_deps()  # the planner fake returns a QueryPlan, not an OutcomeMatch
+async def test_replay_matches_the_primary_outcome_with_the_planner_bound_to_outcome_match():
+    from app.evals.run import OutcomeMatch
+    deps = make_deps()
     fx = fixture_from(await freeze_values(deps))
+    asked = []
+
+    def for_schema(role, schema):
+        asked.append((role, schema))
+        return FakeStructuredLLM("match", lambda s, u: OutcomeMatch(index=0))
+
+    deps.llms.for_schema = for_schema
+    rec = await replay(deps, fx, options={"max_papers": 8, "candidate_limit": 20}, repeat=1, run_id="r", git_sha="s",
+                       primary_outcome="CRC incidence")
+    assert rec.status == "done" and rec.primary_match.row_index == 0 and rec.primary_match.outcome
+    assert asked == [("planner", OutcomeMatch)]
+
+
+@pytest.mark.asyncio
+async def test_replay_wrong_schema_from_matcher_counts_as_no_match():
+    from app.graph.schemas import QueryPlan
+    deps = make_deps()
+    fx = fixture_from(await freeze_values(deps))
+    deps.llms.for_schema = lambda role, schema: FakeStructuredLLM("match", lambda s, u: QueryPlan(
+        queries=["q"], population="p", intervention_or_exposure="i", comparator="c", outcomes=["o"],
+        inclusion_criteria=[], exclusion_criteria=[]))
     rec = await replay(deps, fx, options={"max_papers": 8, "candidate_limit": 20}, repeat=1, run_id="r", git_sha="s",
                        primary_outcome="CRC incidence")
     assert rec.status == "done" and rec.primary_match.row_index is None

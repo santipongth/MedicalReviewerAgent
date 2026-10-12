@@ -38,6 +38,18 @@ def judge(system, user):
                                rct_count=12, grade_reported=True)
 
 
+def bind(deps, responder):
+    """The eligibility call asks for the planner's model bound to CochraneEligibility; record what was asked."""
+    fake, asked = FakeStructuredLLM("plan", responder), []
+
+    def for_schema(role, schema):
+        asked.append((role, schema))
+        return fake
+
+    deps.llms.for_schema = for_schema
+    return asked
+
+
 def test_cochrane_id():
     assert cochrane_id("10.1002/14651858.CD012345.pub3") == "CD012345"
 
@@ -45,7 +57,7 @@ def test_cochrane_id():
 @pytest.mark.asyncio
 async def test_select_draws_per_stratum_and_never_guesses_dates():
     deps = make_deps()
-    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    bind(deps, judge)
     http = FakeHttp([rec(1, "Search up to April 2023 ..."), rec(2, "no search date stated"), rec(3, "Searched 2023")])
     m = Manifest(seed=3, per_stratum=3, strata=[Stratum(name="cv", query="heart")])
     out = await select(deps, http, "https://epmc", m)
@@ -60,7 +72,7 @@ async def test_select_draws_per_stratum_and_never_guesses_dates():
 @pytest.mark.asyncio
 async def test_same_seed_same_order():
     deps = make_deps()
-    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    bind(deps, judge)
     records = [rec(i, "Search up to 2023") for i in range(1, 6)]
     a = await select(deps, FakeHttp(records), "u", Manifest(seed=9, per_stratum=3, strata=[Stratum(name="cv", query="x")]))
     b = await select(deps, FakeHttp(records), "u", Manifest(seed=9, per_stratum=3, strata=[Stratum(name="cv", query="x")]))
@@ -70,7 +82,7 @@ async def test_same_seed_same_order():
 @pytest.mark.asyncio
 async def test_non_eligibility_value_is_excluded_not_a_crash():
     deps = make_deps()
-    deps.llms.planner = FakeStructuredLLM("plan", lambda s, u: "not a schema")
+    bind(deps, lambda s, u: "not a schema")
     http = FakeHttp([rec(1, "Search up to 2023")])
     out = await select(deps, http, "u", Manifest(seed=1, per_stratum=1, strata=[Stratum(name="cv", query="x")]))
     assert [(r.status, r.exclusion_reason) for r in out.reviews] == [("excluded", "model gave no answer")]
@@ -83,7 +95,7 @@ def rec_doi(doi, abstract="Search up to 2023"):
 @pytest.mark.asyncio
 async def test_two_versions_of_one_review_give_one_entry_with_the_newer_doi():
     deps = make_deps()
-    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    bind(deps, judge)
     records = [rec_doi("10.1002/14651858.CD000001.pub2"), rec_doi("10.1002/14651858.CD000001.pub3")]
     out = await select(deps, FakeHttp(records), "u", Manifest(seed=1, per_stratum=3, strata=[Stratum(name="cv", query="x OR y")]))
     assert [(r.id, r.doi) for r in out.reviews] == [("CD000001", "10.1002/14651858.CD000001.pub3")]
@@ -92,7 +104,7 @@ async def test_two_versions_of_one_review_give_one_entry_with_the_newer_doi():
 @pytest.mark.asyncio
 async def test_same_review_in_two_strata_lands_once_in_the_first_stratum():
     deps = make_deps()
-    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    bind(deps, judge)
     http = FakeHttp([rec_doi("10.1002/14651858.CD000001.pub1")])
     m = Manifest(seed=1, per_stratum=1, strata=[Stratum(name="cv", query="heart"), Stratum(name="lung", query="lung")])
     out = await select(deps, http, "u", m)
@@ -103,7 +115,7 @@ async def test_same_review_in_two_strata_lands_once_in_the_first_stratum():
 @pytest.mark.asyncio
 async def test_draw_does_not_depend_on_input_order():
     deps = make_deps()
-    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    bind(deps, judge)
     records = [rec(i, "Search up to 2023") for i in range(1, 7)]
 
     def m():
@@ -118,7 +130,7 @@ async def test_draw_does_not_depend_on_input_order():
 async def test_frame_file_is_written_with_hit_count_and_draw_order(root):
     import json
     deps = make_deps()
-    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    bind(deps, judge)
     records = [rec(i, "Search up to 2023") for i in range(1, 5)]
     out = await select(deps, FakeHttp(records), "u", Manifest(seed=2, per_stratum=2, strata=[Stratum(name="cv", query="x")]))
     data = json.loads((root / "frames" / "cv.json").read_text(encoding="utf-8"))
@@ -131,7 +143,7 @@ async def test_frame_file_is_written_with_hit_count_and_draw_order(root):
 async def test_continue_tops_up_only_the_missing_count():
     from app.evals.models import ManifestEntry
     deps = make_deps()
-    deps.llms.planner = FakeStructuredLLM("plan", judge)
+    bind(deps, judge)
     kept = [ManifestEntry(id=f"CD00000{i}", stratum="cv", title="t") for i in (1, 2)]
     kept.append(ManifestEntry(id="CD000003", stratum="cv", title="t", status="excluded", exclusion_reason="x"))
     records = [rec(i, "Search up to 2023") for i in range(1, 8)]
@@ -141,3 +153,39 @@ async def test_continue_tops_up_only_the_missing_count():
     new = out.reviews[3:]
     assert len(new) == 1 and new[0].status == "eligible"
     assert new[0].id not in {"CD000001", "CD000002", "CD000003"}
+
+
+@pytest.mark.asyncio
+async def test_eligibility_uses_the_planner_model_bound_to_the_eligibility_schema():
+    deps = make_deps()
+    asked = bind(deps, judge)
+    await select(deps, FakeHttp([rec(1, "Search up to 2023")]), "u",
+                 Manifest(seed=1, per_stratum=1, strata=[Stratum(name="cv", query="x")]))
+    assert asked and set(asked) == {("planner", CochraneEligibility)}
+    assert deps.llms.planner.calls == []  # the role's own LLM answers with a QueryPlan, never an eligibility verdict
+
+
+def judge_every_third_excluded(system, user):
+    n = int(user.split("Title: Review ")[1].split("\n")[0])
+    if n % 3 == 0:
+        return CochraneEligibility(eligible=False, reason="protocol", question="", primary_outcome="",
+                                   search_date=None, review_type="slr", rct_count=None, grade_reported=False)
+    return judge(system, user)
+
+
+@pytest.mark.asyncio
+async def test_a_resumed_select_gives_the_same_entries_as_an_uninterrupted_one():
+    deps = make_deps()
+    bind(deps, judge_every_third_excluded)
+    records = [rec(i, "Search up to 2023") for i in range(1, 10)]
+
+    def m(reviews=()):
+        return Manifest(seed=7, per_stratum=4, reviews=list(reviews),
+                        strata=[Stratum(name="cv", query="x"), Stratum(name="lung", query="y")])
+
+    full = await select(deps, FakeHttp(records), "u", m())
+    saved = []
+    await select(deps, FakeHttp(records), "u", m(), on_entry=lambda manifest, entry: saved.append(manifest))
+    assert len(saved) == len(full.reviews) and saved[-1].reviews == full.reviews  # saved after every judged record
+    resumed = await select(deps, FakeHttp(records), "u", m(full.reviews[:2]))  # crashed after two records
+    assert [(r.id, r.stratum, r.status) for r in resumed.reviews] == [(r.id, r.stratum, r.status) for r in full.reviews]

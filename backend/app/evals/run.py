@@ -47,8 +47,8 @@ async def match_primary(deps, result: dict[str, Any], primary_outcome: str) -> t
             return ["answer is not an OutcomeMatch"]
         return [] if m.index is None or 0 <= m.index < len(rows) else [f"index must be null or 0..{len(rows) - 1}"]
 
-    res = await harness_runner(deps).call(deps.llms.planner, MATCH_SYSTEM, user, schema=OutcomeMatch,
-                                          validate=validate)
+    res = await harness_runner(deps).call(deps.llms.with_schema("planner", OutcomeMatch), MATCH_SYSTEM, user,
+                                          schema=OutcomeMatch, validate=validate)
     index = res.value.index if isinstance(res.value, OutcomeMatch) else None  # no valid answer: no match
     if index is None:
         return PrimaryMatch(row_index=None, outcome=None, verdict="none", direction=None), res.cost

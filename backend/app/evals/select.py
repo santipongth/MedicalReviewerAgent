@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import random
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -58,7 +59,8 @@ async def frame(http, base_url: str, manifest: Manifest, stratum: Stratum) -> tu
     cursor = "*"
     while True:
         resp = await http.get(f"{base_url.rstrip('/')}/search", params={
-            "query": query, "format": "json", "resultType": "core", "pageSize": 1000, "cursorMark": cursor})
+            "query": query, "format": "json", "resultType": "core", "pageSize": 1000, "cursorMark": cursor},
+            retries=6)  # ~30 s of backoff: Europe PMC answers 503 in bursts
         resp.raise_for_status()
         body = resp.json()
         if cursor == "*":
@@ -100,16 +102,19 @@ def _exclusion(v: Any) -> str:
     return ""
 
 
-async def select(deps, http, base_url: str, manifest: Manifest) -> Manifest:
+async def select(deps, http, base_url: str, manifest: Manifest,
+                 on_entry: Callable[[Manifest, ManifestEntry], None] | None = None) -> Manifest:
+    """`on_entry` sees the manifest after every judged record (the CLI saves it), so an interrupted run resumes with
+    `select --continue` and, because the draw order ignores what is already taken, ends with the same entries."""
     runner = harness_runner(deps)
+    judge = deps.llms.with_schema("planner", CochraneEligibility)
     reviews = list(manifest.reviews)
+    judged = {e.id for e in reviews}  # a review lands in the first stratum that reaches it
     for stratum in manifest.strata:
-        taken = {e.id for e in reviews}  # a review lands in the first stratum that reaches it
         found, hit_count = await frame(http, base_url, manifest, stratum)
         deduped = latest_per_review(found)
         # sorted first: Europe PMC's relevance order drifts over time, the seeded draw must not
-        records = sorted((r for r in deduped if cochrane_id(r["doi"]) not in taken),
-                         key=lambda r: cochrane_id(r["doi"]))
+        records = sorted(deduped, key=lambda r: cochrane_id(r["doi"]))
         random.Random(f"{manifest.seed}:{stratum.name}").shuffle(records)
         write_json_atomic(models.EVAL_ROOT / "frames" / f"{stratum.name}.json", {
             "query": frame_query(manifest, stratum), "run_date": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -120,17 +125,23 @@ async def select(deps, http, base_url: str, manifest: Manifest) -> Manifest:
         for r in records:
             if eligible >= manifest.per_stratum:
                 break
+            if cochrane_id(r["doi"]) in judged:  # here (a resumed run) or in an earlier stratum
+                continue
             user = f"Title: {r.get('title', '')}\nAbstract: {r.get('abstractText', '')}"
-            res = await runner.call(deps.llms.planner, SYSTEM, user, schema=CochraneEligibility)
+            res = await runner.call(judge, SYSTEM, user, schema=CochraneEligibility)
             v = res.value
             base = {"id": cochrane_id(r["doi"]), "pmid": str(r.get("pmid") or ""), "doi": r.get("doi", ""),
                     "stratum": stratum.name, "title": r.get("title", "")}
             reason = _exclusion(v)
             if reason:
-                reviews.append(ManifestEntry(**base, status="excluded", exclusion_reason=reason))
-                continue
-            eligible += 1
-            reviews.append(ManifestEntry(**base, question=v.question, review_type=v.review_type,
-                                         primary_outcome=v.primary_outcome, search_date=v.search_date,
-                                         year_to=int(v.search_date[:4])))
+                entry = ManifestEntry(**base, status="excluded", exclusion_reason=reason)
+            else:
+                eligible += 1
+                entry = ManifestEntry(**base, question=v.question, review_type=v.review_type,
+                                      primary_outcome=v.primary_outcome, search_date=v.search_date,
+                                      year_to=int(v.search_date[:4]))
+            reviews.append(entry)
+            judged.add(entry.id)
+            if on_entry is not None:
+                on_entry(manifest.model_copy(update={"reviews": list(reviews)}), entry)
     return manifest.model_copy(update={"reviews": reviews})
