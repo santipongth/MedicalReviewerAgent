@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.llm_config import parse_llm_config, resolve_llm_config
 from app.services.llm_cost import TYPICAL_CALLS, estimate_review_cost
 from app.services.model_catalog import CATALOG_KEY, ModelInfo, cached_catalog, catalog_rows
@@ -47,3 +49,55 @@ def test_catalog_rows_filter_and_shape():
     assert [r["id"] for r in catalog_rows(CATALOG, q="SMA")] == ["vendor/smart"]
     assert [r["id"] for r in catalog_rows(CATALOG, max_price=1.0)] == ["vendor/cheap"]
     assert len(catalog_rows(CATALOG, limit=1)) == 1
+
+
+WRONG_SHAPE = '[{"id": "x", "context_length": 1, "price_in": 0, "price_out": 0, "supported_parameters": 5}]'
+
+
+@pytest.mark.parametrize("garbage", ["not json", "5", '{"id": "vendor/cheap"}', '[{"id": "vendor/cheap"}]',
+                                     "[1, 2]", WRONG_SHAPE, "[]", "{}"])
+async def test_a_corrupt_or_empty_cached_catalog_is_a_miss_that_is_replaced(redis, garbage):
+    await redis.set(CATALOG_KEY, garbage, ex=3600)
+    calls = []
+
+    async def load():
+        calls.append(1)
+        return CATALOG
+
+    assert await cached_catalog(redis, load) == CATALOG and calls == [1]
+    assert await cached_catalog(redis, load) == CATALOG and calls == [1]  # the live fetch replaced the bad entry
+
+
+async def test_a_corrupt_cache_entry_is_deleted_even_when_the_live_fetch_fails(redis):
+    await redis.set(CATALOG_KEY, "garbage", ex=3600)
+
+    async def load():
+        raise OSError("offline")
+
+    assert await cached_catalog(redis, load) is None
+    assert await redis.get(CATALOG_KEY) is None
+
+
+async def test_an_empty_fetch_is_not_cached_and_counts_as_unavailable(redis):
+    async def load():
+        return {}
+
+    assert await cached_catalog(redis, load) is None
+    assert await redis.get(CATALOG_KEY) is None
+
+
+async def test_a_redis_that_cannot_delete_does_not_stop_the_live_fetch():
+    class BrokenRedis:
+        async def get(self, _key):
+            return "garbage"
+
+        async def delete(self, _key):
+            raise ConnectionError("down")
+
+        async def set(self, *_a, **_k):
+            raise ConnectionError("down")
+
+    async def load():
+        return CATALOG
+
+    assert await cached_catalog(BrokenRedis(), load) == CATALOG

@@ -83,17 +83,33 @@ def _from_json(text: str) -> dict[str, ModelInfo]:
 
 async def cached_catalog(redis, load: Callable[[], Awaitable[dict[str, ModelInfo]]] = load_live_catalog
                          ) -> dict[str, ModelInfo] | None:
-    """The OpenRouter catalog, cached in Redis for an hour; None when it cannot be fetched (checks are then skipped)."""
+    """The OpenRouter catalog, cached in Redis for an hour; None when it cannot be fetched (checks are then skipped).
+    A cache entry that does not parse (garbage, an older shape) or holds no models is a miss: it is deleted and the
+    live catalog fetched. An empty live fetch is not cached and counts as unavailable, because with no models every
+    model would look unknown."""
     try:
         cached = await redis.get(CATALOG_KEY)
     except Exception:  # noqa: BLE001
         cached = None
     if cached:
-        return _from_json(cached)
+        try:
+            catalog = _from_json(cached)
+        except (ValueError, KeyError, TypeError) as exc:  # JSONDecodeError is a ValueError
+            log.warning("openrouter_catalog_cache_unreadable", error=str(exc))
+            catalog = {}
+        if catalog:
+            return catalog
+        try:
+            await redis.delete(CATALOG_KEY)
+        except Exception:  # noqa: BLE001 - the live fetch below overwrites it anyway
+            log.warning("openrouter_catalog_cache_delete_failed")
     try:
         catalog = await load()
     except Exception as exc:  # noqa: BLE001 - an offline catalog only skips the checks
         log.warning("openrouter_catalog_unavailable", error=str(exc))
+        return None
+    if not catalog:
+        log.warning("openrouter_catalog_empty")
         return None
     try:
         await redis.set(CATALOG_KEY, _to_json(catalog), ex=CATALOG_TTL_SECONDS)
