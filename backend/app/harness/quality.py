@@ -75,7 +75,8 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
     localized = by_stage.get("localize", []) + by_stage.get("localize_cards", [])
     if localized:
         extra["localize"] = {k: sum(int(e.get(k, 0)) for e in localized)
-                             for k in ("untranslated", "retried", "citations_restored")}
+                             for k in ("untranslated", "retried", "citations_restored",
+                                       "numbers_rejected", "citations_rejected")}
     # Plan 19 Task 6 (each absent when its stage did not log it, so older results keep their shape)
     narrative = by_stage.get("narrative") or []
     if narrative and "uncited" in narrative[-1]:  # analysed papers the summary never cites; null = no summary

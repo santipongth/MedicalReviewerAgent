@@ -1,0 +1,2516 @@
+seed: 20261011
+pool_version: v1
+year_from: 2020
+year_to: 2025
+per_stratum: 10
+strata:
+- name: cardiovascular
+  query: TITLE:(hypertension OR "heart failure" OR "coronary heart disease" OR stroke
+    OR "atrial fibrillation")
+- name: diabetes_metabolic
+  query: TITLE:(diabetes OR obesity OR dyslipidaemia OR dyslipidemia OR "metabolic
+    syndrome")
+- name: infection
+  query: TITLE:(dengue OR tuberculosis OR malaria OR HIV OR sepsis OR pneumonia OR
+    "urinary tract infection")
+- name: maternal_child
+  query: TITLE:(pregnancy OR preterm OR neonatal OR newborn OR "postpartum haemorrhage"
+    OR "pre-eclampsia" OR breastfeeding)
+- name: renal_respiratory
+  query: TITLE:("chronic kidney disease" OR dialysis OR asthma OR COPD OR "chronic
+    obstructive pulmonary disease")
+- name: mental_health
+  query: TITLE:(depression OR anxiety OR schizophrenia OR "bipolar disorder" OR dementia
+    OR "alcohol use disorder")
+reviews:
+- id: CD010315
+  pmid: '36398903'
+  doi: 10.1002/14651858.cd010315.pub5
+  stratum: cardiovascular
+  title: Blood pressure targets for the treatment of people with hypertension and
+    cardiovascular disease.
+  question: In adults with hypertension and established cardiovascular disease, do
+    lower blood pressure targets (systolic/diastolic 135/85 mmHg or less) compared
+    with standard blood pressure targets (140-160/90-100 mmHg or less) affect health
+    outcomes?
+  review_type: meta_analysis
+  primary_outcome: Total mortality
+  search_date: '2022-01-31'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Total
+    mortality (first-listed primary): 7 RCTs, 9595 participants, pooled RR 1.05, moderate-certainty;
+    search January 2022.'
+- id: CD008349
+  pmid: '40537150'
+  doi: 10.1002/14651858.cd008349.pub5
+  stratum: cardiovascular
+  title: Virtual reality for stroke rehabilitation.
+  question: In adults after stroke, does virtual reality compared with alternative
+    therapy approaches improve upper limb function and activity?
+  review_type: meta_analysis
+  primary_outcome: Upper limb function and activity
+  search_date: '2023-09-30'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Upper
+    limb function and activity (critical outcome): VR vs alternative therapy SMD 0.20,
+    67 studies, low-certainty; VR added to usual care is a separate comparison (21
+    studies, moderate), so the question is narrowed to the first.'
+- id: CD016085
+  pmid: '40035316'
+  doi: 10.1002/14651858.cd016085
+  stratum: cardiovascular
+  title: Blood pressure management in reperfused ischemic stroke.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol and does not contain results or GRADE assessments.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD010037
+  pmid: '35014026'
+  doi: 10.1002/14651858.cd010037.pub4
+  stratum: cardiovascular
+  title: Calcium supplementation for prevention of primary hypertension.
+  question: Calcium supplementation versus placebo or control for reducing blood pressure
+    and preventing primary hypertension in normotensive people.
+  review_type: meta_analysis
+  primary_outcome: systolic blood pressure
+  search_date: '2020-09-30'
+  year_to: 2020
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: First-listed
+    primary (hypertension) was reported by no study; blood pressure measures are split
+    into SBP (18 studies, high-certainty) and DBP (17 studies, high-certainty), so
+    the field names the first one.'
+- id: CD012612
+  pmid: '34695300'
+  doi: 10.1002/14651858.cd012612.pub2
+  stratum: cardiovascular
+  title: The effect of time spent in rehabilitation on activity limitation and impairment
+    after stroke.
+  question: In adults with stroke, does more time spent in the same type of rehabilitation
+    compared to less time affect activities of daily living?
+  review_type: meta_analysis
+  primary_outcome: activities of daily living
+  search_date: '2021-06-30'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: ADL (primary
+    outcome): 14 RCTs, 864 participants, pooled SMD 0.13, very low-certainty; search
+    June 2021.'
+- id: CD013593
+  pmid: '35061249'
+  doi: 10.1002/14651858.cd013593.pub2
+  stratum: cardiovascular
+  title: Ultrafiltration for acute heart failure.
+  question: In adults with acute heart failure, does ultrafiltration compared with
+    diuretic therapy reduce all-cause mortality?
+  review_type: meta_analysis
+  primary_outcome: all-cause mortality at 30 days or less
+  search_date: '2021-06-30'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: controller
+    ruling: primary outcome = first stated primary/critical outcome (else first graded
+    result) with GRADE and >= 3 RCTs: all-cause mortality at 30 days or less is listed
+    first, 3 studies, very low certainty (longest follow-up: 9 studies, low certainty).'
+- id: CD007079
+  pmid: '39560075'
+  doi: 10.1002/14651858.cd007079.pub4
+  stratum: cardiovascular
+  title: Calcium supplementation (other than for preventing or treating hypertension)
+    for improving pregnancy and infant outcomes.
+  question: In pregnant women with a singleton pregnancy, does calcium supplementation
+    (other than for preventing or treating hypertension) compared with placebo or
+    no treatment reduce preterm birth before 37 weeks?
+  review_type: meta_analysis
+  primary_outcome: Preterm birth less than 37 weeks
+  search_date: '2022-12-03'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Preterm
+    birth <37 weeks (first GRADE outcome): 11 trials, 15,379 women, pooled RR 0.80,
+    moderate-certainty; the review excludes multiple gestation, not women with hypertension.'
+- id: CD012426
+  pmid: '40704566'
+  doi: 10.1002/14651858.cd012426.pub2
+  stratum: cardiovascular
+  title: Transcranial laser therapy for acute ischaemic stroke.
+  question: What is the effect of transcranial laser therapy compared with sham treatment
+    or no treatment on functional outcomes in people with acute ischaemic stroke?
+  review_type: meta_analysis
+  primary_outcome: Unfavourable functional outcome at 90 days
+  search_date: '2024-11-01'
+  year_to: 2024
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Unfavourable
+    functional outcome (mRS 3-6) at 90 days: 3 RCTs, 1408 participants, pooled RR
+    0.93, high-certainty; latest search 1 November 2024 (CenterWatch).'
+- id: CD011285
+  pmid: '36947725'
+  doi: 10.1002/14651858.cd011285.pub3
+  stratum: cardiovascular
+  title: Exercise-based rehabilitation programmes for pulmonary hypertension.
+  question: In people with pulmonary hypertension, does exercise-based rehabilitation
+    compared to usual care or no exercise-based rehabilitation improve outcomes?
+  review_type: meta_analysis
+  primary_outcome: exercise capacity
+  search_date: '2022-06-28'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Exercise
+    capacity (primary 1): 6MWD MD 48.52 m, 11 studies, 418 participants, low-certainty;
+    search 28 June 2022.'
+- id: CD014811
+  pmid: '38775253'
+  doi: 10.1002/14651858.cd014811.pub2
+  stratum: cardiovascular
+  title: Continuous infusion versus bolus injection of loop diuretics for acute heart
+    failure.
+  question: In adults with acute heart failure and NYHA classification III or IV,
+    does continuous infusion of intravenous loop diuretics compared to bolus injection
+    improve outcomes?
+  review_type: meta_analysis
+  primary_outcome: Net weight loss
+  search_date: '2024-02-29'
+  year_to: 2024
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Net weight
+    loss (first-listed outcome): 5 trials, 497 participants, pooled MD 0.86 kg, very
+    low-certainty; search 29 February 2024.'
+- id: CD011189
+  pmid: '32356377'
+  doi: 10.1002/14651858.cd011189.pub2
+  stratum: cardiovascular
+  title: Interventions for sexual dysfunction following stroke.
+  question: In stroke survivors with sexual dysfunction, what is the effectiveness
+    of pharmacological treatments, mechanical devices, complementary medicine, or
+    non-pharmacological interventions compared to placebo, usual care, or other interventions?
+  review_type: meta_analysis
+  primary_outcome: Reduction in sexual dysfunction and associated adverse events
+  search_date: '2019-11-27'
+  year_to: 2019
+  status: excluded
+  exclusion_reason: 'owner check: Only 3 RCTs, each testing a different intervention
+    (sertraline, pelvic floor training, sexual rehabilitation); no comparison has
+    >= 3 RCTs and nothing was pooled.'
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: 3 RCTs,
+    212 participants, low or very low quality overall; no per-outcome pooled result.'
+- id: CD012565
+  pmid: '34739733'
+  doi: 10.1002/14651858.cd012565.pub2
+  stratum: cardiovascular
+  title: Beta-blockers in patients without heart failure after myocardial infarction.
+  question: In patients without heart failure and with left ventricular ejection fraction
+    above 40% after myocardial infarction, do beta-blockers compared with placebo
+    or no treatment reduce all-cause mortality?
+  review_type: meta_analysis
+  primary_outcome: all-cause mortality
+  search_date: '2021-02-28'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Primary
+    outcomes listed: all-cause mortality first; RR 0.81, 21 trials, moderate certainty;
+    searched to February 2021.'
+- id: CD016013
+  pmid: '39177079'
+  doi: 10.1002/14651858.cd016013.pub2
+  stratum: diabetes_metabolic
+  title: Diabetes as a risk factor for tuberculosis disease.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a prognostic review, not an intervention review.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Prognostic
+    review of diabetes as a TB risk factor; cohort studies only.'
+- id: CD012333
+  pmid: '32270494'
+  doi: 10.1002/14651858.cd012333.pub2
+  stratum: diabetes_metabolic
+  title: Taxation of unprocessed sugar or sugar-added foods for reducing their consumption
+    and preventing obesity or other adverse health outcomes.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review includes only one study (an interrupted time series
+    study, not an RCT) for the primary outcomes. The eligibility criteria require
+    at least 3 randomised controlled trials to contribute to the primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: One interrupted
+    time series study, no RCTs; nothing pooled.'
+- id: CD012906
+  pmid: '32501595'
+  doi: 10.1002/14651858.cd012906.pub2
+  stratum: diabetes_metabolic
+  title: Metformin monotherapy for adults with type 2 diabetes mellitus.
+  question: In adults with type 2 diabetes mellitus, does metformin monotherapy compared
+    with thiazolidinediones affect all-cause mortality?
+  review_type: meta_analysis
+  primary_outcome: all-cause mortality
+  search_date: '2019-12-02'
+  year_to: 2019
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: All-cause
+    mortality: metformin vs thiazolidinediones pooled RR 0.88, 5 trials, 4402 participants,
+    very low-certainty (the sulphonylurea comparison was not pooled: deaths in only
+    1 of 4 trials).'
+- id: CD011378
+  pmid: '32677037'
+  doi: 10.1002/14651858.cd011378.pub2
+  stratum: diabetes_metabolic
+  title: Nutritional interventions for treating foot ulcers in people with diabetes.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Nine RCTs of different supplements; ulcer-healing results are
+    single-trial per comparison (only two report complete healing) and none are pooled.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Healing
+    estimates come from single trials (RR 0.80 and RR 1.09), very low certainty; no
+    comparison with >= 3 RCTs.'
+- id: CD013178
+  pmid: '37435938'
+  doi: 10.1002/14651858.cd013178.pub2
+  stratum: diabetes_metabolic
+  title: Interventions for people with type 2 diabetes mellitus fasting during Ramadan.
+  question: In adults with type 2 diabetes mellitus fasting during Ramadan, do dipeptidyl
+    peptidase-4 (DPP-4) inhibitors compared with sulphonylureas reduce hypoglycaemia?
+  review_type: meta_analysis
+  primary_outcome: hypoglycaemia
+  search_date: '2022-06-29'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Hypoglycaemia:
+    DPP-4 inhibitors vs sulphonylurea, 4 trials compared and pooled (2495 participants),
+    RR 0.53, low-certainty; no per-outcome trial count given, accepted under rule
+    3.'
+- id: CD012394
+  pmid: '32526091'
+  doi: 10.1002/14651858.cd012394.pub3
+  stratum: diabetes_metabolic
+  title: 'Interventions to prevent women from developing gestational diabetes mellitus:
+    an overview of Cochrane Reviews.'
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is an overview of systematic reviews, not a primary intervention
+    review.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Overview
+    of Cochrane Reviews.'
+- id: CD016063
+  pmid: '41400094'
+  doi: 10.1002/14651858.cd016063
+  stratum: diabetes_metabolic
+  title: Multimodal health behaviour-changing interventions for children living with
+    obesity and their parents.
+  question: In children under 10 years living with obesity, do healthcare-based multimodal
+    health behaviour-changing interventions (diet, physical activity and behaviour
+    change) compared with no treatment, usual care or waiting list improve objectively
+    assessed physical activity at 12 months?
+  review_type: meta_analysis
+  primary_outcome: objectively assessed physical activity at 12 months
+  search_date: '2024-02-28'
+  year_to: 2024
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: controller
+    ruling: primary outcome = first stated primary/critical outcome (else first graded
+    result) with GRADE and >= 3 RCTs: physical and mental well-being have 2 studies
+    each; objectively assessed physical activity at 12 months, healthcare-based, 3
+    studies, low certainty.'
+- id: CD012268
+  pmid: '38721870'
+  doi: 10.1002/14651858.cd012268.pub2
+  stratum: diabetes_metabolic
+  title: Calcium supplementation for people with overweight or obesity.
+  question: What is the effect of calcium supplementation compared to placebo or control
+    on body weight in individuals with overweight or obesity?
+  review_type: meta_analysis
+  primary_outcome: Body weight
+  search_date: '2023-05-10'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Body
+    weight (first primary): 17 studies, 1317 participants, pooled MD -0.15 kg, low-certainty;
+    search 10 May 2023.'
+- id: CD016107
+  pmid: '40326567'
+  doi: 10.1002/14651858.cd016107
+  stratum: diabetes_metabolic
+  title: 'Weight-neutral interventions for people with obesity and the perspective
+    of patients, carers and healthcare professionals: a mixed methods review.'
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The abstract describes a protocol for a review, not the final
+    review itself. It does not report certainty of evidence with GRADE, nor does it
+    state that at least 3 RCTs have contributed to the primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD013591
+  pmid: '38375882'
+  doi: 10.1002/14651858.cd013591.pub2
+  stratum: diabetes_metabolic
+  title: Mobile health (m-health) smartphone interventions for adolescents and adults
+    with overweight or obesity.
+  question: In adults with overweight or obesity, does a smartphone app intervention
+    compared with no or minimal intervention reduce body weight at 12 months?
+  review_type: meta_analysis
+  primary_outcome: body weight change at 12 months
+  search_date: '2023-10-02'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: controller
+    ruling: primary outcome = first stated primary/critical outcome (else first graded
+    result) with GRADE and >= 3 RCTs: physical activity and BMI have 1-2 studies;
+    body weight change at 12 months, app vs no or minimal intervention, 3 studies,
+    low certainty.'
+- id: CD016005
+  pmid: '39775486'
+  doi: 10.1002/14651858.cd016005
+  stratum: diabetes_metabolic
+  title: Psychological interventions for depression in people with diabetes mellitus.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol for a Cochrane Review, not a completed review,
+    and therefore lacks primary outcome data, GRADE assessment, and RCT counts.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD015954
+  pmid: '39908069'
+  doi: 10.1002/14651858.cd015954
+  stratum: diabetes_metabolic
+  title: Low-carbohydrate diet for people with type 2 diabetes mellitus.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol, not a completed review, and therefore lacks
+    primary outcome data, GRADE assessment, and RCT counts.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD015330
+  pmid: '38763518'
+  doi: 10.1002/14651858.cd015330.pub2
+  stratum: diabetes_metabolic
+  title: Interventions to prevent obesity in children aged 12 to 18 years old.
+  question: In adolescents aged 12 to 18 years, do combined dietary and activity interventions
+    to prevent obesity, compared with no intervention or usual care, reduce BMI?
+  review_type: meta_analysis
+  primary_outcome: BMI at short-term follow-up (12 weeks to <9 months)
+  search_date: '2023-02-28'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: BMI is
+    reported per comparison and time point; diet plus activity vs control at short
+    term: 11 studies, 3429 participants, MD 0.03, high-certainty.'
+- id: CD015968
+  pmid: '40637164'
+  doi: 10.1002/14651858.cd015968
+  stratum: diabetes_metabolic
+  title: Digital health, technology-driven or technology-assisted interventions for
+    the management of obesity in children and adolescents.
+  question: In children and adolescents living with obesity, do digital health interventions
+    added to conventional care, compared with conventional care alone, reduce fat
+    mass?
+  review_type: meta_analysis
+  primary_outcome: Fat mass
+  search_date: '2025-04-14'
+  year_to: 2025
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Fat mass:
+    digital plus conventional care vs conventional care alone, MD -2.63%, 3 studies,
+    203 participants, moderate-certainty; it is the only outcome graded in the abstract
+    (anthropometry, listed first, has no certainty or count).'
+- id: CD004730
+  pmid: '33075159'
+  doi: 10.1002/14651858.cd004730.pub5
+  stratum: diabetes_metabolic
+  title: Drug treatments for managing cystic fibrosis-related diabetes.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Four small RCTs across three comparisons; each graded blood-glucose
+    estimate comes from a single trial (others narrative only).
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Insulin
+    vs repaglinide: 3 trials but blood-glucose data from one (n = 67, high quality);
+    placebo comparisons one trial each.'
+- id: CD012415
+  pmid: '32914461'
+  doi: 10.1002/14651858.cd012415.pub2
+  stratum: diabetes_metabolic
+  title: Taxation of the fat content of foods for reducing their consumption and preventing
+    obesity or other adverse health outcomes.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review does not meet the eligibility criteria because it includes
+    only 2 studies (interrupted time series designs), which is fewer than the required
+    3 randomised controlled trials contributing to the primary outcome. Additionally,
+    the included studies were not RCTs.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Two interrupted
+    time series studies of the Danish fat tax; no RCTs.'
+- id: CD005656
+  pmid: '33206392'
+  doi: 10.1002/14651858.cd005656.pub3
+  stratum: diabetes_metabolic
+  title: Intravitreal steroids for macular edema in diabetes.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: 'The abstract does not state that at least 3 randomised controlled
+    trials contribute to the primary outcome. While the review includes 10 trials
+    total, the specific comparisons for the primary outcomes (visual acuity) are based
+    on fewer trials (e.g., dexamethasone vs sham: 1 trial; dexamethasone vs antiVEGF:
+    2 trials; fluocinolone vs sham: 1 trial). No single primary outcome comparison
+    is supported by 3 or more RCTs.'
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Visual
+    acuity reported per steroid/comparator with 1-2 trials each (e.g. dexamethasone
+    vs antiVEGF 2 trials, moderate).'
+- id: CD015875
+  pmid: '40637175'
+  doi: 10.1002/14651858.cd015875
+  stratum: diabetes_metabolic
+  title: Gut microbiome-based interventions for the management of obesity in children
+    and adolescents aged up to 19 years.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: BMI results split by five microbiome interventions and two age
+    bands; counted comparisons rest on one study each and authors cite few studies
+    per comparison; no comparison shown with >= 3 RCTs or a pooled estimate.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: 17 RCTs,
+    very low certainty throughout; per-comparison BMI counts not given except single-study
+    prebiotics/SCFA results (borderline: probiotics vs placebo count unknown).'
+- id: CD011677
+  pmid: '39665378'
+  doi: 10.1002/14651858.cd011677.pub4
+  stratum: diabetes_metabolic
+  title: Strategies for enhancing the implementation of school-based policies or practices
+    targeting diet, physical activity, obesity, tobacco or alcohol use.
+  question: What is the effect of strategies to improve the implementation of school-based
+    policies or practices targeting diet, physical activity, obesity, tobacco use
+    or alcohol use compared to no active implementation strategy in students aged
+    5 to 18 years?
+  review_type: meta_analysis
+  primary_outcome: Implementation of interventions in schools
+  search_date: '2023-06-30'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Implementation
+    of interventions in schools (primary): 30 trials, 4912 participants, pooled SMD
+    0.95, moderate-certainty; latest search 30 June 2023.'
+- id: CD016111
+  pmid: '41041869'
+  doi: 10.1002/14651858.cd016111
+  stratum: diabetes_metabolic
+  title: Continuous glucose monitoring systems for adolescents and adults living with
+    type 2 diabetes mellitus.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol for a Cochrane Review, not a completed review,
+    and therefore does not contain results, GRADE assessments, or RCT counts.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD015328
+  pmid: '38763517'
+  doi: 10.1002/14651858.cd015328.pub2
+  stratum: diabetes_metabolic
+  title: Interventions to prevent obesity in children aged 5 to 11 years old.
+  question: In children aged 5 to 11 years, do combined dietary and activity interventions
+    to prevent obesity, compared with no intervention or usual care, reduce BMI?
+  review_type: meta_analysis
+  primary_outcome: BMI at short-term follow-up (12 weeks to <9 months)
+  search_date: '2023-02-28'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: BMI is
+    reported per comparison and time point; diet plus activity vs control at short
+    term: 27 studies, 16,066 participants, MD -0.11, low-certainty.'
+- id: CD012835
+  pmid: '35653236'
+  doi: 10.1002/14651858.cd012835.pub2
+  stratum: diabetes_metabolic
+  title: Psychological interventions for treating foot ulcers, and preventing their
+    recurrence, in people with diabetes.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: 'The review does not meet the eligibility criteria because: 1)
+    Only two RCTs contributed to the primary outcome (proportion of wounds completely
+    healed), which is less than the required three; 2) The data for the primary outcome
+    was not pooled in a meta-analysis due to heterogeneity (review type is narrative
+    synthesis).'
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Complete
+    healing vs standard care: two trials, not pooled, very low certainty.'
+- id: CD012513
+  pmid: '36971688'
+  doi: 10.1002/14651858.cd012513.pub3
+  stratum: diabetes_metabolic
+  title: Interventions for weight reduction in obesity to improve survival in women
+    with endometrial cancer.
+  question: What are the benefits and harms of weight-loss interventions compared
+    with usual care or placebo on overall survival in women with endometrial cancer
+    who are overweight or obese?
+  review_type: meta_analysis
+  primary_outcome: Overall survival
+  search_date: '2022-06-30'
+  year_to: 2022
+  status: excluded
+  exclusion_reason: 'owner check: Primary outcome overall survival comes from 1 RCT
+    (37 participants).'
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Overall
+    survival: 1 RCT, 37 participants, RR 0.23, very low-certainty; 12 RCTs included
+    overall.'
+- id: CD016017
+  pmid: '41161684'
+  doi: 10.1002/14651858.cd016017
+  stratum: diabetes_metabolic
+  title: Liraglutide for adults living with obesity.
+  question: In adults living with obesity, does liraglutide compared with placebo
+    reduce body weight (percentage weight change from baseline) at 26 to 68 weeks?
+  review_type: meta_analysis
+  primary_outcome: Percentage weight change from baseline
+  search_date: '2024-12-17'
+  year_to: 2024
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Critical
+    outcomes: body weight first; liraglutide vs placebo, percentage weight change
+    MD -4.72, 16 studies, very low certainty; searched 17 December 2024.'
+- id: CD015555
+  pmid: '38989924'
+  doi: 10.1002/14651858.cd015555
+  stratum: infection
+  title: Shorter versus longer duration antibiotic regimens for treatment of culture-positive
+    neonatal sepsis.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol for a Cochrane Review, not a completed review,
+    and therefore does not contain results, GRADE assessments, or RCT counts.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD016071
+  pmid: '40497466'
+  doi: 10.1002/14651858.cd016071.pub2
+  stratum: infection
+  title: Parallel use of low-complexity automated nucleic acid amplification tests
+    on respiratory and stool samples with or without lateral flow lipoarabinomannan
+    assays to detect pulmonary tuberculosis disease in children.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review, not an intervention
+    review. Additionally, the included studies are observational or cross-sectional
+    diagnostic studies, not randomised controlled trials (RCTs).
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of parallel LC-aNAAT/LF-LAM testing in children.'
+- id: CD013359
+  pmid: '41128098'
+  doi: 10.1002/14651858.cd013359.pub4
+  stratum: infection
+  title: Xpert MTB/RIF Ultra assay for tuberculosis disease and rifampicin resistance
+    in children.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Diagnostic test accuracy review, not an intervention review.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of Xpert Ultra in children (sensitivity/specificity).'
+- id: CD014877
+  pmid: '35470432'
+  doi: 10.1002/14651858.cd014877.pub2
+  stratum: infection
+  title: 'Rapid molecular tests for tuberculosis and tuberculosis drug resistance:
+    a qualitative evidence synthesis of recipient and provider views.'
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a qualitative evidence synthesis of recipient and
+    provider views, not an intervention review (specifically not a diagnostic accuracy,
+    prognosis, methodology, or overview of reviews). Additionally, it does not include
+    randomised controlled trials.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Qualitative
+    evidence synthesis (GRADE-CERQual).'
+- id: CD015890
+  pmid: '38860538'
+  doi: 10.1002/14651858.cd015890.pub2
+  stratum: infection
+  title: Undernutrition as a risk factor for tuberculosis disease.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a prognostic study review (assessing undernutrition
+    as a risk factor for tuberculosis), not an intervention review. Additionally,
+    it includes cohort studies rather than randomised controlled trials.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Prognostic
+    review of undernutrition as a TB risk factor; cohort studies only.'
+- id: CD013218
+  pmid: '33146932'
+  doi: 10.1002/14651858.cd013218.pub2
+  stratum: infection
+  title: Rapid diagnostic tests for Plasmodium vivax malaria in endemic countries.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review, not an intervention
+    review. Additionally, the included studies are observational diagnostic accuracy
+    studies, not randomised controlled trials (RCTs).
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of P vivax RDTs.'
+- id: CD007137
+  pmid: '32232984'
+  doi: 10.1002/14651858.cd007137.pub6
+  stratum: infection
+  title: Enteral lactoferrin supplementation for prevention of sepsis and necrotizing
+    enterocolitis in preterm infants.
+  question: In preterm neonates, does enteral lactoferrin supplementation compared
+    to placebo or no supplementation prevent sepsis and necrotizing enterocolitis?
+  review_type: meta_analysis
+  primary_outcome: Late-onset sepsis
+  search_date: '2020-01-20'
+  year_to: 2020
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Late-onset
+    sepsis pooled from 12 RCTs (5425 infants), low-certainty evidence; searched to
+    20 January 2020.'
+- id: CD011120
+  pmid: '39101506'
+  doi: 10.1002/14651858.cd011120.pub3
+  stratum: infection
+  title: Interventions for tobacco use cessation in people living with HIV.
+  question: In people living with HIV who use tobacco, does behavioural support for
+    tobacco use cessation compared with brief advice or no intervention increase tobacco
+    use cessation at six months or longer?
+  review_type: meta_analysis
+  primary_outcome: Tobacco use cessation at a minimum of six months
+  search_date: '2022-12-31'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Multi-comparison
+    review; the first graded cessation result is behavioural support vs brief advice
+    or no intervention, 7 studies (2314 participants), low-certainty (varenicline
+    vs placebo has only 2 studies).'
+- id: CD011597
+  pmid: '36633175'
+  doi: 10.1002/14651858.cd011597.pub3
+  stratum: infection
+  title: Vitamin D as an adjunct to antibiotics for the treatment of acute childhood
+    pneumonia.
+  question: In children aged one month to five years hospitalised with acute community-acquired
+    pneumonia, does vitamin D supplementation compared to placebo improve time to
+    resolution of acute illness?
+  review_type: meta_analysis
+  primary_outcome: Time to resolution of acute illness
+  search_date: '2021-12-28'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Time
+    to resolution of acute illness pooled from 5 RCTs (1188 children), moderate-certainty
+    evidence.'
+- id: CD013208
+  pmid: '35266555'
+  doi: 10.1002/14651858.cd013208.pub2
+  stratum: infection
+  title: Point-of-care viral load tests to detect high HIV viral load in people living
+    with HIV/AIDS attending health facilities.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review, which is explicitly
+    excluded by the eligibility criteria.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of point-of-care viral load tests.'
+- id: CD013080
+  pmid: '35871531'
+  doi: 10.1002/14651858.cd013080.pub2
+  stratum: infection
+  title: Accuracy of measures for antiretroviral adherence in people living with HIV.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a diagnostic accuracy review, not an intervention review.
+    It also does not include randomised controlled trials as the primary outcome relies
+    on cross-sectional studies of test accuracy.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of adherence measures (51 studies, very low certainty).'
+- id: CD008923
+  pmid: '36367444'
+  doi: 10.1002/14651858.cd008923.pub3
+  stratum: infection
+  title: Mosquito aquatic habitat modification and manipulation interventions to control
+    malaria.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Epidemiological primary outcomes (malaria incidence/parasite prevalence)
+    come from only 5 of 16 mixed-design studies; abstract shows no comparison with
+    >= 3 RCTs.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: 6 RCTs
+    among 16 studies; habitat manipulation effect on prevalence/incidence very low
+    certainty with no RCT count.'
+- id: CD015636
+  pmid: '38597256'
+  doi: 10.1002/14651858.cd015636.pub2
+  stratum: infection
+  title: Wolbachia-carrying Aedes mosquitoes for preventing dengue infection.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review includes only one completed randomized controlled trial
+    for the primary outcome, which does not meet the minimum requirement of at least
+    3 RCTs.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: One completed
+    cRCT (OR 0.23, moderate certainty).'
+- id: CD016010
+  pmid: '40298093'
+  doi: 10.1002/14651858.cd016010
+  stratum: infection
+  title: 'Multi-level factors affecting adolescent and youth engagement in HIV-research
+    in low- and middle-income countries: a qualitative evidence synthesis.'
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a qualitative evidence synthesis protocol, not an intervention
+    review with RCTs.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Qualitative
+    evidence synthesis protocol.'
+- id: CD016070
+  pmid: '40492485'
+  doi: 10.1002/14651858.cd016070.pub2
+  stratum: infection
+  title: Parallel use of low-complexity automated nucleic acid amplification tests
+    and lateral flow urine lipoarabinomannan assays to detect tuberculosis disease
+    in adults and adolescents living with HIV.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Diagnostic test accuracy review, not an intervention review.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    (27 studies); GRADE low certainty is reported, so the given ''no GRADE'' claim
+    is wrong.'
+- id: CD009527
+  pmid: '36073718'
+  doi: 10.1002/14651858.cd009527.pub3
+  stratum: infection
+  title: Adding rapid diagnostic tests to community-based programmes for treating
+    malaria.
+  question: In people with fever or suspected malaria in malaria-endemic areas, does
+    community-based treatment by community health workers or drug shop vendors guided
+    by malaria rapid diagnostic tests, compared with clinical (presumptive) diagnosis,
+    reduce antimalarial prescribing to people who do not have malaria?
+  review_type: meta_analysis
+  primary_outcome: antimalarial prescribing in parasite-negative people
+  search_date: '2021-09-14'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Test-and-treat
+    effect review: RR 0.17 (95% CI 0.07 to 0.40; 3 cRCTs, 7877 participants; moderate
+    certainty); search to 14 Sep 2021; CBA/ITS designs are eligible but the graded
+    result is cRCT-only. [screening LLM had excluded it: The review includes non-randomized
+    study designs (controlled before-after studies and controlled interrupted time
+    series) in its selection criteria, making it a mixed-methods review rather than
+    a pure intervention review of randomised controlled trials. Additionally, the
+    abstract does not explicitly state that GRADE certainty was assessed for a single
+    primary outcome in the context of RCTs only, and the eligibility criteria require
+    an intervention review focused on RCTs.]'
+- id: CD015543
+  pmid: '40122135'
+  doi: 10.1002/14651858.cd015543.pub2
+  stratum: infection
+  title: Truenat MTB assays for pulmonary tuberculosis and rifampicin resistance in
+    adults and adolescents.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review, which is excluded
+    by the eligibility criteria.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of Truenat assays.'
+- id: CD010890
+  pmid: '35320584'
+  doi: 10.1002/14651858.cd010890.pub2
+  stratum: infection
+  title: Symptom- and chest-radiography screening for active pulmonary tuberculosis
+    in HIV-negative adults and adults with unknown HIV status.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a diagnostic accuracy review (assessing sensitivity and
+    specificity), not an intervention review. It also does not meet the requirement
+    of including at least 3 randomised controlled trials for the primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of symptom/CXR screening (59 studies).'
+- id: CD013694
+  pmid: '33755189'
+  doi: 10.1002/14651858.cd013694.pub2
+  stratum: infection
+  title: Xpert MTB/RIF and Xpert Ultra assays for screening for pulmonary tuberculosis
+    and rifampicin resistance in adults, irrespective of signs or symptoms.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review (evaluating sensitivity
+    and specificity), not an intervention review. Additionally, it includes cross-sectional
+    and cohort studies rather than randomised controlled trials.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of Xpert for TB screening.'
+- id: CD004529
+  pmid: '33459345'
+  doi: 10.1002/14651858.cd004529.pub3
+  stratum: infection
+  title: Atovaquone-proguanil for treating uncomplicated Plasmodium falciparum malaria.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Primary outcome (PCR-adjusted treatment failure) is reported per
+    comparator with at most 2 RCTs each; no comparison with >= 3 RCTs in the abstract.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: GRADE
+    is reported (vs artesunate-mefloquine 2 RCTs, high; vs ASAQ 1 RCT, low; vs AL
+    2 trials), so the given ''no GRADE'' reason is wrong.'
+- id: CD012768
+  pmid: '40757508'
+  doi: 10.1002/14651858.cd012768.pub4
+  stratum: infection
+  title: Low-complexity automated nucleic acid amplification tests for extrapulmonary
+    tuberculosis and rifampicin resistance in adults and adolescents.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a diagnostic accuracy review, not an intervention review.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of LC-aNAATs for extrapulmonary TB.'
+- id: CD014756
+  pmid: '38511668'
+  doi: 10.1002/14651858.cd014756.pub2
+  stratum: infection
+  title: 'Community views on active case finding for tuberculosis in low- and middle-income
+    countries: a qualitative evidence synthesis.'
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a qualitative evidence synthesis, not an intervention
+    review of randomised controlled trials. It does not report GRADE for the primary
+    outcome in the context of RCTs (uses GRADE-CERQual), and no RCTs contribute to
+    the primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Qualitative
+    evidence synthesis of community views.'
+- id: CD013836
+  pmid: '33998665'
+  doi: 10.1002/14651858.cd013836.pub2
+  stratum: infection
+  title: Antibiotic regimens for late-onset neonatal sepsis.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review did not conduct a meta-analysis for the primary outcome
+    (all-cause mortality) due to lack of relevant data, and only one RCT contributed
+    data to each specific comparison rather than pooling data from at least 3 RCTs
+    for a single primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Five
+    RCTs, five different comparisons, no meta-analysis; mortality one trial per comparison,
+    very low certainty.'
+- id: CD008846
+  pmid: '34585740'
+  doi: 10.1002/14651858.cd008846.pub3
+  stratum: infection
+  title: Mass drug administration for malaria.
+  question: In very low- to low-transmission malaria settings, does mass drug administration
+    with antimalarial drugs, compared with no mass drug administration, reduce Plasmodium
+    falciparum parasitaemia prevalence?
+  review_type: meta_analysis
+  primary_outcome: P. falciparum parasitaemia prevalence 1 to 3 months after MDA
+  search_date: '2021-02-11'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Low-transmission
+    cRCTs: prevalence at 1-3 months RR 0.25 (95% CI 0.15 to 0.41; 7 studies; low certainty),
+    CBAs analysed separately; borderline because moderate-high settings have only
+    2 cRCTs and the effect fades after 3 months. [screening LLM had excluded it: The
+    review includes non-randomized studies (3 CBA studies) in the inclusion criteria
+    and analysis. Furthermore, the primary outcome (reduction in malaria transmission/interruption
+    of transmission) is supported by a mix of cluster-RCTs and non-randomized studies,
+    and the abstract does not state that at least 3 *randomised controlled trials*
+    specifically contribute to the primary outcome analysis in isolation as required
+    for this specific eligibility criterion (the primary outcome synthesis relies
+    on pooled data from both RCTs and CBAs). Additionally, the review type is an overview
+    of multiple outcomes rather than a single intervention review with a clear single
+    primary outcome driven solely by >=3 RCTs.]'
+- id: CD013134
+  pmid: '34791642'
+  doi: 10.1002/14651858.cd013134.pub3
+  stratum: infection
+  title: Vitamin C supplementation for prevention and treatment of pneumonia.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Only 2 of 5 included studies are RCTs; pneumonia incidence (prevention)
+    comes from 2 studies and the treatment outcomes from 3 mostly quasi-randomised
+    studies.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Very
+    low certainty is stated, so the given ''no GRADE'' part is wrong; fewer than 3
+    RCTs for the primary outcome.'
+- id: CD012972
+  pmid: '34097769'
+  doi: 10.1002/14651858.cd012972.pub2
+  stratum: infection
+  title: Impact of the diagnostic test Xpert MTB/RIF on patient outcomes for tuberculosis.
+  question: In people being investigated for tuberculosis, does diagnostic testing
+    with Xpert MTB/RIF, compared with smear microscopy, reduce all-cause mortality?
+  review_type: meta_analysis
+  primary_outcome: all-cause mortality
+  search_date: '2020-07-24'
+  year_to: 2020
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Test-and-treat
+    effect review: all-cause mortality RR 0.89 (95% CI 0.75 to 1.05; 5 RCTs, 9932
+    participants; moderate certainty); before-after studies analysed separately; search
+    to 24 Jul 2020. [screening LLM had excluded it: The review includes non-randomized
+    studies (before-after studies) in its selection criteria and analysis strategy
+    (''We included individual- and cluster-randomized trials, and before-after studies...
+    We analysed the randomized and non-randomized studies separately''). This classifies
+    it as a diagnostic accuracy or mixed-methods review rather than a pure intervention
+    review of only RCTs. Additionally, the primary outcome appears to be mortality,
+    which is based on 5 RCTs (meeting the count), but the inclusion of non-RCT designs
+    violates the ''intervention review'' constraint for this specific benchmark.]'
+- id: CD002243
+  pmid: '40470636'
+  doi: 10.1002/14651858.cd002243.pub5
+  stratum: infection
+  title: Corticosteroids for treating sepsis in children and adults.
+  question: Corticosteroids compared to placebo or usual care in children and adults
+    with sepsis.
+  review_type: meta_analysis
+  primary_outcome: all-cause mortality at 28 days
+  search_date: '2023-12-31'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: 28-day
+    mortality pooled from 72 RCTs (22,915 participants), moderate-certainty; search
+    date kept at 31 Dec 2023 because the December 2024 update search was not incorporated.'
+- id: CD013837
+  pmid: '33998666'
+  doi: 10.1002/14651858.cd013837.pub2
+  stratum: infection
+  title: Antibiotic regimens for early-onset neonatal sepsis.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Five RCTs each testing a different antibiotic comparison; all-cause
+    mortality rests on one trial per comparison and nothing was pooled.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: GRADE
+    very low; no comparison has more than one trial.'
+- id: CD014641
+  pmid: '34416013'
+  doi: 10.1002/14651858.cd014641
+  stratum: infection
+  title: Impact of diagnostic strategies for tuberculosis using lateral flow urine
+    lipoarabinomannan assay in people living with HIV.
+  question: What is the impact of using lateral flow urine lipoarabinomannan assay
+    (LF-LAM) compared to routine tuberculosis diagnostic strategies on mortality in
+    adults living with HIV?
+  review_type: meta_analysis
+  primary_outcome: Mortality
+  search_date: '2021-03-12'
+  year_to: 2021
+  status: excluded
+  exclusion_reason: 'owner check: Fewer than 3 RCTs for the primary outcome: mortality
+    is graded separately for inpatients (2 trials) and outpatients (1 trial).'
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Three
+    trials in total; inpatient mortality RR 0.85 from 2 trials (moderate), outpatient
+    mortality from 1 trial (low); no estimate from 3 or more RCTs.'
+- id: CD014841
+  pmid: '35583175'
+  doi: 10.1002/14651858.cd014841.pub2
+  stratum: infection
+  title: Xpert MTB/XDR for detection of pulmonary tuberculosis and resistance to isoniazid,
+    fluoroquinolones, ethionamide, and amikacin.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Diagnostic test accuracy review, not an intervention review.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of Xpert MTB/XDR (2 multicentre studies, 6 cohorts).'
+- id: CD013693
+  pmid: '34180536'
+  doi: 10.1002/14651858.cd013693.pub2
+  stratum: infection
+  title: Screening tests for active pulmonary tuberculosis in children.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review (evaluating sensitivity
+    and specificity of screening tests), not an intervention review. Additionally,
+    the included studies are cross-sectional and cohort studies, not randomised controlled
+    trials.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of TB screening tests in children.'
+- id: CD015806
+  pmid: '40557818'
+  doi: 10.1002/14651858.cd015806.pub2
+  stratum: infection
+  title: Low-complexity manual nucleic acid amplification tests for pulmonary tuberculosis
+    in children.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review, not an intervention
+    review. It also does not include any randomised controlled trials.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of TB-LAMP in children.'
+- id: CD016299
+  pmid: '41036681'
+  doi: 10.1002/14651858.cd016299
+  stratum: infection
+  title: 'Interventions for preventing dengue: a mapping review.'
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol for a mapping review, not an intervention review
+    with primary outcomes and GRADE assessment.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    for a mapping review (evidence gap map).'
+- id: CD011525
+  pmid: '34273901'
+  doi: 10.1002/14651858.cd011525.pub3
+  stratum: infection
+  title: Intermittent preventive treatment for malaria in infants.
+  question: In infants aged 1 to 12 months living in malaria-endemic areas, does intermittent
+    preventive treatment with sulfadoxine-pyrimethamine compared with placebo or no
+    intervention reduce clinical malaria?
+  review_type: meta_analysis
+  primary_outcome: clinical malaria
+  search_date: '2018-12-03'
+  year_to: 2018
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: The graded
+    clinical malaria result is IPTi with SP vs placebo, 8 trials (8774 infants), moderate-certainty;
+    the 10-study all-drug estimate has no certainty rating.'
+- id: CD013398
+  pmid: '36200610'
+  doi: 10.1002/14651858.cd013398.pub4
+  stratum: infection
+  title: House modifications for preventing malaria.
+  question: House modifications compared to no house modifications in populations
+    at risk of malaria for preventing malaria disease and transmission.
+  review_type: meta_analysis
+  primary_outcome: Malaria parasite prevalence
+  search_date: '2022-05-25'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Malaria
+    parasite prevalence pooled from 5 trials (1 RCT and cRCTs; 5183 participants),
+    moderate-certainty; clinical malaria incidence was not pooled or graded.'
+- id: CD016006
+  pmid: '39212160'
+  doi: 10.1002/14651858.cd016006
+  stratum: infection
+  title: Shorter versus longer duration antibiotic regimens for treatment of suspected
+    neonatal sepsis.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol, not a completed review, and therefore lacks
+    primary outcome data, GRADE assessment, and RCT counts.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD010458
+  pmid: '32892362'
+  doi: 10.1002/14651858.cd010458.pub3
+  stratum: infection
+  title: Tafenoquine for preventing relapse in people with Plasmodium vivax malaria.
+  question: In people with Plasmodium vivax malaria receiving chloroquine, does single-dose
+    tafenoquine 300 mg compared with primaquine 15 mg/day for 14 days reduce P vivax
+    recurrences (a proxy for relapse) over six months?
+  review_type: meta_analysis
+  primary_outcome: Prevention of P vivax recurrences (proxy for relapse)
+  search_date: '2020-06-03'
+  year_to: 2020
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Tafenoquine
+    vs primaquine recurrence pooled from 3 RCTs (747 participants), moderate-certainty;
+    tafenoquine vs no treatment has only 2 trials.'
+- id: CD012776
+  pmid: '34027998'
+  doi: 10.1002/14651858.cd012776.pub3
+  stratum: infection
+  title: Piperonyl butoxide (PBO) combined with pyrethroids in insecticide-treated
+    nets to prevent malaria in Africa.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review includes experimental hut trials and village trials
+    in addition to RCTs. The primary outcome (malaria parasite infection) is based
+    on only 2 cluster-RCTs, which does not meet the requirement of at least 3 RCTs
+    contributing to the primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Parasite
+    prevalence from 2 cRCTs only; other evidence is hut/village trials.'
+- id: CD008367
+  pmid: '33368159'
+  doi: 10.1002/14651858.cd008367.pub4
+  stratum: infection
+  title: Oral hygiene care for critically ill patients to prevent ventilator-associated
+    pneumonia.
+  question: In critically ill patients receiving mechanical ventilation in intensive
+    care, does oral hygiene care with chlorhexidine mouthrinse or gel compared with
+    placebo or usual care reduce the incidence of ventilator-associated pneumonia?
+  review_type: meta_analysis
+  primary_outcome: Incidence of ventilator-associated pneumonia
+  search_date: '2020-03-08'
+  year_to: 2020
+  status: excluded
+  exclusion_reason: beyond the stratum's first 10 eligible reviews in draw order (the
+    owner check made an earlier-drawn review eligible)
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Multi-comparison
+    review; the first comparison, chlorhexidine vs placebo/usual care, pooled 13 RCTs
+    (1206 participants) for VAP incidence, moderate-certainty.'
+- id: CD012688
+  pmid: '35038163'
+  doi: 10.1002/14651858.cd012688.pub3
+  stratum: infection
+  title: Indoor residual spraying for preventing malaria in communities using insecticide-treated
+    nets.
+  question: In communities using insecticide-treated nets, does adding indoor residual
+    spraying with non-pyrethroid-like insecticides compared with insecticide-treated
+    nets alone reduce malaria parasite prevalence?
+  review_type: meta_analysis
+  primary_outcome: Malaria parasite prevalence
+  search_date: '2021-11-08'
+  year_to: 2021
+  status: excluded
+  exclusion_reason: beyond the stratum's first 10 eligible reviews in draw order (the
+    owner check made an earlier-drawn review eligible)
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Results
+    are stratified by insecticide type with no overall pool; non-pyrethroid-like IRS
+    reduced parasite prevalence in 4 cRCTs (16,394 participants), high-certainty.'
+- id: CD013546
+  pmid: '40787730'
+  doi: 10.1002/14651858.cd013546.pub2
+  stratum: maternal_child
+  title: Amplitude-integrated electroencephalography compared with conventional video-electroencephalography
+    for detection of neonatal seizures.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review, not an intervention
+    review. Additionally, it includes observational studies rather than randomised
+    controlled trials.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of aEEG vs cEEG.'
+- id: CD016278
+  pmid: '39535297'
+  doi: 10.1002/14651858.cd016278
+  stratum: maternal_child
+  title: Tranexamic acid for preventing postpartum haemorrhage after caesarean section.
+  question: In women undergoing caesarean birth, does tranexamic acid compared to
+    placebo or no treatment prevent postpartum haemorrhage?
+  review_type: meta_analysis
+  primary_outcome: estimated blood loss ≥ 1000 mL
+  search_date: '2024-02-20'
+  year_to: 2024
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Estimated
+    blood loss of 1000 mL or more pooled from 4 RCTs (13,042 women), high-certainty
+    evidence.'
+- id: CD010061
+  pmid: '36519620'
+  doi: 10.1002/14651858.cd010061.pub5
+  stratum: maternal_child
+  title: Paracetamol (acetaminophen) for patent ductus arteriosus in preterm or low
+    birth weight infants.
+  question: In preterm or low birth weight infants with patent ductus arteriosus,
+    does paracetamol compared with ibuprofen reduce failure of ductal closure after
+    the first course of treatment?
+  review_type: meta_analysis
+  primary_outcome: Failure of ductal closure after the first course of treatment
+  search_date: '2022-03-01'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Multi-comparison
+    review; paracetamol vs ibuprofen failure of ductal closure pooled from 18 studies
+    (1535 infants), moderate-certainty.'
+- id: CD002311
+  pmid: '36521169'
+  doi: 10.1002/14651858.cd002311.pub5
+  stratum: maternal_child
+  title: Late (≥ 7 days) inhaled corticosteroids to reduce bronchopulmonary dysplasia
+    in preterm infants.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review does not meet the eligibility criterion requiring at
+    least 3 randomised controlled trials to contribute to the primary outcome. The
+    abstract states that only 1 study (involving 30 infants) contributed to the primary
+    outcome of mortality or BPD at 36 weeks' PMA.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Mortality
+    or BPD at 36 weeks: 1 study, 30 infants, very low certainty.'
+- id: CD013133
+  pmid: '33448032'
+  doi: 10.1002/14651858.cd013133.pub2
+  stratum: maternal_child
+  title: Indomethacin for symptomatic patent ductus arteriosus in preterm infants.
+  question: In preterm infants with a symptomatic patent ductus arteriosus, does indomethacin
+    (any route) compared with placebo or no treatment reduce failure of ductal closure
+    within one week of the first dose?
+  review_type: meta_analysis
+  primary_outcome: failure of PDA closure within one week of administration of the
+    first dose of indomethacin
+  search_date: '2020-07-31'
+  year_to: 2020
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Failure
+    of PDA closure within one week pooled from 10 studies (654 infants), high-certainty;
+    the extracted question named mortality and morbidity instead of the primary outcome.'
+- id: CD013633
+  pmid: '32452555'
+  doi: 10.1002/14651858.cd013633
+  stratum: maternal_child
+  title: Strategies for optimising antenatal corticosteroid administration for women
+    with anticipated preterm birth.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Three cRCTs included, but perinatal death is reported by one trial
+    (ACT) only and nothing was pooled.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Perinatal
+    death RR 1.11 (1 study, n = 100,705; moderate certainty).'
+- id: CD016073
+  pmid: '38989978'
+  doi: 10.1002/14651858.cd016073
+  stratum: maternal_child
+  title: Multisensory stimulation for promoting development and preventing morbidity
+    in preterm infants.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol, not a completed review, and therefore does
+    not contain results, GRADE assessments, or RCT counts.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD011689
+  pmid: '40237648'
+  doi: 10.1002/14651858.cd011689.pub4
+  stratum: maternal_child
+  title: 'Uterotonic agents for preventing postpartum haemorrhage: a network meta-analysis.'
+  question: In women giving birth, does prophylactic ergometrine plus oxytocin, compared
+    with oxytocin alone, reduce postpartum haemorrhage of 500 mL or more?
+  review_type: meta_analysis
+  primary_outcome: postpartum haemorrhage ≥ 500 mL
+  search_date: '2024-02-05'
+  year_to: 2024
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: NMA of
+    122 RCTs (eligible per rules as a single comparison): ergometrine plus oxytocin
+    vs oxytocin RR 0.76 (95% CI 0.64 to 0.90; high certainty); per-comparison trial
+    count not in abstract but the outcome was pooled; search 5 Feb 2024. [screening
+    LLM had excluded it: The review is a network meta-analysis, which falls under
+    the category of an overview of reviews or a specific synthesis method not eligible
+    as a standard pairwise intervention review for this benchmark. Additionally, while
+    it reports GRADE certainty, the primary outcome (PPH ≥ 500 mL) is derived from
+    a network meta-analysis involving 122 trials, but the benchmark criteria specify
+    ''at least 3 randomised controlled trials'' contributing to the primary outcome
+    in the context of a standard meta-analysis review, and the exclusion of network
+    meta-analyses due to the ''intervention review'' constraint typically implying
+    pairwise comparisons.]'
+- id: CD000493
+  pmid: '32716060'
+  doi: 10.1002/14651858.cd000493.pub3
+  stratum: maternal_child
+  title: Pharmacological interventions for treating intrahepatic cholestasis of pregnancy.
+  question: Pharmacological interventions compared to placebo or no treatment in women
+    with intrahepatic cholestasis of pregnancy.
+  review_type: meta_analysis
+  primary_outcome: Pruritus score measured on a 100 mm visual analogue scale
+  search_date: '2019-12-13'
+  year_to: 2019
+  status: excluded
+  exclusion_reason: 'owner check: Fewer than 3 RCTs for the primary outcome: pruritus
+    (UDCA vs placebo) comes from 2 trials.'
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Pruritus
+    VAS MD -7.64 from 2 trials (715 women), moderate-certainty; other drug comparisons
+    are not graded for pruritus in the abstract.'
+- id: CD007388
+  pmid: '37815037'
+  doi: 10.1002/14651858.cd007388.pub3
+  stratum: maternal_child
+  title: Alternative magnesium sulphate regimens for women with pre-eclampsia and
+    eclampsia.
+  question: In women with pre-eclampsia, does a short postpartum magnesium sulphate
+    maintenance regimen compared with continuing maintenance for 24 hours after birth
+    change the risk of eclampsia?
+  review_type: meta_analysis
+  primary_outcome: eclampsia
+  search_date: '2022-04-29'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Every
+    eclampsia-treatment comparison (recurrence of convulsions) is a single trial;
+    the only graded seizure outcome from 3 or more RCTs is eclampsia, short vs 24-hour
+    postpartum maintenance, 4 trials (1713 women), low-certainty.'
+- id: CD016074
+  pmid: '39140364'
+  doi: 10.1002/14651858.cd016074
+  stratum: maternal_child
+  title: Olfactory stimulation for promoting development and preventing morbidity
+    in preterm infants.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol, not a completed review, and therefore does
+    not contain results, GRADE assessments, or RCT counts.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD016028
+  pmid: '39692200'
+  doi: 10.1002/14651858.cd016028
+  stratum: maternal_child
+  title: Clustering of care activities for promoting development and preventing morbidity
+    in hospitalized preterm infants.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol for a Cochrane Review, not a completed review.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD010941
+  pmid: '36912887'
+  doi: 10.1002/14651858.cd010941.pub3
+  stratum: maternal_child
+  title: Systemic corticosteroid regimens for prevention of bronchopulmonary dysplasia
+    in preterm infants.
+  question: In preterm infants at risk for bronchopulmonary dysplasia, how do different
+    systemic postnatal corticosteroid treatment regimens compare regarding mortality,
+    pulmonary morbidity, and neurodevelopmental outcomes?
+  review_type: meta_analysis
+  primary_outcome: Composite outcome of mortality or bronchopulmonary dysplasia at
+    36 weeks' postmenstrual age
+  search_date: '2022-09-30'
+  year_to: 2022
+  status: excluded
+  exclusion_reason: 'owner check: No GRADE certainty (or effect estimate) reported
+    specifically for the primary outcome death or BPD at 36 weeks'' PMA.'
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Higher
+    vs lower dexamethasone dose (8 studies) and early vs later start (5 studies) showed
+    no difference in death or BPD, but certainty is only given as a range (low to
+    very low / moderate to very low) across comparisons.'
+- id: CD012940
+  pmid: '37387544'
+  doi: 10.1002/14651858.cd012940.pub3
+  stratum: maternal_child
+  title: Re-feeding versus discarding gastric residuals to improve growth in preterm
+    infants.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review does not meet the eligibility criteria because it includes
+    only one randomised controlled trial (1 RCT), which is less than the required
+    minimum of 3 RCTs for the primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: One RCT
+    (72 infants), low certainty.'
+- id: CD013392
+  pmid: '32726863'
+  doi: 10.1002/14651858.cd013392.pub2
+  stratum: maternal_child
+  title: Early fortification of human milk versus late fortification to promote growth
+    in preterm infants.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review includes only 2 randomised controlled trials for the
+    primary outcome, which is fewer than the required minimum of 3.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Two RCTs
+    (237 infants), low certainty.'
+- id: CD014833
+  pmid: '39963955'
+  doi: 10.1002/14651858.cd014833.pub2
+  stratum: maternal_child
+  title: Breastfeeding interventions for preventing postpartum depression.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review does not meet the eligibility criteria because only
+    one randomised controlled trial contributes to the primary outcome (incidence
+    of postpartum depression), which is less than the required minimum of three RCTs.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: PPD incidence:
+    1 study per comparison/time point (RR 0.37, 1 study, low certainty).'
+- id: CD015894
+  pmid: '40260830'
+  doi: 10.1002/14651858.cd015894.pub2
+  stratum: maternal_child
+  title: Acupuncture for procedural pain in newborn infants.
+  question: In newborn infants undergoing painful procedures, does acupuncture compared
+    with no treatment or sham treatment reduce pain during the procedure?
+  review_type: meta_analysis
+  primary_outcome: Pain scores assessed with validated scales during the procedure
+  search_date: '2023-08-31'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Acupuncture
+    vs no treatment or sham, pain during the procedure pooled from 7 studies (471
+    infants), low-certainty.'
+- id: CD005384
+  pmid: '37466143'
+  doi: 10.1002/14651858.cd005384.pub3
+  stratum: maternal_child
+  title: Early nasal intermittent positive pressure ventilation (NIPPV) versus early
+    nasal continuous positive airway pressure (NCPAP) for preterm infants.
+  question: What is the effect of early nasal intermittent positive pressure ventilation
+    compared to early nasal continuous positive airway pressure on preterm infants
+    at risk of or with respiratory distress syndrome?
+  review_type: meta_analysis
+  primary_outcome: Respiratory failure
+  search_date: '2023-01-31'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Respiratory
+    failure pooled from 17 RCTs (1958 infants), moderate-certainty; search in January
+    2023.'
+- id: CD003214
+  pmid: '38591664'
+  doi: 10.1002/14651858.cd003214.pub4
+  stratum: maternal_child
+  title: Inhaled bronchodilators for the prevention and treatment of chronic lung
+    disease in preterm infants.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review includes only 2 randomised controlled trials in total,
+    and the main results section states that 'Only one trial provided useable outcome
+    data'. This fails the eligibility criterion requiring at least 3 randomised controlled
+    trials to contribute to the primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Two RCTs,
+    only one with usable data (low certainty).'
+- id: CD015798
+  pmid: '39535308'
+  doi: 10.1002/14651858.cd015798
+  stratum: maternal_child
+  title: Support for parents and families after stillbirth and neonatal death.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a protocol for a Cochrane Review, not a completed review,
+    and therefore does not contain results, GRADE assessments, or RCT counts.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD013309
+  pmid: '34931697'
+  doi: 10.1002/14651858.cd013309.pub3
+  stratum: maternal_child
+  title: Continuous glucose monitoring for the prevention of morbidity and mortality
+    in preterm infants.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: 'The review does not meet the eligibility criteria because at
+    least three randomised controlled trials were not included for the primary outcome
+    (neurodevelopmental outcomes). The abstract explicitly states: ''None of the four
+    included trials reported the neurodevelopmental outcome (i.e. the primary outcome
+    of this review)''. Consequently, no RCTs contributed to the primary outcome.'
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: No trial
+    reported the primary neurodevelopmental outcome; mortality 2 studies, very low
+    certainty.'
+- id: CD014978
+  pmid: '35947046'
+  doi: 10.1002/14651858.cd014978.pub2
+  stratum: maternal_child
+  title: 'Tocolytics for delaying preterm birth: a network meta-analysis (0924).'
+  question: In women with threatened preterm birth, does any tocolytic drug compared
+    with placebo or no tocolytic treatment delay birth by 48 hours?
+  review_type: meta_analysis
+  primary_outcome: birth delayed by 48 hours
+  search_date: '2021-04-21'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Network
+    meta-analysis of 122 RCTs gives no per-outcome trial count; birth delayed 48 hours
+    vs placebo is graded per drug class (low to moderate certainty), accepted because
+    the outcome was pooled.'
+- id: CD016136
+  pmid: '39651609'
+  doi: 10.1002/14651858.cd016136
+  stratum: maternal_child
+  title: Effect and safety of intravenous iron compared to oral iron for treatment
+    of iron deficiency anaemia in pregnancy.
+  question: In pregnant women with iron deficiency anaemia, does intravenous iron
+    compared to oral iron improve haemoglobin levels?
+  review_type: meta_analysis
+  primary_outcome: Antenatal haemoglobin levels three to six weeks after treatment
+    start
+  search_date: '2024-03-19'
+  year_to: 2024
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Antenatal
+    Hb three to six weeks after treatment start pooled from 11 RCTs (2935 participants),
+    moderate-certainty.'
+- id: CD004213
+  pmid: '31985838'
+  doi: 10.1002/14651858.cd004213.pub5
+  stratum: maternal_child
+  title: Ibuprofen for the prevention of patent ductus arteriosus in preterm and/or
+    low birth weight infants.
+  question: In preterm or low birth weight infants, does prophylactic ibuprofen compared
+    with placebo or no intervention prevent patent ductus arteriosus on day 3 or 4
+    of life?
+  review_type: meta_analysis
+  primary_outcome: Presence of patent ductus arteriosus on day three or four of life
+  search_date: '2018-10-17'
+  year_to: 2018
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Primary
+    objective PDA prevention; PDA on day 3 or 4 RR 0.39, 9 trials, moderate certainty;
+    MEDLINE searched to 17 October 2018.'
+- id: CD015906
+  pmid: '41263251'
+  doi: 10.1002/14651858.cd015906.pub2
+  stratum: renal_respiratory
+  title: Dipeptidyl peptidase 4 (DPP-4) inhibitors for people with chronic kidney
+    disease and diabetes.
+  question: In people with chronic kidney disease and type 2 diabetes, do dipeptidyl
+    peptidase 4 (DPP-4) inhibitors compared with placebo or standard medical care
+    reduce the risk of cardiovascular death?
+  review_type: meta_analysis
+  primary_outcome: cardiovascular death
+  search_date: '2025-03-25'
+  year_to: 2025
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Cardiovascular
+    death (first-listed critical outcome) vs placebo/standard care: RR 0.96, 6 studies,
+    low certainty; extracted field merged two outcomes and the question mixed in other
+    glucose-lowering agents (results uncertain, separate comparison).'
+- id: CD013284
+  pmid: '39329240'
+  doi: 10.1002/14651858.cd013284.pub2
+  stratum: renal_respiratory
+  title: Vitamin D for the management of chronic obstructive pulmonary disease.
+  question: In adults with chronic obstructive pulmonary disease, does vitamin D compared
+    to placebo affect the rate of moderate or severe exacerbations?
+  review_type: meta_analysis
+  primary_outcome: rate of moderate or severe exacerbations requiring systemic corticosteroids,
+    antibiotics or both
+  search_date: '2022-08-24'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Primary
+    outcome rate of moderate/severe exacerbations: rate ratio 0.98, 5 RCTs, 980 participants,
+    high-certainty evidence.'
+- id: CD013485
+  pmid: '35993916'
+  doi: 10.1002/14651858.cd013485.pub2
+  stratum: renal_respiratory
+  title: Pulmonary rehabilitation versus usual care for adults with asthma.
+  question: In adults with asthma, does pulmonary rehabilitation (aerobic exercise
+    training with education or self-management), compared with usual care, improve
+    exercise performance measured by 6-minute walk distance?
+  review_type: meta_analysis
+  primary_outcome: 6-minute walk distance at programme completion
+  search_date: '2021-05-31'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Co-primary
+    exercise performance: 6MWD MD 79.8 m (5 studies, n = 529; moderate certainty)
+    and VO2 max MD 3.63 mL/kg/min (3 studies; very uncertain); RCT-only review; search
+    to May 2021. [screening LLM had excluded it: The review does not meet the eligibility
+    criteria because fewer than 3 randomised controlled trials contribute to any of
+    the co-primary outcomes (exercise performance, asthma control, and quality of
+    life). For example, exercise performance (VO2 max) is based on 3 studies for one
+    metric but only 2 for another; asthma control has 2 studies per metric; and quality
+    of life has 2 studies per metric. The criterion requires at least 3 RCTs for the
+    primary outcome.]'
+- id: CD008176
+  pmid: '37916745'
+  doi: 10.1002/14651858.cd008176.pub3
+  stratum: renal_respiratory
+  title: Antioxidants for adults with chronic kidney disease.
+  question: Antioxidant therapy compared with placebo, usual care, or no treatment
+    in adults with chronic kidney disease stages 3 to 5, patients undergoing dialysis,
+    and kidney transplant recipients.
+  review_type: meta_analysis
+  primary_outcome: Death (any cause)
+  search_date: '2022-11-15'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: No primary
+    outcome named; objectives list death first: death (any cause) RR 0.95, 45 studies,
+    moderate certainty (cardiovascular death, 8 studies, low certainty, is reported
+    first in results).'
+- id: CD013799
+  pmid: '36472162'
+  doi: 10.1002/14651858.cd013799.pub2
+  stratum: renal_respiratory
+  title: 'Effectiveness and tolerability of dual and triple combination inhaler therapies
+    compared with each other and varying doses of inhaled corticosteroids in adolescents
+    and adults with asthma: a systematic review and network meta-analysis.'
+  question: In adolescents and adults with asthma uncontrolled on medium-dose inhaled
+    corticosteroid/long-acting beta2-agonist (ICS/LABA), does triple therapy (ICS/LABA/LAMA)
+    compared with medium-dose ICS/LABA reduce steroid-requiring asthma exacerbations?
+  review_type: meta_analysis
+  primary_outcome: Steroid-requiring asthma exacerbations
+  search_date: '2022-02-18'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: NMA of
+    17 RCTs (no per-outcome count, outcome pooled): medium- and high-dose triple therapy
+    vs MD-ICS/LABA reduce steroid-requiring exacerbations (HR 0.84 and 0.69), high
+    certainty; question narrowed to that single comparison.'
+- id: CD013800
+  pmid: '38899545'
+  doi: 10.1002/14651858.cd013800.pub2
+  stratum: renal_respiratory
+  title: Peritoneal dialysis versus haemodialysis for people commencing dialysis.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: Only 2 RCTs among 84 studies; the RCT-only all-cause death analysis
+    has 2 studies.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: All-cause
+    death RCTs only: RR 0.53 (2 studies; moderate certainty); other estimates are
+    NRSI.'
+- id: CD002990
+  pmid: '35001366'
+  doi: 10.1002/14651858.cd002990.pub4
+  stratum: renal_respiratory
+  title: Self-management interventions for people with chronic obstructive pulmonary
+    disease.
+  question: In people with chronic obstructive pulmonary disease, do self-management
+    interventions compared to usual care improve health-related quality of life and
+    respiratory-related hospital admissions?
+  review_type: meta_analysis
+  primary_outcome: health-related quality of life (HRQoL)
+  search_date: '2020-01-31'
+  year_to: 2020
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Primary
+    outcome HRQoL (SGRQ total): MD -2.86, 14 studies, 2778 participants, low-quality
+    evidence (GRADE).'
+- id: CD013506
+  pmid: '35616126'
+  doi: 10.1002/14651858.cd013506.pub2
+  stratum: renal_respiratory
+  title: Magnesium sulfate for acute exacerbations of chronic obstructive pulmonary
+    disease.
+  question: In adults with acute exacerbations of chronic obstructive pulmonary disease,
+    does intravenous magnesium sulfate compared with placebo reduce hospital admissions
+    from the emergency department?
+  review_type: meta_analysis
+  primary_outcome: Hospital admissions
+  search_date: '2021-08-02'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Hospital
+    admission, IV magnesium vs placebo: OR 0.45, 3 studies, 170 participants, low
+    certainty; question narrowed from mixed comparators (nebulised and vs ipratropium
+    are separate comparisons).'
+- id: CD007784
+  pmid: '38018702'
+  doi: 10.1002/14651858.cd007784.pub3
+  stratum: renal_respiratory
+  title: HMG CoA reductase inhibitors (statins) for people with chronic kidney disease
+    not requiring dialysis.
+  question: In adults with chronic kidney disease not requiring dialysis, do statins
+    compared with placebo, no treatment or standard care reduce major cardiovascular
+    events?
+  review_type: meta_analysis
+  primary_outcome: Major cardiovascular events
+  search_date: '2023-10-04'
+  year_to: 2023
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Major
+    cardiovascular events vs placebo/standard care: RR 0.72, 14 studies, 36,156 participants,
+    high certainty; question dropped the statin-vs-statin comparison, which has no
+    matching result.'
+- id: CD016139
+  pmid: '40207669'
+  doi: 10.1002/14651858.cd016139
+  stratum: renal_respiratory
+  title: Music-based interventions for people with chronic kidney disease undergoing
+    haemodialysis.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The abstract is a protocol for a Cochrane Review, not a completed
+    review. It does not report certainty of evidence with GRADE, the date of the latest
+    search, or the number of RCTs contributing to the primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Protocol
+    only: objectives, no results or GRADE.'
+- id: CD013601
+  pmid: '36472884'
+  doi: 10.1002/14651858.cd013601.pub2
+  stratum: renal_respiratory
+  title: Carnitine supplements for people with chronic kidney disease requiring dialysis.
+  question: In people with chronic kidney disease requiring dialysis, does carnitine
+    supplementation compared to placebo or standard care improve clinical outcomes?
+  review_type: meta_analysis
+  primary_outcome: Quality of life (QoL) SF-36 physical component score
+  search_date: '2022-08-16'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: No primary
+    outcome named; first reported outcome QoL SF-36 PCS: SMD 0.57, 4 studies, 134
+    participants, low certainty.'
+- id: CD013113
+  pmid: '32844430'
+  doi: 10.1002/14651858.cd013113.pub2
+  stratum: renal_respiratory
+  title: Proton pump inhibitors for chronic obstructive pulmonary disease.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review does not meet the eligibility criteria because only
+    one randomised controlled trial (RCT) contributed to the primary outcome, failing
+    the requirement of at least 3 RCTs. Additionally, no meta-analysis was conducted.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: One RCT
+    (103 adults), low to very low certainty.'
+- id: CD002309
+  pmid: '32356609'
+  doi: 10.1002/14651858.cd002309.pub6
+  stratum: renal_respiratory
+  title: Phosphodiesterase-4 inhibitors for chronic obstructive pulmonary disease.
+  question: In people with chronic obstructive pulmonary disease, do oral phosphodiesterase-4
+    inhibitors compared to placebo improve health outcomes?
+  review_type: meta_analysis
+  primary_outcome: change in FEV1
+  search_date: '2020-03-09'
+  year_to: 2020
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: First
+    primary outcome change in lung function (FEV1): MD 49.33 mL, 29 studies, 20,815
+    participants, moderate certainty; extracted field merged it with quality of life.'
+- id: CD013074
+  pmid: '37651553'
+  doi: 10.1002/14651858.cd013074.pub2
+  stratum: renal_respiratory
+  title: Interventions for fatigue in people with kidney failure requiring dialysis.
+  question: In people with kidney failure receiving haemodialysis, does exercise compared
+    with control improve fatigue?
+  review_type: meta_analysis
+  primary_outcome: Fatigue
+  search_date: '2022-10-18'
+  year_to: 2022
+  status: excluded
+  exclusion_reason: beyond the stratum's first 10 eligible reviews in draw order (the
+    owner check made an earlier-drawn review eligible)
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Multi-intervention
+    review (94 studies); first reported fatigue result is exercise vs control in HD:
+    SMD -1.18, 4 studies, 217 participants, low certainty, so the question is narrowed
+    to it.'
+- id: CD013536
+  pmid: '34666417'
+  doi: 10.1002/14651858.cd013536.pub2
+  stratum: mental_health
+  title: Parenting interventions for people with schizophrenia or related serious
+    mental illness.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review does not meet the eligibility criteria because it includes
+    only one randomised controlled trial (n=1), which is fewer than the required minimum
+    of three RCTs contributing to the primary outcome. Additionally, no data could
+    be extracted from the single trial.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: One trial
+    (n = 50) with no extractable data.'
+- id: CD009628
+  pmid: '32119112'
+  doi: 10.1002/14651858.cd009628.pub2
+  stratum: mental_health
+  title: Structural magnetic resonance imaging for the early diagnosis of dementia
+    due to Alzheimer's disease in people with mild cognitive impairment.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review, which is excluded
+    by the eligibility criteria requiring an intervention review.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of structural MRI in MCI.'
+- id: CD012557
+  pmid: '36637087'
+  doi: 10.1002/14651858.cd012557.pub3
+  stratum: mental_health
+  title: Baclofen for alcohol use disorder.
+  question: In people with alcohol use disorder, does baclofen compared with placebo
+    reduce the risk of relapse to any drinking?
+  review_type: meta_analysis
+  primary_outcome: relapse
+  search_date: '2021-11-22'
+  year_to: 2021
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Relapse
+    vs placebo: RR 0.87, 12 studies, 1057 participants, moderate certainty; question
+    narrowed because vs naltrexone relapse goes the other way (1 study).'
+- id: CD010771
+  pmid: '34278564'
+  doi: 10.1002/14651858.cd010771.pub3
+  stratum: mental_health
+  title: Informant Questionnaire on Cognitive Decline in the Elderly (IQCODE) for
+    the detection of dementia within a general practice (primary care) setting.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a diagnostic accuracy review, not an intervention review.
+    Additionally, it includes only 1 study (not at least 3 RCTs) and does not report
+    certainty of evidence using GRADE for the primary outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of IQCODE in primary care (1 study).'
+- id: CD012558
+  pmid: '35709018'
+  doi: 10.1002/14651858.cd012558.pub2
+  stratum: mental_health
+  title: Clinical judgement by primary care physicians for the diagnosis of all-cause
+    dementia or cognitive impairment in symptomatic people.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review, which is excluded
+    by the eligibility criteria (must be an intervention review).
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of GP clinical judgement.'
+- id: CD013503
+  pmid: '34387363'
+  doi: 10.1002/14651858.cd013503.pub2
+  stratum: mental_health
+  title: Enteral tube feeding for people with severe dementia.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review does not meet the eligibility criteria because it found
+    zero randomised controlled trials (RCTs) for the primary outcomes. The inclusion
+    criteria allowed non-randomised studies, and the results state 'We found no eligible
+    RCTs'. Additionally, the review_type is narrative synthesis (slr) as results were
+    not suitable for meta-analysis.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: No eligible
+    RCTs; 14 non-randomised studies.'
+- id: CD007674
+  pmid: '38973756'
+  doi: 10.1002/14651858.cd007674.pub3
+  stratum: mental_health
+  title: Cognitive behavioural therapy and third-wave approaches for anxiety and related
+    disorders in older people.
+  question: In older adults aged 55 years or over with anxiety and related disorders,
+    does cognitive behavioural therapy (including third-wave approaches) compared
+    with minimal management reduce the severity of anxiety symptoms post-treatment?
+  review_type: meta_analysis
+  primary_outcome: severity of anxiety symptoms post-treatment
+  search_date: '2024-02-12'
+  year_to: 2024
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: 21 RCTs,
+    19 CBT vs minimal management, no per-outcome count but pooled: anxiety post-treatment
+    SMD -0.51, low certainty (3-6 months: little or no difference, low certainty),
+    hence the time point.'
+- id: CD013508
+  pmid: '38577875'
+  doi: 10.1002/14651858.cd013508.pub3
+  stratum: mental_health
+  title: Psychological interventions for depression and anxiety in patients with coronary
+    heart disease, heart failure or atrial fibrillation.
+  question: Psychological interventions compared to no psychological intervention
+    in adults with coronary heart disease, heart failure or atrial fibrillation for
+    reducing depression and anxiety.
+  review_type: meta_analysis
+  primary_outcome: Depression
+  search_date: '2022-07-31'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Primary
+    outcome depression vs no psychological intervention: SMD -0.36, 20 studies, 2531
+    participants, moderate certainty.'
+- id: CD005562
+  pmid: '39804128'
+  doi: 10.1002/14651858.cd005562.pub3
+  stratum: mental_health
+  title: Cognitive stimulation to improve cognitive functioning in people with dementia.
+  question: Cognitive stimulation compared to control interventions in people with
+    dementia.
+  review_type: meta_analysis
+  primary_outcome: Cognitive function (assessed by changes immediately following treatment
+    period)
+  search_date: '2022-03-03'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: 37 RCTs,
+    36 in meta-analyses, no per-outcome count but pooled: cognition immediately post-treatment
+    SMD 0.40, moderate-quality evidence (GRADE).'
+- id: CD003689
+  pmid: '32390167'
+  doi: 10.1002/14651858.cd003689.pub4
+  stratum: mental_health
+  title: Pharmacological, psychological and non-invasive brain stimulation interventions
+    for preventing depression after stroke.
+  question: In people who have had a stroke, do pharmacological interventions compared
+    with placebo prevent depression (meeting the study criteria for depression at
+    the end of treatment)?
+  review_type: meta_analysis
+  primary_outcome: Meeting the study criteria for depression at the end of treatment
+  search_date: '2018-08-31'
+  year_to: 2018
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Primary
+    outcome, pharmacological vs placebo: RR 0.50, 8 trials (9 interventions), 734
+    participants, very low certainty; psychological vs usual care had only 2 trials,
+    and no brain-stimulation trials exist.'
+- id: CD011246
+  pmid: '33667319'
+  doi: 10.1002/14651858.cd011246.pub2
+  stratum: mental_health
+  title: Prevention of depression in adults with long-term physical conditions.
+  question: In adults with long-term physical conditions who are not depressed, do
+    preventive pharmacological interventions (mainly antidepressants), compared with
+    placebo, reduce the incidence of depression?
+  review_type: meta_analysis
+  primary_outcome: incidence of depression post-intervention
+  search_date: '2020-02-06'
+  year_to: 2020
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Pharmacological
+    vs placebo: incidence of depression OR 0.31 (95% CI 0.20 to 0.49; 9 studies, 814
+    participants; very low certainty); psychological arm is 1 study; search to 6 Feb
+    2020. [screening LLM had excluded it: The review does not report certainty of
+    evidence with GRADE for a single primary outcome; instead, it reports GRADE certainty
+    for multiple outcomes (incidence of depression, acceptability, tolerability) and
+    splits the analysis into two distinct intervention categories (psychological vs.
+    pharmacological) without identifying one specific primary outcome that meets the
+    criteria for a unified GRADE assessment across at least 3 RCTs.]'
+- id: CD013006
+  pmid: '32687629'
+  doi: 10.1002/14651858.cd013006.pub2
+  stratum: mental_health
+  title: Interventions for the management of obesity in people with bipolar disorder.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review found no randomized controlled trials meeting the inclusion
+    criteria (0 RCTs), which fails the requirement of at least 3 RCTs contributing
+    to the primary outcome. Additionally, GRADE certainty of evidence could not be
+    reported as there were no studies.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Empty
+    review: no study met the inclusion criteria.'
+- id: CD013557
+  pmid: '38837220'
+  doi: 10.1002/14651858.cd013557.pub2
+  stratum: mental_health
+  title: 'Factors that influence participation in physical activity for people with
+    bipolar disorder: a synthesis of qualitative evidence.'
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review synthesizes qualitative evidence and is not an intervention
+    review of randomised controlled trials. It uses GRADE-CERQual rather than standard
+    GRADE for RCTs, and includes no randomised controlled trials.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Qualitative
+    evidence synthesis (GRADE-CERQual).'
+- id: CD009788
+  pmid: '39212182'
+  doi: 10.1002/14651858.cd009788.pub3
+  stratum: mental_health
+  title: Transitional discharge interventions for people with schizophrenia.
+  question: What are the effects of transitional discharge interventions compared
+    to usual care for people with schizophrenia?
+  review_type: meta_analysis
+  primary_outcome: service use (hospitalization)
+  search_date: '2022-12-07'
+  year_to: 2022
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Relapse
+    (listed first) had no data; hospitalization: RR 1.18, 4 studies, 462 participants,
+    very low certainty.'
+- id: CD010079
+  pmid: '34278562'
+  doi: 10.1002/14651858.cd010079.pub3
+  stratum: mental_health
+  title: Informant Questionnaire on Cognitive Decline in the Elderly (IQCODE) for
+    the detection of dementia within community dwelling populations.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: This is a diagnostic accuracy review, not an intervention review.
+    Additionally, it does not report certainty of evidence using GRADE for the primary
+    outcome.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of IQCODE in community populations.'
+- id: CD010775
+  pmid: '34255351'
+  doi: 10.1002/14651858.cd010775.pub3
+  stratum: mental_health
+  title: Montreal Cognitive Assessment for the detection of dementia.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a diagnostic accuracy review, which is excluded
+    by the criteria.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: DTA review
+    of MoCA.'
+- id: CD014624
+  pmid: '40562419'
+  doi: 10.1002/14651858.cd014624.pub2
+  stratum: mental_health
+  title: Brexanolone, zuranolone and related neurosteroid GABA&lt;sub&gt;A&lt;/sub&gt;
+    receptor positive allosteric modulators for postnatal depression.
+  question: In women with postnatal depression, do intravenous neurosteroid GABA-A
+    receptor positive allosteric modulators (such as brexanolone) compared with placebo
+    improve depression response?
+  review_type: meta_analysis
+  primary_outcome: Depression response
+  search_date: '2024-01-31'
+  year_to: 2024
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Depression
+    response, IV neurosteroids vs placebo: RR 1.24, 3 studies, 267 women, low certainty
+    (oral zuranolone vs placebo has only 2 studies), so the question is narrowed to
+    the IV comparison; all 6 RCTs were placebo-controlled.'
+- id: CD013540
+  pmid: '34097766'
+  doi: 10.1002/14651858.cd013540.pub2
+  stratum: mental_health
+  title: Anticholinergic burden (prognostic factor) for prediction of dementia or
+    cognitive decline in older adults with no known cognitive syndrome.
+  question: ''
+  review_type: slr
+  primary_outcome: ''
+  search_date: ''
+  year_to: null
+  status: excluded
+  exclusion_reason: The review is a prognostic factor review, not an intervention
+    review. The selection criteria included observational studies (cohort and case-control),
+    not randomised controlled trials.
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Prognostic
+    factor review; observational studies only.'
+- id: CD011882
+  pmid: '32311774'
+  doi: 10.1002/14651858.cd011882.pub3
+  stratum: mental_health
+  title: Simulated presence therapy for dementia.
+  question: Simulated presence therapy compared to other interventions in people with
+    dementia.
+  review_type: slr
+  primary_outcome: Behavioural and psychological symptoms of dementia
+  search_date: '2020-04-09'
+  year_to: 2020
+  status: excluded
+  exclusion_reason: 'owner check: fewer than 3 RCTs: 3 trials of which one is quasi-randomised;
+    no pooled result for the primary outcome'
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Three
+    cross-over trials (2 randomised, 1 quasi-randomised), 144 participants, mixed
+    comparators and behaviour measures, no meta-analysis; overall GRADE very low.'
+- id: CD011612
+  pmid: '34510411'
+  doi: 10.1002/14651858.cd011612.pub3
+  stratum: mental_health
+  title: Ketamine and other glutamate receptor modulators for depression in adults
+    with unipolar major depressive disorder.
+  question: In adults with unipolar major depressive disorder, does ketamine compared
+    with placebo increase response rates at 24 hours?
+  review_type: meta_analysis
+  primary_outcome: response rate at 24 hours (50% reduction on a standardised rating
+    scale)
+  search_date: '2020-07-31'
+  year_to: 2020
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Response
+    at 24 hours, ketamine vs placebo: OR 3.94, 7 studies, 185 participants, very low
+    certainty; multi-drug review narrowed to that comparison (esketamine vs placebo:
+    5 studies, low certainty).'
+- id: CD010515
+  pmid: '32786083'
+  doi: 10.1002/14651858.cd010515.pub2
+  stratum: mental_health
+  title: Personally tailored activities for improving psychosocial outcomes for people
+    with dementia in community settings.
+  question: What are the effects of personally tailored activities compared to usual
+    care or attention control on psychosocial outcomes for people with dementia living
+    in community settings?
+  review_type: meta_analysis
+  primary_outcome: Challenging behaviour
+  search_date: '2019-09-11'
+  year_to: 2019
+  status: eligible
+  exclusion_reason: ''
+  checked_by_owner: true
+  notes: 'checked by Claude Opus 5.5 on the owner''s delegation, 2026-10-12: Challenging
+    behaviour: SMD -0.44, 4 RCTs, 305 participants, low certainty.'

@@ -323,7 +323,8 @@ async def test_finalize_builds_result_with_question_quality_and_both_languages()
     assert qa["papers_uncertain"] == 1 and qa["extraction_escalations"] == 1 and qa["agreement_mean"] == 0.75
     assert qa["screen_disagreements"] == 1 and "fulltext_timeouts" not in qa and qa["citation_fixes"] == 1
     assert qa["localization_kept_english"] == 1 and qa["question_critique_applied"] is True
-    assert qa["localize"] == {"untranslated": 3, "retried": 7, "citations_restored": 1}
+    assert qa["localize"] == {"untranslated": 3, "retried": 7, "citations_restored": 1,
+                              "numbers_rejected": 0, "citations_rejected": 0}
     t = qa["timings"]
     assert t["refine"] == 2.0 and t["screen"] == 5.0 and t["read_max"] == 20.0 and t["read_mean"] == 15.0
     assert t["narrative"] == 6.0 and 29 <= t["total"] <= 60

@@ -288,9 +288,18 @@ class LLMs:
     refiner_critic: StructuredLLM | None = None  # same model as refiner, QuestionCritique schema, effort ≤ low
     # escalation(schema) → a bigger model bound to that output schema, or None when not configured
     escalation: Callable[[type[BaseModel]], StructuredLLM | None] | None = None
+    # for_schema(role, schema) → that role's model bound to another output schema (the eval harness's own calls)
+    for_schema: Callable[[str, type[BaseModel]], StructuredLLM] | None = None
     harness: HarnessSpec = field(default_factory=HarnessSpec)
     preset: str = ""
     models: dict[str, str] = field(default_factory=dict)
+
+    def with_schema(self, role: str, schema: type[BaseModel]) -> StructuredLLM:
+        """A role LLM is built for one schema (SCHEMAS): passing `planner` to a call that wants another schema only
+        ever returns a QueryPlan. Never falls back to the role's own LLM."""
+        if self.for_schema is None:
+            raise LLMError(f"no schema factory: cannot bind {role} to {schema.__name__}")
+        return self.for_schema(role, schema)
 
 
 def _api_key(settings: Settings, env_name: str) -> str:
@@ -348,5 +357,14 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None) 
                 cache[schema] = LimitedLLM(build_role_llm(esc_role, settings, catalog, schema=schema), sem)
             return cache[schema]
 
-    return LLMs(**built, escalation=escalation, harness=config.harness, preset=config.preset,
+    bound: dict[tuple[str, type[BaseModel]], StructuredLLM] = {}
+
+    def for_schema(role: str, schema: type[BaseModel]) -> StructuredLLM:
+        if role not in config.roles:
+            raise LLMError(f"preset {config.preset} has no {role} role to bind to {schema.__name__}")
+        if (role, schema) not in bound:
+            bound[role, schema] = LimitedLLM(build_role_llm(config.roles[role], settings, catalog, schema=schema), sem)
+        return bound[role, schema]
+
+    return LLMs(**built, escalation=escalation, for_schema=for_schema, harness=config.harness, preset=config.preset,
                 models=config.describe())

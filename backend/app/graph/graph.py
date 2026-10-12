@@ -88,19 +88,10 @@ def build_stub_graph(checkpointer: BaseCheckpointSaver | None = None, delay_seco
     builder.add_edge("finalize", END)
     return builder.compile(checkpointer=checkpointer)
 
-
-def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None):
-    """topic_guard → refine_question → plan_queries → search → enrich → screen_batch* → select_top
-    → read_paper* → normalize_outcomes → [pool_effects, meta_analysis only] → explain_conflict* → write_synthesis
-    → localize → finalize (* = Send fan-out, run in parallel)."""
-    if deps.llms is None:
-        return build_stub_graph(checkpointer, deps.settings.stub_delay_seconds, deps.settings)
-    b = StateGraph(ReviewState)
-    b.add_node("topic_guard", intake.make_topic_guard(deps))
-    b.add_node("refine_question", intake.make_refine_question(deps))
-    b.add_node("plan_queries", intake.make_plan_queries(deps))
-    b.add_node("search", retrieval.make_search(deps))
-    b.add_node("enrich", retrieval.make_enrich(deps))
+def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
+    """screen_batch* → select_top → read_paper* (+ external_enrich, fetch_citations) → normalize_outcomes
+    → [pool_effects] → explain_conflict* → write_synthesis → localize → finalize. Shared by build_graph and the
+    Plan 22a eval graph."""
     b.add_node("screen_batch", screening.make_screen_batch(deps))
     b.add_node("select_top", screening.make_select_top(deps))
     b.add_node("read_paper", reading.make_read_paper(deps))
@@ -112,16 +103,6 @@ def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None
     b.add_node("write_synthesis", synthesis.make_write_synthesis(deps))
     b.add_node("localize", synthesis.make_localize(deps))
     b.add_node("finalize", synthesis.make_finalize(deps))
-
-    b.add_edge(START, "topic_guard")
-    b.add_conditional_edges("topic_guard", intake.route_after_guard, ["refine_question", END])
-    b.add_edge("refine_question", "plan_queries")
-    b.add_edge("plan_queries", "search")
-    b.add_edge("search", "enrich")
-    b.add_conditional_edges(
-        "enrich", partial(screening.route_to_screening, batch_size=deps.settings.screen_batch_size),
-        ["screen_batch", "normalize_outcomes"],
-    )
     b.add_edge("screen_batch", "select_top")
     b.add_conditional_edges(
         "select_top",
@@ -140,4 +121,53 @@ def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None
     b.add_edge("write_synthesis", "localize")
     b.add_edge("localize", "finalize")
     b.add_edge("finalize", END)
+
+
+def _add_intake_nodes(b: StateGraph, deps: GraphDeps) -> None:
+    b.add_node("topic_guard", intake.make_topic_guard(deps))
+    b.add_node("refine_question", intake.make_refine_question(deps))
+    b.add_node("plan_queries", intake.make_plan_queries(deps))
+    b.add_node("search", retrieval.make_search(deps))
+    b.add_node("enrich", retrieval.make_enrich(deps))
+    b.add_edge(START, "topic_guard")
+    b.add_conditional_edges("topic_guard", intake.route_after_guard, ["refine_question", END])
+    b.add_edge("refine_question", "plan_queries")
+    b.add_edge("plan_queries", "search")
+    b.add_edge("search", "enrich")
+
+
+def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None):
+    """topic_guard → refine_question → plan_queries → search → enrich → screen_batch* → select_top
+    → read_paper* → normalize_outcomes → [pool_effects, meta_analysis only] → explain_conflict* → write_synthesis
+    → localize → finalize (* = Send fan-out, run in parallel)."""
+    if deps.llms is None:
+        return build_stub_graph(checkpointer, deps.settings.stub_delay_seconds, deps.settings)
+    b = StateGraph(ReviewState)
+    _add_intake_nodes(b, deps)
+    _add_review_nodes(b, deps)
+    b.add_conditional_edges(
+        "enrich", partial(screening.route_to_screening, batch_size=deps.settings.screen_batch_size),
+        ["screen_batch", "normalize_outcomes"],
+    )
     return b.compile(checkpointer=checkpointer)
+
+
+def build_freeze_graph(deps: GraphDeps):
+    """Plan 22a: topic_guard → … → enrich, then stop; the candidate pool is frozen from its final state."""
+    from langgraph.checkpoint.memory import InMemorySaver
+    b = StateGraph(ReviewState)
+    _add_intake_nodes(b, deps)
+    b.add_edge("enrich", END)
+    return b.compile(checkpointer=InMemorySaver())
+
+
+def build_eval_graph(deps: GraphDeps):
+    """Plan 22a: replay a frozen pool from screening onward with the production nodes."""
+    from langgraph.checkpoint.memory import InMemorySaver
+    b = StateGraph(ReviewState)
+    _add_review_nodes(b, deps)
+    b.add_conditional_edges(
+        START, partial(screening.route_to_screening, batch_size=deps.settings.screen_batch_size),
+        ["screen_batch", "normalize_outcomes"],
+    )
+    return b.compile(checkpointer=InMemorySaver())

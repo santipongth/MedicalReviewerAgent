@@ -17,3 +17,8 @@ infra/searxng/settings.yml.new
 # os
 .DS_Store
 Thumbs.db
+
+# Plan 22a: frozen pools and run files hold third-party abstracts
+backend/evals/cochrane/fixtures/
+backend/evals/cochrane/runs/
+backend/evals/cochrane/*.bak

@@ -188,10 +188,13 @@ class Localized:
     untranslated: int = 0  # translatable items still not in the target language after the retry
     retried: int = 0  # items sent to the retry pass
     citations_restored: int = 0  # items whose [Pn] groups were put back by order
+    numbers_rejected: int = 0  # returned translations refused because a number changed (numbers_preserved)
+    citations_rejected: int = 0  # refused because the [Pn] citations changed and could not be restored
 
     def telemetry(self) -> dict[str, int]:
         return {"kept_english": self.kept_english, "untranslated": self.untranslated, "retried": self.retried,
-                "citations_restored": self.citations_restored}
+                "citations_restored": self.citations_restored, "numbers_rejected": self.numbers_rejected,
+                "citations_rejected": self.citations_rejected}
 
 
 async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], language: str, *,
@@ -254,6 +257,10 @@ async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], 
                 if text is not None:
                     accepted[key] = (text, restored)
                 elif got.get(key):
+                    if numbers_preserved(source, got[key]):
+                        out.citations_rejected += 1
+                    else:
+                        out.numbers_rejected += 1
                     log.warning("localize item %s: numbers or citations changed, kept English", key)
         return accepted
 

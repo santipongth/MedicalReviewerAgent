@@ -64,7 +64,7 @@ async def test_enrich_merges_epmc_metadata_filters_years_and_caps():
     assert merged["title"] == "Metformin and colorectal cancer: a cohort"  # Europe PMC metadata wins
     assert epmc.calls == [(["10.1/a", "10.1/old"], ["11"])]
     assert out["search_stats"] == {"unique": 3, "with_abstract": 2, "non_research": 0, "year_excluded": 1,
-                                   "no_abstract": 0}
+                                   "after_cutoff": 0, "no_abstract": 0}
 
 
 async def test_enrich_survives_epmc_failure_and_keeps_only_abstract_holders_in_rank_order():
