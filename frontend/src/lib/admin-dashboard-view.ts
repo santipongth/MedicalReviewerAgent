@@ -4,7 +4,7 @@ import type { AdminStatus, Dashboard } from "./admin-types";
 
 /** Service-status colours: ink, the error and neutral tokens only, never a brand colour or the finding-direction palette
  * (DESIGN.md keeps those out of charts). Statuses that share a hue are told apart by the decal patterns, not colour alone. */
-export type StatusColors = Record<AdminStatus, string> & { cost: string; text: string; rule: string; font: string };
+export type StatusColors = Record<AdminStatus, string> & { cost: string; surface: string; text: string; rule: string; font: string };
 
 export function readStatusColors(): StatusColors {
   const css = getComputedStyle(document.documentElement);
@@ -12,12 +12,18 @@ export function readStatusColors(): StatusColors {
   return {
     done: v("--ink", "#10241e"), error: v("--err", "#b3261e"), rejected: v("--hatch", "#9aa8a0"),
     cancelled: v("--muted", "#4a5e57"), running: v("--muted", "#4a5e57"), queued: v("--rule", "#bccac1"),
-    cost: v("--ink", "#10241e"), text: v("--ink", "#10241e"), rule: v("--rule", "#bccac1"),
+    cost: v("--ink", "#10241e"), surface: v("--surface", "#f8faf9"), text: v("--ink", "#10241e"), rule: v("--rule", "#bccac1"),
     font: v("--font-bai-jamjuree", "sans-serif"),
   };
 }
 
-/** Reviews per UTC day stacked by status (bars), with the day's cost as a dashed line on its own axis. */
+/**
+ * Reviews per UTC day stacked by status (bars), with the day's cost as a dashed line on its own axis.
+ *
+ * The cost line shares its ink colour with the "done" bars, and as it has its own axis it crosses them anywhere. So it is
+ * drawn above the bars (z 4) on a wider surface-coloured halo (z 3: unnamed, silent, no symbols, out of the legend and the
+ * tooltip), with hollow symbols (surface fill, ink border): ink dashes on a surface band stay visible over any bar in both themes.
+ */
 export function dashboardChartOption(d: Dashboard, c: StatusColors): EChartsOption {
   const present = STATUS_ORDER.filter((s) => d.per_day.some((p) => (p.by_status[s] ?? 0) > 0));
   return {
@@ -38,8 +44,11 @@ export function dashboardChartOption(d: Dashboard, c: StatusColors): EChartsOpti
         name: STATUS_LABEL[s], type: "bar", stack: "reviews", data: d.per_day.map((p) => p.by_status[s] ?? 0),
         itemStyle: { color: c[s] }, emphasis: { disabled: true },
       })),
-      { name: "ค่าใช้จ่าย (USD)", type: "line", yAxisIndex: 1, data: d.per_day.map((p) => p.cost_usd),
-        itemStyle: { color: c.cost }, lineStyle: { color: c.cost, type: "dashed" }, symbol: "circle" },
+      { id: "cost-halo", type: "line", yAxisIndex: 1, data: d.per_day.map((p) => p.cost_usd), z: 3, silent: true,
+        symbol: "none", lineStyle: { color: c.surface, width: 6 }, tooltip: { show: false } },
+      { name: "ค่าใช้จ่าย (USD)", type: "line", yAxisIndex: 1, data: d.per_day.map((p) => p.cost_usd), z: 4,
+        itemStyle: { color: c.surface, borderColor: c.cost, borderWidth: 2 }, lineStyle: { color: c.cost, type: "dashed" },
+        symbol: "circle", symbolSize: 7 },
     ],
   };
 }

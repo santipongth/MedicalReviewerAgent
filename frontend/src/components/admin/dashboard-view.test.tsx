@@ -56,10 +56,13 @@ describe("DashboardView", () => {
     await waitFor(() => expect(drawn.options.at(-1)!.series[0].itemStyle?.color).toBe("#ddeae2"));
   });
 
-  it("gives the table-view toggle a 44px target", async () => {
+  it("gives the table-view toggle a 44px target and the shared disclosure chevron", async () => {
     mockAdminFetch((m, p) => (p.startsWith("/dashboard") ? [200, DASHBOARD] : undefined));
     await renderAdmin(<DashboardView />);
-    expect(await screen.findByText("ดูเป็นตาราง")).toHaveClass("min-h-11");
+    const summary = await screen.findByText("ดูเป็นตาราง");
+    expect(summary).toHaveClass("min-h-11");
+    expect(summary.querySelector("[data-chevron]")).not.toBeNull(); // a flex summary has no native triangle
+    expect(summary.closest("details")).toHaveClass("group"); // the chevron turns with group-open
   });
 
   it("explains the unknown synthesizer bucket as reviews that recorded no model", async () => {

@@ -4,7 +4,7 @@ import { DASHBOARD } from "@/test/admin-fixtures";
 import { init } from "./echarts-runtime";
 
 const C = { done: "#111111", error: "#a33a12", rejected: "#9aa8a0", cancelled: "#4a5e57", running: "#4a5e57", queued: "#bccac1",
-  cost: "#222222", text: "#10241e", rule: "#bccac1", font: "sans-serif" };
+  cost: "#222222", surface: "#f8faf9", text: "#10241e", rule: "#bccac1", font: "sans-serif" };
 
 describe("echarts runtime", () => {
   // Guards the registered components: a missing one (LineChart, LegendComponent, AriaComponent) drops that part of the
@@ -18,5 +18,6 @@ describe("echarts runtime", () => {
     expect(svg).toContain("stroke-dasharray");
     expect(svg).toContain("เสร็จ");
     expect(svg).toContain("<pattern");
+    expect(svg.split("ค่าใช้จ่าย (USD)")).toHaveLength(2); // once, in the legend: the unnamed halo adds no entry
   });
 });

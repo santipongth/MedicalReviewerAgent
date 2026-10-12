@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { EChart } from "@/components/charts/echart";
+import { DisclosureChevron } from "@/components/ui/disclosure-chevron";
 import { useTheme } from "@/components/theme-toggle";
 import { adminApi } from "@/lib/admin-api";
 import { STATUS_LABEL, STATUS_ORDER, formatUsd } from "@/lib/admin-copy";
@@ -91,8 +92,11 @@ export function DashboardView() {
             </figure>
           )}
 
-          <details className="mt-3">
-            <summary className="inline-flex min-h-11 cursor-pointer items-center font-display font-semibold">ดูเป็นตาราง</summary>
+          <details className="group mt-3">
+            <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 font-display font-semibold">
+              <DisclosureChevron />
+              ดูเป็นตาราง
+            </summary>
             <div className={TABLE_REGION} role="region" aria-label="ตารางรายวัน" tabIndex={0}>
               <table className="w-full border-collapse text-sm tabular-nums">
                 <caption className="sr-only">รีวิวและค่าใช้จ่ายรายวัน (UTC)</caption>
