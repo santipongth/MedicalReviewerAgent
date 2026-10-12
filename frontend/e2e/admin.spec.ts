@@ -6,9 +6,13 @@ import { mockApi } from "./mock-api";
 const PASSWORD = "correct horse battery staple";
 const MINTED_KEY = "mra_e2eKEYe2eKEYe2eKEYe2eKEYe2eKEY";
 
-/** A stateful fake of /api/v1/admin (same origin): sign-in, keys that can be minted and revoked, an audit log that grows. */
+/**
+ * A stateful fake of /api/v1/admin (same origin): sign-in, keys that can be minted and revoked, an audit log that grows.
+ * `signOuts` counts the DELETE /session calls it has answered.
+ */
 async function mockAdmin(page: Page, { signedIn = false } = {}) {
   let session = signedIn;
+  const calls = { signOuts: 0 };
   const keys = KEYS.map((k) => ({ ...k }));
   const audit = AUDIT.items.map((a) => ({ ...a }));
   let nextId = 100;
@@ -28,7 +32,7 @@ async function mockAdmin(page: Page, { signedIn = false } = {}) {
       return reply(204);
     }
     if (!session) return reply(401, { detail: "sign in required" });
-    if (path === "/session" && method === "DELETE") { session = false; return reply(204); }
+    if (path === "/session" && method === "DELETE") { session = false; calls.signOuts += 1; return reply(204); }
     if (path === "/me") return reply(200, { kind: "user", label: "owner" });
     if (path === "/dashboard") return reply(200, DASHBOARD);
     if (path === "/reviews") return reply(200, REVIEWS);
@@ -51,6 +55,7 @@ async function mockAdmin(page: Page, { signedIn = false } = {}) {
     if (path === "/audit") return reply(200, { items: audit, next: null });
     return reply(404, { detail: `no mock for ${method} ${path}` });
   });
+  return calls;
 }
 
 async function noSeriousA11y(page: Page) {
@@ -65,7 +70,7 @@ async function noHorizontalScroll(page: Page) {
 
 test("sign in, mint and revoke a key, see both in the audit log, sign out", async ({ page }) => {
   await mockApi(page);
-  await mockAdmin(page);
+  const admin = await mockAdmin(page);
   await page.goto("/admin");
   await page.getByLabel("ชื่อผู้ใช้").fill("owner");
   await page.getByLabel("รหัสผ่าน").fill("wrong password");
@@ -93,6 +98,12 @@ test("sign in, mint and revoke a key, see both in the audit log, sign out", asyn
   await expect(page.getByText("เพิกถอน API key")).toBeVisible();
 
   await page.getByRole("button", { name: "ออกจากระบบ" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { level: 1, name: "เข้าสู่ระบบผู้ดูแล" })).toBeVisible();
+  // The sign-in page renders before its /me call returns, so those two checks alone would pass without an ended session.
+  // Sign-out must have reached the API, and the console must now be closed.
+  expect(admin.signOuts).toBe(1);
+  await page.goto("/admin/dashboard");
   await expect(page).toHaveURL(/\/admin$/);
   await expect(page.getByRole("heading", { level: 1, name: "เข้าสู่ระบบผู้ดูแล" })).toBeVisible();
 });
