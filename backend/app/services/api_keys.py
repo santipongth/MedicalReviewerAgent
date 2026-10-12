@@ -23,6 +23,7 @@ class ApiKeyInfo:
     daily_quota: int
     is_admin: bool
     key_hash: str
+    key_prefix: str | None = None  # labels admin actions taken with this key (Plan 23a)
 
 
 def hash_key(raw: str) -> str:
@@ -45,7 +46,7 @@ async def resolve_key(session: AsyncSession, raw: str) -> ApiKeyInfo | None:
     if row is None or row.revoked_at is not None:
         return None
     return ApiKeyInfo(id=row.id, name=row.name, daily_quota=row.daily_quota, is_admin=bool(row.is_admin),
-                      key_hash=row.key_hash)
+                      key_hash=row.key_hash, key_prefix=row.key_prefix)
 
 
 async def revoke_key(session: AsyncSession, prefix: str) -> int:

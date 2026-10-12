@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     max_queued_reviews: int = 50
     max_reviews_per_day: int = 500
     max_usd_per_day: float = 10.0
+    # Admin console (Plan 23a): sessions live in Redis; the cookie is Secure when the site is https.
+    admin_session_ttl_seconds: int = 28800
+    admin_login_max_failures: int = 5  # per username and per IP, within admin_lockout_seconds
+    admin_lockout_seconds: int = 900
+    admin_cookie_secure: bool | None = None  # None: Secure exactly when public_base_url is https
     # Per-review LLM spend cap scales with the request (Plan 21): base + per analysed paper + per screened candidate.
     # Steps beyond the cap are skipped; the review finishes with what it has. max_cost_per_review_usd is only the
     # hard ceiling no computed cap may exceed.
@@ -90,6 +95,12 @@ class Settings(BaseSettings):
     @property
     def checkpoint_conninfo(self) -> str:
         return self.database_url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+    @property
+    def admin_cookie_is_secure(self) -> bool:
+        if self.admin_cookie_secure is not None:
+            return self.admin_cookie_secure
+        return self.public_base_url.startswith("https://")
 
 
 @lru_cache
