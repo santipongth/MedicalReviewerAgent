@@ -153,8 +153,8 @@ service's usual `{detail}` shape. Lists use keyset paging: `before` is the last 
 | `GET /audit?before=&limit=` | Newest first |
 | `POST /mcp/reload` | Unchanged behaviour; now also open to signed-in admins and hidden from OpenAPI |
 
-Business logic lives in `app/services/admin_service.py` (reviews, keys, audit, dashboard); the routes in
-`app/api/admin.py` stay thin adapters, as the rest of the API. Repositories never commit; the service opens
+Business logic lives in focused service modules (`app/services/admin_reviews.py`, `admin_keys.py`,
+`admin_dashboard.py`, `audit.py`); the routes in `app/api/admin*.py` stay thin adapters, as the rest of the API. Repositories never commit; the service opens
 `session.begin()` and writes the audit row in the same transaction.
 
 ## 6. Settings
@@ -265,8 +265,10 @@ Backend (unit, sqlite plus the fake Redis already in `tests/conftest.py`):
 Frontend:
 - Vitest for `admin-api.ts` (header on writes, error mapping) and for each page (renders data, actions call the API,
   the second confirm, the key shown once, the 404 message).
-- One Playwright flow against the docker stack through Caddy: sign in, see the dashboard, mint a key, revoke it, see
-  both in the audit log, sign out.
+- One Playwright flow against a mocked admin API, as every other e2e spec runs: sign in, see the dashboard, mint a
+  key, revoke it, see both in the audit log, sign out; axe-clean and no sideways scroll at 1440 and 390, light and dark.
+- A scripted smoke check against the rebuilt docker stack through Caddy (`:8088`): create an admin with the CLI in
+  the container, sign in, read the dashboard, sign out.
 
 ## 11. Docs
 
@@ -283,4 +285,4 @@ Frontend:
 - **Lockout as a nuisance:** anyone can lock a known username for 15 minutes. That is acceptable for a few admins;
   admin keys still work during a lockout.
 - **Dev versus production paths:** the dev rewrite exists only in `next dev`, so production depends on Caddy routing
-  `/api/*`, which it already does. The Playwright flow runs through Caddy to cover that path.
+  `/api/*`, which it already does. The docker smoke check runs through Caddy to cover that path.
