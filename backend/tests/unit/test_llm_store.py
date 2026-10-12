@@ -2,6 +2,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from redis.exceptions import WatchError
 from sqlalchemy import select
 
 from app.config import Settings
@@ -167,3 +168,83 @@ async def test_loaded_workers_report_and_expire(redis):
     await redis.hset(LOADED_KEY, "host:3", json.dumps(stale))
     rows = await loaded_workers(redis)
     assert [(r["worker"], r["version"], r["error"]) for r in rows] == [("host:1", "3", None), ("host:2", "2", "boom")]
+
+
+async def test_publish_only_raises_the_stored_id(redis):
+    assert await publish_version(redis, 5) is True
+    assert await publish_version(redis, 3) is True  # an older commit publishing late: the key already holds more
+    assert await redis.get(LLM_VERSION_KEY) == "5"
+    assert await publish_version(redis, 5) is True
+    assert await publish_version(redis, 6) is True
+    assert await redis.get(LLM_VERSION_KEY) == "6"
+    await redis.set(LLM_VERSION_KEY, "file")  # not an id: replaced
+    assert await publish_version(redis, 1) is True
+    assert await redis.get(LLM_VERSION_KEY) == "1"
+
+
+async def test_the_cache_fill_never_overwrites_a_publish(session_factory, settings, redis):
+    row = await save(session_factory, settings, MINIMAL, None)
+
+    class PublishLandsBetweenReadAndFill:
+        """The key is empty when read, then a newer version is published before the fill writes."""
+
+        async def get(self, key):
+            value = await redis.get(key)
+            await redis.set(key, str(row.id + 1))
+            return value
+
+        async def set(self, *args, **kwargs):
+            return await redis.set(*args, **kwargs)
+
+    await redis.delete(LLM_VERSION_KEY)
+    assert await active_version_id(session_factory, PublishLandsBetweenReadAndFill()) == str(row.id)
+    assert await redis.get(LLM_VERSION_KEY) == str(row.id + 1)
+
+
+async def test_publish_reports_a_redis_failure():
+    class DeadRedis:
+        def pipeline(self, *_, **__):
+            raise ConnectionError("redis down")
+
+    assert await publish_version(DeadRedis(), 3) is False
+
+
+class _ContendedRedis:
+    """A pipeline whose WATCH fails on the first `conflicts` executes (another client wrote the key)."""
+
+    def __init__(self, conflicts):
+        self.conflicts, self.writes = conflicts, []
+
+    def pipeline(self, *_, **__):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    async def watch(self, *_):
+        return True
+
+    async def get(self, *_):
+        return None
+
+    def multi(self):
+        return None
+
+    def set(self, key, value):
+        self.writes.append((key, value))
+
+    async def execute(self):
+        if self.conflicts > 0:
+            self.conflicts -= 1
+            raise WatchError("changed")
+        return [True]
+
+
+async def test_publish_retries_a_watch_conflict_three_times():
+    retried = _ContendedRedis(conflicts=2)
+    assert await publish_version(retried, 4) is True
+    assert retried.writes == [(LLM_VERSION_KEY, "4")] * 3  # two lost races, then the write that stuck
+    assert await publish_version(_ContendedRedis(conflicts=3), 4) is False

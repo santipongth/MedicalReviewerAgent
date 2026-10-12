@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import func, select
+from redis.exceptions import WatchError
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -31,6 +32,10 @@ LLM_VERSION_KEY = "mra:llm:config_version"
 LOADED_KEY = "mra:llm:loaded"
 LOADED_MAX_AGE = timedelta(days=1)
 NOTE_MAX = 500
+PUBLISH_ATTEMPTS = 3
+# Postgres advisory-lock key that serialises saves ("MRALLMSV"); the transaction-scoped lock is held until the
+# caller commits, so a second save from the same base reads the first one's row and gets the Conflict.
+LLM_SAVE_LOCK = 0x4D52_414C_4C4D_5356
 _ACTIONS = {"edit": "llm_config.save", "restore": "llm_config.restore", "file": "llm_config.reset"}
 
 
@@ -110,6 +115,8 @@ async def save_version(session: AsyncSession, actor: AdminPrincipal, raw: Any, *
     config = parse_llm_config(raw, where="config")
     resolve_llm_config(config, None, where="config")
     stored = config.model_dump(mode="json", exclude_unset=True)
+    if session.get_bind().dialect.name == "postgresql":  # READ COMMITTED would let two saves pass the same check
+        await session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": LLM_SAVE_LOCK})
     current = await _newest(session)
     current_id = current.id if current is not None else None
     if base_version != current_id:
@@ -167,12 +174,37 @@ def version_out(row: LlmConfigVersion) -> dict[str, Any]:
             "active_preset": (row.config or {}).get("active_preset"), "changes": row.changes or {}}
 
 
-async def publish_version(redis, version_id: int) -> None:
-    """Tell every worker (and the cache key) that a new version is active. Best-effort: a miss falls back to the DB."""
+def _as_id(value: Any) -> int | None:
+    """A stored version id, or None when the key is empty or holds something else."""
     try:
-        await redis.set(LLM_VERSION_KEY, str(version_id))
-    except Exception:  # noqa: BLE001 - workers and the cache key read the DB when the key is missing
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+async def publish_version(redis, version_id: int) -> bool:
+    """Raise the shared active-version id to version_id; it never lowers it, because commits can reach Redis out of
+    order. True when the key now holds an id >= version_id. False on a Redis error (after PUBLISH_ATTEMPTS lost
+    WATCH races or a connection failure): the key then keeps its previous value, so workers do not reload and the
+    cache key stays on that version until a later publish succeeds."""
+    try:
+        for _ in range(PUBLISH_ATTEMPTS):
+            async with redis.pipeline(transaction=True) as pipe:
+                try:
+                    await pipe.watch(LLM_VERSION_KEY)
+                    stored = _as_id(await pipe.get(LLM_VERSION_KEY))
+                    if stored is not None and stored >= version_id:
+                        return True
+                    pipe.multi()
+                    pipe.set(LLM_VERSION_KEY, str(version_id))
+                    await pipe.execute()
+                    return True
+                except WatchError:
+                    continue  # another client wrote the key between WATCH and EXEC: read it again
+        log.warning("llm_version_publish_contended", version=version_id)
+    except Exception:  # noqa: BLE001 - the caller already committed the version; Redis trouble must not fail it
         log.warning("llm_version_publish_failed", version=version_id)
+    return False
 
 
 async def active_version_id(session_factory, redis) -> str:
@@ -188,7 +220,7 @@ async def active_version_id(session_factory, redis) -> str:
     value = str(newest) if newest is not None else "file"
     if newest is not None:
         try:
-            await redis.set(LLM_VERSION_KEY, value)
+            await redis.set(LLM_VERSION_KEY, value, nx=True)  # a publish that landed meanwhile is newer
         except Exception:  # noqa: BLE001 - the next reader asks the DB again
             log.warning("llm_version_cache_failed", version=value)
     return value
