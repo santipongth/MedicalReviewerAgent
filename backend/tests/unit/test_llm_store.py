@@ -95,6 +95,28 @@ async def test_save_writes_a_change_summary_and_one_audit_row(session_factory, s
     assert audit.after["version"] == row.id and audit.after["active_preset"] == "cheap → better"
 
 
+async def test_a_first_save_is_compared_with_the_preset_llm_preset_made_the_workers_run(session_factory, settings):
+    settings.llm_preset = "better"  # the file says cheap, but the workers have been running better
+    row = await save(session_factory, settings, MINIMAL, None)
+    assert row.changes == {"active_preset": "better → cheap"}
+    async with session_factory() as s:
+        [audit] = list((await s.execute(select(AdminAudit))).scalars())
+    assert audit.after["active_preset"] == "better → cheap"
+
+
+async def test_a_first_save_that_keeps_the_running_preset_shows_no_preset_change(session_factory, settings):
+    settings.llm_preset = "better"
+    row = await save(session_factory, settings, {**MINIMAL, "active_preset": "better"}, None)
+    assert "active_preset" not in row.changes
+
+
+async def test_llm_preset_does_not_colour_the_comparison_once_a_version_exists(session_factory, settings):
+    first = await save(session_factory, settings, MINIMAL, None)
+    settings.llm_preset = "better"  # ignored while a DB version is the source
+    second = await save(session_factory, settings, {**MINIMAL, "active_preset": "better"}, first.id)
+    assert second.changes == {"active_preset": "cheap → better"}
+
+
 def test_summarize_change_cases():
     old = MINIMAL
     new = {**with_model(MINIMAL, "better", "guard", "vendor/g"), "harness": {"max_repairs": 1}}

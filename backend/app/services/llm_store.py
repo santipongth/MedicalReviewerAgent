@@ -124,7 +124,14 @@ async def save_version(session: AsyncSession, actor: AdminPrincipal, raw: Any, *
     if base_version != current_id:
         active = f"version {current_id}" if current_id is not None else "llm.yaml"
         raise Conflict(f"{active} is in use now; reload the latest version and try again")
-    previous = current.config if current is not None else read_llm_yaml(settings.llm_config_path)
+    if current is not None:
+        previous = current.config
+    else:
+        # The configuration in use is llm.yaml with LLM_PRESET applied: a first save that changes the running preset
+        # must show it in history and the audit log.
+        previous = read_llm_yaml(settings.llm_config_path)
+        if settings.llm_preset:
+            previous = {**previous, "active_preset": settings.llm_preset}
     changes = summarize_change(previous, stored)
     row = LlmConfigVersion(created_at=datetime.now(UTC), created_by=actor.label[:64],
                            note=(note or "").strip()[:NOTE_MAX] or None, source=source,
