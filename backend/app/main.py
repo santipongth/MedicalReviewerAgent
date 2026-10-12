@@ -13,6 +13,7 @@ from app.api import (
     admin,
     admin_dashboard,
     admin_keys,
+    admin_models,
     admin_reviews,
     events,
     health,
@@ -125,6 +126,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     app.include_router(admin_reviews.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     app.include_router(admin_keys.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     app.include_router(admin_dashboard.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
+    app.include_router(admin_models.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     mcp = build_mcp(lambda: app.state.deps, settings)
     app.state.mcp = mcp
     app.mount("/mcp", mcp.streamable_http_app(stateless_http=True, json_response=True, streamable_http_path="/",
