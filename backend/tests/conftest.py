@@ -54,6 +54,7 @@ class FakeJobQueue:
     def __init__(self) -> None:
         self.enqueued: list[str] = []
         self.aborted: list[str] = []
+        self.checkpoint_deletes: list[str] = []
 
     async def enqueue_review(self, review_id) -> bool:
         self.enqueued.append(str(review_id))
@@ -61,6 +62,10 @@ class FakeJobQueue:
 
     async def abort_review(self, review_id) -> bool:
         self.aborted.append(str(review_id))
+        return True
+
+    async def enqueue_checkpoint_delete(self, review_id) -> bool:
+        self.checkpoint_deletes.append(str(review_id))
         return True
 
 

@@ -21,7 +21,7 @@ from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 from app.services.model_catalog import OpenRouterCatalog
 from app.services.queue import ArqJobQueue
 from app.worker.sweep import sweep_stale
-from app.worker.tasks import deliver_webhook, resume_review, run_review
+from app.worker.tasks import delete_checkpoint, deliver_webhook, resume_review, run_review
 
 log = get_logger(__name__)
 
@@ -73,7 +73,7 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions: ClassVar[list] = [run_review, resume_review, deliver_webhook]
+    functions: ClassVar[list] = [run_review, resume_review, deliver_webhook, delete_checkpoint]
     cron_jobs: ClassVar[list] = [
         cron(sweep_stale, name="sweep_stale", minute=set(range(0, 60, 5)), run_at_startup=True)
     ]
