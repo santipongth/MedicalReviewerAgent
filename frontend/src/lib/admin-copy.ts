@@ -17,6 +17,19 @@ export const ACTION_LABEL: Record<string, string> = {
 
 export const ACTOR_LABEL: Record<AuditEntry["actor_kind"], string> = { user: "ผู้ดูแล", key: "API key", cli: "CLI" };
 
+/** Why the service refuses new reviews (the codes of Capacity.check in backend/app/services/capacity.py), in a few
+ * words for the admin. The public form's longer advice to visitors is capacityText in landing/request-slip.tsx. */
+export const REFUSAL_LABEL: Record<string, string> = {
+  queue_full: "คิวเต็ม",
+  daily_reviews: "ครบจำนวนรีวิวต่อวันแล้ว",
+  daily_budget: "งบค่าใช้จ่ายต่อวันไม่พอ (นับรวมยอดที่กันไว้ให้รีวิวที่รอคิวและกำลังทำ)",
+};
+
+/** A code the console does not know yet shows as it came. */
+export function refusalText(reason: string | null): string {
+  return reason === null ? "ไม่ทราบเหตุผล" : REFUSAL_LABEL[reason] ?? reason;
+}
+
 export const NOT_BEHIND_SITE =
   "หน้า admin ใช้ผ่านที่อยู่หลักของเว็บเท่านั้น เปิดผ่าน Caddy (เช่น http://localhost:8088/admin) หรือโดเมนจริง ไม่ใช่พอร์ตของเว็บโดยตรง";
 

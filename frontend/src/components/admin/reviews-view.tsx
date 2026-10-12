@@ -137,12 +137,16 @@ export function ReviewsView() {
                 <td className={`${TD} whitespace-nowrap`}>{formatWhen(r.created_at)}</td>
                 <td className={`${TD} tabular-nums`}>{formatUsd(r.cost_usd)}</td>
                 <td className={TD}>
-                  <button type="button" className={BUTTON_GHOST} onClick={() => act(r.id, async () => {
-                    const res = await adminApi.setListed(r.id, !r.is_listed);
-                    return { ...r, is_listed: res.is_listed };
-                  }, r.is_listed ? "ซ่อนรีวิวจากรายการสาธารณะแล้ว" : "แสดงรีวิวในรายการสาธารณะแล้ว")}>
-                    {r.is_listed ? "ซ่อน" : "แสดง"}
-                  </button>
+                  {/* the state as text (the words of the filter), the button as the action it takes */}
+                  <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span>{r.is_listed ? "แสดงอยู่" : "ซ่อนอยู่"}</span>
+                    <button type="button" className={BUTTON_GHOST} onClick={() => act(r.id, async () => {
+                      const res = await adminApi.setListed(r.id, !r.is_listed);
+                      return { ...r, is_listed: res.is_listed };
+                    }, r.is_listed ? "ซ่อนรีวิวจากรายการสาธารณะแล้ว" : "แสดงรีวิวในรายการสาธารณะแล้ว")}>
+                      {r.is_listed ? "ซ่อนจากรายการ" : "แสดงในรายการ"}
+                    </button>
+                  </span>
                 </td>
                 <td className={TD}>
                   {ACTIVE.includes(r.status) ? (

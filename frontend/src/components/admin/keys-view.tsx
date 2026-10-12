@@ -94,6 +94,7 @@ export function KeysView() {
   const nameId = useId();
   const quotaId = useId();
   const panelTitleId = useId();
+  const closeFirstId = useId();
   const nameRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const noticeRef = useRef<HTMLParagraphElement>(null);
@@ -139,6 +140,8 @@ export function KeysView() {
 
   async function mint(e: FormEvent) {
     e.preventDefault();
+    // Enter in a field submits without the (disabled) button; a second mint would replace the key still shown once
+    if (minting || minted) return;
     setError(null);
     setNotice(null);
     setMinting(true);
@@ -173,7 +176,9 @@ export function KeysView() {
           <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} className="size-5 accent-primary" />
           <span>สิทธิ์ admin</span>
         </label>
-        <button type="submit" disabled={!name.trim() || minting} className={BUTTON_PRIMARY}>สร้าง key</button>
+        <button type="submit" disabled={!name.trim() || minting || minted !== null}
+          aria-describedby={minted ? closeFirstId : undefined} className={BUTTON_PRIMARY}>สร้าง key</button>
+        {minted && <p id={closeFirstId} className="text-sm text-muted md:col-span-4 md:text-right">ปิดหน้าต่าง key ที่แสดงอยู่ก่อนสร้าง key ใหม่</p>}
       </form>
 
       {minted && (

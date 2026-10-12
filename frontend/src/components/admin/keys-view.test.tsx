@@ -68,6 +68,29 @@ describe("KeysView", () => {
     expect(posted).toHaveLength(1);
   });
 
+  it("keeps สร้าง key disabled while a minted key is still shown, so a second mint cannot replace it unseen", async () => {
+    const posted: unknown[] = [];
+    mockAdminFetch((m, p, body) => {
+      if (m === "GET" && p === "/keys") return [200, KEYS];
+      if (m === "POST" && p === "/keys") { posted.push(body); return [201, MINTED]; }
+    });
+    await renderAdmin(<KeysView />);
+    await screen.findByRole("row", { name: /partner lab/ });
+    mintNewLab();
+    expect(await screen.findByText(MINTED.key)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("ชื่อ key"), { target: { value: "second lab" } });
+    const create = screen.getByRole("button", { name: "สร้าง key" });
+    expect(create).toBeDisabled();
+    expect(create).toHaveAccessibleDescription("ปิดหน้าต่าง key ที่แสดงอยู่ก่อนสร้าง key ใหม่");
+    fireEvent.click(create);
+    fireEvent.submit(create.closest("form")!); // Enter in a field submits the form without the button
+    expect(posted).toHaveLength(1);
+    expect(screen.getByText(MINTED.key)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "เก็บแล้ว ปิด" }));
+    expect(screen.getByRole("button", { name: "สร้าง key" })).toBeEnabled();
+    expect(screen.queryByText("ปิดหน้าต่าง key ที่แสดงอยู่ก่อนสร้าง key ใหม่")).not.toBeInTheDocument();
+  });
+
   it("moves focus to the shown-once panel after a mint, and back to the name field when it is closed", async () => {
     mockAdminFetch((m, p) => {
       if (m === "GET" && p === "/keys") return [200, KEYS];

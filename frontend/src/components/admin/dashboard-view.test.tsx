@@ -41,6 +41,19 @@ describe("DashboardView", () => {
     expect(screen.getByRole("table", { name: /synthesizer/ })).toHaveTextContent("openrouter:qwen/qwen3.5-flash-02-23");
   });
 
+  it("says why new reviews are refused in Thai, and shows an unknown refusal code as it came", async () => {
+    let reason = "queue_full";
+    mockAdminFetch((m, p) => (p.startsWith("/dashboard")
+      ? [200, { ...DASHBOARD, capacity: { ...DASHBOARD.capacity, accepting: false, reason } }] : undefined));
+    const { unmount } = await renderAdmin(<DashboardView />);
+    expect(await screen.findByText("ไม่รับรีวิวใหม่ตอนนี้: คิวเต็ม")).toBeInTheDocument();
+    expect(screen.queryByText(/queue_full/)).not.toBeInTheDocument();
+    unmount();
+    reason = "some_new_code";
+    await renderAdmin(<DashboardView />);
+    expect(await screen.findByText("ไม่รับรีวิวใหม่ตอนนี้: some_new_code")).toBeInTheDocument();
+  });
+
   it("redraws the chart in the new theme's colours when the theme is toggled", async () => {
     document.documentElement.style.setProperty("--ink", "#101010");
     mockAdminFetch((m, p) => (p.startsWith("/dashboard") ? [200, DASHBOARD] : undefined));

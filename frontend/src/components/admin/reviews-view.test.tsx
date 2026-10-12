@@ -42,8 +42,12 @@ describe("ReviewsView", () => {
     });
     await renderAdmin(<ReviewsView />);
     await screen.findByRole("link", { name: DONE.topic });
-    fireEvent.click(within(row(DONE.topic)).getByRole("button", { name: "ซ่อน" }));
-    expect(await within(row(DONE.topic)).findByRole("button", { name: "แสดง" })).toBeInTheDocument();
+    // the column states where the review is; the button names what it will do
+    expect(row(DONE.topic)).toHaveTextContent("แสดงอยู่");
+    fireEvent.click(within(row(DONE.topic)).getByRole("button", { name: "ซ่อนจากรายการ" }));
+    expect(await within(row(DONE.topic)).findByRole("button", { name: "แสดงในรายการ" })).toBeInTheDocument();
+    expect(row(DONE.topic)).toHaveTextContent("ซ่อนอยู่");
+    expect(row(DONE.topic)).not.toHaveTextContent("แสดงอยู่");
     fireEvent.click(within(row(RUNNING.topic)).getByRole("button", { name: "ยกเลิก" }));
     expect(await within(row(RUNNING.topic)).findByText("ยกเลิกแล้ว")).toBeInTheDocument();
     fireEvent.click(within(row(DONE.topic)).getByRole("button", { name: "ลบ" }));
@@ -68,7 +72,7 @@ describe("ReviewsView", () => {
       if (m === "PATCH") return [401, { detail: "sign in required" }];
     });
     await renderAdmin(<ReviewsView />);
-    fireEvent.click(within(await screen.findByRole("row", { name: new RegExp(DONE.topic) })).getByRole("button", { name: "ซ่อน" }));
+    fireEvent.click(within(await screen.findByRole("row", { name: new RegExp(DONE.topic) })).getByRole("button", { name: "ซ่อนจากรายการ" }));
     await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/admin?expired=1"));
   });
 
@@ -151,11 +155,12 @@ describe("ReviewsView", () => {
     await renderAdmin(<ReviewsView />);
     await screen.findByRole("link", { name: DONE.topic });
     fireEvent.click(within(row(RUNNING.topic)).getByRole("button", { name: "ยกเลิก" }));
+    // focus moves in an effect after the notice renders, so wait for the focus itself, not only for the text
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("ยกเลิกรีวิวแล้ว"));
-    expect(screen.getByRole("status")).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveFocus());
     fireEvent.click(within(row(DONE.topic)).getByRole("button", { name: "ลบ" }));
     fireEvent.click(within(row(DONE.topic)).getByRole("button", { name: "ยืนยันลบ" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("ลบรีวิวแล้ว"));
-    expect(screen.getByRole("status")).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveFocus());
   });
 });

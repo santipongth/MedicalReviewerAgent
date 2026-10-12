@@ -5,7 +5,7 @@ import { EChart } from "@/components/charts/echart";
 import { DisclosureChevron } from "@/components/ui/disclosure-chevron";
 import { useTheme } from "@/components/theme-toggle";
 import { adminApi } from "@/lib/admin-api";
-import { STATUS_LABEL, STATUS_ORDER, formatUsd } from "@/lib/admin-copy";
+import { STATUS_LABEL, STATUS_ORDER, formatUsd, refusalText } from "@/lib/admin-copy";
 import { dashboardChartOption, readStatusColors } from "@/lib/admin-dashboard-view";
 import type { Dashboard } from "@/lib/admin-types";
 import { useAdmin } from "./admin-gate";
@@ -68,7 +68,7 @@ export function DashboardView() {
         <>
           <div className={`mt-6 rounded-sm px-4 py-3 ${data.capacity.accepting ? "bg-info-bg" : "bg-warn-bg"}`}>
             <p className="font-display font-semibold">
-              {data.capacity.accepting ? "รับรีวิวใหม่อยู่" : `ไม่รับรีวิวใหม่ตอนนี้: ${data.capacity.reason ?? "ไม่ทราบเหตุผล"}`}
+              {data.capacity.accepting ? "รับรีวิวใหม่อยู่" : `ไม่รับรีวิวใหม่ตอนนี้: ${refusalText(data.capacity.reason)}`}
             </p>
             <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-4">
               <div><dt className="inline">คิว </dt><dd className="inline tabular-nums">{`${data.capacity.queued} / ${data.capacity.max_queued_reviews}`}</dd></div>
