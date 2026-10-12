@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -9,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.api.auth import (
     ADMIN_COOKIE,
     ADMIN_COOKIE_PATH,
+    admin_cookie_secure,
     admin_sessions,
     ip_hash_of,
     require_admin,
@@ -16,6 +19,7 @@ from app.api.auth import (
 )
 from app.api.deps import get_deps
 from app.api.ratelimit import client_ip
+from app.db.models import AdminUser
 from app.runtime import AppDeps
 from app.schemas.review import hash_ip
 from app.services.admin_auth import (
@@ -31,6 +35,13 @@ from app.services.mcp_client import McpConfigError, load_config
 from app.services.review_service import Identity
 
 router = APIRouter()
+
+# Password checks (argon2id with the library defaults: tens of milliseconds of CPU and 64 MiB each) on this
+# unauthenticated route queue for a few slots, so a burst of sign-ins cannot take every core, the memory or the default
+# thread pool. Module-level is one per process, which is right: uvicorn runs one event loop per process (the unit tests
+# give each test a fresh semaphore, since each test has its own loop).
+VERIFY_CONCURRENCY = 4
+VERIFY_SLOTS = asyncio.Semaphore(VERIFY_CONCURRENCY)
 
 
 @router.post("/admin/mcp/reload", summary="Validate the external MCP server config",
@@ -61,6 +72,22 @@ class SignIn(BaseModel):
         return value
 
 
+async def _record_sign_in(deps: AppDeps, user_id: uuid.UUID, verified_hash: str, new_hash: str | None,
+                          ip_hash: str) -> AdminPrincipal | None:
+    """The success write, in its own short transaction. The account is read again, so one that was disabled, removed
+    or given a new password while its password was being checked does not get in (None)."""
+    async with deps.session_factory() as session, session.begin():
+        user = await session.get(AdminUser, user_id)
+        if user is None or user.disabled_at is not None or user.password_hash != verified_hash:
+            return None
+        if new_hash:
+            user.password_hash = new_hash  # the stored hash used older parameters
+        user.last_login_at = datetime.now(UTC)
+        principal = AdminPrincipal(kind="user", id=user.id, label=user.username)
+        await record(session, principal, "admin.login", target_type="admin", target_id=user.id, ip_hash=ip_hash)
+    return principal
+
+
 @router.post("/admin/session", status_code=204)
 async def sign_in(body: SignIn, request: Request, deps: AppDeps = Depends(get_deps)) -> Response:
     """Sign in to the admin console: sets the mra_admin session cookie. Each attempt is counted before the password is
@@ -75,18 +102,15 @@ async def sign_in(body: SignIn, request: Request, deps: AppDeps = Depends(get_de
     if wait is not None:
         return JSONResponse(status_code=429, content={"detail": "too many failed sign-ins; try again later"},
                             headers={"Retry-After": str(wait)})
-    signed_in: AdminPrincipal | None = None
-    async with deps.session_factory() as session, session.begin():
+    # A short read, closed before the password check: the slow argon2 step holds no connection and no transaction.
+    async with deps.session_factory() as session:
         user = await find_user(session, username)
         known_id = user.id if user is not None else None
-        active = user is not None and user.disabled_at is None
-        ok, new_hash = await verify_password(user.password_hash if active else None, body.password)
-        if ok:
-            if new_hash:
-                user.password_hash = new_hash
-            user.last_login_at = datetime.now(UTC)
-            signed_in = AdminPrincipal(kind="user", id=user.id, label=user.username)
-            await record(session, signed_in, "admin.login", target_type="admin", target_id=user.id, ip_hash=ip_hash)
+        stored = user.password_hash if user is not None and user.disabled_at is None else None
+    async with VERIFY_SLOTS:
+        # an unknown or disabled admin is checked against a dummy hash, so the answer takes as long either way
+        ok, new_hash = await verify_password(stored, body.password)
+    signed_in = await _record_sign_in(deps, known_id, stored, new_hash, ip_hash) if ok else None
     if signed_in is None:
         if last_allowed:
             async with deps.session_factory() as session, session.begin():
@@ -97,7 +121,7 @@ async def sign_in(body: SignIn, request: Request, deps: AppDeps = Depends(get_de
     token = await admin_sessions(deps).create(signed_in.id, signed_in.label)
     response = Response(status_code=204)
     response.set_cookie(ADMIN_COOKIE, token, max_age=settings.admin_session_ttl_seconds, path=ADMIN_COOKIE_PATH,
-                        httponly=True, samesite="strict", secure=settings.admin_cookie_is_secure)
+                        httponly=True, samesite="strict", secure=admin_cookie_secure(request, settings))
     return response
 
 
@@ -111,7 +135,7 @@ async def sign_out(request: Request, deps: AppDeps = Depends(get_deps),
                          ip_hash=ip_hash_of(identity, deps))
     response = Response(status_code=204)
     response.delete_cookie(ADMIN_COOKIE, path=ADMIN_COOKIE_PATH, httponly=True, samesite="strict",
-                           secure=deps.service.settings.admin_cookie_is_secure)
+                           secure=admin_cookie_secure(request, deps.service.settings))
     return response
 
 

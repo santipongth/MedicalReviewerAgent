@@ -7,14 +7,11 @@ from app.db.models import AdminAudit, AdminUser
 from app.services.api_keys import mint_key, resolve_key
 
 
-def test_admin_settings_defaults_and_cookie_security():
+def test_admin_settings_defaults():
+    """The cookie's Secure rule needs the request too (X-Forwarded-Proto): test_admin_api_auth covers it."""
     s = Settings(_env_file=None)
     assert (s.admin_session_ttl_seconds, s.admin_login_max_failures, s.admin_lockout_seconds) == (28800, 5, 900)
-    assert s.admin_cookie_secure is None and s.admin_cookie_is_secure is False
-    assert Settings(_env_file=None, public_base_url="https://reviews.example.org").admin_cookie_is_secure is True
-    assert Settings(_env_file=None, public_base_url="https://x.example.org",
-                    admin_cookie_secure=False).admin_cookie_is_secure is False
-    assert Settings(_env_file=None, admin_cookie_secure=True).admin_cookie_is_secure is True
+    assert s.admin_cookie_secure is None
 
 
 async def test_admin_tables_store_users_and_audit_rows(session_factory):

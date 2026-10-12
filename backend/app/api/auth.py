@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Request
 
 from app.api.deps import get_deps
 from app.api.ratelimit import client_ip
+from app.config import Settings
 from app.db.models import AdminUser
 from app.runtime import AppDeps
 from app.schemas.review import hash_ip
@@ -59,6 +60,22 @@ def require_csrf_header(request: Request) -> None:
     """Cookie-authenticated writes (and sign-in) must carry X-MRA-Admin: 1, which a cross-site form cannot send."""
     if request.headers.get(CSRF_HEADER) != "1":
         raise HTTPException(status_code=403, detail="the X-MRA-Admin: 1 header is required")
+
+
+def admin_cookie_secure(request: Request, settings: Settings) -> bool:
+    """Whether the mra_admin cookie gets Secure. ADMIN_COOKIE_SECURE decides when it is set; otherwise Secure on an https
+    site: PUBLIC_BASE_URL is https, or the trusted proxy (TRUST_PROXY) says X-Forwarded-Proto: https. uvicorn runs with
+    --no-proxy-headers, so behind Caddy the request's own scheme is always http and says nothing. Without a trusted
+    proxy the header comes from the client and is ignored."""
+    if settings.admin_cookie_secure is not None:
+        return settings.admin_cookie_secure
+    if settings.public_base_url.startswith("https://"):
+        return True
+    if not settings.trust_proxy:
+        return False
+    # a proxy that appends puts its own hop last, as with X-Forwarded-For (app.api.ratelimit.ip_from)
+    proto = request.headers.get("x-forwarded-proto", "").rsplit(",", 1)[-1].strip().lower()
+    return proto == "https"
 
 
 def admin_sessions(deps: AppDeps) -> AdminSessions:

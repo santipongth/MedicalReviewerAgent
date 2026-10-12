@@ -65,9 +65,10 @@ async def update_key(session: AsyncSession, actor: AdminPrincipal, key_id: uuid.
         if value is not None and value != getattr(row, field):
             before[field], after[field] = getattr(row, field), value
             setattr(row, field, value)
-    await session.flush()
-    await record(session, actor, "key.update", target_type="key", target_id=key_id, before=before, after=after,
-                 ip_hash=ip_hash)
+    if after:  # nothing changed: no write and no audit row
+        await session.flush()
+        await record(session, actor, "key.update", target_type="key", target_id=key_id, before=before, after=after,
+                     ip_hash=ip_hash)
     return _key_out(row, await _used(session, key_id))
 
 

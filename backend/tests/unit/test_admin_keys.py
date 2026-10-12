@@ -34,6 +34,12 @@ async def test_mint_shows_the_key_once_and_stores_only_its_hash(client, session_
     assert (await client.get("/api/v1/admin/me", headers={"X-API-Key": raw})).status_code == 403  # not an admin key
 
 
+async def test_the_minted_key_response_is_never_cached(client, session_factory):
+    headers = await admin_headers(client, session_factory)
+    r = await client.post(KEYS, json={"name": "lab"}, headers=headers)
+    assert r.status_code == 201 and r.headers["cache-control"] == "no-store"
+
+
 async def test_mint_validation(client, session_factory):
     headers = await admin_headers(client, session_factory)
     for body in ({"name": "lab", "daily_quota": 0}, {"name": "lab", "daily_quota": -1},
@@ -63,6 +69,26 @@ async def test_update_records_only_what_changed(client, session_factory):
     assert row.before == {"daily_quota": 10} and row.after == {"daily_quota": 25}
     assert (await client.patch(f"{KEYS}/{uuid.uuid4()}", json={"daily_quota": 5}, headers=headers)).status_code == 404
     assert (await client.patch(f"{KEYS}/{key_id}", json={"daily_quota": 0}, headers=headers)).status_code == 422
+
+
+async def test_an_update_that_changes_nothing_writes_no_audit_row(client, session_factory):
+    headers = await admin_headers(client, session_factory)
+    minted = (await client.post(KEYS, json={"name": "lab", "daily_quota": 10}, headers=headers)).json()
+    for body in ({"name": "lab", "daily_quota": 10}, {"name": "  lab "}, {}):
+        r = await client.patch(f"{KEYS}/{minted['id']}", json=body, headers=headers)
+        assert r.status_code == 200 and (r.json()["name"], r.json()["daily_quota"]) == ("lab", 10), body
+    assert [a for a in await audit(session_factory) if a.action == "key.update"] == []
+
+
+async def test_a_key_patch_with_an_unknown_field_is_refused(client, session_factory):
+    """The admin flag is set only at mint: a PATCH that tries to set it (or any other unknown field) is 422."""
+    headers = await admin_headers(client, session_factory)
+    minted = (await client.post(KEYS, json={"name": "lab"}, headers=headers)).json()
+    for body in ({"is_admin": True}, {"name": "renamed", "is_admin": True}, {"revoked_at": None}):
+        assert (await client.patch(f"{KEYS}/{minted['id']}", json=body, headers=headers)).status_code == 422, body
+    [row] = (await client.get(KEYS, headers=headers)).json()
+    assert row["name"] == "lab" and row["is_admin"] is False
+    assert [a for a in await audit(session_factory) if a.action == "key.update"] == []
 
 
 async def test_revoke_is_idempotent_and_a_revoked_key_cannot_change(client, session_factory):

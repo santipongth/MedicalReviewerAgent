@@ -97,6 +97,16 @@ async def test_hide_and_show_change_the_public_list_and_are_audited(client, sess
     assert (await client.patch(f"{BASE}/{uuid.uuid4()}", json={"is_listed": True}, headers=headers)).status_code == 404
 
 
+async def test_setting_the_listed_flag_it_already_has_writes_no_audit_row(client, session_factory):
+    headers = await admin_headers(client, session_factory)
+    shown = await make_review(session_factory, "public topic")
+    hidden = await make_review(session_factory, "hidden topic", listed=False)
+    for rid, listed in ((shown, True), (hidden, False)):
+        r = await client.patch(f"{BASE}/{rid}", json={"is_listed": listed}, headers=headers)
+        assert r.status_code == 200 and r.json() == {"id": str(rid), "is_listed": listed}
+    assert await audit_rows(session_factory, "review.show") == [] and await audit_rows(session_factory, "review.hide") == []
+
+
 async def test_delete_removes_the_review_its_rows_and_its_stream(app, client, session_factory, redis, queue):
     headers = await admin_headers(client, session_factory)
     rid = await make_review(session_factory, "finished topic")

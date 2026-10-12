@@ -73,10 +73,11 @@ async def set_listed(session: AsyncSession, actor: AdminPrincipal, review_id: uu
     review = await session.get(Review, review_id)
     if review is None:
         raise NotFound("review not found")
-    before = review.is_listed
-    review.is_listed = listed
-    await record(session, actor, "review.show" if listed else "review.hide", target_type="review",
-                 target_id=review_id, before={"is_listed": before}, after={"is_listed": listed}, ip_hash=ip_hash)
+    if review.is_listed != listed:  # already so: no change and no audit row
+        before = review.is_listed
+        review.is_listed = listed
+        await record(session, actor, "review.show" if listed else "review.hide", target_type="review",
+                     target_id=review_id, before={"is_listed": before}, after={"is_listed": listed}, ip_hash=ip_hash)
     return {"id": review_id, "is_listed": listed}
 
 

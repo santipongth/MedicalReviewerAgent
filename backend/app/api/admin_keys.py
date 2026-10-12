@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.auth import ip_hash_of, require_admin
 from app.api.deps import get_deps
@@ -40,6 +40,8 @@ class MintBody(BaseModel):
 
 
 class KeyPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # the admin flag is set only at mint: {"is_admin": ...} is 422
+
     name: str | None = Field(None, min_length=1, max_length=100)
     daily_quota: int | None = Field(None, ge=1, le=100_000)
 
@@ -61,7 +63,9 @@ async def admin_mint_key(body: MintBody, deps: AppDeps = Depends(get_deps),
     async with deps.session_factory() as session, session.begin():
         raw, key = await mint(session, identity.admin, name=body.name, daily_quota=body.daily_quota,
                               is_admin=body.is_admin, ip_hash=ip_hash_of(identity, deps))
-    return JSONResponse(status_code=201, content=jsonable_encoder({"key": raw, **key}))
+    # the raw key is in this body only: no browser or proxy may keep a copy
+    return JSONResponse(status_code=201, content=jsonable_encoder({"key": raw, **key}),
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.patch("/admin/keys/{key_id}")

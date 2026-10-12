@@ -1,13 +1,24 @@
 import asyncio
+from contextlib import asynccontextmanager
 
+import pytest
 from sqlalchemy import func, select
+from starlette.requests import Request
 
+from app.api.auth import admin_cookie_secure
+from app.config import Settings
 from app.db.models import AdminAudit
 from app.services.admin_auth import find_user, set_disabled
 from app.services.api_keys import mint_key
 from tests.admin_helpers import CSRF, PASSWORD, cookie_of, create_admin, sign_in
 
 SESSION = "/api/v1/admin/session"
+HTTPS_PROXY = {"X-Forwarded-Proto": "https"}  # what Caddy sends when it terminates TLS
+
+
+def cookie_attrs(response) -> list[str]:
+    """The Set-Cookie attributes after the name=value pair, lower-cased (a random token could contain "secure")."""
+    return [a.strip().lower() for a in response.headers["set-cookie"].split(";")[1:]]
 
 
 async def mint(session_factory, **kw):
@@ -44,6 +55,49 @@ async def test_cookie_is_secure_on_an_https_site(app, client, session_factory):
     app.state.deps.service.settings.public_base_url = "https://reviews.example.org"
     await create_admin(session_factory)
     assert "secure" in (await attempt(client)).headers["set-cookie"].lower()
+
+
+async def test_cookie_is_secure_behind_the_trusted_proxy_on_https(app, client, session_factory):
+    """Behind Caddy on https with PUBLIC_BASE_URL left at its default: uvicorn runs with --no-proxy-headers, so only the
+    proxy's X-Forwarded-Proto says the site is https. Sign-out clears the cookie with the same attributes."""
+    app.state.deps.service.settings.trust_proxy = True
+    await create_admin(session_factory)
+    r = await client.post(SESSION, json={"username": "owner", "password": PASSWORD}, headers={**CSRF, **HTTPS_PROXY})
+    assert r.status_code == 204 and "secure" in cookie_attrs(r)
+    client.cookies.clear()
+    out = await client.delete(SESSION, headers={"Cookie": f"mra_admin={cookie_of(r)}", **CSRF, **HTTPS_PROXY})
+    assert out.status_code == 204 and "secure" in cookie_attrs(out)
+
+
+async def test_forwarded_proto_is_ignored_without_a_trusted_proxy(client, session_factory):
+    """Without TRUST_PROXY the header comes from the client, so it decides nothing."""
+    await create_admin(session_factory)
+    r = await client.post(SESSION, json={"username": "owner", "password": PASSWORD}, headers={**CSRF, **HTTPS_PROXY})
+    assert r.status_code == 204 and "secure" not in cookie_attrs(r)
+
+
+async def test_admin_cookie_secure_false_wins_over_https(app, client, session_factory):
+    settings = app.state.deps.service.settings
+    settings.trust_proxy, settings.public_base_url, settings.admin_cookie_secure = True, "https://x.example.org", False
+    await create_admin(session_factory)
+    r = await client.post(SESSION, json={"username": "owner", "password": PASSWORD}, headers={**CSRF, **HTTPS_PROXY})
+    assert r.status_code == 204 and "secure" not in cookie_attrs(r)
+
+
+@pytest.mark.parametrize(("overrides", "headers", "secure"), [
+    ({}, {}, False),
+    ({"public_base_url": "https://reviews.example.org"}, {}, True),
+    ({"admin_cookie_secure": True}, {}, True),
+    ({"public_base_url": "https://x.example.org", "admin_cookie_secure": False}, {}, False),
+    ({"trust_proxy": True}, HTTPS_PROXY, True),
+    ({"trust_proxy": True}, {"X-Forwarded-Proto": "http"}, False),
+    ({"trust_proxy": True}, {"X-Forwarded-Proto": "http, https"}, True),  # the proxy's own hop is the rightmost
+    ({}, HTTPS_PROXY, False),
+    ({"trust_proxy": True, "admin_cookie_secure": False}, HTTPS_PROXY, False),
+])
+def test_the_admin_cookie_secure_rule(overrides, headers, secure):
+    request = Request({"type": "http", "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()]})
+    assert admin_cookie_secure(request, Settings(_env_file=None, **overrides)) is secure
 
 
 async def test_wrong_password_and_unknown_user_get_the_same_401(client, session_factory):
@@ -134,6 +188,86 @@ async def test_parallel_wrong_passwords_cannot_all_get_past_the_lockout(client, 
     assert calls <= 5 and statuses == [401] * 5 + [429] * 15
     assert all(0 < int(r.headers["retry-after"]) <= 900 for r in responses if r.status_code == 429)
     assert await count(session_factory, "admin.lockout") == 1
+
+
+async def test_a_burst_of_sign_ins_never_runs_more_password_checks_at_once_than_the_limit(
+        app, client, session_factory, monkeypatch):
+    """argon2 is CPU and memory heavy and the route is unauthenticated, so password checks queue for a few slots."""
+    import app.api.admin as admin_api
+
+    app.state.deps.service.settings.admin_login_max_failures = 100  # let the whole burst past the lockout
+    in_flight = peak = calls = 0
+
+    async def tracked(*_):
+        nonlocal in_flight, peak, calls
+        calls += 1
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.02)
+        in_flight -= 1
+        return False, None
+
+    monkeypatch.setattr(admin_api, "verify_password", tracked)
+    await create_admin(session_factory)
+    n = admin_api.VERIFY_CONCURRENCY * 3
+    responses = await asyncio.gather(*(attempt(client, username=f"user{i}", password="not the password")
+                                       for i in range(n)))
+    assert [r.status_code for r in responses] == [401] * n and calls == n
+    assert peak == admin_api.VERIFY_CONCURRENCY  # bounded, and the bound is actually reached
+
+
+async def test_the_password_is_checked_with_no_database_session_open(app, client, session_factory, monkeypatch):
+    """The lookup and the success write each use a short session; the slow argon2 check holds neither a connection
+    nor a transaction."""
+    import app.api.admin as admin_api
+
+    open_sessions = 0
+    seen: list[int] = []
+
+    @asynccontextmanager
+    async def tracking_factory():
+        nonlocal open_sessions
+        async with session_factory() as session:
+            open_sessions += 1
+            try:
+                yield session
+            finally:
+                open_sessions -= 1
+
+    real_verify = admin_api.verify_password
+
+    async def watched(stored, password):
+        seen.append(open_sessions)
+        return await real_verify(stored, password)
+
+    await create_admin(session_factory)
+    app.state.deps.session_factory = tracking_factory
+    monkeypatch.setattr(admin_api, "verify_password", watched)
+    assert (await attempt(client)).status_code == 204
+    assert (await attempt(client, password="not the password")).status_code == 401
+    assert (await attempt(client, username="ghost")).status_code == 401
+    assert seen == [0, 0, 0]
+    assert await count(session_factory, "admin.login") == 1
+
+
+async def test_an_admin_disabled_while_the_password_is_checked_does_not_get_in(app, client, session_factory,
+                                                                              monkeypatch, redis):
+    """The success write re-loads the account: one disabled (or given a new password) in the meantime is refused."""
+    import app.api.admin as admin_api
+
+    real_verify = admin_api.verify_password
+
+    async def disable_meanwhile(stored, password):
+        result = await real_verify(stored, password)
+        async with session_factory() as s, s.begin():
+            await set_disabled(s, "owner", True)
+        return result
+
+    await create_admin(session_factory)
+    monkeypatch.setattr(admin_api, "verify_password", disable_meanwhile)
+    r = await attempt(client)
+    assert r.status_code == 401 and "set-cookie" not in r.headers
+    assert await count(session_factory, "admin.login") == 0 and await redis.keys("mra:admin:session:*") == []
 
 
 async def test_sign_in_needs_the_csrf_header(client, session_factory):

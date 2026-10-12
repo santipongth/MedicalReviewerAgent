@@ -80,10 +80,13 @@ def test_settings():
 
 
 @pytest.fixture
-async def app(session_factory, redis, queue, test_settings):
+async def app(session_factory, redis, queue, test_settings, monkeypatch):
+    import app.api.admin as admin_api
     import app.api.ratelimit as rl
 
     rl.limiter.reset()
+    # The sign-in semaphore is per process and binds to the first event loop that waits on it; each test has its own.
+    monkeypatch.setattr(admin_api, "VERIFY_SLOTS", asyncio.Semaphore(admin_api.VERIFY_CONCURRENCY))
     sink = EventSink(session_factory, redis, ttl_seconds=60)
     deps = AppDeps(session_factory=session_factory, redis=redis, queue=queue, event_sink=sink)
     application = create_app(test_settings, deps=deps)
