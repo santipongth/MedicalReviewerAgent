@@ -43,7 +43,7 @@ can undo it, and never edits a file or restarts a container to do so.
 | Concurrent edits | A save carries the version it was based on; if another version became active meanwhile, 409 |
 | Source precedence | The newest DB version, else `llm.yaml`. `LLM_PRESET` applies only to the `llm.yaml` source; the console warns when it is set while a DB version is active |
 | Seed | `llm.yaml` stays in the image as the seed; "กลับไปใช้ llm.yaml" appends a version with the file's content |
-| Reload | A Redis version key; each worker checks it when a review job starts and rebuilds its models when it changed |
+| Reload | A Redis version key; each worker checks it when a review job starts and every 30 seconds in the background, and rebuilds its models when it changed |
 | In-flight reviews | Keep the models they started with |
 | Result cache | The cache key includes the active config version |
 | Editing | A form for the common edits plus an advanced YAML editor; both go through the same validation and save |
@@ -56,6 +56,7 @@ can undo it, and never edits a file or restarts a container to do so.
 
 One Alembic migration adds **`llm_config_versions`**:
 - `id` integer primary key (autoincrement; the version number shown in the console)
+- `changes` JSONB: the change summary against the version before it (`summarize_change`), kept so history needs no re-diffing
 - `created_at` timestamptz
 - `created_by` varchar(64): the actor label (username, key prefix or `cli`)
 - `note` text, nullable (the owner's comment, at most 500 characters)
@@ -99,8 +100,9 @@ Rows are never updated or deleted by the application. YAML comments are not kept
   from `ctx["llm_version"]`, under the lock, loads the effective config, builds new LLMs with the same semaphore and
   catalog, replaces `ctx["graph_deps"]` (a copy with the new `llms`) and `ctx["graph"]` (same checkpointer), and
   records the version. A failure keeps the old models, logs the error, and is reported (below).
-- `run_review` (and `resume_review`) call `refresh_llms(ctx)` before building the runner. A runner holds the graph it
-  started with, so a running review is never switched mid-way.
+- `run_review` (and `resume_review`) call `refresh_llms(ctx)` before building the runner, and a background task started
+  with the worker calls it every 30 seconds, so an idle worker also picks up a change and reports it. A runner holds the
+  graph it started with, so a running review is never switched mid-way.
 - Each worker reports what it loaded in the Redis hash `mra:llm:loaded`: field `<hostname>:<pid>`, value JSON
   `{version, preset, loaded_at, error}`; fields older than a day are ignored by the console.
 - A resumed review (worker restart, retry) that started before a change uses the new models from the resume point;
@@ -136,12 +138,12 @@ row in its transaction (CSRF and cookie rules as in 23a).
 | `GET /llm-config/versions?before=&limit=` | Newest first: `{items: [{id, created_at, created_by, note, source, restored_from, active_preset, changes}], next}` |
 | `GET /llm-config/versions/{id}` | The full stored config |
 | `GET /llm-config/versions/{id}/yaml` | The config as YAML text (download) |
-| `POST /llm-config/validate` | Body `{config}` or `{yaml}` → `{ok, errors, warnings, cost: {preset: estimate}}`; nothing is saved |
+| `POST /llm-config/validate` | Body `{config}` or `{yaml}` → `{ok, errors, warnings, cost: {preset: estimate}, config, yaml}` (the parsed document and its YAML text, so the form and the YAML editor can share one draft); nothing is saved |
 | `POST /llm-config` | Body `{config}` or `{yaml}`, `base_version`, `note?` → 201 the new version; 409 when `base_version` is stale; 422 with the errors when invalid |
 | `POST /llm-config/versions/{id}/restore` | Body `{base_version, note?}` → 201 the new version |
 | `POST /llm-config/reset` | Body `{base_version, note?}` → 201 a version with `llm.yaml`'s content |
 | `GET /llm-models?q=&structured=&reasoning=&max_price=&limit=` | The cached catalog, filtered: `{items: [{id, context_length, price_in_per_m, price_out_per_m, structured, tools, reasoning}], available}` |
-| `POST /llm-models/test` | Body: one role's settings (`model`, `provider?`, and the `RoleSpec` fields) → the probe result; 429 over 10 tests per minute per actor; audit `llm.test` with the model and the outcome |
+| `POST /llm-models/test` | Body: the draft (`{config}` or `{yaml}`, or neither for the effective config), `preset?` and `role` → the probe result for that role as the draft resolves it (so a new provider in the draft works); 429 over 10 tests per minute per actor; audit `llm.test` with the model and the outcome |
 
 A YAML body is parsed with `yaml.safe_load`; a parse error is 422 with the line.
 
