@@ -9,6 +9,9 @@ import { useAdmin } from "./admin-gate";
 import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT } from "./ui";
 
 interface Checked { draft: LlmConfigDoc; report: ValidateReport }
+/** What the page needs to know about a save, restore or reset: when one begins, when the server has accepted it (the
+ * workers are about to change), and when it is over (for a save: after the page has re-read). */
+export interface WriteTracker { start: () => void; wrote: () => void; end: () => void }
 interface Saved { id: number; workersNotified: boolean; draft: LlmConfigDoc }
 
 /** A preset none of whose models has a known price is not "$0": it cannot be estimated at all. */
@@ -25,8 +28,8 @@ function costLine(preset: string, c: CostEstimate): string {
  * stays while the draft is the saved document or that one, and goes once the draft is edited again. `blockedReason`
  * is why the draft cannot be saved right now (the page knows something the draft does not hold yet): the save button is
  * disabled and the reason is shown next to it; a check still works. */
-export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, onSaved, onConflict }: {
-  base: number | null; draft: LlmConfigDoc; serverConfig?: LlmConfigDoc; blockedReason?: string | null;
+export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, writes, onSaved, onConflict }: {
+  base: number | null; draft: LlmConfigDoc; serverConfig?: LlmConfigDoc; blockedReason?: string | null; writes?: WriteTracker;
   onSaved: (saved: LlmConfigDoc, id: number) => void | Promise<void>; onConflict: (draftYaml: string) => void;
 }) {
   const { fail } = useAdmin();
@@ -73,6 +76,7 @@ export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, onSave
 
   async function save() {
     setBusy(true);
+    writes?.start();
     let r: ValidateReport | null = null; // this save's own check: the `checked` state is from an earlier render
     const sent = draft;
     try {
@@ -84,6 +88,7 @@ export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, onSave
         return;
       }
       const result = await adminApi.saveLlm({ config: sent, base_version: base, ...(note.trim() ? { note: note.trim() } : {}) });
+      writes?.wrote();
       setNote("");
       focusSaved.current = true; // the save button stays disabled until the page has re-read, so focus waits on the note
       // `=== false`: only an answer that says the publish failed is a warning
@@ -97,6 +102,7 @@ export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, onSave
         setError(fail(e));
       }
     } finally {
+      writes?.end();
       setBusy(false);
     }
   }

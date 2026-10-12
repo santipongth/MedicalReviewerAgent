@@ -6,6 +6,7 @@ import { MODEL_SOURCE_LABEL, WORKERS_NOT_NOTIFIED, formatWhen } from "@/lib/admi
 import type { LlmSaveResult, LlmVersion } from "@/lib/admin-types";
 import { useAdmin } from "./admin-gate";
 import { ConfirmButton } from "./confirm-button";
+import type { WriteTracker } from "./models-save-bar";
 import { BUTTON_GHOST } from "./ui";
 
 function changeLines(changes: Record<string, unknown>): string[] {
@@ -26,7 +27,7 @@ interface Notice { text: string; workersNotified: boolean }
 const RESET_HINT = "เวอร์ชันใหม่จาก llm.yaml จะถูกใช้ทันที และขณะที่ใช้เวอร์ชันจาก DB การแก้ llm.yaml หรือ LLM_PRESET ภายหลังจะไม่มีผล";
 
 /** Saved versions, newest first: what each changed, restore (a new version with the old content), YAML download. */
-export function ModelsHistory({ base, onChanged }: { base: number | null; onChanged: () => void }) {
+export function ModelsHistory({ base, onChanged, writes }: { base: number | null; onChanged: () => void; writes?: WriteTracker }) {
   const { fail } = useAdmin();
   const [items, setItems] = useState<LlmVersion[] | null>(null);
   const [next, setNext] = useState<number | null>(null);
@@ -62,8 +63,10 @@ export function ModelsHistory({ base, onChanged }: { base: number | null; onChan
   async function act(run: () => Promise<LlmSaveResult>, done: (v: LlmSaveResult) => string) {
     setActionError(null);
     setNotice(null);
+    writes?.start();
     try {
       const v = await run();
+      writes?.wrote();
       focusNotice.current = true;
       // `=== false`: only an answer that says the publish failed is a warning
       setNotice({ text: done(v), workersNotified: v.workers_notified !== false });
@@ -72,6 +75,8 @@ export function ModelsHistory({ base, onChanged }: { base: number | null; onChan
       setActionError(fail(e));
       // Someone else saved first: re-read, so the next try carries the fresh base version.
       if (e instanceof AdminApiError && e.status === 409) onChanged();
+    } finally {
+      writes?.end();
     }
   }
 

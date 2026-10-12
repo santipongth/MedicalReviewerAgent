@@ -866,3 +866,220 @@ describe("ModelsHeader LLM_PRESET line", () => {
     expect(screen.getByText("LLM_PRESET=constructor ไม่มีใน presets: worker จะเริ่มไม่ได้")).toHaveClass("bg-warn-bg");
   });
 });
+
+describe("ModelsHeader right after this page's own write", () => {
+  const behind = { ...STATE, loaded: [{ ...STATE.loaded[0], version: "2" }] };
+
+  it("says the worker is changing instead of warning, while it settles", () => {
+    render(<ModelsHeader state={behind} now={SEEN + 30_000} settling />);
+    const line = screen.getByText(/worker-1:7/);
+    expect(line).toHaveTextContent(" · กำลังเปลี่ยนเป็นเวอร์ชัน 3 (ภายใน 30 วินาที)");
+    expect(line).not.toHaveTextContent("ไม่ตรงกับเวอร์ชันที่ใช้");
+    expect(line).not.toHaveClass("bg-warn-bg");
+  });
+
+  it("still warns about an error or a silent worker while it settles", () => {
+    render(<ModelsHeader state={{ ...behind, loaded: [{ ...behind.loaded[0], error: "boom" }] }} now={SEEN + 30_000} settling />);
+    expect(screen.getByText(/worker-1:7/)).toHaveClass("bg-warn-bg");
+    expect(screen.getByText(/worker-1:7/)).toHaveTextContent("error: boom");
+  });
+
+  it("warns as before when it is not settling", () => {
+    render(<ModelsHeader state={behind} now={SEEN + 30_000} />);
+    expect(screen.getByText(/worker-1:7/)).toHaveTextContent("ไม่ตรงกับเวอร์ชันที่ใช้");
+  });
+});
+
+/** The page after a save, with the clock under test: setInterval/setTimeout/Date are fake, microtasks and the DOM are real. */
+describe("ModelsView re-reads while a worker is catching up", () => {
+  const TICK = 10_000;
+  beforeEach(() => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"], now: SEEN + 30_000 });
+    // Testing Library only waits through fake timers when it finds a `jest` global; vitest's clock is the same library
+    vi.stubGlobal("jest", { advanceTimersByTime: (ms: number) => vi.advanceTimersByTime(ms) });
+  });
+  const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+
+  /** One worker that heartbeats on every read (loaded_at is "now") and runs `worker`; the server is on `version`. */
+  function pollingServer(start: { version: number; worker: string; seenAgoMs?: number }) {
+    const s = { version: start.version, worker: start.worker, gets: 0, posts: 0 };
+    mockAdminFetch((m, p) => {
+      if (m === "GET" && p === "/llm-config") {
+        s.gets += 1;
+        const loaded_at = new Date(Date.now() - (start.seenAgoMs ?? 0)).toISOString();
+        return [200, { ...STATE, version: s.version, loaded: [{ ...STATE.loaded[0], version: s.worker, loaded_at }] }];
+      }
+      if (m === "GET" && p.startsWith("/llm-config/versions")) return [200, VERSIONS];
+      if (p === "/llm-config/validate") return [200, REPORT_OK];
+      if (m === "POST" && p === "/llm-config") { s.posts += 1; s.version += 1; return [201, { ...VERSIONS.items[0], id: s.version, workers_notified: true }]; }
+    });
+    return s;
+  }
+  const worker = () => screen.getByText(/worker-1:7/);
+
+  async function saveOnce() {
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await screen.findByText(/บันทึกเป็นเวอร์ชัน \d+ แล้ว/);
+    await advance(0);
+  }
+
+  it("polls every 10 s after a save until the workers report the new version, then stops", async () => {
+    const s = pollingServer({ version: 3, worker: "3" });
+    await renderAdmin(<ModelsView />);
+    await screen.findByText(/ใช้เวอร์ชัน 3 จาก DB/);
+    await saveOnce();
+    expect(worker()).toHaveTextContent(" · กำลังเปลี่ยนเป็นเวอร์ชัน 4 (ภายใน 30 วินาที)");
+    const afterSave = s.gets;
+    await advance(TICK);
+    expect(s.gets).toBe(afterSave + 1);
+    expect(worker()).toHaveTextContent("กำลังเปลี่ยนเป็นเวอร์ชัน 4");
+    s.worker = "4";
+    await advance(TICK);
+    expect(s.gets).toBe(afterSave + 2);
+    expect(worker()).not.toHaveTextContent("กำลังเปลี่ยน");
+    expect(worker()).not.toHaveClass("bg-warn-bg");
+    await advance(5 * 60_000);
+    expect(s.gets).toBe(afterSave + 2);
+  });
+
+  it("gives up after 2 minutes and brings the warning back after 60 s", async () => {
+    const s = pollingServer({ version: 3, worker: "3" });
+    await renderAdmin(<ModelsView />);
+    await screen.findByText(/ใช้เวอร์ชัน 3 จาก DB/);
+    await saveOnce();
+    const afterSave = s.gets;
+    await advance(59_000);
+    expect(worker()).toHaveTextContent("กำลังเปลี่ยนเป็นเวอร์ชัน 4");
+    await advance(2_000);
+    expect(worker()).toHaveTextContent("ไม่ตรงกับเวอร์ชันที่ใช้");
+    expect(worker()).toHaveClass("bg-warn-bg");
+    expect(worker()).not.toHaveTextContent("กำลังเปลี่ยน");
+    await advance(70_000);
+    const polled = s.gets - afterSave;
+    expect(polled).toBeGreaterThanOrEqual(10);
+    expect(polled).toBeLessThanOrEqual(12);
+    await advance(10 * 60_000);
+    expect(s.gets - afterSave).toBe(polled);
+  });
+
+  it("starts a fresh 2 minutes with the next save", async () => {
+    const s = pollingServer({ version: 3, worker: "3" });
+    await renderAdmin(<ModelsView />);
+    await screen.findByText(/ใช้เวอร์ชัน 3 จาก DB/);
+    await saveOnce();
+    await advance(5 * 60_000);
+    const idle = s.gets;
+    await advance(TICK);
+    expect(s.gets).toBe(idle);
+    await waitFor(() => expect(screen.getByRole("button", SAVE)).toBeEnabled());
+    await saveOnce();
+    const afterSecond = s.gets;
+    await advance(TICK);
+    expect(s.gets).toBe(afterSecond + 1);
+  });
+
+  it("does not read while a save is in flight, and reads again once it has finished", async () => {
+    const s = pollingServer({ version: 3, worker: "2" }); // a worker is behind from the start: the page is already polling
+    await renderAdmin(<ModelsView />);
+    await screen.findByText(/ใช้เวอร์ชัน 3 จาก DB/);
+    await advance(TICK);
+    expect(s.gets).toBe(2);
+    const inner = globalThis.fetch;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method ?? "GET") === "POST" && new URL(String(input), "http://site.test").pathname.endsWith("/llm-config")) await gate;
+      return inner(input, init);
+    }));
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await advance(0); // the check is answered, the save is held
+    expect(s.posts).toBe(0);
+    await advance(35_000);
+    expect(s.gets).toBe(2); // three ticks came and went without a read
+    await act(async () => { release(); await vi.advanceTimersByTimeAsync(0); });
+    await screen.findByText("บันทึกเป็นเวอร์ชัน 4 แล้ว");
+    expect(s.gets).toBe(3); // the save's own re-read
+    await advance(TICK);
+    expect(s.gets).toBe(4);
+  });
+
+  it("drops a read that began before a save, so it cannot land ahead of the save's own re-read", async () => {
+    const s = pollingServer({ version: 3, worker: "2" });
+    await renderAdmin(<ModelsView />);
+    await screen.findByText(/ใช้เวอร์ชัน 3 จาก DB/);
+    const inner = globalThis.fetch;
+    const gates: (() => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const get = (init?.method ?? "GET") === "GET" && new URL(String(input), "http://site.test").pathname.endsWith("/llm-config");
+      if (get) await new Promise<void>((resolve) => gates.push(resolve)); // every read waits for its turn
+      return inner(input, init);
+    }));
+    await advance(TICK); // the poll's read starts and waits
+    expect(gates).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await advance(0); // the check and the save are answered (version 4), the save's re-read waits
+    expect(s.posts).toBe(1);
+    expect(gates).toHaveLength(2);
+    await act(async () => { gates[0](); await vi.advanceTimersByTimeAsync(0); }); // the poll's read is answered with version 4
+    expect(screen.getByText(/ใช้เวอร์ชัน 3 จาก DB/)).toBeInTheDocument(); // ... and dropped: the page waits for its own re-read
+    await act(async () => { gates[1](); await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByText(/ใช้เวอร์ชัน 4 จาก DB/)).toBeInTheDocument();
+  });
+
+  it("keeps unsaved edits through a background read", async () => {
+    const s = pollingServer({ version: 3, worker: "2" });
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    await advance(TICK);
+    expect(s.gets).toBe(2);
+    expect(guardModel()).toHaveValue("vendor/mine");
+  });
+
+  it("does not poll for a worker that has gone quiet", async () => {
+    const s = pollingServer({ version: 3, worker: "2", seenAgoMs: 5 * 60_000 });
+    await renderAdmin(<ModelsView />);
+    const line = await screen.findByText(/worker-1:7/);
+    expect(line).toHaveTextContent("ไม่ได้รายงานเกิน 2 นาที");
+    await advance(60_000);
+    expect(s.gets).toBe(1);
+  });
+
+  it("clears its timers when the page goes away", async () => {
+    const s = pollingServer({ version: 3, worker: "2" });
+    const { unmount } = await renderAdmin(<ModelsView />);
+    await screen.findByText(/ใช้เวอร์ชัน 3 จาก DB/);
+    const running = vi.getTimerCount();
+    unmount();
+    expect(vi.getTimerCount()).toBeLessThan(running); // the poller's timer went with the page
+    await advance(60_000);
+    expect(s.gets).toBe(1);
+  });
+
+  it("also settles after a restore from the history tab", async () => {
+    const s = pollingServer({ version: 3, worker: "3" });
+    const base = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), "http://site.test").pathname;
+      if ((init?.method ?? "GET") === "POST" && path.endsWith("/versions/2/restore")) {
+        s.version = 4;
+        return new Response(JSON.stringify({ ...VERSIONS.items[0], id: 4, source: "restore", restored_from: 2, workers_notified: true }),
+          { status: 201, headers: { "Content-Type": "application/json" } });
+      }
+      return base(input, init);
+    }));
+    await renderAdmin(<ModelsView />);
+    fireEvent.click(await screen.findByRole("button", { name: "ประวัติ" }));
+    const v2 = await screen.findByRole("listitem", { name: /เวอร์ชัน 2/ });
+    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }));
+    fireEvent.click(within(v2).getByRole("button", { name: "ยืนยันย้อนกลับ" }));
+    await screen.findByText(/ใช้เวอร์ชัน 4 จาก DB/);
+    await advance(0);
+    expect(worker()).toHaveTextContent("กำลังเปลี่ยนเป็นเวอร์ชัน 4");
+    const afterRestore = s.gets;
+    s.worker = "4";
+    await advance(TICK);
+    expect(s.gets).toBe(afterRestore + 1);
+    expect(worker()).not.toHaveTextContent("กำลังเปลี่ยน");
+  });
+});

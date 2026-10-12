@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatWhen } from "@/lib/admin-copy";
 import { missingKeyEnvs, sameConfig } from "@/lib/admin-models";
@@ -10,7 +10,7 @@ import { ConfirmButton } from "./confirm-button";
 import { ModelsCatalog } from "./models-catalog";
 import { ModelsHistory } from "./models-history";
 import { ModelsPresets } from "./models-presets";
-import { ModelsSaveBar } from "./models-save-bar";
+import { ModelsSaveBar, type WriteTracker } from "./models-save-bar";
 import { ModelsYaml } from "./models-yaml";
 import { BUTTON_GHOST } from "./ui";
 
@@ -28,13 +28,27 @@ function isStale(loadedAt: string, now: number): boolean {
   return Number.isFinite(seen) && now - seen > STALE_AFTER_MS; // a time that does not parse is not stale
 }
 
+/** The id a worker reports for the version the page shows: "file" while llm.yaml is the source. */
+const wantedVersion = (s: LlmConfigState): string => (s.version === null ? "file" : String(s.version));
+
+/** A worker that is still reporting but runs another version than the page's: it has not picked up a change yet. */
+const hasLaggingWorker = (s: LlmConfigState, now: number): boolean =>
+  s.loaded.some((w) => w.version !== wantedVersion(s) && !isStale(w.loaded_at, now));
+
+/** After a save, restore or reset the workers pick the version up within 30 s (their poll), so the page re-reads this
+ * often while one lags, for at most POLL_WINDOW_MS. For SETTLING_MS after the page's own change, a lagging worker is
+ * "changing" and not yet a warning. */
+const POLL_MS = 10_000;
+const POLL_WINDOW_MS = 120_000;
+const SETTLING_MS = 60_000;
+
 /** `now` (ms since epoch) is when `state` was read: ModelsView passes the time of its fetch and tests pin it. Without it,
  * the time this header first rendered is used. */
-export function ModelsHeader({ state, now }: { state: LlmConfigState; now?: number }) {
+export function ModelsHeader({ state, now, settling = false }: { state: LlmConfigState; now?: number; settling?: boolean }) {
   const [mountedAt] = useState(() => Date.now());
   const at = now ?? mountedAt;
   const missing = missingKeyEnvs(state);
-  const wanted = state.version === null ? "file" : String(state.version);
+  const wanted = wantedVersion(state);
   return (
     <div className="mt-4 grid gap-2">
       <p className="font-display font-semibold">
@@ -55,11 +69,13 @@ export function ModelsHeader({ state, now }: { state: LlmConfigState; now?: numb
         {state.loaded.map((w) => {
           const stale = isStale(w.loaded_at, at);
           const other = w.version !== wanted;
-          const off = other || w.error || stale;
+          const changing = other && settling; // this page changed the version a moment ago: the worker is on its way
+          const off = (other && !changing) || w.error || stale;
           return (
             <li key={w.worker} className={off ? "rounded-sm bg-warn-bg px-3 py-1" : "text-muted"}>
               {`${w.worker}: เวอร์ชัน ${w.version} · preset ${w.preset} · รายงานล่าสุด ${formatWhen(w.loaded_at)}`}
-              {other ? " · ไม่ตรงกับเวอร์ชันที่ใช้" : ""}
+              {other && !changing ? " · ไม่ตรงกับเวอร์ชันที่ใช้" : ""}
+              {changing ? ` · กำลังเปลี่ยนเป็นเวอร์ชัน ${wanted === "file" ? "llm.yaml" : wanted} (ภายใน 30 วินาที)` : ""}
               {w.error ? ` · error: ${w.error}` : ""}
               {stale ? " · ไม่ได้รายงานเกิน 2 นาที (worker อาจหยุดทำงาน)" : ""}
             </li>
@@ -125,6 +141,13 @@ export function ModelsView() {
   const mounted = useRef(true);
   /** Request numbers only (never what a request is for): an answer older than one already applied is dropped. */
   const requests = useRef({ started: 0, applied: 0 });
+  /** Saves, restores and resets in flight (`active`) and how many have begun (`began`). While one is in flight no
+   * background read starts, and one that began before it is dropped, so a plain reload cannot land before the re-read
+   * that belongs to the write. */
+  const writes = useRef({ active: 0, began: 0 });
+  /** True for SETTLING_MS after this page's own write. `writeCount` restarts the polling window with each write. */
+  const [settling, setSettling] = useState(false);
+  const [writeCount, setWriteCount] = useState(0);
 
   useEffect(() => {
     mounted.current = true;
@@ -134,11 +157,11 @@ export function ModelsView() {
   /** Reads /llm-config. Resolves when the answer is applied or the read has failed; it never rejects. `saved` and
    * `savedId` are the document an admin has just saved and the version it became. They belong to this one request: a
    * read that fails drops them with it. */
-  const load = useCallback((saved?: LlmConfigDoc, savedId?: number): Promise<void> => {
+  const load = useCallback((saved?: LlmConfigDoc, savedId?: number, accept?: () => boolean): Promise<void> => {
     const seq = ++requests.current.started;
     return adminApi.llmConfig()
       .then((s) => {
-        if (!mounted.current || seq < requests.current.applied) return;
+        if (!mounted.current || seq < requests.current.applied || (accept && !accept())) return;
         requests.current.applied = seq;
         setState(s);
         setReadAt(Date.now());
@@ -146,11 +169,41 @@ export function ModelsView() {
         setEdit((e) => reconcile(e, s, saved, savedId));
       })
       .catch((e: unknown) => {
-        if (mounted.current && seq >= requests.current.applied) setError(fail(e));
+        if (mounted.current && seq >= requests.current.applied && (!accept || accept())) setError(fail(e));
       });
   }, [fail]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const track = useMemo<WriteTracker>(() => ({
+    start: () => { writes.current.active += 1; writes.current.began += 1; },
+    wrote: () => { setSettling(true); setWriteCount((n) => n + 1); },
+    end: () => { writes.current.active -= 1; },
+  }), []);
+
+  /** One background read of /llm-config (a plain reload: unsaved edits stay). */
+  const poll = useCallback(() => {
+    if (writes.current.active > 0) return; // a write is in flight: its own re-read comes first
+    const began = writes.current.began;
+    void load(undefined, undefined, () => writes.current.active === 0 && writes.current.began === began);
+  }, [load]);
+
+  const lagging = state !== null && hasLaggingWorker(state, readAt);
+  useEffect(() => {
+    if (!lagging) return;
+    const since = Date.now();
+    const id = setInterval(() => {
+      if (Date.now() - since >= POLL_WINDOW_MS) clearInterval(id);
+      else poll();
+    }, POLL_MS);
+    return () => clearInterval(id);
+  }, [lagging, writeCount, poll]);
+
+  useEffect(() => {
+    if (!settling) return;
+    const id = setTimeout(() => setSettling(false), SETTLING_MS);
+    return () => clearTimeout(id);
+  }, [settling, writeCount]);
 
   useEffect(() => {
     if (draftNote && focusDraftNote.current) {
@@ -192,7 +245,7 @@ export function ModelsView() {
       {!state && !error && <p role="status" className="mt-4 text-muted">กำลังโหลด…</p>}
       {state && edit && (
         <>
-          <ModelsHeader state={state} now={readAt} />
+          <ModelsHeader state={state} now={readAt} settling={settling} />
           <div role="group" aria-label="ส่วนของหน้า" className="mt-6 flex flex-wrap gap-1 border-b border-rule pb-2">
             {TABS.map(([key, label]) => (
               <button key={key} type="button" aria-pressed={tab === key} onClick={() => setTab(key)}
@@ -208,7 +261,7 @@ export function ModelsView() {
               </button>
             ))}
           </div>
-          {tab === "history" && <ModelsHistory base={state.version} onChanged={reload} />}
+          {tab === "history" && <ModelsHistory base={state.version} onChanged={reload} writes={track} />}
           {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} />}
           {(tab === "yaml" || yamlPending) && (
             <div hidden={tab !== "yaml"}>
@@ -234,7 +287,7 @@ export function ModelsView() {
                 <p ref={draftNoteRef} tabIndex={-1} role="status" className="mt-6 rounded-sm bg-info-bg px-4 py-2">{draftNote.text}</p>
               )}
               <ModelsSaveBar base={edit.base} draft={edit.doc} serverConfig={state.config} blockedReason={yamlPending ? YAML_NOT_APPLIED : null}
-                onSaved={(saved, id) => { dropRefused(); return load(saved, id); }}
+                writes={track} onSaved={(saved, id) => { dropRefused(); return load(saved, id); }}
                 onConflict={(text) => { setEdit((e) => (e ? { ...e, refused: text } : e)); setTab("yaml"); reload(); }} />
             </>
           )}
