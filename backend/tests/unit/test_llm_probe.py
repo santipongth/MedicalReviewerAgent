@@ -4,6 +4,7 @@ import json
 
 from app.config import Settings
 from app.services import llm_probe
+from app.services.budget import current_budget
 from app.services.llm import LLMResult
 from app.services.llm_config import parse_llm_config, resolve_llm_config
 from app.services.llm_probe import PROBE_MAX_TOKENS, ProbeAnswer, probe
@@ -128,3 +129,26 @@ async def test_the_request_on_the_wire_still_asks_for_at_most_the_probe_tokens()
     body = server.requests[0]
     limits = [body[k] for k in ("max_tokens", "max_completion_tokens") if k in body]
     assert limits and set(limits) == {PROBE_MAX_TOKENS} and "models" not in body
+
+
+class CountingLLM(FakeLLM):
+    calls = 0
+
+    async def ainvoke(self, system, user):
+        type(self).calls += 1
+        return await super().ainvoke(system, user)
+
+
+async def test_the_budget_is_a_gate_before_the_call_and_the_call_itself_is_bounded_by_its_tokens(monkeypatch):
+    CountingLLM.calls = 0
+    expensive = CountingLLM(ProbeAnswer(ok=True, word="x"), cost=0.2)  # more than PROBE_BUDGET_USD
+    out = await probe(role(), SETTINGS, None, build=lambda *a, **k: expensive)
+    assert out["ok"] is True and out["cost_usd"] == 0.2 and CountingLLM.calls == 1  # charged after: the one call ran
+    monkeypatch.setattr(llm_probe, "PROBE_BUDGET_USD", 0.0)  # a spent budget refuses the call before it is made
+    out = await probe(role(), SETTINGS, None, build=lambda *a, **k: expensive)
+    assert out["ok"] is False and "cost cap" in out["error"] and out["cost_usd"] == 0 and CountingLLM.calls == 1
+
+
+async def test_the_probes_budget_does_not_leak_into_the_caller():
+    await probe(role(), SETTINGS, None, build=lambda *a, **k: FakeLLM(ProbeAnswer(ok=True)))
+    assert current_budget() is None

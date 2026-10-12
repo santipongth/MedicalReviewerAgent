@@ -7,6 +7,7 @@ import yaml
 from sqlalchemy import func, select
 
 from app.db.models import AdminAudit, LlmConfigVersion
+from app.services.api_keys import mint_key
 from app.services.llm_store import LLM_VERSION_KEY
 from app.services.model_catalog import ModelInfo
 from tests.admin_helpers import admin_headers
@@ -603,3 +604,36 @@ async def test_configs_that_would_fail_at_build_time_are_refused_when_checked(cl
         saved = await client.post(f"{BASE}/llm-config", json={"config": draft, "base_version": None}, headers=h)
         assert saved.status_code == 422 and fragment in saved.json()["detail"]
     assert probe_calls == [] and await version_count(session_factory) == 0
+
+
+async def test_every_models_write_needs_the_csrf_header_with_a_session_cookie(client, session_factory, probe_calls, redis):
+    h = await admin_headers(client, session_factory)
+    first = await client.post(f"{BASE}/llm-config", json={"config": MINIMAL, "base_version": None}, headers=h)
+    assert first.status_code == 201
+    vid = first.json()["id"]
+    audits_before = await count(session_factory, "llm_config.save") + await count(session_factory, "llm_config.restore")
+    without = {"Cookie": h["Cookie"]}  # signed in, but no X-MRA-Admin: 1: what a cross-site form would send
+    writes = {
+        "validate": (f"{BASE}/llm-config/validate", {"config": MINIMAL}),
+        "save": (f"{BASE}/llm-config", {"config": MINIMAL, "base_version": vid}),
+        "restore": (f"{BASE}/llm-config/versions/{vid}/restore", {"base_version": vid}),
+        "reset": (f"{BASE}/llm-config/reset", {"base_version": vid}),
+        "test": (f"{BASE}/llm-models/test", {"config": MINIMAL, "role": "guard"}),
+    }
+    for name, (url, body) in writes.items():
+        refused = await client.post(url, json=body, headers=without)
+        assert refused.status_code == 403, (name, refused.status_code, refused.text)
+        assert "X-MRA-Admin" in refused.json()["detail"], name
+    assert probe_calls == [] and await version_count(session_factory) == 1
+    assert await count(session_factory, "llm.test") == 0
+    assert await count(session_factory, "llm_config.save") + await count(session_factory, "llm_config.restore") == audits_before
+    assert await count(session_factory, "llm_config.reset") == 0
+    assert await redis.get(LLM_VERSION_KEY) == str(vid)
+    # the same calls go through with the header ...
+    assert (await client.post(writes["validate"][0], json=writes["validate"][1], headers=h)).status_code == 200
+    assert (await client.post(writes["test"][0], json=writes["test"][1], headers=h)).status_code == 200
+    # ... and an admin API key never needed it
+    async with session_factory() as s, s.begin():
+        key, _ = await mint_key(s, "ops", is_admin=True)
+    assert (await client.post(writes["validate"][0], json=writes["validate"][1],
+                              headers={"X-API-Key": key})).status_code == 200
