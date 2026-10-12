@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy import func, select
 
 from app.db.models import AdminAudit
@@ -111,6 +113,27 @@ async def test_control_characters_in_the_username_are_422_before_any_lookup_or_h
     for bad in ("own\x00er", "\x00", "owner\n", "ow\x1fner", "owner\x7f", "\tonly"):
         assert (await attempt(client, username=bad)).status_code == 422, repr(bad)
     assert await count(session_factory, "admin.lockout") == 0
+
+
+async def test_parallel_wrong_passwords_cannot_all_get_past_the_lockout(client, session_factory, monkeypatch):
+    """The attempt is counted before the password is hashed, so a burst gets max_failures guesses, not one each."""
+    import app.api.admin as admin_api
+
+    calls = 0
+
+    async def slow_wrong(*_):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.01)
+        return False, None
+
+    monkeypatch.setattr(admin_api, "verify_password", slow_wrong)
+    await create_admin(session_factory)
+    responses = await asyncio.gather(*(attempt(client, password="not the password") for _ in range(20)))
+    statuses = sorted(r.status_code for r in responses)
+    assert calls <= 5 and statuses == [401] * 5 + [429] * 15
+    assert all(0 < int(r.headers["retry-after"]) <= 900 for r in responses if r.status_code == 429)
+    assert await count(session_factory, "admin.lockout") == 1
 
 
 async def test_sign_in_needs_the_csrf_header(client, session_factory):

@@ -63,14 +63,15 @@ class SignIn(BaseModel):
 
 @router.post("/admin/session", status_code=204)
 async def sign_in(body: SignIn, request: Request, deps: AppDeps = Depends(get_deps)) -> Response:
-    """Sign in to the admin console: sets the mra_admin session cookie. Five failures lock the username and the
-    address for admin_lockout_seconds."""
+    """Sign in to the admin console: sets the mra_admin session cookie. Each attempt is counted before the password is
+    checked; after admin_login_max_failures failures the username and the address are locked for
+    admin_lockout_seconds (429 with Retry-After)."""
     require_csrf_header(request)
     settings = deps.service.settings
     username = normalize_username(body.username)
     ip_hash = hash_ip(client_ip(request), settings.ip_hash_salt)
     throttle = LoginThrottle(deps.redis, settings.admin_login_max_failures, settings.admin_lockout_seconds)
-    wait = await throttle.locked_for(username, ip_hash)
+    wait, last_allowed = await throttle.begin_attempt(username, ip_hash)  # counts this attempt before any lookup
     if wait is not None:
         return JSONResponse(status_code=429, content={"detail": "too many failed sign-ins; try again later"},
                             headers={"Retry-After": str(wait)})
@@ -87,12 +88,12 @@ async def sign_in(body: SignIn, request: Request, deps: AppDeps = Depends(get_de
             signed_in = AdminPrincipal(kind="user", id=user.id, label=user.username)
             await record(session, signed_in, "admin.login", target_type="admin", target_id=user.id, ip_hash=ip_hash)
     if signed_in is None:
-        if await throttle.fail(username, ip_hash):
+        if last_allowed:
             async with deps.session_factory() as session, session.begin():
                 await record(session, AdminPrincipal(kind="user", id=known_id, label=username[:64]), "admin.lockout",
                              target_type="admin", target_id=username, ip_hash=ip_hash)
         raise HTTPException(status_code=401, detail="invalid username or password")
-    await throttle.clear_user(username)
+    await throttle.succeeded(username, ip_hash)
     token = await admin_sessions(deps).create(signed_in.id, signed_in.label)
     response = Response(status_code=204)
     response.set_cookie(ADMIN_COOKIE, token, max_age=settings.admin_session_ttl_seconds, path=ADMIN_COOKIE_PATH,

@@ -60,8 +60,10 @@ class AdminSessions:
 
 
 class LoginThrottle:
-    """Failed sign-ins counted per username and per IP. When either count reaches max_failures, that username or that
-    address is locked until its counter expires (lockout_seconds after the first failure)."""
+    """Sign-in attempts counted per username and per IP, reserved before the password is checked so a burst of parallel
+    attempts cannot all pass the check first: each attempt counts itself atomically, and only the first max_failures
+    in a window are allowed to go on. The window is fixed: it starts at the first attempt and later ones never extend
+    it. A success gives its attempt back, so the counters hold failures only. Redis keeps counts, never passwords."""
 
     def __init__(self, redis, max_failures: int, lockout_seconds: int) -> None:
         self.redis = redis
@@ -71,28 +73,33 @@ class LoginThrottle:
     def _keys(self, username: str, ip_hash: str) -> tuple[str, str]:
         return FAIL_USER_KEY.format(username), FAIL_IP_KEY.format(ip_hash)
 
-    async def locked_for(self, username: str, ip_hash: str) -> int | None:
-        for key in self._keys(username, ip_hash):
-            count = await self.redis.get(key)
-            if count is None or int(count) < self.max_failures:
-                continue
-            ttl = int(await self.redis.ttl(key))
-            if ttl == -2:  # the counter expired between the two reads: no longer locked
-                continue
-            if ttl == -1:  # a locked counter that lost its expiry (crash after INCR): give it one so it cannot lock forever
-                await self.redis.expire(key, self.lockout)
-                return self.lockout
-            return max(ttl, 1)
-        return None
-
-    async def fail(self, username: str, ip_hash: str) -> bool:
+    async def begin_attempt(self, username: str, ip_hash: str) -> tuple[int | None, bool]:
+        """Counts this attempt against the username and the address in one Redis transaction (INCR, then EXPIRE NX so a
+        counter always has a window, even one left without expiry by a crash). Returns (wait, reached):
+        (seconds, False) when either counter is already over max_failures, meaning this attempt must be refused (wait is
+        the longest remaining window among the counters over the limit, at least 1); otherwise (None, True) when this
+        attempt is the last one allowed for the username or the address, and (None, False) when it is not."""
         keys = self._keys(username, ip_hash)
-        async with self.redis.pipeline(transaction=True) as pipe:  # INCR and EXPIRE together: never a counter without TTL
+        async with self.redis.pipeline(transaction=True) as pipe:
             for key in keys:
                 pipe.incr(key)
-                pipe.expire(key, self.lockout, nx=True)  # NX: the window starts at the first failure and is not extended
+                pipe.expire(key, self.lockout, nx=True)  # NX: the window starts at the first attempt and is not extended
+                pipe.ttl(key)
             results = await pipe.execute()
-        return any(int(count) == self.max_failures for count in results[::2])
+        counts, ttls = [int(n) for n in results[0::3]], [int(t) for t in results[2::3]]
+        over = [ttl if ttl > 0 else self.lockout for count, ttl in zip(counts, ttls, strict=True)
+                if count > self.max_failures]
+        if over:
+            return max(max(over), 1), False
+        return None, any(count == self.max_failures for count in counts)
 
-    async def clear_user(self, username: str) -> None:
-        await self.redis.delete(FAIL_USER_KEY.format(username))
+    async def succeeded(self, username: str, ip_hash: str) -> None:
+        """A correct password: the username's counter is cleared and this attempt is taken back off the address's
+        counter (never below zero; deleted at zero), so failures from other people on the same address still count."""
+        user_key, ip_key = self._keys(username, ip_hash)
+        async with self.redis.pipeline(transaction=True) as pipe:
+            pipe.delete(user_key)
+            pipe.decr(ip_key)
+            _, left = await pipe.execute()
+        if int(left) <= 0:
+            await self.redis.delete(ip_key)
