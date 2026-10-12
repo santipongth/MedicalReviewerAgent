@@ -1,4 +1,4 @@
-import type { AdminStatus, AuditEntry } from "./admin-types";
+import type { AdminStatus, AuditEntry, LlmVersion } from "./admin-types";
 
 export const STATUS_LABEL: Record<AdminStatus, string> = {
   queued: "รอคิว", running: "กำลังทำ", done: "เสร็จ", error: "ผิดพลาด", rejected: "ถูกปฏิเสธ", cancelled: "ยกเลิกแล้ว",
@@ -13,7 +13,17 @@ export const ACTION_LABEL: Record<string, string> = {
   "admin.login": "เข้าสู่ระบบ", "admin.logout": "ออกจากระบบ", "admin.lockout": "ล็อกการเข้าสู่ระบบ (ผิดหลายครั้ง)",
   "admin.create": "สร้างบัญชีผู้ดูแล", "admin.passwd": "เปลี่ยนรหัสผ่าน", "admin.disable": "ปิดบัญชีผู้ดูแล",
   "admin.enable": "เปิดบัญชีผู้ดูแล",
+  "llm_config.save": "บันทึกการตั้งค่าโมเดล", "llm_config.restore": "ย้อนการตั้งค่าโมเดล",
+  "llm_config.reset": "กลับไปใช้ llm.yaml", "llm.test": "ทดสอบโมเดล",
 };
+
+export const MODEL_SOURCE_LABEL: Record<LlmVersion["source"], string> = {
+  edit: "แก้ไข", restore: "ย้อนกลับ", file: "จาก llm.yaml",
+};
+
+/** A save, restore or reset answered 201 with `workers_notified: false`: the version is stored, the Redis publish
+ * failed, and the workers' 30 s poll of the DB picks it up. */
+export const WORKERS_NOT_NOTIFIED = "บันทึกแล้ว แต่แจ้ง worker ไม่สำเร็จ: worker จะใช้เวอร์ชันนี้ภายใน 30 วินาที";
 
 export const ACTOR_LABEL: Record<AuditEntry["actor_kind"], string> = { user: "ผู้ดูแล", key: "API key", cli: "CLI" };
 

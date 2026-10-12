@@ -35,3 +35,40 @@ export interface AuditEntry {
   target_type: string | null; target_id: string | null;
   before: Record<string, unknown> | null; after: Record<string, unknown> | null;
 }
+
+/** Model management (/api/v1/admin/llm-*, Plan 23b). Mirrors backend/app/api/admin_models.py. */
+export interface LlmRoleSpec {
+  model: string; provider?: string | null; max_tokens?: number; temperature?: number | null; top_p?: number | null;
+  reasoning_effort?: string | null; structured_output?: string; timeout_seconds?: number; fallback_models?: string[];
+  extra_body?: Record<string, unknown>;
+}
+export interface LlmConfigDoc {
+  active_preset: string; default_provider?: string; providers: Record<string, Record<string, unknown>>;
+  presets: Record<string, Record<string, LlmRoleSpec>>; harness?: Record<string, unknown>;
+  overrides?: Record<string, Record<string, unknown>>;
+}
+/** `loaded_at` is when the worker last reported (it re-reports every 30 s), not when it loaded the version. */
+export interface LoadedWorker { worker: string; version: string; preset: string; loaded_at: string; error: string | null }
+export interface LlmConfigState {
+  source: "db" | "file"; version: number | null; config: LlmConfigDoc; active_preset: string; env_preset: string | null;
+  keys_present: Record<string, boolean>; loaded: LoadedWorker[];
+}
+export interface LlmVersion {
+  id: number; created_at: string; created_by: string; note: string | null; source: "edit" | "restore" | "file";
+  restored_from: number | null; active_preset: string; changes: Record<string, unknown>;
+}
+/** The 201 answer of save, restore and reset. `workers_notified` is false when the Redis publish failed: the version is
+ * saved, but the workers pick it up only at their next DB check. */
+export type LlmSaveResult = LlmVersion & { workers_notified: boolean };
+export interface CostEstimate { total_usd: number; per_role: Record<string, number>; unknown_models: string[] }
+export interface ValidateReport {
+  ok: boolean; errors: string[]; warnings: string[]; cost: Record<string, CostEstimate>;
+  config: LlmConfigDoc | null; yaml: string | null;
+}
+export interface CatalogModel {
+  id: string; context_length: number | null; price_in_per_m: number; price_out_per_m: number;
+  structured: boolean; tools: boolean; reasoning: boolean;
+}
+export interface ProbeResult { ok: boolean; latency_ms: number; cost_usd: number; model: string; error: string | null }
+export type LlmDraft = { config: LlmConfigDoc } | { yaml: string };
+export interface CatalogQuery { q?: string; structured?: boolean; reasoning?: boolean; max_price?: number | null }

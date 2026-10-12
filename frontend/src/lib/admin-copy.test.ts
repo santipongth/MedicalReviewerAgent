@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { describeChange, formatUsd } from "./admin-copy";
+import { ACTION_LABEL, MODEL_SOURCE_LABEL, describeChange, formatUsd } from "./admin-copy";
 
 describe("admin copy", () => {
   it("formats service costs", () => {
     expect(formatUsd(0)).toBe("$0.00");
     expect(formatUsd(0.0745)).toBe("$0.075");
     expect(formatUsd(7.9)).toBe("$7.90");
+  });
+
+  it("labels the model-management audit actions and version sources in Thai", () => {
+    for (const action of ["llm_config.save", "llm_config.restore", "llm_config.reset", "llm.test"]) expect(ACTION_LABEL[action]).toBeTruthy();
+    expect(MODEL_SOURCE_LABEL).toEqual({ edit: "แก้ไข", restore: "ย้อนกลับ", file: "จาก llm.yaml" });
   });
 
   it("describes a change field by field", () => {
