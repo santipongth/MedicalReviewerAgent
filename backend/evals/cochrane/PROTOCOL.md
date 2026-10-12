@@ -16,8 +16,13 @@ reviews on their primary outcome.
 metabolic, infection, maternal and child, renal or respiratory, mental health), drawn in random order with seed
 20261011 from Europe PMC (`JOURNAL:"Cochrane Database Syst Rev"` + year range + the stratum terms in
 `manifest.yaml`, matched in the review title). Eligibility: intervention review; GRADE certainty reported for the
-primary outcome; >= 3 RCTs for the primary outcome; a search date stated in the abstract. An LLM screens each abstract; the owner checks every
-decision.
+primary outcome; >= 3 RCTs for the primary outcome; a search date stated in the abstract. An LLM screens each abstract;
+the owner checks every decision. The sample is the first 10 eligible reviews of each stratum in draw order.
+
+Primary outcome: the first outcome the abstract lists among the review's primary or critical outcomes (when it lists
+none, the first graded result) that has a GRADE rating and >= 3 RCTs; a review with no such outcome is not eligible.
+For a review with several comparisons (including a network meta-analysis) the question names the one comparison that
+carries that result.
 
 ## Index test
 The engine at a recorded `prompt_version`, git SHA, preset and per-role models. Input: the review question as one
@@ -45,3 +50,9 @@ follows TRIPOD-LLM.
   record, including the full text of open-access reviews (1006–1870 hits per stratum, about half of all Cochrane
   reviews in the year range), so most drawn reviews were off topic (contact-lens drops in "cardiovascular"). With the
   title restriction each stratum has 91–264 hits. No manifest built before this change was used.
+- 2026-10-12: the owner delegated the manifest check to Claude Opus 5.5 (an AI model); no human checked it. Every
+  decision (135 records) was checked against the title and abstract: four parallel checks under one written rule set,
+  then the controller's uniform primary-outcome rule above. The check excluded 6 entries the screening LLM had judged
+  eligible, made 6 it had excluded eligible, corrected the question or outcome of 35, and marked 3 as beyond their
+  stratum's first 10; each entry's `notes` records it. Plan 22b's human check of the reference standard does not
+  replace a human check of this manifest.
