@@ -74,18 +74,25 @@ class LoginThrottle:
     async def locked_for(self, username: str, ip_hash: str) -> int | None:
         for key in self._keys(username, ip_hash):
             count = await self.redis.get(key)
-            if count is not None and int(count) >= self.max_failures:
-                return max(int(await self.redis.ttl(key)), 1)
+            if count is None or int(count) < self.max_failures:
+                continue
+            ttl = int(await self.redis.ttl(key))
+            if ttl == -2:  # the counter expired between the two reads: no longer locked
+                continue
+            if ttl == -1:  # a locked counter that lost its expiry (crash after INCR): give it one so it cannot lock forever
+                await self.redis.expire(key, self.lockout)
+                return self.lockout
+            return max(ttl, 1)
         return None
 
     async def fail(self, username: str, ip_hash: str) -> bool:
-        locked = False
-        for key in self._keys(username, ip_hash):
-            count = int(await self.redis.incr(key))
-            if await self.redis.ttl(key) < 0:  # new counter, or one that lost its expiry
-                await self.redis.expire(key, self.lockout)
-            locked = locked or count == self.max_failures
-        return locked
+        keys = self._keys(username, ip_hash)
+        async with self.redis.pipeline(transaction=True) as pipe:  # INCR and EXPIRE together: never a counter without TTL
+            for key in keys:
+                pipe.incr(key)
+                pipe.expire(key, self.lockout, nx=True)  # NX: the window starts at the first failure and is not extended
+            results = await pipe.execute()
+        return any(int(count) == self.max_failures for count in results[::2])
 
     async def clear_user(self, username: str) -> None:
         await self.redis.delete(FAIL_USER_KEY.format(username))

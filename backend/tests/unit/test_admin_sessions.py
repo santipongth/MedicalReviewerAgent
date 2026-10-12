@@ -50,3 +50,19 @@ async def test_a_counter_without_expiry_gets_one(redis):
     t = LoginThrottle(redis, max_failures=5, lockout_seconds=900)
     await t.fail("owner", "ip1")
     assert 0 < await redis.ttl("mra:admin:fail:u:owner") <= 900
+
+
+async def test_a_locked_counter_without_expiry_is_repaired_by_locked_for(redis):
+    await redis.set("mra:admin:fail:u:owner", "5")  # e.g. a crash after the INCR that reached the limit
+    t = LoginThrottle(redis, max_failures=5, lockout_seconds=900)
+    wait = await t.locked_for("owner", "ip1")
+    assert wait is not None and 0 < wait <= 900
+    assert 0 < await redis.ttl("mra:admin:fail:u:owner") <= 900
+
+
+async def test_a_later_failure_does_not_extend_the_window(redis):
+    t = LoginThrottle(redis, max_failures=5, lockout_seconds=900)
+    await t.fail("owner", "ip1")
+    await redis.expire("mra:admin:fail:u:owner", 100)  # as if most of the window had passed
+    await t.fail("owner", "ip1")
+    assert 0 < await redis.ttl("mra:admin:fail:u:owner") <= 100
