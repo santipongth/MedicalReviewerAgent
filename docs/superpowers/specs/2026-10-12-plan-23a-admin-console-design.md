@@ -18,9 +18,10 @@ The owner runs the service from one place behind a username and password, instea
 - The dashboard shows real numbers from `reviews` and the capacity counters.
 - The owner can find a review, cancel it, hide or show it in the public list, and delete a finished one.
 - The owner can mint a key (shown once), change its name or quota, and revoke it.
-- Every change above, every sign-in and every lockout appears in the audit log with who, what, before, after and when.
+- Every change above, every successful sign-in and every lockout appears in the audit log with who, what, before, after
+  and when.
 - Admin API keys keep working for scripts on every admin route, and no admin route appears in `/api/openapi.json`.
-- Five wrong passwords lock the username (and the IP) for 15 minutes.
+- Five wrong passwords lock the username (and the IP) until the 15-minute window ends (Retry-After gives the wait).
 
 **Out of scope (later plans):**
 - 23b: providers, presets and per-role models in the DB with live reload.
@@ -38,7 +39,7 @@ The owner runs the service from one place behind a username and password, instea
 | Password hash | argon2id via `argon2-cffi` (new backend dependency) |
 | First admin | CLI only (`app.cli.admin create`); there is no sign-up page |
 | Session | Opaque random token, stored hashed in Redis, 8 hours, carried in an httpOnly SameSite=Strict cookie |
-| Brute force | 5 failures in 15 minutes per username or per IP lock it for 15 minutes; attempts are counted before the password is checked |
+| Brute force | 5 failures in a 15-minute window per username or per IP lock it until the window ends (Retry-After gives the wait); attempts are counted before the password is checked |
 | CSRF | SameSite=Strict, plus a required `X-MRA-Admin: 1` header on cookie-authenticated writes |
 | Scripts | Admin API keys work on every admin route, as today |
 | Public API docs | Admin routes are hidden from OpenAPI (`include_in_schema=False`) and described in `docs/api.md` |
@@ -101,8 +102,15 @@ Each CLI change writes an audit row with `actor_kind = cli`.
 - Sign-out deletes the session and clears the cookie.
 
 The cookie is `mra_admin`: `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/admin`, `Max-Age` equal to the TTL, and
-`Secure` when `admin_cookie_secure` is true. That setting defaults to `None`, which means "true when
-`public_base_url` starts with `https://`".
+`Secure` by the rule in `admin_cookie_secure(request, settings)` (`app/api/auth.py`), used by sign-in and sign-out alike:
+- `admin_cookie_secure` (setting, `ADMIN_COOKIE_SECURE`) decides when it is set, true or false;
+- otherwise Secure when `public_base_url` starts with `https://`,
+- or when `trust_proxy` is on and the request's `X-Forwarded-Proto` is `https` (Caddy sets it when it terminates TLS;
+  uvicorn runs with `--no-proxy-headers`, so the request's own scheme is always http behind Caddy). Without
+  `trust_proxy` the header comes from the client and is ignored.
+
+The production overlay sets `TRUST_PROXY=true`, so an https site gets a Secure cookie even before the operator sets
+`PUBLIC_BASE_URL=https://…` (which the production docs ask for anyway).
 
 ### 4.3 Sign-in and lockout
 `POST /api/v1/admin/session` with `{username, password}`. The body is checked first: `username` is 1-64 characters
@@ -115,13 +123,17 @@ without control characters, `password` is 1-256 characters, and anything else is
    taken first and atomically, parallel attempts cannot get more than `admin_login_max_failures` (default 5) checks.
 4. If either counter is above the limit, answer 429 with `Retry-After` (the longest remaining window among the
    counters over the limit, at least 1). The password is not checked, so even the right one waits.
-5. Otherwise verify the password. An unknown or disabled user is verified against a fixed dummy hash, so the answer
-   takes the same time either way.
+5. Otherwise verify the password. The account (id, hash, disabled) is read in a short read-only session that is
+   closed before the check, so the slow argon2 step holds no connection and no transaction. An unknown or disabled
+   user is verified against a fixed dummy hash, so the answer takes the same time either way. At most 4 checks run at
+   once per API process (`VERIFY_SLOTS` in `app/api/admin.py`); the rest wait their turn.
 6. On failure, answer 401 `invalid username or password`. When this attempt brought either counter to the limit
    (the 5th failure), write one `admin.lockout` audit row. The 6th attempt is the first to be refused.
-7. On success, give the attempt back: delete the username counter, and decrement the IP counter (deleted at zero), so
-   a success does not count against the address and failures by other people on it still do. Set `last_login_at`,
-   create the session, set the cookie, write `admin.login`, and answer 204.
+7. On success, one short transaction re-loads the account; if it was disabled, removed or given a new password while
+   the password was being checked, the attempt fails as in step 6. Otherwise it applies the rehash, sets
+   `last_login_at` and writes `admin.login`. Then give the attempt back: delete the username counter, and decrement
+   the IP counter (deleted at zero), so a success does not count against the address and failures by other people on
+   it still do. Create the session, set the cookie, and answer 204.
 
 Failed attempts are not audited one by one (a flood would bury the log); the lockout row and the counters record them.
 
@@ -157,11 +169,11 @@ A malformed id in a path, an unknown `status` and a bad cursor are 422.
 | `GET /dashboard?days=30` | Section 7; `days` is 1–90 |
 | `GET /reviews?q=&status=&listed=&before=&limit=` | `q` (up to 200 characters) matches the topic as a literal, case-insensitive substring (`%` and `_` are not wildcards); newest first. Items: `id`, `topic` (first 200 chars), `status`, `review_type` (from `options`, `slr` when missing), `created_at`, `finished_at`, `cost_usd`, `is_listed`, `api_key_prefix`, `prompt_version`, `error` |
 | `POST /reviews/{id}/cancel` | `ReviewService.cancel`; 409 when already finished; audit `review.cancel` |
-| `PATCH /reviews/{id}` | `{is_listed}`; audit `review.hide` or `review.show` with before and after |
+| `PATCH /reviews/{id}` | `{is_listed}`; audit `review.hide` or `review.show` with before and after (none when the value does not change) |
 | `DELETE /reviews/{id}` | Section 8; 409 unless the review is finished; audit `review.delete` |
 | `GET /keys` | Every key, revoked ones too: `id`, `key_prefix`, `name`, `daily_quota`, `is_admin`, `created_at`, `revoked_at`, `reviews_24h` |
-| `POST /keys` | `{name, daily_quota, is_admin}` (`name` 1–100 characters, not blank; `daily_quota` 1–100000, default 100); answers 201 with the raw key once; audit `key.mint` (prefix only) |
-| `PATCH /keys/{id}` | `{name?, daily_quota?}` (same limits as mint); a revoked key is 409; audit `key.update`. The admin flag is set only at mint |
+| `POST /keys` | `{name, daily_quota, is_admin}` (`name` 1–100 characters, not blank; `daily_quota` 1–100000, default 100); answers 201 with the raw key once and `Cache-Control: no-store`; audit `key.mint` (prefix only) |
+| `PATCH /keys/{id}` | `{name?, daily_quota?}` (same limits as mint; any other field, such as `is_admin`, is 422); a revoked key is 409; audit `key.update` (none when nothing changes). The admin flag is set only at mint |
 | `POST /keys/{id}/revoke` | Idempotent; audit `key.revoke` on the first revoke only |
 | `GET /audit?before=&limit=` | Newest first |
 | `POST /mcp/reload` | Unchanged behaviour; now also open to signed-in admins (with the `X-MRA-Admin` header) and hidden from OpenAPI. It validates a file and changes nothing, so it writes no audit row |
@@ -237,12 +249,15 @@ Routes under `frontend/src/app/admin/`. Each `page.tsx` is a thin server page th
   "หน้า admin ใช้ผ่านที่อยู่หลักของเว็บเท่านั้น" with the reason. Any later 401 (the session ran out while the console
   was open) goes to `/admin?expired=1`.
 - `(console)/dashboard`: totals, an echarts stacked bar of reviews per day by status with the daily cost as a line,
-  the `by_model` table (the `"unknown"` row is explained in words), and the capacity block (accepting or not, the
-  queue, and today's reviews and spend against their caps, all from the dashboard payload).
-- `(console)/reviews`: search box, status and listed filters, a table with "โหลดเพิ่ม" paging, and row actions
-  (ซ่อน or แสดง; ยกเลิก for a queued or running review, ลบ for a finished one). Each topic links to `/r/{id}`.
+  the `by_model` table (the `"unknown"` row is explained in words), and the capacity block (accepting or not, with
+  the refusal reason in short Thai text and an unknown code as it came, the queue, and today's reviews and spend
+  against their caps, all from the dashboard payload).
+- `(console)/reviews`: search box, status and listed filters, a table with "โหลดเพิ่ม" paging, the public-list state
+  as text (แสดงอยู่ or ซ่อนอยู่, the filter's words) with a button naming its action (ซ่อนจากรายการ or แสดงในรายการ), and
+  row actions (ยกเลิก for a queued or running review, ลบ for a finished one). Each topic links to `/r/{id}`.
 - `(console)/keys`: the key table, a mint form whose result shows the raw key once with a copy button and a warning
-  that it will not be shown again, inline quota and name edits, and revoke (not offered for a revoked key).
+  that it will not be shown again (while it is shown, "สร้าง key" is disabled and says to close it first, so a second
+  mint cannot replace it unseen), inline quota and name edits, and revoke (not offered for a revoked key).
 - `(console)/audit`: the log, newest first, with before and after shown as a compact diff and "โหลดเพิ่ม" paging.
 
 Destructive actions (ลบ, revoke) ask again inside the page with a second confirm button. They never use the browser's
@@ -305,7 +320,8 @@ Frontend:
 ## 12. Risks
 
 - **A stolen cookie** is good for up to 8 hours. HttpOnly limits script theft, and `passwd` or `disable` ends it.
-- **Lockout as a nuisance:** anyone can lock a known username for 15 minutes. That is acceptable for a few admins;
+- **Lockout as a nuisance:** anyone can lock a known username until the 15-minute window ends (Retry-After gives the
+  wait). That is acceptable for a few admins;
   admin keys still work during a lockout.
 - **Dev versus production paths:** the dev rewrite exists only in `next dev`, so production depends on Caddy routing
   `/api/*`, which it already does. The docker smoke check runs through Caddy to cover that path.

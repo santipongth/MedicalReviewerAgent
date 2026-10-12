@@ -1,6 +1,7 @@
 # Production overlay: only the Caddy front is published, so the API's X-Forwarded-For handling can be trusted.
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-# Set SITE_ADDRESS=your.domain (automatic HTTPS) and the TURNSTILE_* keys in .env.
+# Set SITE_ADDRESS=your.domain (automatic HTTPS), PUBLIC_BASE_URL=https://your.domain (webhook and MCP links; it also
+# makes the admin cookie Secure) and the TURNSTILE_* keys in .env.
 services:
   api:
     ports: !reset []
