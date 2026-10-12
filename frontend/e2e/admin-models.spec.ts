@@ -400,6 +400,7 @@ test("the test call of a role answers in its row and sends the admin header", as
 for (const scheme of ["light", "dark"] as const) {
   for (const width of [1440, 390]) {
     test(`models page at ${width}px (${scheme}): every tab and state — no sideways scroll, axe-clean`, async ({ page }) => {
+      test.slow(); // about thirty axe scans and tab changes in one test: three times the usual timeout
       await page.setViewportSize({ width, height: 1000 });
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
       await mockApi(page);
@@ -428,6 +429,7 @@ for (const scheme of ["light", "dark"] as const) {
       await audit(page, at("YAML · loaded from the draft"));
       await box.fill(`${await box.inputValue()}\n`);
       await expect(page.getByText(/กด "ใช้ YAML นี้" ก่อน/)).toBeVisible();
+      await expect(saveButton(page)).toBeDisabled();
       await audit(page, at("YAML · text typed, not applied (save blocked)"));
       await page.getByRole("button", { name: "ตรวจ YAML" }).click();
       await expect(page.getByText(/ใช้ได้ มีคำเตือน \d+ ข้อ/)).toBeVisible();
