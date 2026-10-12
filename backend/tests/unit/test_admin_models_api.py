@@ -10,7 +10,7 @@ from app.db.models import AdminAudit, LlmConfigVersion
 from app.services.llm_store import LLM_VERSION_KEY
 from app.services.model_catalog import ModelInfo
 from tests.admin_helpers import admin_headers
-from tests.llm_helpers import MINIMAL, with_model
+from tests.llm_helpers import MINIMAL, with_model, write_yaml
 
 BASE = "/api/v1/admin"
 CHEAP = ModelInfo("vendor/cheap", 100_000, 1e-7, 4e-7, frozenset({"structured_outputs"}))
@@ -38,6 +38,40 @@ async def test_state_shows_the_file_then_the_db(client, session_factory):
     assert saved.status_code == 201
     state = (await client.get(f"{BASE}/llm-config", headers=h)).json()
     assert (state["source"], state["version"], state["active_preset"]) == ("db", saved.json()["id"], "cheap")
+
+
+async def test_state_reports_the_preset_the_workers_run_not_the_files_own(client, app, session_factory, tmp_path,
+                                                                           monkeypatch):
+    h = await admin_headers(client, session_factory)
+    settings = app.state.deps.service.settings
+    monkeypatch.setattr(settings, "llm_config_path", str(write_yaml(tmp_path / "llm.yaml", MINIMAL)))
+    monkeypatch.setattr(settings, "llm_preset", "better")
+    state = (await client.get(f"{BASE}/llm-config", headers=h)).json()
+    assert state["source"] == "file" and state["config"]["active_preset"] == "cheap"
+    assert (state["active_preset"], state["env_preset"]) == ("better", "better")  # LLM_PRESET beats the file's own
+    monkeypatch.setattr(settings, "llm_preset", None)
+    assert (await client.get(f"{BASE}/llm-config", headers=h)).json()["active_preset"] == "cheap"
+
+
+async def test_state_with_an_llm_preset_that_names_no_preset_still_answers(client, app, session_factory, tmp_path,
+                                                                          monkeypatch):
+    h = await admin_headers(client, session_factory)
+    settings = app.state.deps.service.settings
+    monkeypatch.setattr(settings, "llm_config_path", str(write_yaml(tmp_path / "llm.yaml", MINIMAL)))
+    monkeypatch.setattr(settings, "llm_preset", "nope")
+    r = await client.get(f"{BASE}/llm-config", headers=h)
+    assert r.status_code == 200  # the header shows it through env_preset; validate reports it
+    assert (r.json()["active_preset"], r.json()["env_preset"]) == ("nope", "nope")
+
+
+async def test_state_with_a_db_version_ignores_llm_preset(client, app, session_factory, monkeypatch):
+    h = await admin_headers(client, session_factory)
+    saved = await client.post(f"{BASE}/llm-config", json={"config": MINIMAL, "base_version": None}, headers=h)
+    assert saved.status_code == 201
+    monkeypatch.setattr(app.state.deps.service.settings, "llm_preset", "better")
+    state = (await client.get(f"{BASE}/llm-config", headers=h)).json()
+    assert state["source"] == "db"
+    assert (state["active_preset"], state["env_preset"]) == ("cheap", "better")  # the version's own preset
 
 
 async def test_save_publishes_the_version_and_a_stale_base_is_409(client, session_factory, redis):

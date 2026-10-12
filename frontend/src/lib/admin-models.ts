@@ -36,18 +36,12 @@ export function usedProviders(config: LlmConfigDoc, preset: string): string[] {
   return [...used].sort();
 }
 
-/** The preset the service really runs: LLM_PRESET replaces the file's own `active_preset`, but only while llm.yaml is
- * the source and the name exists (a DB version ignores LLM_PRESET). */
-export function effectivePreset(state: LlmConfigState): string {
-  const env = state.env_preset;
-  return state.source === "file" && env && env in state.config.presets ? env : state.active_preset;
-}
-
-/** Key variables that are not set although a role of the running preset needs them. Providers that are merely
- * declared, and openai_compatible, never appear. A variable the service did not report is not a warning. */
+/** Key variables that are not set although a role of the running preset (`state.active_preset`, which the service
+ * resolves with LLM_PRESET already) needs them. Providers that are merely declared, and openai_compatible, never
+ * appear. A variable the service did not report is not a warning. */
 export function missingKeyEnvs(state: LlmConfigState): string[] {
   const missing = new Set<string>();
-  for (const name of usedProviders(state.config, effectivePreset(state))) {
+  for (const name of usedProviders(state.config, state.active_preset)) {
     if (name === KEY_OPTIONAL) continue;
     const env = state.config.providers[name]?.api_key_env;
     if (typeof env === "string" && state.keys_present[env] === false) missing.add(env);

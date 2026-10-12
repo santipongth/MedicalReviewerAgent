@@ -105,8 +105,12 @@ async def llm_config_state(deps: AppDeps = Depends(get_deps), _: Identity = Depe
     async with deps.session_factory() as session:
         effective = await load_effective(session, settings)
     keys = {p.api_key_env: bool(_api_key(settings, p.api_key_env)) for p in effective.config.providers.values()}
+    # The preset the workers run: LLM_PRESET replaces the file's own active_preset while llm.yaml is the source, and a
+    # DB version ignores it. Computed directly, not with effective.resolve(): an LLM_PRESET that names no preset must
+    # not turn this route into a 500 (the page shows it through env_preset, and validate reports it).
+    running = settings.llm_preset if effective.source == "file" and settings.llm_preset else effective.config.active_preset
     return {"source": effective.source, "version": effective.version, "config": effective.raw,
-            "active_preset": effective.config.active_preset, "env_preset": settings.llm_preset,
+            "active_preset": running, "env_preset": settings.llm_preset,
             "keys_present": keys, "loaded": await loaded_workers(deps.redis)}
 
 

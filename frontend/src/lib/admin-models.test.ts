@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CONFIG, STATE } from "@/test/admin-model-fixtures";
-import { effectivePreset, missingKeyEnvs, usedProviders } from "./admin-models";
+import { missingKeyEnvs, usedProviders } from "./admin-models";
 import type { LlmConfigDoc, LlmConfigState, LlmRoleSpec } from "./admin-types";
 
 const PROVIDERS = {
@@ -87,19 +87,10 @@ describe("missingKeyEnvs", () => {
     expect(missingKeyEnvs(state(CONFIG, {}))).toEqual([]);
   });
 
-  it("judges the preset the service is really running: LLM_PRESET wins over the file's own active_preset", () => {
-    const fromFile = state(THREE, { ...ALL_MISSING, OPENROUTER_API_KEY: true }, { source: "file", version: null, env_preset: "claude" });
-    expect(effectivePreset(fromFile)).toBe("claude");
-    expect(missingKeyEnvs(fromFile)).toEqual(["ANTHROPIC_API_KEY"]);
-  });
-});
-
-describe("effectivePreset", () => {
-  it("is the active preset, except that LLM_PRESET applies while llm.yaml is the source and names a real preset", () => {
-    expect(effectivePreset(state(THREE, {}))).toBe("cheap");
-    expect(effectivePreset(state(THREE, {}, { env_preset: "claude" }))).toBe("cheap"); // a DB version ignores LLM_PRESET
-    expect(effectivePreset(state(THREE, {}, { source: "file", env_preset: "claude" }))).toBe("claude");
-    expect(effectivePreset(state(THREE, {}, { source: "file", env_preset: "nope" }))).toBe("cheap");
-    expect(effectivePreset(state(THREE, {}, { source: "file", env_preset: null }))).toBe("cheap");
+  it("judges the preset the service reports as running, not the config document's own active_preset", () => {
+    // the service already puts LLM_PRESET into state.active_preset while llm.yaml is the source
+    const running = state(THREE, { ...ALL_MISSING, OPENROUTER_API_KEY: true }, { source: "file", version: null, env_preset: "claude", active_preset: "claude" });
+    expect(running.config.active_preset).toBe("cheap");
+    expect(missingKeyEnvs(running)).toEqual(["ANTHROPIC_API_KEY"]);
   });
 });

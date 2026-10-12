@@ -80,6 +80,25 @@ describe("ModelsView key warnings", () => {
   });
 });
 
+describe("ModelsView with LLM_PRESET on the file source", () => {
+  it("shows the running preset and checks the key of the provider that preset uses", async () => {
+    const config: LlmConfigDoc = {
+      ...CONFIG,
+      providers: { ...CONFIG.providers, anthropic: { api_key_env: "ANTHROPIC_API_KEY" } },
+      presets: { ...CONFIG.presets, claude: Object.fromEntries(Object.keys(CONFIG.presets.cheap).map((r) => [r, { model: "m", provider: "anthropic" }])) },
+    };
+    mockAdminFetch(routes({
+      ...STATE, source: "file", version: null, config, env_preset: "claude", active_preset: "claude", // as the service reports it
+      keys_present: { OPENROUTER_API_KEY: true, ANTHROPIC_API_KEY: false },
+      loaded: [{ ...STATE.loaded[0], version: "file" }],
+    }));
+    await renderAdmin(<ModelsView />);
+    expect(await screen.findByText(/preset ที่ใช้งาน: claude/)).toBeInTheDocument();
+    expect(screen.getByText(/ANTHROPIC_API_KEY ยังไม่ได้ตั้ง/)).toBeInTheDocument();
+    expect(screen.queryByText(/OPENROUTER_API_KEY ยังไม่ได้ตั้ง/)).not.toBeInTheDocument();
+  });
+});
+
 describe("ModelsView tabs", () => {
   it("shows the history list under the ประวัติ tab", async () => {
     mockAdminFetch(routes());
