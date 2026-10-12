@@ -33,6 +33,7 @@ from app.graph.schemas import (
 from app.graph.state import ReviewState
 from app.harness.comparison import question_card
 from app.harness.design import NO_DIRECTION_CATEGORIES, NON_QUANTITATIVE_CATEGORIES
+from app.harness.glossary import glossary_of
 from app.harness.grade import (
     LEVELS,
     analyse_meta,
@@ -540,7 +541,8 @@ async def _localize_cards(deps, papers: list[dict[str, Any]], language: str) -> 
     strings: dict[str, str] = {}
     for p in papers:
         strings |= _card_strings(p["ref"], p["card"])
-    res = await localize_strings(llm, harness_runner(deps), strings, language, retry_max_items=retry_cap(len(papers)))
+    res = await localize_strings(llm, harness_runner(deps), strings, language, retry_max_items=retry_cap(len(papers)),
+                                 glossary=glossary_of(deps).text)
     cards = {p["ref"]: _apply_card_strings(p["ref"], p["card"], res.strings) for p in papers}
     entry = {"stage": "localize_cards", "items": len(strings), **res.telemetry(),
              "seconds": round(time.perf_counter() - started, 3)}
@@ -1328,7 +1330,8 @@ def make_localize(deps):
         errors: list[str] = []
         try:
             res = await localize_strings(llm, harness_runner(deps), strings, language,
-                                         retry_max_items=retry_cap(len(state.get("selected") or [])))
+                                         retry_max_items=retry_cap(len(state.get("selected") or [])),
+                                         glossary=glossary_of(deps).text)
         except LLMError as exc:
             res = Localized(strings, kept_english=len(strings),
                             untranslated=sum(1 for v in strings.values() if untranslated(v, v, language)))
@@ -1493,6 +1496,7 @@ def make_finalize(deps):
             },
             "quality": summarize_quality(state.get("quality") or [], state.get("started_at")),
             "errors": list(state.get("errors") or []), "prompt_version": deps.settings.prompt_version,
+            "glossary_version": glossary_of(deps).label,
             "llm_preset": getattr(llms, "preset", ""), "models": models,
             "external_context": [{"tool": e["tool"], "arguments": e["arguments"], "ok": e["ok"],
                                   "preview": (e.get("text") or e.get("error") or "")[:500]}

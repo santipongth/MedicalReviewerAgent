@@ -48,10 +48,11 @@ def retry_cap(papers: int) -> int:
     return max(RETRY_MAX_ITEMS, 2 * papers)
 
 
-def localize_system(language: str) -> str:
+def localize_system(language: str, glossary: str | None = None) -> str:
+    """`glossary`: the active glossary text (Plan 23c; Thai only). None uses the built-in GLOSSARY, verbatim."""
     name = LANGUAGE_NAMES.get(language, language)
-    glossary = GLOSSARY.get(language)
-    terms = f"\nGlossary (use these terms): {glossary}" if glossary else ""
+    terms_text = glossary if glossary is not None and language == "th" else GLOSSARY.get(language)
+    terms = f"\nGlossary (use these terms): {terms_text}" if terms_text else ""
     return f"""You translate parts of a medical literature review from English into {name}.
 Rules:
 - Translate every item completely and faithfully, whole sentences and short labels alike; do not add, remove or
@@ -199,7 +200,7 @@ class Localized:
 
 async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], language: str, *,
                            chunk_size: int = 15, retry_chunk_size: int = RETRY_CHUNK,
-                           retry_max_items: int = RETRY_MAX_ITEMS) -> Localized:
+                           retry_max_items: int = RETRY_MAX_ITEMS, glossary: str | None = None) -> Localized:
     """Small chunks (Thai output needs several times the tokens of its English source; 60-item batches overflowed
     max_tokens and silently stayed English) translated concurrently. A chunk that still fails keeps only its
     own items in English. Then one bounded retry pass, in smaller chunks, for at most `retry_max_items` items still
@@ -208,7 +209,7 @@ async def localize_strings(llm, runner: HarnessRunner, strings: dict[str, str], 
     out = Localized(dict(strings))
     if language == "en" or not strings or llm is None:
         return out
-    system, name = localize_system(language), LANGUAGE_NAMES.get(language, language)
+    system, name = localize_system(language, glossary), LANGUAGE_NAMES.get(language, language)
 
     async def translate(chunk: dict[str, str], *, retry: bool):
         user = "<items>\n" + json.dumps([{"id": k, "text": v} for k, v in chunk.items()], ensure_ascii=False) + \

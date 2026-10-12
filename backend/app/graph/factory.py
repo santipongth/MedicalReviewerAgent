@@ -12,12 +12,13 @@ from app.services.searxng import SearxngClient
 
 
 def build_graph_deps(settings: Settings, http: HttpClient, redis=None, catalog=None, *, resolved=None, sem=None,
-                     config_version: str = "file") -> GraphDeps:
+                     config_version: str = "file", glossary=None) -> GraphDeps:
     """Stub deps when graph_mode == "stub". Papers are read from their abstracts only (no full-text fetching)."""
     if settings.graph_mode == "stub":
-        return GraphDeps(settings=settings)
+        return GraphDeps(settings=settings, glossary=glossary)
     return GraphDeps(
         settings=settings,
+        glossary=glossary,
         llms=build_llms(settings, catalog=catalog, resolved=resolved, sem=sem, config_version=config_version),
         mcp=McpRegistry(settings.mcp_servers_path),
         searxng=SearxngClient(http, settings.searxng_url, settings.searxng_engines,

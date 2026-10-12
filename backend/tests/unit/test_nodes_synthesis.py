@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import re
 import time
@@ -26,6 +27,7 @@ from app.graph.schemas import (
     TranslationBatch,
     TranslationItem,
 )
+from app.harness.glossary import ActiveGlossary
 from app.services.llm import LLMError, LLMs
 from app.services.llm_config import HarnessSpec
 from tests.fakes import FakeStructuredLLM, bind_by_role, to_thai
@@ -524,3 +526,18 @@ async def test_graded_synthesis_uses_the_synthesizer_role_as_built():
     d = deps(synthesizer=synth)
     await make_write_synthesis(d)(state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en"))
     assert synth.calls and d.llms.for_schema.requests == []
+
+
+async def test_localize_uses_the_glossary_in_the_deps_and_finalize_records_it():
+    papers = [paper("P1", card())]
+    writer = make_write_synthesis(deps(synthesizer=FakeStructuredLLM("ds", lambda s, u: narrative("A [P1]."))))
+    english = (await writer(state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en")))["synthesis"]
+    loc = FakeStructuredLLM("qwen", thai)
+    d = dataclasses.replace(deps(localizer=loc), glossary=ActiveGlossary(5, "placebo = ยาหลอก"))
+    await make_localize(d)(state(papers, synthesis=english))
+    systems = [system for system, _ in loc.calls]
+    assert systems and all(s.endswith("Glossary (use these terms): placebo = ยาหลอก") for s in systems)
+    base = {"topic": "t", "english_topic": "T", "language": "en", "papers": [], "question": None,
+            "synthesis": {"executive_summary": "none"}}
+    assert (await make_finalize(d)(base))["result"]["glossary_version"] == "5"
+    assert (await make_finalize(deps())(base))["result"]["glossary_version"] == "file"

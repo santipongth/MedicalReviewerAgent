@@ -10,6 +10,7 @@ from app.graph import prompts
 from app.graph.progress import progress_writer
 from app.graph.schemas import QueryPlan, QuestionCritique, ReviewQuestion, TopicVerdict
 from app.graph.state import ReviewState
+from app.harness.glossary import glossary_of
 from app.harness.localize import localize_strings
 from app.harness.question import question_problems
 from app.harness.runner import HarnessRunner
@@ -74,7 +75,8 @@ async def _localized_display(deps, runner: HarnessRunner, q: ReviewQuestion, lan
     cost = 0.0
     if harness_spec(deps).localize:
         try:
-            res = await localize_strings(getattr(deps.llms, "localizer", None), runner, strings, language)
+            res = await localize_strings(getattr(deps.llms, "localizer", None), runner, strings, language,
+                                         glossary=glossary_of(deps).text)
             strings, cost = res.strings, res.cost
         except LLMError:  # display stays in English; the review itself is unaffected
             cost = 0.0
