@@ -1,7 +1,7 @@
 """Browse OpenRouter models and validate config/llm.yaml.
 
     python -m app.cli.models list [--search TEXT] [--structured] [--reasoning] [--max-price USD_PER_1M] [--limit N]
-    python -m app.cli.models check [--config PATH] [--preset NAME]
+    python -m app.cli.models check [--config PATH] [--preset NAME] [--source file|db]
 """
 from __future__ import annotations
 
@@ -12,46 +12,16 @@ from typing import TextIO
 
 from app.compat import run_async
 from app.config import get_settings
-from app.schemas.review import ReviewOptions
-from app.services.http import HttpClient
 from app.services.llm_config import LLMConfigError, load_llm_config
+from app.services.llm_cost import _PAPERS, _POOL, TYPICAL_CALLS
 from app.services.model_catalog import (
     ModelInfo,
-    OpenRouterCatalog,
     choose_structured_method,
+    load_live_catalog,
     validate_role,
 )
 
-_PAPERS = ReviewOptions.model_fields["max_papers"].default
-_POOL = ReviewOptions.model_fields["candidate_limit"].default
-
-# Rough token budget of one default review (a full pool screened, the default paper count analysed), used for the
-# cost estimate in `check`.
-TYPICAL_CALLS: dict[str, tuple[int, int, int]] = {  # role: (calls, input tokens, output tokens) per call
-    "guard": (1, 400, 100),
-    "refiner": (2, 1500, 1200),                 # draft + one self-critique round
-    "planner": (1, 900, 700),
-    "screener": (_POOL // 10, 6000, 900),       # the pool in parallel batches of 10
-    "extractor": (_PAPERS, 1200, 700),           # one abstract per analysed paper
-    "synthesizer": (1, 20000, 3000),
-    "screener_secondary": (8, 3000, 500),       # only borderline papers get a second vote
-    "extractor_secondary": (_PAPERS, 1200, 700),     # dual extraction
-    "normalizer": (1, 6000, 2000),
-    "conflict_explainer": (4, 6000, 600),
-    "localizer": (8, 1500, 2000),               # small chunks, run in parallel
-    "escalation": (4, 3000, 1000),              # expected ~10-20% of steps
-    "enricher": (1, 3000, 400),                 # only when external MCP servers are configured
-}
-
 CatalogLoader = Callable[[], Awaitable[dict[str, ModelInfo]]]
-
-
-async def _load_live_catalog() -> dict[str, ModelInfo]:
-    http = HttpClient(timeout=30)
-    try:
-        return await OpenRouterCatalog(http).load()
-    finally:
-        await http.aclose()
 
 
 def _per_m(price: float) -> str:
@@ -76,10 +46,27 @@ def _list(args, catalog: dict[str, ModelInfo], out: TextIO) -> int:
     return 0
 
 
+async def _db_config(settings):
+    from app.db.session import make_engine, make_session_factory
+    from app.services.llm_store import load_effective
+
+    engine = make_engine(settings.database_url)
+    try:
+        async with make_session_factory(engine)() as session:
+            return await load_effective(session, settings)
+    finally:
+        await engine.dispose()
+
+
 def _check(args, catalog: dict[str, ModelInfo], out: TextIO) -> int:
     settings = get_settings()
     try:
-        config = load_llm_config(args.config or settings.llm_config_path, args.preset or settings.llm_preset)
+        if args.source == "db":
+            effective = run_async(_db_config(settings))
+            out.write(f"source: {effective.label}\n")
+            config = effective.resolve()
+        else:
+            config = load_llm_config(args.config or settings.llm_config_path, args.preset or settings.llm_preset)
     except LLMConfigError as exc:
         out.write(f"ERROR {exc}\n")
         return 1
@@ -112,11 +99,13 @@ def main(argv: list[str] | None = None, *, load_catalog: CatalogLoader | None = 
     p_list.add_argument("--reasoning", action="store_true", help="only reasoning models")
     p_list.add_argument("--max-price", type=float, help="max input price, USD per 1M tokens")
     p_list.add_argument("--limit", type=int, default=60)
-    p_check = sub.add_parser("check", help="validate config/llm.yaml against the catalog")
+    p_check = sub.add_parser("check", help="validate config/llm.yaml (or the stored version) against the catalog")
     p_check.add_argument("--config")
     p_check.add_argument("--preset")
+    p_check.add_argument("--source", choices=["file", "db"], default="file",
+                         help="file: config/llm.yaml; db: the newest version saved in the admin console")
     args = parser.parse_args(argv)
-    catalog = run_async((load_catalog or _load_live_catalog)())
+    catalog = run_async((load_catalog or load_live_catalog)())
     return _list(args, catalog, out) if args.command == "list" else _check(args, catalog, out)
 
 

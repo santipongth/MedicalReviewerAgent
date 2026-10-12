@@ -51,3 +51,17 @@ def test_typical_calls_assume_60_candidates_and_30_abstracts():
     pool = ReviewOptions.model_fields["candidate_limit"].default
     assert TYPICAL_CALLS["extractor"] == (papers, 1200, 700) and TYPICAL_CALLS["extractor_secondary"][0] == papers
     assert TYPICAL_CALLS["screener"][0] == pool // 10  # the pool in batches of 10
+
+
+def test_check_source_db_resolves_through_the_stored_version(monkeypatch):
+    from app.cli import models
+    from app.services.llm_config import parse_llm_config
+    from app.services.llm_store import EffectiveConfig
+    from tests.llm_helpers import MINIMAL
+
+    async def fake_db_config(settings):
+        return EffectiveConfig("db", 5, MINIMAL, parse_llm_config(MINIMAL), None)
+
+    monkeypatch.setattr(models, "_db_config", fake_db_config)
+    _, text = run(["check", "--source", "db"])
+    assert "source: db:5" in text and "preset: cheap" in text and "vendor/cheap" in text
