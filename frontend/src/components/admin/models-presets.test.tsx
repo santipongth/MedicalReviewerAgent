@@ -12,9 +12,26 @@ vi.mock("@/lib/admin-api", async (orig) => ({
 }));
 afterEach(() => test.run.mockReset());
 
+/** What a reload or a discard puts in the editor: another model and a fallback list for the guard role. */
+const OUTSIDE: LlmConfigDoc = {
+  ...CONFIG,
+  presets: { ...CONFIG.presets, cheap: { ...CONFIG.presets.cheap, guard: { model: "vendor/theirs", fallback_models: ["x/y", "z/w"] } } },
+};
+
 function Harness({ onChange }: { onChange: (d: LlmConfigDoc) => void }) {
   const [draft, setDraft] = useState(CONFIG);
-  return <ModelsPresets draft={draft} setDraft={(d) => { setDraft(d); onChange(d); }} fail={(e) => String(e)} />;
+  return (
+    <>
+      <ModelsPresets draft={draft} setDraft={(d) => { setDraft(d); onChange(d); }} fail={(e) => String(e)} />
+      {/* the page replaces the draft from outside (a reload, a discard): the editor's own setDraft is not involved */}
+      <button type="button" onClick={() => setDraft(OUTSIDE)}>replace from outside</button>
+    </>
+  );
+}
+
+/** Types `text` one key at a time, as a person does. */
+function typeInto(input: HTMLElement, text: string) {
+  for (let i = 1; i <= text.length; i += 1) fireEvent.change(input, { target: { value: text.slice(0, i) } });
 }
 
 const OK = { ok: true, latency_ms: 812, cost_usd: 0.0002, model: "vendor/cheap", error: null };
@@ -142,5 +159,82 @@ describe("ModelsPresets", () => {
     expect(screen.queryByText(/ใช้ได้ · 812 ms/)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("preset ที่กำลังแก้"), { target: { value: "cheap" } });
     expect(screen.getByText(/ใช้ได้ · 812 ms/)).toBeInTheDocument();
+  });
+
+  it("forgets a result when the page replaces the draft with another model for that role", async () => {
+    test.run.mockResolvedValue(OK);
+    render(<Harness onChange={() => {}} />);
+    fireEvent.click(within(screen.getByRole("row", { name: /guard/ })).getByRole("button", { name: "ทดสอบ" }));
+    expect(await screen.findByText(/ใช้ได้ · 812 ms/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "replace from outside" }));
+    expect(screen.queryByText(/ใช้ได้ · 812 ms/)).not.toBeInTheDocument();
+  });
+
+  it("does not call the test on render or on edit, only on the button", () => {
+    render(<Harness onChange={() => {}} />);
+    fireEvent.change(screen.getByLabelText("model ของ guard"), { target: { value: "vendor/other" } });
+    fireEvent.change(screen.getByLabelText("preset ที่กำลังแก้"), { target: { value: "better" } });
+    expect(test.run).not.toHaveBeenCalled();
+  });
+
+  it("disables a role's test button while it runs, so a second click makes no second call", async () => {
+    let answer: (r: typeof OK) => void = () => {};
+    test.run.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    render(<Harness onChange={() => {}} />);
+    const button = () => within(screen.getByRole("row", { name: /guard/ })).getByRole("button", { name: "ทดสอบ" });
+    fireEvent.click(button());
+    expect(await screen.findByText("กำลังทดสอบ…")).toBeInTheDocument();
+    expect(button()).toBeDisabled();
+    fireEvent.click(button());
+    expect(test.run).toHaveBeenCalledTimes(1);
+    await act(async () => { answer(OK); });
+    expect(button()).toBeEnabled();
+  });
+
+  it("tests the edited draft with the chosen preset and role", async () => {
+    test.run.mockResolvedValue(OK);
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("preset ที่กำลังแก้"), { target: { value: "better" } });
+    const row = within(screen.getByRole("row", { name: /extractor/ }));
+    fireEvent.change(row.getByLabelText("model ของ extractor"), { target: { value: "vendor/edited" } });
+    fireEvent.click(row.getByRole("button", { name: "ทดสอบ" }));
+    expect(await screen.findByText(/ใช้ได้ · 812 ms/)).toBeInTheDocument();
+    const sent = test.run.mock.calls[0][0] as { config: LlmConfigDoc; preset: string; role: string };
+    expect(sent).toMatchObject({ preset: "better", role: "extractor" });
+    expect(sent.config).toEqual(onChange.mock.calls.at(-1)![0]);
+    expect(sent.config.presets.better.extractor.model).toBe("vendor/edited");
+  });
+});
+
+describe("ModelsPresets fallback field", () => {
+  const field = () => screen.getByLabelText("fallback ของ guard") as HTMLInputElement;
+
+  it("keeps what is typed, commas and spaces included, and puts the parsed list in the draft", () => {
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+    const typed = "vendor/a, vendor/b";
+    for (let i = 1; i <= typed.length; i += 1) {
+      fireEvent.change(field(), { target: { value: typed.slice(0, i) } });
+      expect(field().value).toBe(typed.slice(0, i)); // not rewritten under the cursor
+    }
+    expect((onChange.mock.calls.at(-1)![0] as LlmConfigDoc).presets.cheap.guard.fallback_models).toEqual(["vendor/a", "vendor/b"]);
+  });
+
+  it("shows a trailing comma and parses the list before it", () => {
+    const onChange = vi.fn();
+    render(<Harness onChange={onChange} />);
+    typeInto(field(), "vendor/a,");
+    expect(field().value).toBe("vendor/a,");
+    expect((onChange.mock.calls.at(-1)![0] as LlmConfigDoc).presets.cheap.guard.fallback_models).toEqual(["vendor/a"]);
+  });
+
+  it("is rewritten when the draft changes from outside, and when another preset is picked", () => {
+    render(<Harness onChange={() => {}} />);
+    typeInto(field(), "vendor/a,");
+    fireEvent.click(screen.getByRole("button", { name: "replace from outside" }));
+    expect(field().value).toBe("x/y, z/w");
+    fireEvent.change(screen.getByLabelText("preset ที่กำลังแก้"), { target: { value: "better" } });
+    expect(field().value).toBe("");
   });
 });

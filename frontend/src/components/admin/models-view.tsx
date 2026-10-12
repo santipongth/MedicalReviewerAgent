@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatWhen } from "@/lib/admin-copy";
-import { missingKeyEnvs } from "@/lib/admin-models";
+import { missingKeyEnvs, sameConfig } from "@/lib/admin-models";
 import type { LlmConfigDoc, LlmConfigState } from "@/lib/admin-types";
 import { useAdmin } from "./admin-gate";
+import { ConfirmButton } from "./confirm-button";
 import { ModelsHistory } from "./models-history";
 import { ModelsPresets } from "./models-presets";
 import { ModelsSaveBar } from "./models-save-bar";
@@ -68,8 +69,20 @@ export function ModelsHeader({ state, now }: { state: LlmConfigState; now?: numb
  * is the version it was loaded from, which its save is built on. */
 interface Draft { doc: LlmConfigDoc; origin: LlmConfigDoc; base: number | null }
 const fresh = (s: LlmConfigState): Draft => ({ doc: s.config, origin: s.config, base: s.version });
-const isDirty = (d: Draft) => JSON.stringify(d.doc) !== JSON.stringify(d.origin);
+const isDirty = (d: Draft) => !sameConfig(d.doc, d.origin);
 const versionName = (v: number | null) => (v === null ? "llm.yaml" : String(v));
+
+/** What an answer from the server does to the draft. `saved` is set only on the re-read that follows the admin's own
+ * save: it is the document that was saved. The draft is still that document: the server's copy replaces it. The draft
+ * has been edited since: those edits stay, on top of the version just saved (so no conflict) and still unsaved.
+ * Any other answer replaces a draft without edits and leaves a draft with edits alone. */
+function reconcile(draft: Draft | null, server: LlmConfigState, saved?: LlmConfigDoc): Draft {
+  if (draft === null) return fresh(server);
+  if (saved !== undefined) {
+    return sameConfig(draft.doc, saved) ? fresh(server) : { doc: draft.doc, origin: server.config, base: server.version };
+  }
+  return isDirty(draft) ? draft : fresh(server);
+}
 
 export function ModelsView() {
   const { fail } = useAdmin();
@@ -78,7 +91,6 @@ export function ModelsView() {
   const [edit, setEdit] = useState<Draft | null>(null);
   const [tab, setTab] = useState<ModelsTab>("presets");
   const [error, setError] = useState<string | null>(null);
-  const [generation, setGeneration] = useState(0);
   // Task 12 hands this to the YAML tab and drops the underscore; until then nothing reads it.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_conflictYaml, setConflictYaml] = useState<string | null>(null);
@@ -86,25 +98,34 @@ export function ModelsView() {
   const [draftNote, setDraftNote] = useState<{ text: string; base: number | null } | null>(null);
   const draftNoteRef = useRef<HTMLParagraphElement>(null);
   const focusDraftNote = useRef(false);
-  /** Set by a save: the next answer replaces the draft even though it still differs from the config it was loaded from. */
-  const replaceDraft = useRef(false);
+  const mounted = useRef(true);
+  /** Request numbers only (never what a request is for): an answer older than one already applied is dropped. */
+  const requests = useRef({ started: 0, applied: 0 });
 
   useEffect(() => {
-    let alive = true;
-    adminApi.llmConfig()
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  /** Reads /llm-config. Resolves when the answer is applied or the read has failed; it never rejects. `saved` is the
+   * document an admin has just saved, and belongs to this one request: a read that fails drops it with the request. */
+  const load = useCallback((saved?: LlmConfigDoc): Promise<void> => {
+    const seq = ++requests.current.started;
+    return adminApi.llmConfig()
       .then((s) => {
-        if (!alive) return;
-        const replace = replaceDraft.current;
-        replaceDraft.current = false;
+        if (!mounted.current || seq < requests.current.applied) return;
+        requests.current.applied = seq;
         setState(s);
         setReadAt(Date.now());
         setError(null);
-        // A clean draft follows the server; a draft with unsaved edits is kept, with the version it was edited from.
-        setEdit((e) => (e === null || replace || !isDirty(e) ? fresh(s) : e));
+        setEdit((e) => reconcile(e, s, saved));
       })
-      .catch((e: unknown) => { if (alive) setError(fail(e)); });
-    return () => { alive = false; };
-  }, [fail, generation]);
+      .catch((e: unknown) => {
+        if (mounted.current && seq >= requests.current.applied) setError(fail(e));
+      });
+  }, [fail]);
+
+  useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
     if (draftNote && focusDraftNote.current) {
@@ -113,10 +134,7 @@ export function ModelsView() {
     }
   }, [draftNote]);
 
-  const reload = useCallback((options?: { replaceDraft?: boolean }) => {
-    if (options?.replaceDraft) replaceDraft.current = true;
-    setGeneration((g) => g + 1);
-  }, []);
+  const reload = useCallback(() => { void load(); }, [load]);
   const setDraft = useCallback((doc: LlmConfigDoc) => {
     setDraftNote(null);
     setEdit((e) => (e ? { ...e, doc } : e));
@@ -162,7 +180,8 @@ export function ModelsView() {
                 <div className="mt-6 grid gap-2 rounded-sm bg-warn-bg px-4 py-3">
                   <p>{`ร่างนี้แก้จากเวอร์ชัน ${versionName(edit.base)} แต่ตอนนี้ใช้เวอร์ชัน ${versionName(state.version)} อยู่`}</p>
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" className={BUTTON_GHOST} onClick={discardEdits}>ทิ้งการแก้ไข</button>
+                    <ConfirmButton label="ทิ้งการแก้ไข" confirmLabel="ยืนยันทิ้งการแก้ไข" onConfirm={discardEdits}
+                      hint="การแก้ไขที่ยังไม่ได้บันทึกจะหายไป และร่างจะตรงกับเวอร์ชันที่ใช้อยู่" />
                     <button type="button" className={BUTTON_GHOST} onClick={buildOnLatest}>ใช้ร่างนี้ต่อจากเวอร์ชันล่าสุด</button>
                   </div>
                   <p className="text-sm">ถ้าใช้ร่างนี้ต่อ การบันทึกครั้งต่อไปจะทับการเปลี่ยนแปลงที่เกิดขึ้นในเวอร์ชันล่าสุด</p>
@@ -171,7 +190,7 @@ export function ModelsView() {
               {draftNote && draftNote.base === edit.base && (
                 <p ref={draftNoteRef} tabIndex={-1} role="status" className="mt-6 rounded-sm bg-info-bg px-4 py-2">{draftNote.text}</p>
               )}
-              <ModelsSaveBar base={edit.base} draft={edit.doc} onSaved={() => reload({ replaceDraft: true })}
+              <ModelsSaveBar base={edit.base} draft={edit.doc} serverConfig={state.config} onSaved={(saved) => load(saved)}
                 onConflict={(text) => { setConflictYaml(text); setTab("yaml"); reload(); }} />
             </>
           )}

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WORKERS_NOT_NOTIFIED } from "@/lib/admin-copy";
 import { mockAdminFetch, renderAdmin } from "@/test/admin-fetch";
@@ -21,7 +21,33 @@ describe("ModelsSaveBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
     expect(await screen.findByText(/vendor\/better not found/)).toBeInTheDocument();
     expect(screen.getByText(/cheap: ~\$0\.012 ต่อรีวิว/)).toBeInTheDocument();
-    expect(screen.getByText(/better: ~\$0\.000 ต่อรีวิว \(ไม่ทราบราคา: 1 role\)/)).toBeInTheDocument();
+  });
+
+  it("says a preset cannot be estimated when no model of it has a known price, and counts the unknown ones otherwise", async () => {
+    mockAdminFetch((m, p) => (p === "/llm-config/validate" ? [200, {
+      ...REPORT_OK,
+      cost: {
+        cheap: { total_usd: 0.0123, per_role: { guard: 0.01, planner: 0.0023 }, unknown_models: ["synthesizer: openrouter:vendor/typo"] },
+        better: { total_usd: 0, per_role: {}, unknown_models: ["guard: openrouter:vendor/typo", "planner: openrouter:vendor/typo"] },
+        free: { total_usd: 0, per_role: { guard: 0 }, unknown_models: [] },
+      },
+    }] : undefined));
+    await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} onSaved={() => {}} onConflict={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
+    expect(await screen.findByText("cheap: ~$0.012 ต่อรีวิว (ไม่ทราบราคา: 1 role)")).toBeInTheDocument();
+    expect(screen.getByText("better: ประเมินไม่ได้ (ไม่ทราบราคา)")).toBeInTheDocument();
+    expect(screen.getByText("free: ~$0.000 ต่อรีวิว")).toBeInTheDocument();
+    expect(screen.queryByText(/better: ~\$/)).not.toBeInTheDocument();
+  });
+
+  it("hides the errors of the last check once the draft has changed", async () => {
+    mockAdminFetch((m, p) => (p === "/llm-config/validate"
+      ? [200, { ...REPORT_OK, ok: false, errors: ["config: Unknown preset 'x'"], config: null, yaml: null }] : undefined));
+    const { rerender } = await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} onSaved={() => {}} onConflict={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unknown preset");
+    rerender(<AdminGate><ModelsSaveBar base={3} draft={{ ...CONFIG, active_preset: "better" }} onSaved={() => {}} onConflict={() => {}} /></AdminGate>);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("hides the last check once the draft has changed, so an old cost is never read as the new one", async () => {
@@ -89,6 +115,57 @@ describe("ModelsSaveBar", () => {
     fireEvent.click(screen.getByRole("button", SAVE));
     expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 4 แล้ว")).toBeInTheDocument();
     expect(screen.getByText(WORKERS_NOT_NOTIFIED)).toHaveClass("bg-warn-bg");
+  });
+
+  it("moves focus to the saved note, so it is never left on a disabled button", async () => {
+    mockAdminFetch((m, p) => {
+      if (p === "/llm-config/validate") return [200, REPORT_OK];
+      if (m === "POST" && p === "/llm-config") return [201, { id: 4, workers_notified: true }];
+    });
+    await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} onSaved={() => {}} onConflict={() => {}} />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument(); // no empty live region sits there before a save
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await screen.findByText("บันทึกเป็นเวอร์ชัน 4 แล้ว");
+    expect(screen.getByRole("status")).toHaveFocus();
+  });
+
+  it("hides the saved note once the draft changes again, and keeps it for the draft that was saved or is now in use", async () => {
+    mockAdminFetch((m, p) => {
+      if (p === "/llm-config/validate") return [200, REPORT_OK];
+      if (m === "POST" && p === "/llm-config") return [201, { id: 4, workers_notified: true }];
+    });
+    const bar = (draft: typeof CONFIG, serverConfig?: typeof CONFIG) => (
+      <AdminGate><ModelsSaveBar base={3} draft={draft} serverConfig={serverConfig} onSaved={() => {}} onConflict={() => {}} /></AdminGate>
+    );
+    const { rerender } = await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} onSaved={() => {}} onConflict={() => {}} />);
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await screen.findByText("บันทึกเป็นเวอร์ชัน 4 แล้ว");
+    const edited = { ...CONFIG, active_preset: "better" };
+    // the page re-read the server: the draft is now what the server holds (maybe written slightly differently)
+    rerender(bar(edited, edited));
+    expect(screen.getByText("บันทึกเป็นเวอร์ชัน 4 แล้ว")).toBeInTheDocument();
+    // an edit on top of that
+    rerender(bar({ ...edited, default_provider: "anthropic" }, edited));
+    expect(screen.queryByText("บันทึกเป็นเวอร์ชัน 4 แล้ว")).not.toBeInTheDocument();
+    // and put back
+    rerender(bar(CONFIG));
+    expect(screen.getByText("บันทึกเป็นเวอร์ชัน 4 แล้ว")).toBeInTheDocument();
+  });
+
+  it("passes the saved document to the page and stays busy until the page has re-read", async () => {
+    let finish: () => void = () => {};
+    const onSaved = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    mockAdminFetch((m, p) => {
+      if (p === "/llm-config/validate") return [200, REPORT_OK];
+      if (m === "POST" && p === "/llm-config") return [201, { id: 4, workers_notified: true }];
+    });
+    await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} onSaved={onSaved} onConflict={() => {}} />);
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(CONFIG));
+    expect(screen.getByRole("button", SAVE)).toBeDisabled();
+    expect(screen.getByRole("button", { name: "ตรวจ" })).toBeDisabled();
+    await act(async () => { finish(); });
+    expect(screen.getByRole("button", SAVE)).toBeEnabled();
   });
 
   it("blocks the save when validate reports errors", async () => {

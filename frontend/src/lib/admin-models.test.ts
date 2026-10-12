@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CONFIG, STATE } from "@/test/admin-model-fixtures";
-import { ALL_ROLES, ROLE_ORDER, copyPreset, deletePreset, missingKeyEnvs, setActive, setRole, usedProviders } from "./admin-models";
+import { ALL_ROLES, ROLE_ORDER, copyPreset, deletePreset, missingKeyEnvs, sameConfig, setActive, setRole, usedProviders } from "./admin-models";
 import type { LlmConfigDoc, LlmConfigState, LlmRoleSpec } from "./admin-types";
 
 const PROVIDERS = {
@@ -125,5 +125,13 @@ describe("ROLE_ORDER", () => {
   it("lists every role the backend resolves exactly once", () => {
     expect([...ROLE_ORDER].sort()).toEqual([...ALL_ROLES].sort());
     expect(new Set(ROLE_ORDER).size).toBe(ROLE_ORDER.length);
+  });
+});
+
+describe("sameConfig", () => {
+  it("compares by content, not by object", () => {
+    expect(sameConfig(CONFIG, JSON.parse(JSON.stringify(CONFIG)))).toBe(true);
+    expect(sameConfig(CONFIG, setActive(CONFIG, "better"))).toBe(false);
+    expect(sameConfig(CONFIG, setRole(CONFIG, "cheap", "guard", { model: "x/y" }))).toBe(false);
   });
 });

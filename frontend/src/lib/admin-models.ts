@@ -57,6 +57,10 @@ export const ROLE_ORDER = [
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+/** Same content (a re-read gives new objects for the same configuration). Key order counts, so an editor that only
+ * ever clones can tell "edited" from "not edited"; a mismatch errs on the side of keeping the admin's edits. */
+export const sameConfig = (a: LlmConfigDoc, b: LlmConfigDoc): boolean => JSON.stringify(a) === JSON.stringify(b);
+
 /** The draft helpers return a new document and never touch the one they were given. */
 export function setRole(doc: LlmConfigDoc, preset: string, role: string, patch: Partial<LlmRoleSpec>): LlmConfigDoc {
   const out = clone(doc);

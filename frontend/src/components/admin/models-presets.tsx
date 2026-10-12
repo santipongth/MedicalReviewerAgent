@@ -10,10 +10,25 @@ import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT, TABLE_REGION, TD, TH } from "./ui"
 const EFFORTS = ["", "none", "minimal", "low", "medium", "high", "xhigh", "max"];
 const num = (v: string): number | undefined => (v.trim() === "" ? undefined : Number(v));
 
-type Probes = Record<string, ProbeResult | "running">;
+/** A test result is for one role of one preset (`preset/role`) and for the settings it ran with (`spec`, as JSON). */
+type Probe = "running" | { spec: string; result: ProbeResult };
+type Probes = Record<string, Probe>;
 function without(probes: Probes, key: string): Probes {
   const { [key]: _gone, ...rest } = probes; // eslint-disable-line @typescript-eslint/no-unused-vars
   return rest;
+}
+
+const parseList = (text: string): string[] => text.split(",").map((x) => x.trim()).filter(Boolean);
+
+/** The fallback list as one text field. The field keeps what is typed (a trailing comma is half a list), so it is
+ * rewritten only when the draft holds another list than the text parses to: a reload, a discard or another preset. */
+function FallbackInput({ role, models, onChange }: { role: string; models: string[]; onChange: (models: string[]) => void }) {
+  const [text, setText] = useState(models.join(", "));
+  if (JSON.stringify(parseList(text)) !== JSON.stringify(models)) setText(models.join(", "));
+  return (
+    <input aria-label={`fallback ของ ${role}`} className={INPUT} placeholder="vendor/a, vendor/b" value={text}
+      onChange={(e) => { setText(e.target.value); onChange(parseList(e.target.value)); }} />
+  );
 }
 
 function ProbeLine({ result }: { result: ProbeResult }) {
@@ -28,36 +43,27 @@ export function ModelsPresets({ draft, setDraft, fail }: {
 }) {
   const [preset, setPreset] = useState(draft.active_preset);
   const [newName, setNewName] = useState("");
-  // A test result belongs to one role of one preset (`preset/role`) and to the settings it was run with.
   const [probes, setProbes] = useState<Probes>({});
   const [error, setError] = useState<string | null>(null);
   const selectId = useId();
   const nameId = useId();
   const selectRef = useRef<HTMLSelectElement>(null);
-  /** The test in flight for each key: an edit forgets it, so its late answer is dropped. */
-  const runs = useRef<Record<string, number>>({});
-  const runCount = useRef(0);
   const current = draft.presets[preset] ? preset : draft.active_preset;
   const roles = draft.presets[current] ?? {};
   const order = [...ROLE_ORDER.filter((r) => r in roles), ...Object.keys(roles).filter((r) => !ROLE_ORDER.includes(r))];
 
   function edit(role: string, patch: Partial<LlmRoleSpec>) {
-    const key = `${current}/${role}`;
-    delete runs.current[key];
-    setProbes((p) => (key in p ? without(p, key) : p));
     setDraft(setRole(draft, current, role, patch));
   }
 
   async function runTest(role: string) {
     const key = `${current}/${role}`;
-    const mine = ++runCount.current;
-    runs.current[key] = mine;
+    const spec = JSON.stringify(roles[role]); // the settings this test runs with
     setProbes((p) => ({ ...p, [key]: "running" }));
     try {
       const result = await adminApi.testLlm({ config: draft, preset: current, role });
-      if (runs.current[key] === mine) setProbes((p) => ({ ...p, [key]: result }));
+      setProbes((p) => ({ ...p, [key]: { spec, result } }));
     } catch (e) {
-      if (runs.current[key] !== mine) return;
       setProbes((p) => without(p, key));
       setError(fail(e));
     }
@@ -111,6 +117,8 @@ export function ModelsPresets({ draft, setDraft, fail }: {
             {order.map((role) => {
               const spec = roles[role];
               const probe = probes[`${current}/${role}`];
+              // a result is shown only while the role still has the settings it ran with (an edit, a reload or a discard end it)
+              const result = probe && probe !== "running" && probe.spec === JSON.stringify(spec) ? probe.result : null;
               return (
                 <tr key={role}>
                   <th scope="row" className={`${TD} font-display`}>{role}</th>
@@ -128,14 +136,13 @@ export function ModelsPresets({ draft, setDraft, fail }: {
                   </select></td>
                   <td className={TD}><input aria-label={`timeout ของ ${role}`} type="number" min={1} className={`${INPUT} w-24`}
                     value={spec.timeout_seconds ?? ""} onChange={(e) => edit(role, { timeout_seconds: num(e.target.value) })} /></td>
-                  <td className={TD}><input aria-label={`fallback ของ ${role}`} className={INPUT} placeholder="vendor/a, vendor/b"
-                    value={(spec.fallback_models ?? []).join(", ")}
-                    onChange={(e) => edit(role, { fallback_models: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} /></td>
+                  <td className={TD}><FallbackInput role={role} models={spec.fallback_models ?? []}
+                    onChange={(list) => edit(role, { fallback_models: list })} /></td>
                   <td className={TD}>
                     <div className="grid gap-1">
                       <button type="button" className={BUTTON_PRIMARY} disabled={probe === "running"} onClick={() => runTest(role)}>ทดสอบ</button>
                       {probe === "running" && <span role="status" className="text-sm text-muted">กำลังทดสอบ…</span>}
-                      {probe && probe !== "running" && <span role="status"><ProbeLine result={probe} /></span>}
+                      {result && <span role="status"><ProbeLine result={result} /></span>}
                     </div>
                   </td>
                 </tr>

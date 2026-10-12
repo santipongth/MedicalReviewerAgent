@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WORKERS_NOT_NOTIFIED } from "@/lib/admin-copy";
 import type { LlmConfigDoc, LlmConfigState } from "@/lib/admin-types";
@@ -210,6 +210,8 @@ describe("ModelsView presets editor", () => {
     expect(guardModel()).toHaveValue("vendor/mine");
     expect(screen.getByText(MOVED(3, 4))).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "ทิ้งการแก้ไข" }));
+    expect(guardModel()).toHaveValue("vendor/mine"); // asks again first
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยันทิ้งการแก้ไข" }));
     expect(guardModel()).toHaveValue("vendor/restored");
     expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument();
     expect(screen.getByText(/ทิ้งการแก้ไขแล้ว: ร่างตรงกับเวอร์ชัน 4/)).toHaveFocus();
@@ -299,6 +301,126 @@ describe("ModelsView presets editor", () => {
     expect(screen.getByText("บันทึกเป็นเวอร์ชัน 4 แล้ว")).toBeInTheDocument();
     expect(screen.getByText(WORKERS_NOT_NOTIFIED)).toBeInTheDocument();
     expect(server.calls.filter((c) => c === "GET /llm-config")).toHaveLength(2);
+  });
+});
+
+/** Holds the next read of /llm-config after `arm()` until `release()`: what the page does right after a save. */
+function holdNextReread() {
+  const inner = globalThis.fetch;
+  let armed = false;
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = new URL(String(input), "http://site.test").pathname;
+    if (armed && path.endsWith("/llm-config") && (init?.method ?? "GET") === "GET") {
+      armed = false;
+      await gate;
+    }
+    return inner(input, init);
+  }));
+  return { arm: () => { armed = true; }, release: () => release() };
+}
+
+/** The server accepts a save as version `id`, and from then on serves `afterwards`. */
+const acceptsSaveAs = (server: ReturnType<typeof liveServer>, id: number, afterwards: LlmConfigState) => {
+  server.reply = (m, p) => {
+    if (m === "POST" && p === "/llm-config") {
+      server.state = afterwards;
+      return [201, { ...VERSIONS.items[0], id, workers_notified: true }];
+    }
+  };
+};
+const saveRequests = (server: ReturnType<typeof liveServer>) => server.posts.filter((p) => p.path === "/llm-config");
+
+describe("ModelsView while a save is in flight", () => {
+  it("keeps what is typed during the save, and the next save builds on the version just saved", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    acceptsSaveAs(server, 4, movedTo(4, "vendor/mine"));
+    const hold = holdNextReread();
+    hold.arm();
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await screen.findByText("บันทึกเป็นเวอร์ชัน 4 แล้ว"); // saved; the re-read is held
+    fireEvent.change(guardModel(), { target: { value: "vendor/typed" } });
+    await act(async () => { hold.release(); });
+    expect(await screen.findByText(/ใช้เวอร์ชัน 4 จาก DB/)).toBeInTheDocument();
+    expect(guardModel()).toHaveValue("vendor/typed");
+    expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument(); // edits on top of its own save are no conflict
+    await waitFor(() => expect(screen.getByRole("button", SAVE)).toBeEnabled());
+    acceptsSaveAs(server, 5, movedTo(5, "vendor/typed"));
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 5 แล้ว")).toBeInTheDocument();
+    expect(saveRequests(server).map((r) => r.body.base_version)).toEqual([3, 4]);
+    expect((saveRequests(server)[1].body.config as LlmConfigDoc).presets.cheap.guard.model).toBe("vendor/typed");
+  });
+
+  it("keeps the save button disabled until the re-read has landed, so a second click cannot send a stale base", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    acceptsSaveAs(server, 4, movedTo(4, "vendor/mine"));
+    const hold = holdNextReread();
+    hold.arm();
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await screen.findByText("บันทึกเป็นเวอร์ชัน 4 แล้ว");
+    expect(screen.getByRole("button", SAVE)).toBeDisabled();
+    expect(screen.getByRole("button", { name: "ตรวจ" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(saveRequests(server)).toHaveLength(1);
+    await act(async () => { hold.release(); });
+    await waitFor(() => expect(screen.getByRole("button", SAVE)).toBeEnabled());
+    expect(screen.getByText(/ใช้เวอร์ชัน 4 จาก DB/)).toBeInTheDocument(); // enabled only after the page knows version 4
+  });
+
+  it("a failed re-read after a save does not make a later reload discard a draft with edits", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    let failReread = false;
+    server.reply = (m, p) => {
+      if (m === "POST" && p === "/llm-config") {
+        failReread = true;
+        server.state = movedTo(4, "vendor/mine");
+        return [201, { ...VERSIONS.items[0], id: 4, workers_notified: true }];
+      }
+      if (m === "GET" && p === "/llm-config" && failReread) {
+        failReread = false;
+        return [500, { detail: "boom" }];
+      }
+    };
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 4 แล้ว")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument(); // the failed re-read
+    expect(screen.getByText(/ใช้เวอร์ชัน 3 จาก DB/)).toBeInTheDocument(); // the page never learned version 4
+    await waitFor(() => expect(screen.getByRole("button", SAVE)).toBeEnabled());
+    // a later reload (a restore in the history tab) must treat the draft as the unsaved edits it is
+    await restoreElsewhere(server, movedTo(5, "vendor/restored"));
+    expect(guardModel()).toHaveValue("vendor/mine");
+    expect(screen.getByText(MOVED(3, 5))).toBeInTheDocument();
+  });
+
+  it("drops a test result when the draft is discarded for a server config with another model", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    server.reply = (m, p) => {
+      if (m === "POST" && p === "/llm-config") {
+        server.state = movedTo(5, "vendor/theirs");
+        return [409, { detail: "version 5 is in use now" }];
+      }
+    };
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText(MOVED(3, 5))).toBeInTheDocument();
+    server.reply = (m, p) => (m === "POST" && p === "/llm-models/test"
+      ? [200, { ok: true, latency_ms: 812, cost_usd: 0.0002, model: "vendor/mine", error: null }] : undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Presets" }));
+    fireEvent.click(within(screen.getByRole("row", { name: /guard/ })).getByRole("button", { name: "ทดสอบ" }));
+    expect(await screen.findByText(/ใช้ได้ · 812 ms/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ทิ้งการแก้ไข" }));
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยันทิ้งการแก้ไข" }));
+    expect(guardModel()).toHaveValue("vendor/theirs");
+    expect(screen.queryByText(/ใช้ได้ · 812 ms/)).not.toBeInTheDocument();
   });
 });
 
