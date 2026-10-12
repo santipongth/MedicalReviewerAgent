@@ -792,3 +792,77 @@ describe("ModelsView refused save of a draft without edits", () => {
     await waitFor(() => expect(yamlBox()).toHaveValue("later: vendor/theirs\n")); // not the text of the draft that was replaced
   });
 });
+
+describe("ModelsView with LLM_PRESET on the file source: the draft starts from the preset the workers run", () => {
+  // llm.yaml says cheap, LLM_PRESET=better is what the workers run (the service reports it as active_preset)
+  const onBetter: LlmConfigState = {
+    ...STATE, source: "file", version: null, env_preset: "better", active_preset: "better",
+    loaded: [{ ...STATE.loaded[0], version: "file", preset: "better" }],
+  };
+
+  it("marks the running preset in the presets tab, like the header, and a first save keeps it", async () => {
+    const server = liveServer();
+    server.state = onBetter;
+    await renderAdmin(<ModelsView />);
+    expect(await screen.findByText(/preset ที่ใช้งาน: better/)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "better (ใช้งาน)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "cheap" })).toBeInTheDocument();
+    expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument();
+    acceptsSaveAs(server, 1, { ...movedTo(1), env_preset: "better", active_preset: "cheap" });
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 1 แล้ว")).toBeInTheDocument();
+    const sent = saveRequests(server)[0].body;
+    expect((sent.config as LlmConfigDoc).active_preset).toBe("better");
+    expect(sent.base_version).toBeNull();
+  });
+
+  it("lets the admin change the active preset, which then differs from what was running", async () => {
+    const server = liveServer();
+    server.state = onBetter;
+    await renderAdmin(<ModelsView />);
+    await screen.findByLabelText("preset ที่กำลังแก้");
+    fireEvent.change(screen.getByLabelText("preset ที่กำลังแก้"), { target: { value: "cheap" } });
+    fireEvent.click(screen.getByRole("button", { name: "ตั้งเป็น preset ที่ใช้งาน" }));
+    acceptsSaveAs(server, 1, movedTo(1));
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 1 แล้ว")).toBeInTheDocument();
+    expect((saveRequests(server)[0].body.config as LlmConfigDoc).active_preset).toBe("cheap");
+  });
+
+  it("counts the seeded draft as clean, so a reload still follows the server", async () => {
+    const server = liveServer();
+    server.state = onBetter;
+    await renderAdmin(<ModelsView />);
+    expect(await screen.findByLabelText("model ของ guard")).toHaveValue("vendor/better");
+    await restoreElsewhere(server, movedTo(4, "vendor/restored"));
+    expect(guardModel()).toHaveValue("vendor/restored"); // an origin without the seed would make the draft look edited
+    expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument();
+  });
+
+  it("does not seed when a DB version is in use (LLM_PRESET has no effect then)", async () => {
+    const server = liveServer();
+    server.state = { ...STATE, env_preset: "better", active_preset: "cheap" };
+    await renderAdmin(<ModelsView />);
+    expect(await screen.findByRole("option", { name: "cheap (ใช้งาน)" })).toBeInTheDocument();
+  });
+
+  it("does not seed a preset that does not exist, and the header warns that the workers cannot start", async () => {
+    const server = liveServer();
+    server.state = { ...STATE, source: "file", version: null, env_preset: "nope", active_preset: "nope" };
+    await renderAdmin(<ModelsView />);
+    const warning = await screen.findByText("LLM_PRESET=nope ไม่มีใน presets: worker จะเริ่มไม่ได้");
+    expect(warning).toHaveClass("bg-warn-bg");
+    expect(screen.queryByText(/มีผลอยู่ \(ใช้ llm.yaml\)/)).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "cheap (ใช้งาน)" })).toBeInTheDocument(); // the file's own preset, not "nope"
+  });
+});
+
+describe("ModelsHeader LLM_PRESET line", () => {
+  it("is the info line for a preset that exists and the warning for one that does not", () => {
+    const base = { ...STATE, source: "file" as const, version: null };
+    const { rerender } = render(<ModelsHeader state={{ ...base, env_preset: "better" }} now={SEEN + 30_000} />);
+    expect(screen.getByText("LLM_PRESET=better มีผลอยู่ (ใช้ llm.yaml)")).toHaveClass("bg-info-bg");
+    rerender(<ModelsHeader state={{ ...base, env_preset: "constructor" }} now={SEEN + 30_000} />);
+    expect(screen.getByText("LLM_PRESET=constructor ไม่มีใน presets: worker จะเริ่มไม่ได้")).toHaveClass("bg-warn-bg");
+  });
+});

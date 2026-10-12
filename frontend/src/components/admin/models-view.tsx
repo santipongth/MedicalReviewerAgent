@@ -44,9 +44,9 @@ export function ModelsHeader({ state, now }: { state: LlmConfigState; now?: numb
       {state.env_preset && state.source === "db" && (
         <p className="rounded-sm bg-warn-bg px-3 py-2 text-sm">{`ตั้ง LLM_PRESET=${state.env_preset} ไว้ แต่ไม่มีผลเพราะใช้เวอร์ชันจาก DB อยู่`}</p>
       )}
-      {state.env_preset && state.source === "file" && (
-        <p className="rounded-sm bg-info-bg px-3 py-2 text-sm">{`LLM_PRESET=${state.env_preset} มีผลอยู่ (ใช้ llm.yaml)`}</p>
-      )}
+      {state.env_preset && state.source === "file" && (Object.hasOwn(state.config.presets, state.env_preset)
+        ? <p className="rounded-sm bg-info-bg px-3 py-2 text-sm">{`LLM_PRESET=${state.env_preset} มีผลอยู่ (ใช้ llm.yaml)`}</p>
+        : <p className="rounded-sm bg-warn-bg px-3 py-2 text-sm">{`LLM_PRESET=${state.env_preset} ไม่มีใน presets: worker จะเริ่มไม่ได้`}</p>)}
       {missing.map((name) => (
         <p key={name} className="rounded-sm bg-warn-bg px-3 py-2 text-sm">{`${name} ยังไม่ได้ตั้ง: role ที่ใช้ provider นี้จะรันไม่ได้`}</p>
       ))}
@@ -70,12 +70,23 @@ export function ModelsHeader({ state, now }: { state: LlmConfigState; now?: numb
   );
 }
 
+/** The document a draft starts from. While llm.yaml is the source, LLM_PRESET decides which preset the workers run
+ * (`state.active_preset`), so the draft starts on that preset and a first save keeps it unless the admin changes it.
+ * A preset that does not exist is not seeded: the workers cannot start on it, and a draft naming it could not be saved. */
+function runningDoc(s: LlmConfigState): LlmConfigDoc {
+  if (s.source !== "file" || !s.env_preset || !Object.hasOwn(s.config.presets, s.active_preset)) return s.config;
+  return { ...s.config, active_preset: s.active_preset };
+}
+
 /** The draft being edited: `origin` is the config it was loaded from (so "dirty" means it differs from that), and `base`
  * is the version it was loaded from, which its save is built on. `refused` is the YAML of this very document as the check
  * of a refused save made it (the YAML tab starts from it). It belongs to the document: every new document, whether the
  * admin edited it, discarded it or the page replaced it with the server's, comes without it. */
 interface Draft { doc: LlmConfigDoc; origin: LlmConfigDoc; base: number | null; refused?: string }
-const fresh = (s: LlmConfigState): Draft => ({ doc: s.config, origin: s.config, base: s.version });
+const fresh = (s: LlmConfigState): Draft => {
+  const doc = runningDoc(s);
+  return { doc, origin: doc, base: s.version };
+};
 const isDirty = (d: Draft) => !sameConfig(d.doc, d.origin);
 const versionName = (v: number | null) => (v === null ? "llm.yaml" : String(v));
 
