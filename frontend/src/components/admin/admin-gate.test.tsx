@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AdminApiError } from "@/lib/admin-api";
 import { NOT_BEHIND_SITE } from "@/lib/admin-copy";
@@ -22,6 +22,14 @@ describe("AdminGate", () => {
     expect(screen.getByText("เนื้อหา")).toBeInTheDocument();
     expect(screen.getByText("owner")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "API keys" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("links the models page after API keys", async () => {
+    mockAdminFetch();
+    await renderAdmin(<p>เนื้อหา</p>);
+    const links = within(screen.getByRole("navigation", { name: "ผู้ดูแลระบบ" })).getAllByRole("link").map((a) => a.textContent);
+    expect(links).toEqual(["Dashboard", "รีวิว", "API keys", "โมเดล", "Audit log"]);
+    expect(screen.getByRole("link", { name: "โมเดล" })).toHaveAttribute("href", "/admin/models");
   });
 
   it("sends a signed-out visitor to the sign-in page", async () => {

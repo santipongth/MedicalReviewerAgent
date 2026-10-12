@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import ClassVar
 
 import httpx
@@ -12,14 +13,14 @@ from redis.asyncio import Redis
 
 from app.config import get_settings
 from app.db.session import make_engine, make_session_factory
-from app.graph.factory import build_graph_deps, close_graph_deps
-from app.graph.graph import build_graph
+from app.graph.factory import close_graph_deps
 from app.logging import configure_logging, get_logger
 from app.services.capacity import Capacity
 from app.services.events import EventSink
 from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 from app.services.model_catalog import OpenRouterCatalog
 from app.services.queue import ArqJobQueue
+from app.worker.llm_reload import init_llms, poll_llm_config, stop_llms
 from app.worker.sweep import sweep_stale
 from app.worker.tasks import delete_checkpoint, deliver_webhook, resume_review, run_review
 
@@ -54,8 +55,8 @@ async def startup(ctx: dict) -> None:
             catalog = await OpenRouterCatalog(ctx["http"]).load()
         except Exception as exc:  # noqa: BLE001 - offline catalog only degrades to json_schema defaults
             log.warning("openrouter_catalog_unavailable", error=str(exc))
-    ctx["graph_deps"] = build_graph_deps(settings, ctx["http"], ctx["events_redis"], catalog)
-    ctx["graph"] = build_graph(ctx["graph_deps"], checkpointer=AsyncPostgresSaver(pool))
+    await init_llms(ctx, catalog, AsyncPostgresSaver(pool))
+    ctx["llm_poller"] = asyncio.create_task(poll_llm_config(ctx))
     ctx["queue"] = ArqJobQueue(ctx["redis"])  # arq's own pool: enqueue webhook deliveries
     ctx["capacity"] = Capacity(ctx["events_redis"], settings)  # finished reviews count toward the daily spend
     ctx["webhook_http"] = httpx.AsyncClient(timeout=settings.webhook_timeout_seconds, follow_redirects=False)
@@ -64,6 +65,7 @@ async def startup(ctx: dict) -> None:
 
 
 async def shutdown(ctx: dict) -> None:
+    await stop_llms(ctx)
     await close_graph_deps(ctx["graph_deps"])
     await ctx["http"].aclose()
     await ctx["webhook_http"].aclose()

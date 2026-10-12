@@ -105,7 +105,7 @@ services:
       retries: 12
     restart: unless-stopped
     volumes:
-      - ./backend/config:/app/config:ro  # tune models without rebuilding
+      - ./backend/config:/app/config:ro  # tune models without rebuilding (llm.yaml and LLM_PRESET apply until a version is saved in the admin console)
     networks: [data, search, edge]
 
   worker:
@@ -127,7 +127,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     volumes:
-      - ./backend/config:/app/config:ro  # tune models without rebuilding
+      - ./backend/config:/app/config:ro  # tune models without rebuilding (llm.yaml and LLM_PRESET apply until a version is saved in the admin console)
     networks: [data, search]
 
   web:

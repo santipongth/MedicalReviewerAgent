@@ -8,7 +8,7 @@ import type { AdminMe } from "@/lib/admin-types";
 import { BUTTON_GHOST } from "./ui";
 
 const LINKS = [
-  ["/admin/dashboard", "Dashboard"], ["/admin/reviews", "รีวิว"], ["/admin/keys", "API keys"], ["/admin/audit", "Audit log"],
+  ["/admin/dashboard", "Dashboard"], ["/admin/reviews", "รีวิว"], ["/admin/keys", "API keys"], ["/admin/models", "โมเดล"], ["/admin/audit", "Audit log"],
 ] as const;
 
 export function AdminNav({ me }: { me: AdminMe }) {

@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { BUTTON_DANGER, BUTTON_GHOST } from "./ui";
 
 /** A destructive action that asks again inside the page (never the browser's confirm()). */
-export function ConfirmButton({ label, confirmLabel, onConfirm, name, disabled = false }: {
+export function ConfirmButton({ label, confirmLabel, onConfirm, name, hint, disabled = false }: {
   label: string;
   confirmLabel: string;
   onConfirm: () => unknown | Promise<unknown>;
+  /** what the action does, shown (and read out as the confirm button's description) only while asking */
+  hint?: string;
   /** accessible name when several rows carry the same visible label */
   name?: string;
   disabled?: boolean;
 }) {
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
+  const hintId = useId();
   const askRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const wasAsking = useRef(false);
@@ -39,7 +42,8 @@ export function ConfirmButton({ label, confirmLabel, onConfirm, name, disabled =
   }
   return (
     <span className="inline-flex flex-wrap gap-2">
-      <button ref={confirmRef} type="button" disabled={busy} className={BUTTON_DANGER} onClick={async () => {
+      {hint && <span id={hintId} className="basis-full max-w-prose text-sm text-muted">{hint}</span>}
+      <button ref={confirmRef} type="button" disabled={busy} aria-describedby={hint ? hintId : undefined} className={BUTTON_DANGER} onClick={async () => {
         setBusy(true);
         try {
           await onConfirm();

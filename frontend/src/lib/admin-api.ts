@@ -1,4 +1,7 @@
-import type { AdminKey, AdminMe, AdminReview, AdminStatus, AuditEntry, Dashboard, MintedKey, Page } from "./admin-types";
+import type {
+  AdminKey, AdminMe, AdminReview, AdminStatus, AuditEntry, CatalogModel, CatalogQuery, Dashboard, LlmConfigDoc, LlmConfigState,
+  LlmDraft, LlmSaveResult, LlmVersion, MintedKey, Page, ProbeResult, ValidateReport,
+} from "./admin-types";
 
 /** Admin calls are relative and same-origin: the session cookie (Path=/api/v1/admin) never leaves the site, and Caddy
  * (or the dev rewrite in next.config.ts) routes them to the API. */
@@ -69,6 +72,28 @@ export const adminApi = {
   updateKey: (id: string, body: { name?: string; daily_quota?: number }) => call<AdminKey>(`/keys/${enc(id)}`, send("PATCH", body)),
   revokeKey: (id: string) => call<AdminKey>(`/keys/${enc(id)}/revoke`, send("POST")),
   audit: (before?: number | null) => call<Page<AuditEntry>>(`/audit${before ? `?before=${before}` : ""}`),
+  llmConfig: () => call<LlmConfigState>("/llm-config"),
+  llmVersions: (before?: number | null) => call<Page<LlmVersion>>(`/llm-config/versions${before ? `?before=${before}` : ""}`),
+  llmVersion: (id: number) => call<LlmVersion & { config: LlmConfigDoc }>(`/llm-config/versions/${id}`),
+  llmVersionYamlUrl: (id: number) => `${ADMIN_BASE}/llm-config/versions/${id}/yaml`,
+  validateLlm: (draft: LlmDraft) => call<ValidateReport>("/llm-config/validate", send("POST", draft)),
+  saveLlm: (body: LlmDraft & { base_version: number | null; note?: string }) =>
+    call<LlmSaveResult>("/llm-config", send("POST", body)),
+  restoreLlm: (id: number, base: number | null, note?: string) =>
+    call<LlmSaveResult>(`/llm-config/versions/${id}/restore`, send("POST", { base_version: base, note })),
+  resetLlm: (base: number | null, note?: string) =>
+    call<LlmSaveResult>("/llm-config/reset", send("POST", { base_version: base, note })),
+  llmModels: (query: CatalogQuery = {}) => {
+    const p = new URLSearchParams();
+    if (query.q?.trim()) p.set("q", query.q.trim());
+    if (query.structured) p.set("structured", "true");
+    if (query.reasoning) p.set("reasoning", "true");
+    if (query.max_price != null) p.set("max_price", String(query.max_price));
+    const qs = p.toString();
+    return call<{ items: CatalogModel[]; available: boolean }>(`/llm-models${qs ? `?${qs}` : ""}`);
+  },
+  testLlm: (body: Partial<LlmDraft> & { preset?: string; role: string }) =>
+    call<ProbeResult>("/llm-models/test", send("POST", body)),
 };
 
 /** Thai text for a failed admin call. A 401 is handled by the gate, which sends the admin back to sign-in. */

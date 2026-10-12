@@ -4,6 +4,13 @@
     python -m app.cli.eval freeze [--ids ..] [--force]
     python -m app.cli.eval run [--run-id ID] [--repeats 2] [--max-usd 10] [--ids ..]
     python -m app.cli.eval report --run-id ID [--compare-run PROMPT_VERSION/RUN_ID]
+
+Models (Plan 23b): select, freeze and run use the service's effective LLM config: the newest version saved in the
+admin console (database), else config/llm.yaml (LLM_PRESET applies to the file only). Put `--config-file PATH` (or
+`--config-file=PATH`) before or after the command to use that YAML file instead and ignore the database. A database
+or config file that cannot be read is an error (exit 2) that names this flag, never a silent fallback. report, --help
+and bad arguments never touch the database. Each run record stores the config label (`db:<id>`, `file`,
+`file:<path>`).
 """
 from __future__ import annotations
 
@@ -14,6 +21,7 @@ import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from app.evals import models
 from app.evals.batch import run_all
@@ -22,6 +30,62 @@ from app.evals.metrics import aggregate, review_metrics
 from app.evals.models import RunRecord, load_manifest, read_model, save_manifest
 from app.evals.report import render_report
 from app.evals.select import select
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.config import Settings
+    from app.services.llm_config import ResolvedLLMConfig
+
+LLM_COMMANDS = ("select", "freeze", "run")  # the commands that call an LLM; report only reads run files
+
+
+class EvalConfigError(Exception):
+    """The model configuration for an eval run could not be read."""
+
+
+def _why(exc: Exception) -> str:
+    """One readable line for an error message (SQLAlchemy errors carry the whole statement)."""
+    lines = str(exc).splitlines()
+    return lines[0] if lines else type(exc).__name__
+
+
+async def eval_llm_config(
+    settings: Settings, config_file: str | None,
+    session_factory_maker: Callable[[], async_sessionmaker[AsyncSession]],
+) -> tuple[ResolvedLLMConfig, str]:
+    """(resolved config, label) for an eval run: the service's effective config (the newest DB version, else
+    llm.yaml), or the given file. A DB or file that cannot be read is an EvalConfigError, never a silent fallback
+    (Plan 23b)."""
+    from app.services.llm_config import load_llm_config
+    from app.services.llm_store import load_effective
+
+    if config_file:
+        try:
+            return load_llm_config(config_file, settings.llm_preset), f"file:{config_file}"
+        except Exception as exc:
+            raise EvalConfigError(f"cannot use the model config file {config_file}: {_why(exc)}") from exc
+    try:
+        session_factory = session_factory_maker()
+        async with session_factory() as session:
+            effective = await load_effective(session, settings)
+    except Exception as exc:
+        raise EvalConfigError(f"cannot read the model config ({_why(exc)}); check that Postgres is running and "
+                              f"migrated, or pass --config-file PATH") from exc
+    try:
+        return effective.resolve(), effective.label
+    except Exception as exc:  # e.g. LLM_PRESET names a preset the file does not have
+        raise EvalConfigError(f"the model config in use ({effective.label}) is not usable: {_why(exc)}") from exc
+
+
+def split_config_file(argv: list[str]) -> tuple[str | None, list[str]]:
+    """(the --config-file value, the other arguments); the flag may stand before or after the command."""
+    pre = argparse.ArgumentParser(prog="python -m app.cli.eval", add_help=False, allow_abbrev=False)
+    pre.add_argument("--config-file")
+    known, rest = pre.parse_known_args(argv)
+    return known.config_file, rest
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -75,7 +139,8 @@ def _load_rows(prompt_version: str, run_id: str, manifest) -> tuple[list, dict]:
         fields = {"models": [json.dumps(r.models, sort_keys=True) for r in recs],
                   "git_sha": [r.git_sha for r in recs], "preset": [r.preset for r in recs],
                   "prompt_version": [r.prompt_version for r in recs],
-                  "pool_version": [r.pool_version for r in recs]}
+                  "pool_version": [r.pool_version for r in recs],
+                  "llm_config": [r.llm_config for r in recs]}
         # records of rejected/errored fixtures carry no models or pool version: they never make a batch "mixed"
         distinct = {k: sorted(set(v) - {"{}", ""}) for k, v in fields.items()}
         meta["mixed"] = {k: v for k, v in distinct.items() if len(v) > 1}
@@ -150,26 +215,61 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
     return 0
 
 
+async def eval_main(settings: Settings, config_file: str | None, rest: list[str],
+                    session_factory_maker: Callable[[], async_sessionmaker[AsyncSession]],
+                    release_db: Callable[[], Awaitable[None]] | None = None) -> int:
+    """`rest` has already passed the argument parser (main() does that first). Only select, freeze and run need
+    models, and only they read the database, and not when --config-file is given."""
+    from app.graph.factory import build_graph_deps
+    from app.graph.graph import GraphDeps
+    from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
+
+    resolved, label = None, "file"
+    if _parser().parse_args(rest).cmd in LLM_COMMANDS:
+        try:
+            resolved, label = await eval_llm_config(settings, config_file, session_factory_maker)
+        except EvalConfigError as exc:
+            print(exc)
+            return 2
+        finally:
+            if release_db is not None:
+                await release_db()
+        print(f"llm config: {label}")
+    http = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)
+    # report needs the settings (prompt version) and no models
+    deps = (build_graph_deps(settings, http, resolved=resolved, config_version=label) if resolved is not None
+            else GraphDeps(settings=settings))
+    deps.openalex, deps.mcp = None, None  # no citation network or external tools: replays stay deterministic
+    try:
+        return await run(rest, deps, http, settings.europepmc_url)
+    finally:
+        await http.aclose()
+
+
 def main() -> None:
     from app.compat import run_async
     from app.config import get_settings
-    from app.graph.factory import build_graph_deps
-    from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 
     settings = get_settings()
     if isinstance(sys.stdout, io.TextIOWrapper):  # piped or redirected stdout is cp1252 here: "≥" must not crash
         sys.stdout.reconfigure(errors="replace")
 
-    async def go() -> int:
-        http = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)
-        deps = build_graph_deps(settings, http)
-        deps.openalex, deps.mcp = None, None  # no citation network or external tools: replays stay deterministic
-        try:
-            return await run(sys.argv[1:], deps, http, settings.europepmc_url)
-        finally:
-            await http.aclose()
+    config_file, rest = split_config_file(sys.argv[1:])
+    _parser().parse_args(rest)  # --help and bad arguments end here, before any database access
+    engine = None
 
-    sys.exit(run_async(go()))
+    def factory():
+        nonlocal engine
+        from app.db.session import make_engine, make_session_factory
+
+        engine = make_engine(settings.database_url)
+        return make_session_factory(engine)
+
+    async def release_db() -> None:
+        if engine is not None:
+            await engine.dispose()
+
+    sys.exit(run_async(eval_main(settings, config_file, rest, factory, release_db)))
 
 
 if __name__ == "__main__":

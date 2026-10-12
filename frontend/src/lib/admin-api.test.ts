@@ -40,6 +40,24 @@ describe("adminApi", () => {
     expect(fn.mock.calls[1][0]).toBe("/api/v1/admin/reviews");
   });
 
+  it("builds the model catalog query with a trimmed search and only the filters that are set", async () => {
+    const fn = stub(200, { items: [], available: true });
+    await adminApi.llmModels({ q: " qwen ", structured: true, max_price: 1 });
+    expect(fn.mock.calls[0][0]).toBe("/api/v1/admin/llm-models?q=qwen&structured=true&max_price=1");
+    await adminApi.llmModels();
+    expect(fn.mock.calls[1][0]).toBe("/api/v1/admin/llm-models");
+  });
+
+  it("saves a model config with the CSRF header and the base version in the JSON body", async () => {
+    const fn = stub(201, { id: 4, workers_notified: true });
+    await adminApi.saveLlm({ yaml: "active_preset: cheap\n", base_version: 3, note: "cheaper" });
+    const [url, init] = fn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/admin/llm-config");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({ "X-MRA-Admin": "1", "Content-Type": "application/json" });
+    expect(JSON.parse(init.body as string)).toEqual({ yaml: "active_preset: cheap\n", base_version: 3, note: "cheaper" });
+  });
+
   it("maps failures to AdminApiError with the detail and Retry-After", async () => {
     stub(429, { detail: "too many failed sign-ins; try again later" }, { "Retry-After": "600" });
     const err = await adminApi.signIn("owner", "x").catch((e: unknown) => e);

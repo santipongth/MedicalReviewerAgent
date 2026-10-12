@@ -66,7 +66,8 @@ async def replay(deps, fixture: Fixture, *, options: dict[str, Any], repeat: int
     common = {"id": fixture.id, "repeat": repeat, "run_id": run_id, "prompt_version": deps.settings.prompt_version,
               "git_sha": git_sha, "pool_version": fixture.pool_version,
               "fixture_frozen_at": fixture.frozen_at, "preset": getattr(deps.llms, "preset", ""),
-              "models": dict(getattr(deps.llms, "models", {}) or {}), "started_at": started_at}
+              "models": dict(getattr(deps.llms, "models", {}) or {}),
+              "llm_config": getattr(deps.llms, "config_version", ""), "started_at": started_at}
     try:
         with use_budget(budget), use_tally(tally):
             graph = build_eval_graph(deps)

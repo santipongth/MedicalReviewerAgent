@@ -6,6 +6,8 @@ export const BUTTON_GHOST =
 export const BUTTON_DANGER =
   "inline-flex min-h-11 cursor-pointer items-center justify-center rounded-sm border border-err bg-err-bg px-3 font-display font-semibold text-err disabled:cursor-not-allowed disabled:opacity-45";
 export const INPUT = "min-h-11 w-full rounded-sm border border-rule bg-ground px-3 text-ink";
-export const TABLE_REGION = "mt-4 overflow-x-auto rounded-sm border border-rule";
+/** `relative`: a position:absolute child (the sr-only text of an empty column header) is clipped by this region only when the
+ * region is its containing block; without it that child sits at the far end of a wide table and widens the whole page. */
+export const TABLE_REGION = "relative mt-4 overflow-x-auto rounded-sm border border-rule";
 export const TH = "border-b border-rule px-3 py-2 text-left font-display text-sm font-semibold whitespace-nowrap";
 export const TD = "border-b border-rule px-3 py-2 align-top";

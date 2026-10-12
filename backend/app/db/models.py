@@ -195,3 +195,19 @@ class AdminAudit(Base):
     before: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
     after: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
     ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class LlmConfigVersion(Base):
+    """One saved LLM configuration (Plan 23b), in the config/llm.yaml shape. Never updated or deleted; the newest
+    row is the configuration in use, and while the table is empty config/llm.yaml is."""
+
+    __tablename__ = "llm_config_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_by: Mapped[str] = mapped_column(String(64))
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(16))  # edit | restore | file
+    restored_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONType)
+    changes: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)

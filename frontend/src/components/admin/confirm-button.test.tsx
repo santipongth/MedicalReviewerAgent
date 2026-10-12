@@ -36,4 +36,20 @@ describe("ConfirmButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "ยืนยันลบ" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "ลบ" })).toHaveFocus());
   });
+
+  it("shows its hint only while asking, as the description of the confirm button", () => {
+    render(<ConfirmButton label="ลบ" confirmLabel="ยืนยันลบ" hint="ลบแล้วกู้คืนไม่ได้" onConfirm={vi.fn()} />);
+    expect(screen.queryByText("ลบแล้วกู้คืนไม่ได้")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ลบ" }));
+    expect(screen.getByText("ลบแล้วกู้คืนไม่ได้")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ยืนยันลบ" })).toHaveAccessibleDescription("ลบแล้วกู้คืนไม่ได้");
+    fireEvent.click(screen.getByRole("button", { name: "ไม่ใช่" }));
+    expect(screen.queryByText("ลบแล้วกู้คืนไม่ได้")).not.toBeInTheDocument();
+  });
+
+  it("has no description without a hint", () => {
+    render(<ConfirmButton label="ลบ" confirmLabel="ยืนยันลบ" onConfirm={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "ลบ" }));
+    expect(screen.getByRole("button", { name: "ยืนยันลบ" })).not.toHaveAttribute("aria-describedby");
+  });
 });

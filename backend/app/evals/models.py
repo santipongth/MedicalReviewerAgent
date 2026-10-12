@@ -81,6 +81,7 @@ class RunRecord(BaseModel):
     fixture_frozen_at: str = ""
     preset: str
     models: dict[str, str]
+    llm_config: str = ""  # the config the run used: db:<id>, file or file:<path> (Plan 23b)
     started_at: str
     elapsed_s: float
     cost_usd: float
