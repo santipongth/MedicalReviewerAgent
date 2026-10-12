@@ -119,22 +119,33 @@ class ResolvedLLMConfig:
         return {role: f"{r.provider}:{r.spec.model}" for role, r in self.roles.items()}
 
 
-def load_llm_config(path: str | Path, preset: str | None = None) -> ResolvedLLMConfig:
+def read_llm_yaml(path: str | Path) -> dict[str, Any]:
     path = Path(path)
     if not path.is_file():
         raise LLMConfigError(f"LLM config not found: {path}")
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        config = LLMConfig.model_validate(raw)
     except yaml.YAMLError as exc:
         raise LLMConfigError(f"{path}: invalid YAML: {exc}") from exc
-    except ValidationError as exc:
-        raise LLMConfigError(f"{path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise LLMConfigError(f"{path}: the config must be a mapping")
+    return raw
 
+
+def parse_llm_config(raw: Any, *, where: str = "llm config") -> LLMConfig:
+    if not isinstance(raw, dict):
+        raise LLMConfigError(f"{where}: the config must be a mapping")
+    try:
+        return LLMConfig.model_validate(raw)
+    except ValidationError as exc:
+        raise LLMConfigError(f"{where}: {exc}") from exc
+
+
+def resolve_llm_config(config: LLMConfig, preset: str | None = None, *,
+                       where: str = "llm config") -> ResolvedLLMConfig:
     name = preset or config.active_preset
     if name not in config.presets:
         raise LLMConfigError(f"Unknown preset '{name}'. Available: {', '.join(config.presets)}")
-
     roles: dict[str, ResolvedRole] = {}
     preset_roles = config.presets[name]
     for role in (*ROLES, *OPTIONAL_ROLES):
@@ -150,9 +161,13 @@ def load_llm_config(path: str | Path, preset: str | None = None) -> ResolvedLLMC
             try:
                 spec = RoleSpec.model_validate({**spec.model_dump(), **config.overrides[role]})
             except ValidationError as exc:
-                raise LLMConfigError(f"{path}: overrides.{role}: {exc}") from exc
+                raise LLMConfigError(f"{where}: overrides.{role}: {exc}") from exc
         provider = spec.provider or config.default_provider
         if provider not in config.providers:
             raise LLMConfigError(f"Provider '{provider}' is not configured (overrides.{role})")
         roles[role] = ResolvedRole(role, provider, config.providers[provider], spec)
     return ResolvedLLMConfig(preset=name, roles=roles, harness=config.harness)
+
+
+def load_llm_config(path: str | Path, preset: str | None = None) -> ResolvedLLMConfig:
+    return resolve_llm_config(parse_llm_config(read_llm_yaml(path), where=str(path)), preset, where=str(path))

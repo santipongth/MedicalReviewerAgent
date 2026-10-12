@@ -34,7 +34,7 @@ from app.graph.schemas import (
     TranslationBatch,
 )
 from app.services.budget import current_budget
-from app.services.llm_config import HarnessSpec, ResolvedRole, load_llm_config
+from app.services.llm_config import HarnessSpec, ResolvedLLMConfig, ResolvedRole, load_llm_config
 from app.services.model_catalog import ModelInfo, choose_structured_method
 
 # USD per million tokens (input, output) for direct Anthropic calls. Source: claude-api skill, 2026-09.
@@ -293,6 +293,7 @@ class LLMs:
     harness: HarnessSpec = field(default_factory=HarnessSpec)
     preset: str = ""
     models: dict[str, str] = field(default_factory=dict)
+    config_version: str = ""
 
     def with_schema(self, role: str, schema: type[BaseModel]) -> StructuredLLM:
         """A role LLM is built for one schema (SCHEMAS): passing `planner` to a call that wants another schema only
@@ -336,9 +337,12 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
     )
 
 
-def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None) -> LLMs:
-    config = load_llm_config(settings.llm_config_path, settings.llm_preset)
-    sem = asyncio.Semaphore(max(1, settings.llm_concurrency))
+def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None, *,
+               resolved: ResolvedLLMConfig | None = None, sem: asyncio.Semaphore | None = None,
+               config_version: str = "file") -> LLMs:
+    """`resolved` defaults to config/llm.yaml; `sem` lets a reload keep the process's one LLM semaphore (Plan 23b)."""
+    config = resolved or load_llm_config(settings.llm_config_path, settings.llm_preset)
+    sem = sem or asyncio.Semaphore(max(1, settings.llm_concurrency))
     built = {role: LimitedLLM(build_role_llm(r, settings, catalog), sem) for role, r in config.roles.items()
              if role in SCHEMAS}
     if "refiner" in config.roles:
@@ -367,4 +371,4 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None) 
         return bound[role, schema]
 
     return LLMs(**built, escalation=escalation, for_schema=for_schema, harness=config.harness, preset=config.preset,
-                models=config.describe())
+                models=config.describe(), config_version=config_version)
