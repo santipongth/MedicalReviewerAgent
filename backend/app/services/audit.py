@@ -13,9 +13,31 @@ from app.db.models import AdminAudit
 from app.services.admin_auth import AdminPrincipal
 
 SECRET_FIELDS = frozenset({"password", "password_hash", "key", "key_hash", "raw_key", "token"})
+SECRET_SUFFIXES = ("password", "token", "secret", "_hash")
+
+
+def _is_secret(name: Any) -> bool:
+    """A field that must never reach the log: a known secret name, or any name ending like one (new_password,
+    session_token, client_secret, pw_hash), in any case. 'key_prefix' is not a secret and is kept."""
+    lowered = str(name).lower()
+    return lowered in SECRET_FIELDS or lowered.endswith(SECRET_SUFFIXES)
+
+
+def _drop_secrets(value: Any) -> Any:
+    """Copies dicts, lists and tuples at every depth without their secret fields."""
+    if isinstance(value, dict):
+        return {k: _drop_secrets(v) for k, v in value.items() if not _is_secret(k)}
+    if isinstance(value, list | tuple):
+        return [_drop_secrets(item) for item in value]
+    return value
 
 
 def _jsonable(value: Any) -> Any:
+    """Makes a value fit a JSON column, at every depth: datetimes and dates become ISO text, UUIDs text."""
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_jsonable(item) for item in value]
     if isinstance(value, datetime | date):
         return value.isoformat()
     if isinstance(value, uuid.UUID):
@@ -24,9 +46,7 @@ def _jsonable(value: Any) -> Any:
 
 
 def _scrub(state: dict[str, Any] | None) -> dict[str, Any] | None:
-    if state is None:
-        return None
-    return {k: _jsonable(v) for k, v in state.items() if k not in SECRET_FIELDS}
+    return None if state is None else _jsonable(_drop_secrets(state))
 
 
 async def record(session: AsyncSession, actor: AdminPrincipal, action: str, *, target_type: str | None = None,

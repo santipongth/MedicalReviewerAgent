@@ -40,6 +40,8 @@ async def test_hash_and_verify_round_trip():
 
 async def test_unknown_user_never_succeeds():
     assert await verify_password(None, PW) == (False, None)
+    # the dummy hash's own password would verify, so only the "known" guard keeps this from succeeding
+    assert await verify_password(None, admin_auth._DUMMY_PASSWORD) == (False, None)
 
 
 async def test_old_parameters_are_rehashed_on_success(monkeypatch):
@@ -92,3 +94,26 @@ async def test_audit_rows_never_keep_secrets_and_page_newest_first(session_facto
     assert row["after"] == {"daily_quota": 2}
     assert row["actor_kind"] == "user" and row["actor_label"] == "owner" and "ip_hash" not in row
     assert audit_out(page1[0])["actor_kind"] == "cli" and audit_out(page1[0])["actor_label"] == "cli"
+
+
+async def test_audit_scrub_is_recursive_case_insensitive_and_json_safe(session_factory):
+    uid = uuid.uuid4()
+    when = datetime(2026, 10, 12, 9, 30, tzinfo=UTC)
+    after = {
+        "key_prefix": "mra_ab12", "Password": "p", "new_password": "p", "SESSION_TOKEN": "t", "client_secret": "s",
+        "pw_hash": "h", "Key": "mra_raw", "plain": 7,
+        "owner": {"id": uid, "password": "p", "since": when, "inner": {"Raw_Key": "mra_raw", "key_prefix": "mra_"}},
+        "events": [{"token": "t", "at": when, "id": uid}, uid, when, "text", ("x", {"api_password": "p", "n": 1})],
+    }
+    async with session_factory() as s, s.begin():
+        await record(s, CLI_ACTOR, "key.create", target_type="key", target_id="k1", after=after)
+    async with session_factory() as s:
+        rows, _ = await list_audit(s)
+    row = audit_out(rows[0])
+    assert row["after"] == {
+        "key_prefix": "mra_ab12", "plain": 7,
+        "owner": {"id": str(uid), "since": "2026-10-12T09:30:00+00:00", "inner": {"key_prefix": "mra_"}},
+        "events": [{"at": "2026-10-12T09:30:00+00:00", "id": str(uid)}, str(uid), "2026-10-12T09:30:00+00:00",
+                   "text", ["x", {"n": 1}]],
+    }
+    assert row["before"] is None
