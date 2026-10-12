@@ -21,4 +21,19 @@ describe("ConfirmButton", () => {
     expect(screen.getByRole("button", { name: "ลบ" })).toBeInTheDocument();
     expect(run).not.toHaveBeenCalled();
   });
+
+  it("gives keyboard focus back to the ask button after ไม่ใช่", () => {
+    render(<ConfirmButton label="ลบ" confirmLabel="ยืนยันลบ" onConfirm={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "ลบ" })).not.toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "ลบ" }));
+    fireEvent.click(screen.getByRole("button", { name: "ไม่ใช่" }));
+    expect(screen.getByRole("button", { name: "ลบ" })).toHaveFocus();
+  });
+
+  it("gives focus back to the ask button after a confirm that leaves it on the page", async () => {
+    render(<ConfirmButton label="ลบ" confirmLabel="ยืนยันลบ" onConfirm={vi.fn().mockResolvedValue(undefined)} />);
+    fireEvent.click(screen.getByRole("button", { name: "ลบ" }));
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยันลบ" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "ลบ" })).toHaveFocus());
+  });
 });

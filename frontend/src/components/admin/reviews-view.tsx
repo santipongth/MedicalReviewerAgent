@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { adminApi, type ReviewQuery } from "@/lib/admin-api";
 import { STATUS_LABEL, STATUS_ORDER, formatUsd, formatWhen } from "@/lib/admin-copy";
 import type { AdminReview, AdminStatus } from "@/lib/admin-types";
@@ -20,6 +20,12 @@ export function ReviewsView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Bumped by every new search: a load-more that finishes after that belongs to a superseded query and is dropped.
+  const generation = useRef(0);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+  // Set when the control that was focused is gone (a delete removes its row, a cancel swaps its button): focus then
+  // moves to the notice once it has rendered.
+  const focusNotice = useRef(false);
   const qId = useId();
   const statusId = useId();
   const listedId = useId();
@@ -32,8 +38,19 @@ export function ReviewsView() {
     return () => { alive = false; };
   }, [query, fail]);
 
+  useEffect(() => {
+    if (notice && focusNotice.current) {
+      focusNotice.current = false;
+      noticeRef.current?.focus();
+    }
+  }, [notice]);
+
   function search(e: FormEvent) {
     e.preventDefault();
+    generation.current += 1;
+    // the old rows and cursor belong to the old query: drop them so a failed search cannot leave them under new filters
+    setItems([]);
+    setNext(null);
     setLoading(true);
     setError(null);
     setNotice(null);
@@ -42,23 +59,26 @@ export function ReviewsView() {
 
   async function more() {
     if (!next) return;
+    const mine = generation.current;
     setLoading(true);
     try {
       const page = await adminApi.reviews({ ...query, before: next });
+      if (mine !== generation.current) return;
       setItems((prev) => [...prev, ...page.items]);
       setNext((page.next as string | null) ?? null);
     } catch (e) {
-      setError(fail(e));
+      if (mine === generation.current) setError(fail(e));
     } finally {
-      setLoading(false);
+      if (mine === generation.current) setLoading(false);
     }
   }
 
-  async function act(id: string, run: () => Promise<AdminReview | null>, done: string) {
+  async function act(id: string, run: () => Promise<AdminReview | null>, done: string, moveFocus = false) {
     setError(null);
     setNotice(null);
     try {
       const updated = await run();
+      focusNotice.current = moveFocus;
       setItems((prev) => prev.flatMap((r) => (r.id === id ? (updated ? [updated] : []) : [r])));
       setNotice(done);
     } catch (e) {
@@ -92,7 +112,7 @@ export function ReviewsView() {
         <button type="submit" className={BUTTON_PRIMARY}>ค้นหา</button>
       </form>
 
-      {notice && <p role="status" className="mt-4 rounded-sm bg-info-bg px-4 py-2">{notice}</p>}
+      {notice && <p ref={noticeRef} tabIndex={-1} role="status" className="mt-4 rounded-sm bg-info-bg px-4 py-2">{notice}</p>}
       {error && <p role="alert" className="mt-4 rounded-sm bg-err-bg px-4 py-2">{error}</p>}
 
       <div className={TABLE_REGION} role="region" aria-label="รายการรีวิว" tabIndex={0}>
@@ -129,12 +149,12 @@ export function ReviewsView() {
                     <button type="button" className={BUTTON_GHOST} onClick={() => act(r.id, async () => {
                       await adminApi.cancelReview(r.id);
                       return { ...r, status: "cancelled" };
-                    }, "ยกเลิกรีวิวแล้ว")}>ยกเลิก</button>
+                    }, "ยกเลิกรีวิวแล้ว", true)}>ยกเลิก</button>
                   ) : (
                     <ConfirmButton label="ลบ" confirmLabel="ยืนยันลบ" onConfirm={() => act(r.id, async () => {
                       await adminApi.deleteReview(r.id);
                       return null;
-                    }, "ลบรีวิวแล้ว")} />
+                    }, "ลบรีวิวแล้ว", true)} />
                   )}
                 </td>
               </tr>
