@@ -555,6 +555,7 @@ describe("ModelsView YAML tab", () => {
     fireEvent.change(yamlBox(), { target: { value: "guard: typed\n" } });
     fireEvent.click(screen.getByRole("button", { name: "Presets" }));
     expect(screen.getByRole("button", YAML_TAB_PENDING)).toHaveTextContent("•");
+    expect(screen.getByTitle("มีข้อความ YAML ที่ยังไม่ได้ใช้")).toBeInTheDocument();
     expect(yamlBox()).not.toBeVisible();
     expect(screen.getByRole("button", SAVE)).toBeDisabled();
     expect(screen.getByText(PENDING_REASON)).toBeVisible();
@@ -605,6 +606,7 @@ describe("ModelsView YAML tab", () => {
     fireEvent.change(yamlBox(), { target: { value: "guard: typed\n" } });
     expect(screen.getByRole("button", SAVE)).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "ทิ้งการแก้ไข" }));
+    expect(screen.getByText(/รวมถึงข้อความ YAML ที่พิมพ์ไว้แต่ยังไม่ได้ใช้/)).toBeInTheDocument(); // the hint says what goes
     fireEvent.click(screen.getByRole("button", { name: "ยืนยันทิ้งการแก้ไข" }));
     await waitFor(() => expect(yamlBox()).toHaveValue("guard: vendor/theirs\n"));
     expect(screen.getByRole("button", SAVE)).toBeEnabled();
@@ -712,5 +714,81 @@ describe("ModelsView catalog tab", () => {
     fireEvent.click(screen.getByRole("button", SAVE));
     expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 4 แล้ว")).toBeInTheDocument();
     expect(guardOf(saveRequests(server)[0].body.config)).toBe("qwen/qwen3.5-flash");
+  });
+});
+
+describe("ModelsView YAML text and edits made in other tabs", () => {
+  const CONFIRM = { name: "ใช้ YAML นี้ และทับการแก้ไขในแท็บอื่น" };
+  const DIVERGED = "ร่างเปลี่ยนไปหลังจากโหลดข้อความนี้ (เช่น แก้ในแท็บ Presets หรือ Catalog) การใช้ YAML นี้จะทับการแก้ไขนั้น";
+  const applied: LlmConfigDoc = { ...CONFIG, presets: { ...CONFIG.presets, cheap: { ...CONFIG.presets.cheap, guard: { model: "vendor/yaml" } } } };
+  /** Checking the draft returns its YAML; checking text returns `applied`. */
+  const appliesYaml = (server: ReturnType<typeof liveServer>) => {
+    server.reply = (m, p, body) => (p !== "/llm-config/validate" ? undefined
+      : (body as { yaml?: string }).yaml !== undefined ? [200, { ...REPORT_OK, config: applied, yaml: "guard: vendor/yaml\n" }] : yamlOfDraft(body));
+  };
+
+  it("asks before it replaces an edit made in the presets tab, and the draft is untouched until the admin confirms", async () => {
+    const server = liveServer();
+    await openYaml(server);
+    fireEvent.change(yamlBox(), { target: { value: "guard: vendor/yaml\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Presets" }));
+    fireEvent.change(guardModel(), { target: { value: "vendor/elsewhere" } });
+    fireEvent.click(screen.getByRole("button", YAML_TAB_PENDING));
+    appliesYaml(server);
+    expect(screen.getByText(DIVERGED)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "ใช้ YAML นี้" }));
+    expect(screen.getByRole("button", CONFIRM)).toBeInTheDocument();
+    expect(screen.getByRole("button", SAVE)).toBeDisabled(); // nothing applied yet
+    fireEvent.click(screen.getByRole("button", { name: "Presets" }));
+    expect(guardModel()).toHaveValue("vendor/elsewhere");
+    fireEvent.click(screen.getByRole("button", YAML_TAB_PENDING));
+    fireEvent.click(screen.getByRole("button", CONFIRM));
+    await waitFor(() => expect(screen.getByRole("button", SAVE)).toBeEnabled());
+    expect(screen.queryByText(DIVERGED)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ใช้ YAML นี้" })); // the draft is the text's now: no second question
+    expect(screen.queryByRole("button", CONFIRM)).not.toBeInTheDocument();
+    await screen.findByText(/ใช้ YAML นี้เป็นร่างแล้ว/);
+    fireEvent.click(screen.getByRole("button", { name: "Presets" }));
+    expect(guardModel()).toHaveValue("vendor/yaml");
+  });
+
+  it("asks as well when the draft was replaced by a history restore", async () => {
+    const server = liveServer();
+    await openYaml(server);
+    fireEvent.change(yamlBox(), { target: { value: "guard: vendor/yaml\n" } });
+    await restoreElsewhere(server, movedTo(4, "vendor/restored")); // a clean draft follows the server
+    expect(guardModel()).toHaveValue("vendor/restored");
+    appliesYaml(server);
+    fireEvent.click(screen.getByRole("button", YAML_TAB_PENDING));
+    expect(screen.getByText(DIVERGED)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "ใช้ YAML นี้" }));
+    expect(screen.getByRole("button", CONFIRM)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Presets" }));
+    expect(guardModel()).toHaveValue("vendor/restored"); // still the server's
+  });
+});
+
+describe("ModelsView refused save of a draft without edits", () => {
+  it("forgets the refused text when the re-read replaces the draft", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    await screen.findByLabelText("model ของ guard");
+    let checks = 0;
+    server.reply = (m, p, body) => {
+      if (p === "/llm-config/validate" && (body as { config?: unknown }).config) {
+        return [200, { ...REPORT_OK, yaml: ++checks === 1 ? "refused: draft\n" : `later: ${guardOf((body as { config: unknown }).config)}\n` }];
+      }
+      if (m === "POST" && p === "/llm-config") {
+        server.state = movedTo(5, "vendor/theirs");
+        return [409, { detail: "version 5 is in use now" }];
+      }
+    };
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText(/ใช้เวอร์ชัน 5 จาก DB/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", SAVE)).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Presets" }));
+    expect(guardModel()).toHaveValue("vendor/theirs"); // a draft without edits follows the server
+    fireEvent.click(screen.getByRole("button", YAML_TAB));
+    await waitFor(() => expect(yamlBox()).toHaveValue("later: vendor/theirs\n")); // not the text of the draft that was replaced
   });
 });

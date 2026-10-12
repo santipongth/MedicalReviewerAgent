@@ -71,8 +71,10 @@ export function ModelsHeader({ state, now }: { state: LlmConfigState; now?: numb
 }
 
 /** The draft being edited: `origin` is the config it was loaded from (so "dirty" means it differs from that), and `base`
- * is the version it was loaded from, which its save is built on. */
-interface Draft { doc: LlmConfigDoc; origin: LlmConfigDoc; base: number | null }
+ * is the version it was loaded from, which its save is built on. `refused` is the YAML of this very document as the check
+ * of a refused save made it (the YAML tab starts from it). It belongs to the document: every new document, whether the
+ * admin edited it, discarded it or the page replaced it with the server's, comes without it. */
+interface Draft { doc: LlmConfigDoc; origin: LlmConfigDoc; base: number | null; refused?: string }
 const fresh = (s: LlmConfigState): Draft => ({ doc: s.config, origin: s.config, base: s.version });
 const isDirty = (d: Draft) => !sameConfig(d.doc, d.origin);
 const versionName = (v: number | null) => (v === null ? "llm.yaml" : String(v));
@@ -101,9 +103,6 @@ export function ModelsView() {
   const [edit, setEdit] = useState<Draft | null>(null);
   const [tab, setTab] = useState<ModelsTab>("presets");
   const [error, setError] = useState<string | null>(null);
-  /** The draft whose save the server refused, as the YAML the check returned: the YAML tab starts from it. It goes when it
-   * stops describing the draft (the draft changes, is discarded or saved, or the admin restarts the text from it). */
-  const [conflictYaml, setConflictYaml] = useState<string | null>(null);
   /** The YAML box holds text that is not the draft. That text lives in the YAML tab, which stays mounted (hidden) while
    * it is pending, so leaving the tab loses nothing; `yamlKey` starts it afresh when the draft it was written for goes. */
   const [yamlPending, setYamlPending] = useState(false);
@@ -152,9 +151,10 @@ export function ModelsView() {
   const reload = useCallback(() => { void load(); }, [load]);
   const setDraft = useCallback((doc: LlmConfigDoc) => {
     setDraftNote(null);
-    setConflictYaml(null);
-    setEdit((e) => (e ? { ...e, doc } : e));
+    setEdit((e) => (e ? { ...e, doc, refused: undefined } : e));
   }, []);
+
+  const dropRefused = useCallback(() => setEdit((e) => (e && e.refused !== undefined ? { ...e, refused: undefined } : e)), []);
 
   /** The note and its focus: the button that was pressed is gone once the version no longer differs. */
   function answer(text: string) {
@@ -163,7 +163,6 @@ export function ModelsView() {
   }
   function discardEdits() {
     setEdit(fresh(state!));
-    setConflictYaml(null);
     setYamlPending(false);
     setYamlKey((k) => k + 1);
     answer(`ทิ้งการแก้ไขแล้ว: ร่างตรงกับเวอร์ชัน ${versionName(state!.version)}`);
@@ -190,7 +189,7 @@ export function ModelsView() {
                 {label}
                 {key === "yaml" && yamlPending && (
                   <>
-                    <span aria-hidden="true" className="ml-1">•</span>
+                    <span aria-hidden="true" title="มีข้อความ YAML ที่ยังไม่ได้ใช้" className="ml-1">•</span>
                     {" "}
                     <span className="sr-only">(มีข้อความที่ยังไม่ได้ใช้)</span>
                   </>
@@ -202,8 +201,8 @@ export function ModelsView() {
           {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} />}
           {(tab === "yaml" || yamlPending) && (
             <div hidden={tab !== "yaml"}>
-              <ModelsYaml key={yamlKey} draft={edit.doc} setDraft={setDraft} initialText={conflictYaml}
-                onPendingChange={setYamlPending} onFromDraft={() => setConflictYaml(null)} />
+              <ModelsYaml key={yamlKey} draft={edit.doc} setDraft={setDraft} initialText={edit.refused}
+                onPendingChange={setYamlPending} onFromDraft={dropRefused} />
             </div>
           )}
           {tab === "catalog" && <ModelsCatalog draft={edit.doc} setDraft={setDraft} />}
@@ -214,7 +213,7 @@ export function ModelsView() {
                   <p>{`ร่างนี้แก้จากเวอร์ชัน ${versionName(edit.base)} แต่ตอนนี้ใช้เวอร์ชัน ${versionName(state.version)} อยู่`}</p>
                   <div className="flex flex-wrap gap-2">
                     <ConfirmButton label="ทิ้งการแก้ไข" confirmLabel="ยืนยันทิ้งการแก้ไข" onConfirm={discardEdits}
-                      hint="การแก้ไขที่ยังไม่ได้บันทึกจะหายไป และร่างจะตรงกับเวอร์ชันที่ใช้อยู่" />
+                      hint="การแก้ไขที่ยังไม่ได้บันทึกจะหายไป (รวมถึงข้อความ YAML ที่พิมพ์ไว้แต่ยังไม่ได้ใช้) และร่างจะตรงกับเวอร์ชันที่ใช้อยู่" />
                     <button type="button" className={BUTTON_GHOST} onClick={buildOnLatest}>ใช้ร่างนี้ต่อจากเวอร์ชันล่าสุด</button>
                   </div>
                   <p className="text-sm">ถ้าใช้ร่างนี้ต่อ การบันทึกครั้งต่อไปจะทับการเปลี่ยนแปลงที่เกิดขึ้นในเวอร์ชันล่าสุด</p>
@@ -224,8 +223,8 @@ export function ModelsView() {
                 <p ref={draftNoteRef} tabIndex={-1} role="status" className="mt-6 rounded-sm bg-info-bg px-4 py-2">{draftNote.text}</p>
               )}
               <ModelsSaveBar base={edit.base} draft={edit.doc} serverConfig={state.config} blockedReason={yamlPending ? YAML_NOT_APPLIED : null}
-                onSaved={(saved, id) => { setConflictYaml(null); return load(saved, id); }}
-                onConflict={(text) => { setConflictYaml(text); setTab("yaml"); reload(); }} />
+                onSaved={(saved, id) => { dropRefused(); return load(saved, id); }}
+                onConflict={(text) => { setEdit((e) => (e ? { ...e, refused: text } : e)); setTab("yaml"); reload(); }} />
             </>
           )}
         </>

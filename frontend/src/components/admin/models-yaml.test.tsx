@@ -1,12 +1,15 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { adminApi } from "@/lib/admin-api";
+import type { LlmConfigDoc, ValidateReport } from "@/lib/admin-types";
 import { mockAdminFetch, renderAdmin } from "@/test/admin-fetch";
 import { CONFIG, REPORT_OK } from "@/test/admin-model-fixtures";
+import { AdminGate } from "./admin-gate";
 import { ModelsYaml } from "./models-yaml";
 
 const nav = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => nav, usePathname: () => "/admin/models" }));
-afterEach(() => { vi.unstubAllGlobals(); nav.replace.mockReset(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); nav.replace.mockReset(); });
 
 describe("ModelsYaml", () => {
   it("loads the draft as YAML, checks edited text and applies it to the draft", async () => {
@@ -111,22 +114,37 @@ describe("ModelsYaml pending text", () => {
   });
 
   it("does not replace what the admin typed with the text that finishes loading afterwards", async () => {
-    const inner = mockAdminFetch((m, p) => (p === "/llm-config/validate" ? [200, REPORT_OK] : undefined));
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).endsWith("/llm-config/validate")) await gate;
-      return inner(input, init);
-    }));
+    mockAdminFetch();
+    let answer!: (r: ValidateReport) => void;
+    const held = new Promise<ValidateReport>((resolve) => { answer = resolve; });
+    vi.spyOn(adminApi, "validateLlm").mockReturnValue(held);
     const onPending = vi.fn();
     await renderAdmin(<ModelsYaml draft={CONFIG} setDraft={() => {}} onPendingChange={onPending} />);
     const box = await screen.findByLabelText("YAML ของร่าง");
     fireEvent.change(box, { target: { value: "typed early\n" } });
-    release();
-    await waitFor(() => expect(inner.mock.calls.some(([u]) => String(u).endsWith("/validate"))).toBe(true));
-    await new Promise((resolve) => setTimeout(resolve, 20)); // let the held answer land
+    // the component's own .then was registered first, so it has dealt with the answer when this await returns
+    await act(async () => { answer(REPORT_OK); await held; });
     expect(box).toHaveValue("typed early\n");
     expect(onPending).toHaveBeenLastCalledWith(true);
+  });
+
+  it("does not replace text typed while a restart from the draft is on its way", async () => {
+    const onFromDraft = vi.fn();
+    const onPending = vi.fn();
+    const spy = vi.spyOn(adminApi, "validateLlm").mockResolvedValueOnce(REPORT_OK);
+    mockAdminFetch();
+    await renderAdmin(<ModelsYaml draft={CONFIG} setDraft={() => {}} onFromDraft={onFromDraft} onPendingChange={onPending} />);
+    const box = await screen.findByLabelText("YAML ของร่าง");
+    await waitFor(() => expect(box).toHaveValue(REPORT_OK.yaml));
+    let answer!: (r: ValidateReport) => void;
+    const held = new Promise<ValidateReport>((resolve) => { answer = resolve; });
+    spy.mockReturnValueOnce(held);
+    fireEvent.click(screen.getByRole("button", { name: "เริ่มจากร่างปัจจุบัน" }));
+    fireEvent.change(box, { target: { value: "typed meanwhile\n" } });
+    await act(async () => { answer({ ...REPORT_OK, yaml: "from: draft\n" }); await held; });
+    expect(box).toHaveValue("typed meanwhile\n");
+    expect(onPending).toHaveBeenLastCalledWith(true); // still the admin's unapplied text
+    expect(onFromDraft).not.toHaveBeenCalled();
   });
 
   it("restarts from the draft at once when nothing is pending", async () => {
@@ -160,5 +178,76 @@ describe("ModelsYaml pending text", () => {
     expect(onPending).toHaveBeenLastCalledWith(false);
     expect(await screen.findByText("โหลดข้อความจากร่างปัจจุบันแล้ว")).toHaveFocus(); // the confirm button is gone
     expect(within(screen.getByRole("region", { name: "YAML ขั้นสูง" })).getByRole("button", { name: "เริ่มจากร่างปัจจุบัน" })).toBeInTheDocument();
+  });
+});
+
+describe("ModelsYaml when the draft changed after the text was loaded", () => {
+  const EDITED: LlmConfigDoc = { ...CONFIG, presets: { ...CONFIG.presets, cheap: { ...CONFIG.presets.cheap, guard: { model: "vendor/elsewhere" } } } };
+  const APPLIED: LlmConfigDoc = { ...CONFIG, active_preset: "better" };
+  const CONFIRM = { name: "ใช้ YAML นี้ และทับการแก้ไขในแท็บอื่น" };
+  const NOTE = "ร่างเปลี่ยนไปหลังจากโหลดข้อความนี้ (เช่น แก้ในแท็บ Presets หรือ Catalog) การใช้ YAML นี้จะทับการแก้ไขนั้น";
+  const server = () => mockAdminFetch((m, p, body) => (p === "/llm-config/validate"
+    ? [200, (body as { yaml?: string }).yaml ? { ...REPORT_OK, config: APPLIED, yaml: "active_preset: better\n" } : REPORT_OK] : undefined));
+
+  it("applies at once while the draft is still the one the text came from", async () => {
+    const setDraft = vi.fn();
+    server();
+    await renderAdmin(<ModelsYaml draft={CONFIG} setDraft={setDraft} />);
+    const box = await screen.findByLabelText("YAML ของร่าง");
+    await waitFor(() => expect(box).toHaveValue(REPORT_OK.yaml));
+    fireEvent.change(box, { target: { value: "active_preset: better\n" } });
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ใช้ YAML นี้" }));
+    await waitFor(() => expect(setDraft).toHaveBeenCalledWith(APPLIED));
+    expect(screen.queryByRole("button", CONFIRM)).not.toBeInTheDocument();
+  });
+
+  it("warns while its text is pending, and asks before it replaces the edit made elsewhere", async () => {
+    const setDraft = vi.fn();
+    server();
+    const { rerender } = await renderAdmin(<ModelsYaml draft={CONFIG} setDraft={setDraft} />);
+    const box = await screen.findByLabelText("YAML ของร่าง");
+    await waitFor(() => expect(box).toHaveValue(REPORT_OK.yaml));
+    fireEvent.change(box, { target: { value: "active_preset: better\n" } });
+    rerender(<AdminGate><ModelsYaml draft={EDITED} setDraft={setDraft} /></AdminGate>); // an edit in another tab
+    expect(screen.getByText(NOTE)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "ใช้ YAML นี้" }));
+    expect(setDraft).not.toHaveBeenCalled(); // the first click only asks
+    expect(screen.getByText(NOTE, { selector: "span" })).toBeInTheDocument(); // and the confirm explains itself
+    fireEvent.click(screen.getByRole("button", CONFIRM));
+    await waitFor(() => expect(setDraft).toHaveBeenCalledWith(APPLIED));
+    expect(await screen.findByText(/ใช้ YAML นี้เป็นร่างแล้ว/)).toHaveFocus(); // the control that was pressed may be gone
+  });
+
+  it("does not warn while the text is not pending, but still asks", async () => {
+    const setDraft = vi.fn();
+    server();
+    const { rerender } = await renderAdmin(<ModelsYaml draft={CONFIG} setDraft={setDraft} />);
+    await waitFor(() => expect(screen.getByLabelText("YAML ของร่าง")).toHaveValue(REPORT_OK.yaml));
+    rerender(<AdminGate><ModelsYaml draft={EDITED} setDraft={setDraft} /></AdminGate>);
+    expect(screen.queryByText(NOTE)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ใช้ YAML นี้" }));
+    expect(screen.getByRole("button", CONFIRM)).toBeInTheDocument();
+    expect(setDraft).not.toHaveBeenCalled();
+  });
+
+  it("measures the change from the draft the text was restarted from", async () => {
+    server();
+    const { rerender } = await renderAdmin(<ModelsYaml draft={CONFIG} setDraft={() => {}} />);
+    await waitFor(() => expect(screen.getByLabelText("YAML ของร่าง")).toHaveValue(REPORT_OK.yaml));
+    rerender(<AdminGate><ModelsYaml draft={EDITED} setDraft={() => {}} /></AdminGate>);
+    fireEvent.click(screen.getByRole("button", { name: "เริ่มจากร่างปัจจุบัน" })); // the text is now the edited draft's
+    await screen.findByText("โหลดข้อความจากร่างปัจจุบันแล้ว");
+    fireEvent.click(screen.getByRole("button", { name: "ใช้ YAML นี้" }));
+    expect(screen.queryByRole("button", CONFIRM)).not.toBeInTheDocument(); // nothing to overwrite: applied at once
+  });
+
+  it("measures the change from the draft at mount when it starts from the text of a refused save", async () => {
+    server();
+    const { rerender } = await renderAdmin(<ModelsYaml draft={CONFIG} setDraft={() => {}} initialText={"refused: draft\n"} />);
+    expect(await screen.findByLabelText("YAML ของร่าง")).toHaveValue("refused: draft\n");
+    rerender(<AdminGate><ModelsYaml draft={EDITED} setDraft={() => {}} initialText={"refused: draft\n"} /></AdminGate>);
+    fireEvent.click(screen.getByRole("button", { name: "ใช้ YAML นี้" }));
+    expect(screen.getByRole("button", CONFIRM)).toBeInTheDocument();
   });
 });

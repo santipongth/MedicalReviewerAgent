@@ -9,6 +9,8 @@ import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT, TABLE_REGION, TD, TH } from "./ui"
 
 /** Every model in this catalog is an OpenRouter model. */
 const CATALOG_PROVIDER = "openrouter";
+/** The only key variable validation accepts for it (PROVIDER_KEYS in backend/app/services/llm_config.py). */
+const CATALOG_KEY_ENV = "OPENROUTER_API_KEY";
 
 /** OpenRouter models with prices per 1M tokens and capabilities; one click puts a model into a preset role. */
 export function ModelsCatalog({ draft, setDraft }: { draft: LlmConfigDoc; setDraft: (d: LlmConfigDoc) => void }) {
@@ -45,11 +47,21 @@ export function ModelsCatalog({ draft, setDraft }: { draft: LlmConfigDoc; setDra
     if (dot < 0) return;
     const preset = target.slice(0, dot);
     const role = target.slice(dot + 1);
+    const spec = draft.presets[preset]?.[role];
     // a catalog model only exists on OpenRouter: under another provider the role would call a model that is not there
-    const was = draft.presets[preset]?.[role]?.provider ?? draft.default_provider ?? CATALOG_PROVIDER;
+    const was = spec?.provider ?? draft.default_provider ?? CATALOG_PROVIDER;
     const moved = was !== CATALOG_PROVIDER;
-    setDraft(setRole(draft, preset, role, moved ? { model, provider: CATALOG_PROVIDER } : { model }));
-    setNotice(`ใส่ ${model} ใน ${target} ของร่างแล้ว${moved ? ` และตั้ง provider เป็น ${CATALOG_PROVIDER} (เดิม ${was})` : ""}`);
+    let next = setRole(draft, preset, role, moved ? { model, provider: CATALOG_PROVIDER } : { model });
+    // the role now names a provider, which the document must declare
+    const declares = moved && !draft.providers[CATALOG_PROVIDER];
+    if (declares) next = { ...next, providers: { ...next.providers, [CATALOG_PROVIDER]: { api_key_env: CATALOG_KEY_ENV } } };
+    // settings written for the old provider's model may mean nothing, or something else, to this one
+    const carried = moved && !!spec && (spec.extra_body != null || (spec.fallback_models?.length ?? 0) > 0 || spec.reasoning_effort != null);
+    setDraft(next);
+    setNotice(`ใส่ ${model} ใน ${target} ของร่างแล้ว`
+      + (moved ? ` และตั้ง provider เป็น ${CATALOG_PROVIDER} (เดิม ${was})` : "")
+      + (declares ? ` และเพิ่ม provider ${CATALOG_PROVIDER} (api_key_env: ${CATALOG_KEY_ENV}) ในร่าง` : "")
+      + (carried ? ". ตรวจ extra_body, fallback_models และ reasoning_effort ของ role นี้ด้วย เพราะตั้งไว้สำหรับ provider เดิม" : ""));
   }
 
   return (
