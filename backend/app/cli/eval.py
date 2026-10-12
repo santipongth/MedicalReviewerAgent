@@ -4,6 +4,11 @@
     python -m app.cli.eval freeze [--ids ..] [--force]
     python -m app.cli.eval run [--run-id ID] [--repeats 2] [--max-usd 10] [--ids ..]
     python -m app.cli.eval report --run-id ID [--compare-run PROMPT_VERSION/RUN_ID]
+
+Models: every command uses the service's effective LLM config (Plan 23b): the newest version saved in the admin
+console (database), else config/llm.yaml (LLM_PRESET applies to the file only). Put `--config-file PATH` before or
+after the command to use that YAML file instead and ignore the database. An unreachable database is an error that
+names this flag, never a silent fallback. Each run record stores the config label (`db:<id>`, `file`, `file:<path>`).
 """
 from __future__ import annotations
 
@@ -22,6 +27,28 @@ from app.evals.metrics import aggregate, review_metrics
 from app.evals.models import RunRecord, load_manifest, read_model, save_manifest
 from app.evals.report import render_report
 from app.evals.select import select
+
+
+class EvalConfigError(Exception):
+    """The model configuration for an eval run could not be read."""
+
+
+async def eval_llm_config(settings, config_file: str | None, session_factory_maker):
+    """(resolved config, label) for an eval run: the service's effective config (the newest DB version, else
+    llm.yaml), or the given file. An unreachable DB is an error, never a silent fallback (Plan 23b)."""
+    from app.services.llm_config import load_llm_config
+    from app.services.llm_store import load_effective
+
+    if config_file:
+        return load_llm_config(config_file, settings.llm_preset), f"file:{config_file}"
+    try:
+        session_factory = session_factory_maker()
+        async with session_factory() as session:
+            effective = await load_effective(session, settings)
+    except Exception as exc:
+        raise EvalConfigError(f"cannot read the model config from the database ({exc}); start Postgres or pass "
+                              f"--config-file PATH") from exc
+    return effective.resolve(), effective.label
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -160,12 +187,34 @@ def main() -> None:
     if isinstance(sys.stdout, io.TextIOWrapper):  # piped or redirected stdout is cp1252 here: "≥" must not crash
         sys.stdout.reconfigure(errors="replace")
 
+    pre = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    pre.add_argument("--config-file")
+    known, rest = pre.parse_known_args(sys.argv[1:])
+
     async def go() -> int:
+        from app.db.session import make_engine, make_session_factory
+
+        engine = None
+
+        def factory():
+            nonlocal engine
+            engine = make_engine(settings.database_url)
+            return make_session_factory(engine)
+
+        try:
+            resolved, label = await eval_llm_config(settings, known.config_file, factory)
+        except EvalConfigError as exc:
+            print(exc)
+            return 2
+        finally:
+            if engine is not None:
+                await engine.dispose()
+        print(f"llm config: {label}")
         http = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)
-        deps = build_graph_deps(settings, http)
+        deps = build_graph_deps(settings, http, resolved=resolved, config_version=label)
         deps.openalex, deps.mcp = None, None  # no citation network or external tools: replays stay deterministic
         try:
-            return await run(sys.argv[1:], deps, http, settings.europepmc_url)
+            return await run(rest, deps, http, settings.europepmc_url)
         finally:
             await http.aclose()
 
