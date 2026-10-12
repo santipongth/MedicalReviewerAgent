@@ -15,8 +15,8 @@ reviews on their primary outcome.
 60 Cochrane intervention reviews published or updated 2020–2025, 10 per stratum (cardiovascular, diabetes and
 metabolic, infection, maternal and child, renal or respiratory, mental health), drawn in random order with seed
 20261011 from Europe PMC (`JOURNAL:"Cochrane Database Syst Rev"` + year range + the stratum terms in
-`manifest.yaml`). Eligibility: intervention review; GRADE certainty reported for the primary outcome; >= 3 RCTs for
-the primary outcome; a search date stated in the abstract. An LLM screens each abstract; the owner checks every
+`manifest.yaml`, matched in the review title). Eligibility: intervention review; GRADE certainty reported for the
+primary outcome; >= 3 RCTs for the primary outcome; a search date stated in the abstract. An LLM screens each abstract; the owner checks every
 decision.
 
 ## Index test
@@ -41,3 +41,7 @@ follows TRIPOD-LLM.
 ## Deviations
 - 2026-10-11: the sampling frame uses Europe PMC's REST search instead of PubMed E-utilities (same Cochrane records,
   abstracts in one call).
+- 2026-10-12: the stratum terms are matched in the title (`TITLE:(...)`). Unqualified terms matched anywhere in the
+  record, including the full text of open-access reviews (1006–1870 hits per stratum, about half of all Cochrane
+  reviews in the year range), so most drawn reviews were off topic (contact-lens drops in "cardiovascular"). With the
+  title restriction each stratum has 91–264 hits. No manifest built before this change was used.

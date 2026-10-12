@@ -48,3 +48,12 @@ def test_with_schema_without_a_factory_is_an_error_never_the_roles_own_llm():
     llms = LLMs(guard=role, planner=role, screener=role, extractor=role, synthesizer=role)
     with pytest.raises(LLMError, match="planner"):
         llms.with_schema("planner", TopicVerdict)
+
+
+def test_with_schema_for_a_role_the_preset_lacks_is_an_llm_error():
+    import pytest
+
+    from app.services.llm import LLMError
+    llms = build_llms(Settings(_env_file=None, openrouter_api_key="sk-or-x"))
+    with pytest.raises(LLMError, match="no-such-role"):
+        llms.with_schema("no-such-role", TopicVerdict)

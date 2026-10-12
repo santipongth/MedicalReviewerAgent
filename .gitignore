@@ -21,3 +21,4 @@ Thumbs.db
 # Plan 22a: frozen pools and run files hold third-party abstracts
 backend/evals/cochrane/fixtures/
 backend/evals/cochrane/runs/
+backend/evals/cochrane/*.bak

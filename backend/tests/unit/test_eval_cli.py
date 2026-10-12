@@ -74,7 +74,8 @@ async def test_select_force_keeps_backup_and_rebuilds(tmp_path, monkeypatch):
     monkeypatch.setattr("app.cli.eval.select", stub)
     assert await run(["select", "--force"], make_deps(), None, "") == 0
     assert seen["n"] == 0
-    assert (tmp_path / "manifest.yaml.bak").read_bytes() == before
+    [bak] = tmp_path.glob("manifest.yaml.*.bak")
+    assert bak.read_bytes() == before
 
 
 @pytest.mark.asyncio
@@ -201,3 +202,26 @@ async def test_select_saves_the_manifest_after_every_judged_record(tmp_path, mon
     assert on_disk == [["CD1"], ["CD1", "CD2"]]  # nothing judged is lost; select --continue resumes
     out = capsys.readouterr().out
     assert "cv CD1: eligible" in out and "cv CD2: excluded protocol" in out
+
+
+@pytest.mark.asyncio
+async def test_a_second_force_after_a_crash_keeps_the_first_backup(tmp_path, monkeypatch):
+    import itertools
+    monkeypatch.setattr(models, "EVAL_ROOT", tmp_path)
+    save_manifest(Manifest(seed=1, strata=[Stratum(name="cv", query="x")],
+                           reviews=[_entry("CD1").model_copy(update={"checked_by_owner": True})]), tmp_path / "manifest.yaml")
+    checked = (tmp_path / "manifest.yaml").read_bytes()
+    stamps = itertools.count()
+    monkeypatch.setattr("app.cli.eval._stamp", lambda: f"t{next(stamps)}")
+
+    async def crash(deps, http, base_url, m, on_entry=None):
+        on_entry(m.model_copy(update={"reviews": [_entry("CD9")]}), _entry("CD9"))
+        raise RuntimeError("503")
+
+    monkeypatch.setattr("app.cli.eval.select", crash)
+    with pytest.raises(RuntimeError):
+        await run(["select", "--force"], make_deps(), None, "")
+    with pytest.raises(RuntimeError):
+        await run(["select", "--force"], make_deps(), None, "")
+    backups = sorted(tmp_path.glob("manifest.yaml.*.bak"))
+    assert len(backups) == 2 and backups[0].read_bytes() == checked  # the owner's checks survive

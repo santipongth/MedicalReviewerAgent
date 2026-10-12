@@ -3,6 +3,7 @@ each abstract (intervention review, GRADE reported, >= 3 RCTs for the primary ou
 checked record is kept with its reason; the owner checks the list before freezing."""
 from __future__ import annotations
 
+import json
 import random
 import re
 from collections.abc import Callable
@@ -116,10 +117,17 @@ async def select(deps, http, base_url: str, manifest: Manifest,
         # sorted first: Europe PMC's relevance order drifts over time, the seeded draw must not
         records = sorted(deduped, key=lambda r: cochrane_id(r["doi"]))
         random.Random(f"{manifest.seed}:{stratum.name}").shuffle(records)
-        write_json_atomic(models.EVAL_ROOT / "frames" / f"{stratum.name}.json", {
+        draw = [cochrane_id(r["doi"]) for r in records]
+        frame_path = models.EVAL_ROOT / "frames" / f"{stratum.name}.json"
+        # a resumed stratum must follow the draw its entries came from, or the frame file stops documenting them
+        if (any(e.stratum == stratum.name for e in reviews) and frame_path.exists()
+                and json.loads(frame_path.read_text(encoding="utf-8")).get("ids_in_draw_order") != draw):
+            raise ValueError(f"draw order of {stratum.name} changed since its entries were drawn (Europe PMC "
+                             "records changed); rebuild with select --force")
+        write_json_atomic(frame_path, {
             "query": frame_query(manifest, stratum), "run_date": datetime.now(UTC).isoformat(timespec="seconds"),
             "hit_count": hit_count, "collected": len(deduped),
-            "ids_in_draw_order": [cochrane_id(r["doi"]) for r in records]})
+            "ids_in_draw_order": draw})
         # a top-up (select --continue) starts from the stratum's eligible entries already in the manifest
         eligible = sum(1 for e in reviews if e.stratum == stratum.name and e.status == "eligible")
         for r in records:

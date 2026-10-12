@@ -45,6 +45,10 @@ def _parser() -> argparse.ArgumentParser:
     return p
 
 
+def _stamp() -> str:
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+
+
 def git_sha() -> str:
     try:
         return subprocess.run(["git", "describe", "--always", "--dirty"], capture_output=True, text=True,
@@ -87,7 +91,9 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
                 print(f"manifest already has {len(manifest.reviews)} reviews; re-run with --continue to top up "
                       "the strata, or --force to rebuild (a .bak copy is kept)")
                 return 1
-            shutil.copyfile(path, path.with_name(path.name + ".bak"))
+            # one backup per run: the manifest is saved after every record, so a later --force must not overwrite
+            # the backup of an owner-checked manifest with a crashed run's partial one
+            shutil.copyfile(path, path.with_name(f"{path.name}.{_stamp()}.bak"))
         start = manifest if args.cont else manifest.model_copy(update={"reviews": []})
 
         def progress(m, entry) -> None:  # saved after every judged record: an interrupted run resumes with --continue
@@ -150,6 +156,7 @@ def main() -> None:
     from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 
     settings = get_settings()
+    sys.stdout.reconfigure(errors="replace")  # an LLM's reason with "≥" must not crash select on a cp1252 console
 
     async def go() -> int:
         http = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)

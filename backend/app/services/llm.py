@@ -360,6 +360,8 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None) 
     bound: dict[tuple[str, type[BaseModel]], StructuredLLM] = {}
 
     def for_schema(role: str, schema: type[BaseModel]) -> StructuredLLM:
+        if role not in config.roles:
+            raise LLMError(f"preset {config.preset} has no {role} role to bind to {schema.__name__}")
         if (role, schema) not in bound:
             bound[role, schema] = LimitedLLM(build_role_llm(config.roles[role], settings, catalog, schema=schema), sem)
         return bound[role, schema]

@@ -187,5 +187,25 @@ async def test_a_resumed_select_gives_the_same_entries_as_an_uninterrupted_one()
     saved = []
     await select(deps, FakeHttp(records), "u", m(), on_entry=lambda manifest, entry: saved.append(manifest))
     assert len(saved) == len(full.reviews) and saved[-1].reviews == full.reviews  # saved after every judged record
-    resumed = await select(deps, FakeHttp(records), "u", m(full.reviews[:2]))  # crashed after two records
-    assert [(r.id, r.stratum, r.status) for r in resumed.reviews] == [(r.id, r.stratum, r.status) for r in full.reviews]
+    for k in range(len(full.reviews)):  # crashed after k records, in either stratum
+        resumed = await select(deps, FakeHttp(records), "u", m(full.reviews[:k]))
+        assert [(r.id, r.stratum, r.status) for r in resumed.reviews] == [
+            (r.id, r.stratum, r.status) for r in full.reviews], k
+
+
+@pytest.mark.asyncio
+async def test_continue_refuses_when_the_draw_changed_since_the_stratum_started(root):
+    deps = make_deps()
+    bind(deps, judge)
+
+    def m(reviews=()):
+        return Manifest(seed=7, per_stratum=3, reviews=list(reviews), strata=[Stratum(name="cv", query="x")])
+
+    first = await select(deps, FakeHttp([rec(i, "Search up to 2023") for i in range(1, 6)]), "u", m())
+    partial = first.reviews[:1]
+    same = await select(deps, FakeHttp([rec(i, "Search up to 2023") for i in range(1, 6)]), "u", m(partial))
+    assert [r.id for r in same.reviews] == [r.id for r in first.reviews]
+    frame_before = (root / "frames" / "cv.json").read_bytes()
+    with pytest.raises(ValueError, match="draw order of cv changed"):  # Europe PMC added a record meanwhile
+        await select(deps, FakeHttp([rec(i, "Search up to 2023") for i in range(1, 7)]), "u", m(partial))
+    assert (root / "frames" / "cv.json").read_bytes() == frame_before  # the original draw stays on record
