@@ -111,3 +111,13 @@ def fake_anthropic():
 def pytest_runtest_setup(item):
     if "live" in item.keywords and not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
         pytest.skip("live test: set OPENROUTER_API_KEY (or ANTHROPIC_API_KEY)")
+
+
+@pytest.fixture(autouse=True)
+def fast_password_hashing(monkeypatch):
+    """argon2's defaults cost tens of milliseconds per hash; unit tests use the cheapest valid parameters."""
+    from argon2 import PasswordHasher
+
+    from app.services import admin_auth
+
+    monkeypatch.setattr(admin_auth, "HASHER", PasswordHasher(time_cost=1, memory_cost=8, parallelism=1))
