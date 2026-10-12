@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatWhen } from "@/lib/admin-copy";
+import { missingKeyEnvs } from "@/lib/admin-models";
 import type { LlmConfigDoc, LlmConfigState } from "@/lib/admin-types";
 import { useAdmin } from "./admin-gate";
 import { ModelsHistory } from "./models-history";
@@ -23,7 +24,7 @@ function isStale(loadedAt: string, now: number): boolean {
 export function ModelsHeader({ state, now }: { state: LlmConfigState; now?: number }) {
   const [mountedAt] = useState(() => Date.now());
   const at = now ?? mountedAt;
-  const missing = Object.entries(state.keys_present).filter(([, set]) => !set).map(([name]) => name);
+  const missing = missingKeyEnvs(state);
   const wanted = state.version === null ? "file" : String(state.version);
   return (
     <div className="mt-4 grid gap-2">
@@ -44,10 +45,12 @@ export function ModelsHeader({ state, now }: { state: LlmConfigState; now?: numb
         {state.loaded.length === 0 && <li className="text-muted">ยังไม่มี worker รายงาน (worker จะรายงานภายใน 30 วินาทีหลังเริ่มทำงาน)</li>}
         {state.loaded.map((w) => {
           const stale = isStale(w.loaded_at, at);
-          const off = w.version !== wanted || w.error || stale;
+          const other = w.version !== wanted;
+          const off = other || w.error || stale;
           return (
             <li key={w.worker} className={off ? "rounded-sm bg-warn-bg px-3 py-1" : "text-muted"}>
-              {`${w.worker}: เวอร์ชัน ${w.version} · preset ${w.preset} · ${formatWhen(w.loaded_at)}`}
+              {`${w.worker}: เวอร์ชัน ${w.version} · preset ${w.preset} · รายงานล่าสุด ${formatWhen(w.loaded_at)}`}
+              {other ? " · ไม่ตรงกับเวอร์ชันที่ใช้" : ""}
               {w.error ? ` · error: ${w.error}` : ""}
               {stale ? " · ไม่ได้รายงานเกิน 2 นาที (worker อาจหยุดทำงาน)" : ""}
             </li>
