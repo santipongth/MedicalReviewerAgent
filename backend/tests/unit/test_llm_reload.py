@@ -18,6 +18,7 @@ from app.services.llm_store import (
     report_loaded,
     save_version,
 )
+from app.services.model_catalog import ModelInfo, cached_catalog
 from app.worker import llm_reload, tasks
 from app.worker.llm_reload import (
     init_llms,
@@ -31,6 +32,15 @@ from app.worker.llm_reload import (
 from tests.llm_helpers import MINIMAL, with_model, write_yaml
 
 OWNER = AdminPrincipal(kind="user", id=None, label="owner")
+
+
+@pytest.fixture(autouse=True)
+def offline_catalog(monkeypatch):
+    """A reload asks the shared catalog cache and then the live loader: no test may reach the network."""
+    async def offline():
+        raise OSError("offline")
+
+    monkeypatch.setattr(llm_reload, "load_live_catalog", offline)
 
 
 @dataclass
@@ -285,3 +295,164 @@ async def test_startup_does_not_hide_a_broken_file(tmp_path, session_factory, re
     monkeypatch.setattr(llm_reload, "build_graph_deps", broken)
     with pytest.raises(RuntimeError, match="file cannot build"):  # no usable configuration: the worker must not start
         await init_llms(ctx, None, "CP", build_graph_fn=build_graph_fn)
+
+
+async def test_a_poll_republishes_a_version_whose_publish_was_lost_and_reloads(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    first = await save(session_factory, ctx["settings"], MINIMAL, None)
+    await publish_version(redis, first)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is True
+    second = await save(session_factory, ctx["settings"], with_model(MINIMAL, "cheap", "synthesizer", "vendor/big"),
+                        first)  # saved and committed, but its publish never reached Redis
+    assert await redis.get(LLM_VERSION_KEY) == str(first)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is False  # job start trusts Redis
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is True
+    assert ctx["llm_version"] == str(second) and await redis.get(LLM_VERSION_KEY) == str(second)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is False
+
+
+async def test_a_poll_publishes_the_db_version_when_redis_lost_it_after_a_startup_fallback(tmp_path, session_factory,
+                                                                                          redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    vid = await save(session_factory, ctx["settings"], MINIMAL, None)
+    await redis.delete(LLM_VERSION_KEY)
+    ctx["llm_error"] = "cannot build"  # the worker started on llm.yaml because the saved version failed
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is False  # job start: nothing to compare with
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is True
+    assert ctx["llm_version"] == str(vid) and ctx["llm_error"] is None
+    assert await redis.get(LLM_VERSION_KEY) == str(vid)
+
+
+async def test_a_poll_pulls_a_redis_id_above_the_db_max_back_to_the_db(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    vid = await save(session_factory, ctx["settings"], MINIMAL, None)
+    ctx["llm_version"] = str(vid)
+    graph = ctx["graph"]
+    await redis.set(LLM_VERSION_KEY, str(vid + 98))  # a DB restored from a backup, or a migration down and up
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is False
+    assert await redis.get(LLM_VERSION_KEY) == str(vid) and ctx["graph"] is graph
+
+
+async def test_a_poll_deletes_a_redis_id_while_the_table_is_empty(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    await redis.set(LLM_VERSION_KEY, "7")
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is False
+    assert await redis.get(LLM_VERSION_KEY) is None and ctx["llm_version"] == "file"
+
+
+async def test_a_stale_load_error_is_cleared_once_the_worker_runs_the_dbs_active_id(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    ctx["llm_error"] = "connection refused"  # a startup fallback to llm.yaml; the table is empty
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is False
+    assert ctx["llm_error"] is None
+    vid = await save(session_factory, ctx["settings"], MINIMAL, None)
+    await publish_version(redis, vid)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is True
+    ctx["llm_error"] = "an old failure"
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is False
+    assert ctx["llm_error"] is None
+
+
+async def test_a_load_error_stays_while_the_dbs_active_id_is_not_running(tmp_path, session_factory, redis, monkeypatch):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    await save(session_factory, ctx["settings"], MINIMAL, None)
+    ctx["llm_error"] = "cannot build"
+
+    def broken(*_a, **_k):
+        raise RuntimeError("still cannot build")
+
+    monkeypatch.setattr("app.worker.llm_reload.build_llms", broken)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is False
+    assert "still cannot build" in ctx["llm_error"] and ctx["llm_version"] == "file"
+
+
+async def test_the_poller_reconciles_redis_with_the_db(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    ctx["graph"] = FakeGraph(ctx["graph_deps"], checkpointer=None)  # the poller compiles the real graph
+    vid = await save(session_factory, ctx["settings"], MINIMAL, None)  # no publish at all
+    poller = asyncio.create_task(poll_llm_config(ctx, interval=0.01))
+    try:
+        for _ in range(300):
+            await asyncio.sleep(0.01)
+            if ctx["llm_version"] == str(vid):
+                break
+    finally:
+        poller.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await poller
+    assert ctx["llm_version"] == str(vid) and await redis.get(LLM_VERSION_KEY) == str(vid)
+
+
+async def test_a_reload_builds_with_the_catalog_the_api_sees_not_the_one_from_startup(tmp_path, session_factory,
+                                                                                     redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    ctx["catalog"] = {}  # fetched when the worker started: vendor/big did not exist yet
+    big = ModelInfo("vendor/big", 100_000, 1e-6, 2e-6, frozenset({"tools"}))  # no structured_outputs, no reasoning
+
+    async def fetched():
+        return {"vendor/big": big}
+
+    await cached_catalog(redis, fetched)  # what the API's test call or validate cached
+    raw = with_model(MINIMAL, "cheap", "synthesizer", "vendor/big")
+    raw["presets"]["cheap"]["synthesizer"]["reasoning_effort"] = "none"
+    vid = await save(session_factory, ctx["settings"], raw, None)
+    await publish_version(redis, vid)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is True
+    synth = ctx["graph_deps"].llms.synthesizer
+    assert synth.method == "tool_calling" and synth.reasoning_effort is None  # as for a known model
+    assert synth.inner.price == big and ctx["catalog"] == {"vendor/big": big}
+
+
+async def test_a_cold_cache_is_filled_by_the_worker_and_an_offline_catalog_keeps_the_startup_one(
+        tmp_path, session_factory, redis, monkeypatch):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    startup = {"vendor/cheap": ModelInfo("vendor/cheap", 1000, 1e-7, 1e-7, frozenset())}
+    ctx["catalog"] = startup
+    vid = await save(session_factory, ctx["settings"], MINIMAL, None)
+    await publish_version(redis, vid)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is True  # offline loader, empty cache
+    assert ctx["catalog"] is startup and ctx["graph_deps"].llms.synthesizer.inner.price == startup["vendor/cheap"]
+    loaded = []
+
+    async def live():
+        loaded.append(1)
+        return {"vendor/better": ModelInfo("vendor/better", 1000, 1e-7, 1e-7, frozenset())}
+
+    monkeypatch.setattr(llm_reload, "load_live_catalog", live)
+    vid2 = await save(session_factory, ctx["settings"], {**MINIMAL, "active_preset": "better"}, vid)
+    await publish_version(redis, vid2)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is True
+    assert loaded == [1] and set(ctx["catalog"]) == {"vendor/better"}
+    assert await cached_catalog(redis, live) == ctx["catalog"] and loaded == [1]  # now cached for the other workers
+
+
+async def test_stub_mode_never_touches_the_catalog(tmp_path, session_factory, redis, monkeypatch):
+    ctx = await make_ctx(tmp_path, session_factory, redis, mode="stub")
+
+    async def live():
+        raise AssertionError("stub mode must not fetch the catalog")
+
+    monkeypatch.setattr(llm_reload, "load_live_catalog", live)
+    vid = await save(session_factory, ctx["settings"], MINIMAL, None)
+    await publish_version(redis, vid)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is True
+
+
+async def test_a_poll_follows_an_emptied_table_back_to_the_file(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    ctx["llm_version"] = "5"  # the DB was restored to a state without any saved version
+    await redis.set(LLM_VERSION_KEY, "5")
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is True
+    assert ctx["llm_version"] == "file" and await redis.get(LLM_VERSION_KEY) is None
+
+
+async def test_a_poll_with_the_db_unreachable_changes_nothing_and_does_not_raise(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+
+    def broken():
+        raise ConnectionError("db is down")
+
+    ctx["session_factory"] = broken
+    graph = ctx["graph"]
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is False
+    assert ctx["graph"] is graph

@@ -209,6 +209,31 @@ async def publish_version(redis, version_id: int) -> bool:
     return False
 
 
+async def reconcile_version_key(redis, session_factory) -> int | None:
+    """Make LLM_VERSION_KEY agree with the DB, which is the truth, and return the DB's newest id (None while the
+    table is empty). A key that is missing or behind is raised (a publish that was lost); a key above the DB's newest
+    is pulled back with a plain SET, or deleted while the table is empty (a DB restored from a backup, a migration
+    taken down and up). Redis is read before the DB: a publish follows its commit, so a stored id above the DB's
+    newest was not committed here, and a save landing in between only makes the DB ahead, which the next line fixes."""
+    raw = await redis.get(LLM_VERSION_KEY)
+    stored = _as_id(raw)
+    newest = await newest_version_id(session_factory)
+    if newest is None:
+        if raw is not None:
+            await redis.delete(LLM_VERSION_KEY)
+    elif stored is None or stored < newest:
+        await publish_version(redis, newest)
+    elif stored > newest:
+        await redis.set(LLM_VERSION_KEY, str(newest))
+    return newest
+
+
+async def newest_version_id(session_factory) -> int | None:
+    """The newest (= active) version id straight from the DB; None while the table is empty (llm.yaml is active)."""
+    async with session_factory() as session:
+        return await session.scalar(select(func.max(LlmConfigVersion.id)))
+
+
 async def active_version_id(session_factory, redis) -> str:
     """The active version id as text ("file" while the table is empty): Redis first, the DB on a miss or an error."""
     try:
@@ -217,8 +242,7 @@ async def active_version_id(session_factory, redis) -> str:
         cached = None
     if cached:
         return cached
-    async with session_factory() as session:
-        newest = await session.scalar(select(func.max(LlmConfigVersion.id)))
+    newest = await newest_version_id(session_factory)
     value = str(newest) if newest is not None else "file"
     if newest is not None:
         try:

@@ -1,8 +1,10 @@
 """Workers pick up a saved LLM configuration without a restart (Plan 23b). Each worker compares the Redis key
-LLM_VERSION_KEY with the version it loaded, when a review job starts and every 30 seconds; on a change it rebuilds its
-LLMs (same per-process semaphore) and graph (same checkpointer). Runners already holding the old graph keep it, so a
-review never switches models mid-way. A configuration that fails to build keeps the old models and is reported.
-Each worker also re-reports its state on every poll (a heartbeat), so `loaded_at` in LOADED_KEY means "last seen"."""
+LLM_VERSION_KEY with the version it loaded when a review job starts, and the DB's newest version every 30 seconds; the
+poll also repairs the key (a lost publish, a key above the DB's newest) and treats the DB as the truth. On a change it
+rebuilds its LLMs (same per-process semaphore, the catalog the API sees) and graph (same checkpointer). Runners already
+holding the old graph keep it, so a review never switches models mid-way. A configuration that fails to build keeps the
+old models and is reported. Each worker also re-reports its state on every poll (a heartbeat), so `loaded_at` in
+LOADED_KEY means "last seen"."""
 from __future__ import annotations
 
 import asyncio
@@ -21,8 +23,10 @@ from app.services.llm_store import (
     LOADED_KEY,
     load_effective,
     publish_version,
+    reconcile_version_key,
     report_loaded,
 )
+from app.services.model_catalog import cached_catalog, load_live_catalog
 
 log = get_logger(__name__)
 POLL_SECONDS = 30.0
@@ -44,12 +48,22 @@ async def initial_llm_config(session_factory, settings) -> tuple[ResolvedLLMConf
         return load_llm_config(settings.llm_config_path, settings.llm_preset), "file", str(exc)
 
 
-async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph) -> bool:
-    """Rebuild the models when the active version changed. True when this call switched to a new version."""
+async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph, poll: bool = False) -> bool:
+    """Rebuild the models when the active version changed. True when this call switched to a new version.
+    A job start trusts the Redis key (one cheap GET). A poll reads the DB's newest id instead, repairs the key to match
+    and clears a load error that is stale because the worker already runs the DB's active id."""
     redis = ctx["events_redis"]
     try:
-        wanted = await redis.get(LLM_VERSION_KEY)
-    except Exception:  # noqa: BLE001 - keep the current models while Redis is unreachable
+        if poll:
+            newest = await reconcile_version_key(redis, ctx["session_factory"])
+            wanted = str(newest) if newest is not None else "file"
+            if wanted == ctx.get("llm_version"):
+                ctx["llm_error"] = None
+        else:
+            wanted = await redis.get(LLM_VERSION_KEY)
+    except Exception as exc:  # noqa: BLE001 - keep the current models while Redis or the DB is unreachable
+        if poll:
+            log.warning("llm_poll_reconcile_failed", error=str(exc))
         return False
     if not wanted or wanted == ctx.get("llm_version"):
         return False
@@ -67,10 +81,14 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph) -> bool:
             if effective.active_id == ctx.get("llm_version"):
                 return False  # Redis and the DB disagree but this worker already runs what the DB says
             resolved = effective.resolve()
+            catalog = None
             if settings.graph_mode == "stub":
                 deps, graph = ctx["graph_deps"], ctx["graph"]
             else:
-                llms = build_llms(settings, ctx.get("catalog"), resolved=resolved, sem=ctx["llm_sem"],
+                # The catalog the API's validate and test call use (shared in Redis); the worker's own startup fetch
+                # only when that is unavailable, so a model added since startup is built with its real capabilities.
+                catalog = await cached_catalog(redis, load_live_catalog) or ctx.get("catalog")
+                llms = build_llms(settings, catalog, resolved=resolved, sem=ctx["llm_sem"],
                                   config_version=effective.label)
                 deps = dataclasses.replace(ctx["graph_deps"], llms=llms)
                 graph = build_graph_fn(deps, checkpointer=getattr(ctx["graph"], "checkpointer", None))
@@ -81,6 +99,8 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph) -> bool:
             return False
         ctx["graph_deps"], ctx["graph"], ctx["llm_version"] = deps, graph, effective.active_id
         ctx["llm_preset"], ctx["llm_error"] = resolved.preset, None
+        if catalog is not None:
+            ctx["catalog"] = catalog
         await report_state(ctx)
         log.info("llm_reloaded", version=effective.active_id, preset=resolved.preset)
         return True
@@ -95,11 +115,11 @@ async def report_state(ctx: dict) -> None:
 
 
 async def poll_llm_config(ctx: dict, interval: float = POLL_SECONDS) -> None:
-    """Background check so an idle worker also picks up a new version. Every pass ends with report_state, a heartbeat
-    that keeps this worker listed (and any failure shown) while it is alive."""
+    """Background check so a worker picks up a new version within one interval, even when the publish was lost. Every
+    pass ends with report_state, a heartbeat that keeps this worker listed (and any failure shown) while it is alive."""
     while True:
         try:
-            await refresh_llms(ctx)
+            await refresh_llms(ctx, poll=True)
             await report_state(ctx)
         except Exception as exc:  # noqa: BLE001 - the poller must never die
             log.error("llm_poll_failed", error=str(exc))
