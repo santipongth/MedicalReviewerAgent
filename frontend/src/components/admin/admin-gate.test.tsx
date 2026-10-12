@@ -51,4 +51,38 @@ describe("AdminGate", () => {
     await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/admin"));
     expect(fetch.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")).toBe(true);
   });
+
+  it("treats a 401 on sign-out as already signed out", async () => {
+    mockAdminFetch((m, p) => (m === "DELETE" && p === "/session" ? [401, { detail: "sign in required" }] : undefined));
+    await renderAdmin(<p>เนื้อหา</p>);
+    fireEvent.click(screen.getByRole("button", { name: "ออกจากระบบ" }));
+    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/admin"));
+  });
+
+  it("stays on the page and says so when sign-out fails, since the session is still valid", async () => {
+    let deletes = 0;
+    mockAdminFetch((m, p) => {
+      if (m === "DELETE" && p === "/session") { deletes += 1; return deletes === 1 ? [500, { detail: "boom" }] : [204]; }
+    });
+    await renderAdmin(<p>เนื้อหา</p>);
+    fireEvent.click(screen.getByRole("button", { name: "ออกจากระบบ" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("เกิดข้อผิดพลาด (500)");
+    expect(nav.replace).not.toHaveBeenCalled();
+    const retry = screen.getByRole("button", { name: "ออกจากระบบ" });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/admin"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("stays on the page when sign-out cannot reach the server", async () => {
+    mockAdminFetch((m, p) => {
+      if (m === "DELETE" && p === "/session") throw new TypeError("Failed to fetch");
+      return undefined;
+    });
+    await renderAdmin(<p>เนื้อหา</p>);
+    fireEvent.click(screen.getByRole("button", { name: "ออกจากระบบ" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ติดต่อเซิร์ฟเวอร์ไม่ได้");
+    expect(nav.replace).not.toHaveBeenCalled();
+  });
 });

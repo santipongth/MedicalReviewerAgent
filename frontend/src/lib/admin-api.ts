@@ -5,7 +5,9 @@ import type { AdminKey, AdminMe, AdminReview, AdminStatus, AuditEntry, Dashboard
 export const ADMIN_BASE = "/api/v1/admin";
 
 export class AdminApiError extends Error {
-  constructor(public status: number, message: string, public retryAfter: number | null = null) {
+  /** `structuredDetail`: the body's `detail` was not a string (FastAPI sends a list of field errors for a 422), so
+   * `message` is only a status fallback and not fit to show. */
+  constructor(public status: number, message: string, public retryAfter: number | null = null, public structuredDetail = false) {
     super(message);
     this.name = "AdminApiError";
   }
@@ -24,14 +26,16 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     let detail = res.statusText || `HTTP ${res.status}`;
+    let structured = false;
     try {
       const body = (await res.json()) as { detail?: unknown };
       if (typeof body.detail === "string") detail = body.detail;
+      else structured = body.detail !== undefined && body.detail !== null;
     } catch {
       // not JSON: keep the status text
     }
     const retry = Number(res.headers.get("Retry-After"));
-    throw new AdminApiError(res.status, detail, Number.isFinite(retry) && retry > 0 ? retry : null);
+    throw new AdminApiError(res.status, detail, Number.isFinite(retry) && retry > 0 ? retry : null, structured);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
@@ -74,6 +78,7 @@ export function adminErrorText(e: unknown): string {
   if (e.status === 429) return e.retryAfter ? `ลองใหม่ได้ในอีก ${Math.ceil(e.retryAfter / 60)} นาที` : "ถูกจำกัดชั่วคราว ลองใหม่ภายหลัง";
   if (e.status === 403) return `ไม่มีสิทธิ์ทำรายการนี้ (${e.message})`;
   if (e.status === 404) return "ไม่พบรายการนี้แล้ว";
+  if (e.status === 422 && e.structuredDetail) return "ข้อมูลที่กรอกไม่ถูกต้อง ตรวจแล้วลองใหม่";
   if (e.status === 409 || e.status === 422) return e.message;
   return `เกิดข้อผิดพลาด (${e.status}) ลองใหม่อีกครั้ง`;
 }

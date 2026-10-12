@@ -55,6 +55,16 @@ describe("adminApi", () => {
     expect(adminErrorText(err)).toContain("ติดต่อเซิร์ฟเวอร์ไม่ได้");
   });
 
+  it("shows a fixed Thai line for a 422 whose detail is a validation list, not the raw list", async () => {
+    stub(422, { detail: [{ loc: ["body", "password"], msg: "String should have at most 256 characters", type: "string_too_long" }] });
+    const err = await adminApi.signIn("owner", "x".repeat(300)).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AdminApiError);
+    expect(err).toMatchObject({ status: 422 });
+    expect(adminErrorText(err)).toBe("ข้อมูลที่กรอกไม่ถูกต้อง ตรวจแล้วลองใหม่");
+    stub(422, { detail: "daily_quota must be at least 1" });
+    expect(adminErrorText(await adminApi.updateKey("k", { daily_quota: 0 }).catch((e: unknown) => e))).toBe("daily_quota must be at least 1");
+  });
+
   it("gives Thai text for the other statuses", () => {
     expect(adminErrorText(new AdminApiError(409, "review is running; cancel it before deleting"))).toBe("review is running; cancel it before deleting");
     expect(adminErrorText(new AdminApiError(404, "x"))).toBe("ไม่พบรายการนี้แล้ว");

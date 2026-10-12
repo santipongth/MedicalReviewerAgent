@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { adminApi } from "@/lib/admin-api";
+import { AdminApiError, adminApi, adminErrorText } from "@/lib/admin-api";
 import type { AdminMe } from "@/lib/admin-types";
 import { BUTTON_GHOST } from "./ui";
 
@@ -15,13 +15,21 @@ export function AdminNav({ me }: { me: AdminMe }) {
   const pathname = usePathname();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function signOut() {
     setBusy(true);
+    setError(null);
     try {
       await adminApi.signOut();
-    } catch {
-      // the session may already be gone; the sign-in page is the right place either way
+    } catch (e) {
+      // 401: the session is already gone, which is what signing out wanted. Anything else leaves it valid
+      // (up to the session TTL), so stay here and say so instead of looking signed out.
+      if (!(e instanceof AdminApiError && e.status === 401)) {
+        setError(adminErrorText(e));
+        setBusy(false);
+        return;
+      }
     }
     router.replace("/admin");
   }
@@ -38,6 +46,7 @@ export function AdminNav({ me }: { me: AdminMe }) {
         <span>{me.kind === "key" ? `API key ${me.label}` : me.label}</span>
         <button type="button" onClick={signOut} disabled={busy} className={BUTTON_GHOST}>ออกจากระบบ</button>
       </span>
+      {error && <p role="alert" className="basis-full rounded-sm bg-err-bg px-3 py-2 text-sm">{error}</p>}
     </nav>
   );
 }
