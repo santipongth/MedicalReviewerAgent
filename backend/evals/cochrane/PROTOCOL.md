@@ -30,6 +30,16 @@ English sentence. Candidate pools are frozen once per pool version with a cutoff
 search (studies from that year are kept; their number is reported). Every version of the target Cochrane review is removed from its candidate pool before the engine sees it (count reported per review). Each review is run twice. Citation metadata (OpenAlex) and external MCP tools are disabled in eval runs so that
 replays stay deterministic.
 
+Models for a run (Plan 23b). `python -m app.cli.eval run|select|freeze` call the LLM with the service's effective
+configuration: the newest version saved in the admin console (the database), else `backend/config/llm.yaml`
+(`LLM_PRESET` applies only to the file). `--config-file PATH` (before or after the command) forces that YAML file
+instead and needs no database. `report`, `--help` and bad arguments never touch the database. A database or file
+that cannot be read stops the command with exit code 2 and a readable message (a database error also suggests
+`--config-file`); there is no silent fallback. Every run record stores the configuration it used in `llm_config`
+(`db:<id>`, `file` or `file:<path>`), and `report` flags a batch whose records name different configurations with a
+MIXED BATCH banner, as it does for models, git SHA and preset. A batch topped up after a new console version was saved
+is therefore flagged: start a new batch instead.
+
 ## Outcomes
 Primary: direction agreement. Secondary: certainty agreement (exact, within one level, weighted kappa); pool recall
 and included-set recall/precision of Cochrane's included studies; number-verification rate; citations stripped as

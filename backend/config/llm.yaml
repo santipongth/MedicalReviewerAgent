@@ -1,4 +1,6 @@
 # LLM configuration for the Medical Reviewer Agent.
+# This file is the seed. Once a version is saved in the admin console (/admin/models) the newest version overrides it
+# (and LLM_PRESET stops applying); "สร้างเวอร์ชันใหม่จาก llm.yaml" in the console's history tab copies this file into a new version.
 #
 # Pick a preset with `active_preset` (or env LLM_PRESET=...), or tweak any role below.
 # Roles: guard (topic filter), planner (search queries), screener (title/abstract screening),
