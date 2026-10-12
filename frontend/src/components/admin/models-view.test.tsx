@@ -355,6 +355,38 @@ describe("ModelsView while a save is in flight", () => {
     expect((saveRequests(server)[1].body.config as LlmConfigDoc).presets.cheap.guard.model).toBe("vendor/typed");
   });
 
+  it("keeps a draft typed during the save on its old base when the re-read finds a version another admin saved", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    acceptsSaveAs(server, 4, movedTo(5, "vendor/theirs")); // our save is version 4; by the time of the re-read someone saved 5
+    const hold = holdNextReread();
+    hold.arm();
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await screen.findByText("บันทึกเป็นเวอร์ชัน 4 แล้ว");
+    fireEvent.change(guardModel(), { target: { value: "vendor/typed" } });
+    await act(async () => { hold.release(); });
+    expect(await screen.findByText(/ใช้เวอร์ชัน 5 จาก DB/)).toBeInTheDocument();
+    expect(guardModel()).toHaveValue("vendor/typed");
+    expect(screen.getByText(MOVED(3, 5))).toBeInTheDocument(); // not rebased onto a version it never saw
+    await waitFor(() => expect(screen.getByRole("button", SAVE)).toBeEnabled());
+    server.reply = (m, p) => (m === "POST" && p === "/llm-config" ? [409, { detail: "version 5 is in use now" }] : undefined);
+    fireEvent.click(screen.getByRole("button", SAVE));
+    await waitFor(() => expect(saveRequests(server)).toHaveLength(2));
+    expect(saveRequests(server)[1].body.base_version).toBe(3); // so the server refuses it
+  });
+
+  it("replaces a draft that is still what was saved with the server's copy, even when that is a newer version", async () => {
+    const server = liveServer();
+    await renderAdmin(<ModelsView />);
+    fireEvent.change(await screen.findByLabelText("model ของ guard"), { target: { value: "vendor/mine" } });
+    acceptsSaveAs(server, 4, movedTo(5, "vendor/theirs"));
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText(/ใช้เวอร์ชัน 5 จาก DB/)).toBeInTheDocument();
+    await waitFor(() => expect(guardModel()).toHaveValue("vendor/theirs"));
+    expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument();
+  });
+
   it("keeps the save button disabled until the re-read has landed, so a second click cannot send a stale base", async () => {
     const server = liveServer();
     await renderAdmin(<ModelsView />);

@@ -117,6 +117,27 @@ describe("ModelsSaveBar", () => {
     expect(screen.getByText(WORKERS_NOT_NOTIFIED)).toHaveClass("bg-warn-bg");
   });
 
+  it("says so when the draft changed while it was being checked and the check failed, instead of looking like nothing happened", async () => {
+    const fetch = mockAdminFetch((m, p) => (p === "/llm-config/validate"
+      ? [200, { ...REPORT_OK, ok: false, errors: ["config: Unknown preset 'x'"], config: null, yaml: null }] : undefined));
+    const inner = globalThis.fetch;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/llm-config/validate")) await gate; // the admin keeps typing while this is out
+      return inner(input, init);
+    }));
+    const bar = (draft: typeof CONFIG) => (
+      <AdminGate><ModelsSaveBar base={3} draft={draft} onSaved={() => {}} onConflict={() => {}} /></AdminGate>
+    );
+    const { rerender } = await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} onSaved={() => {}} onConflict={() => {}} />);
+    fireEvent.click(screen.getByRole("button", SAVE));
+    rerender(bar({ ...CONFIG, active_preset: "better" }));
+    await act(async () => { release(); });
+    expect(await screen.findByRole("alert")).toHaveTextContent("ร่างเปลี่ยนระหว่างตรวจ: กดบันทึกอีกครั้ง");
+    expect(saves(fetch)).toHaveLength(0);
+  });
+
   it("moves focus to the saved note, so it is never left on a disabled button", async () => {
     mockAdminFetch((m, p) => {
       if (p === "/llm-config/validate") return [200, REPORT_OK];
@@ -161,7 +182,7 @@ describe("ModelsSaveBar", () => {
     });
     await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} onSaved={onSaved} onConflict={() => {}} />);
     fireEvent.click(screen.getByRole("button", SAVE));
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(CONFIG));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(CONFIG, 4)); // the document and the id it was saved as
     expect(screen.getByRole("button", SAVE)).toBeDisabled();
     expect(screen.getByRole("button", { name: "ตรวจ" })).toBeDisabled();
     await act(async () => { finish(); });

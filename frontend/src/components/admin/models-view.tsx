@@ -72,14 +72,19 @@ const fresh = (s: LlmConfigState): Draft => ({ doc: s.config, origin: s.config, 
 const isDirty = (d: Draft) => !sameConfig(d.doc, d.origin);
 const versionName = (v: number | null) => (v === null ? "llm.yaml" : String(v));
 
-/** What an answer from the server does to the draft. `saved` is set only on the re-read that follows the admin's own
- * save: it is the document that was saved. The draft is still that document: the server's copy replaces it. The draft
- * has been edited since: those edits stay, on top of the version just saved (so no conflict) and still unsaved.
+/** What an answer from the server does to the draft. `saved` and `savedId` are set only on the re-read that follows the
+ * admin's own save: the document that was saved and the version it became.
+ * - The draft is still that document: the server's copy replaces it.
+ * - The draft has been edited since, and the server is on the version just saved: those edits stay, on top of it (so
+ *   no conflict) and still unsaved.
+ * - The draft has been edited since, but the server is on another version (someone saved after us): the edits were
+ *   made without seeing it, so the ordinary rule applies and the save is built on the old base and gets its 409.
  * Any other answer replaces a draft without edits and leaves a draft with edits alone. */
-function reconcile(draft: Draft | null, server: LlmConfigState, saved?: LlmConfigDoc): Draft {
+function reconcile(draft: Draft | null, server: LlmConfigState, saved?: LlmConfigDoc, savedId?: number): Draft {
   if (draft === null) return fresh(server);
   if (saved !== undefined) {
-    return sameConfig(draft.doc, saved) ? fresh(server) : { doc: draft.doc, origin: server.config, base: server.version };
+    if (sameConfig(draft.doc, saved)) return fresh(server);
+    if (server.version === savedId) return { doc: draft.doc, origin: server.config, base: server.version };
   }
   return isDirty(draft) ? draft : fresh(server);
 }
@@ -107,9 +112,10 @@ export function ModelsView() {
     return () => { mounted.current = false; };
   }, []);
 
-  /** Reads /llm-config. Resolves when the answer is applied or the read has failed; it never rejects. `saved` is the
-   * document an admin has just saved, and belongs to this one request: a read that fails drops it with the request. */
-  const load = useCallback((saved?: LlmConfigDoc): Promise<void> => {
+  /** Reads /llm-config. Resolves when the answer is applied or the read has failed; it never rejects. `saved` and
+   * `savedId` are the document an admin has just saved and the version it became. They belong to this one request: a
+   * read that fails drops them with it. */
+  const load = useCallback((saved?: LlmConfigDoc, savedId?: number): Promise<void> => {
     const seq = ++requests.current.started;
     return adminApi.llmConfig()
       .then((s) => {
@@ -118,7 +124,7 @@ export function ModelsView() {
         setState(s);
         setReadAt(Date.now());
         setError(null);
-        setEdit((e) => reconcile(e, s, saved));
+        setEdit((e) => reconcile(e, s, saved, savedId));
       })
       .catch((e: unknown) => {
         if (mounted.current && seq >= requests.current.applied) setError(fail(e));
@@ -190,7 +196,7 @@ export function ModelsView() {
               {draftNote && draftNote.base === edit.base && (
                 <p ref={draftNoteRef} tabIndex={-1} role="status" className="mt-6 rounded-sm bg-info-bg px-4 py-2">{draftNote.text}</p>
               )}
-              <ModelsSaveBar base={edit.base} draft={edit.doc} serverConfig={state.config} onSaved={(saved) => load(saved)}
+              <ModelsSaveBar base={edit.base} draft={edit.doc} serverConfig={state.config} onSaved={(saved, id) => load(saved, id)}
                 onConflict={(text) => { setConflictYaml(text); setTab("yaml"); reload(); }} />
             </>
           )}

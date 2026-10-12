@@ -20,11 +20,18 @@ function without(probes: Probes, key: string): Probes {
 
 const parseList = (text: string): string[] => text.split(",").map((x) => x.trim()).filter(Boolean);
 
-/** The fallback list as one text field. The field keeps what is typed (a trailing comma is half a list), so it is
- * rewritten only when the draft holds another list than the text parses to: a reload, a discard or another preset. */
+/** The fallback list as one text field. The field keeps what is typed (a trailing comma is half a list). When the
+ * draft's list changes it is rewritten from the draft, once, unless the text already parses to that list: so a list
+ * that comes from outside (a reload, a discard, another preset, a hand-edited YAML) is shown, and one that does not
+ * survive a join and a parse (`["a,b", ""]`) cannot make it rewrite itself again and again. */
 function FallbackInput({ role, models, onChange }: { role: string; models: string[]; onChange: (models: string[]) => void }) {
   const [text, setText] = useState(models.join(", "));
-  if (JSON.stringify(parseList(text)) !== JSON.stringify(models)) setText(models.join(", "));
+  const key = JSON.stringify(models);
+  const [seen, setSeen] = useState(key); // the list the field was last reconciled with
+  if (key !== seen) {
+    setSeen(key);
+    if (key !== JSON.stringify(parseList(text))) setText(models.join(", "));
+  }
   return (
     <input aria-label={`fallback ของ ${role}`} className={INPUT} placeholder="vendor/a, vendor/b" value={text}
       onChange={(e) => { setText(e.target.value); onChange(parseList(e.target.value)); }} />

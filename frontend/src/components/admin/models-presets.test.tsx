@@ -229,6 +229,26 @@ describe("ModelsPresets fallback field", () => {
     expect((onChange.mock.calls.at(-1)![0] as LlmConfigDoc).presets.cheap.guard.fallback_models).toEqual(["vendor/a"]);
   });
 
+  // The backend accepts these lists (a hand-edited llm.yaml, a YAML apply); they do not survive a join and a parse.
+  const withFallback = (list: string[]): LlmConfigDoc => ({
+    ...CONFIG,
+    presets: { ...CONFIG.presets, cheap: { ...CONFIG.presets.cheap, guard: { model: "vendor/cheap", fallback_models: list } } },
+  });
+  const editor = (draft: LlmConfigDoc) => <ModelsPresets draft={draft} setDraft={() => {}} fail={(e) => String(e)} />;
+
+  it("renders a stored list that is not canonical without looping, showing it joined", () => {
+    render(editor(withFallback(["a,b", ""])));
+    expect(field().value).toBe("a,b, ");
+  });
+
+  it("takes each kind of non-canonical list that arrives from outside once, and does not loop", () => {
+    const { rerender } = render(editor(withFallback(["x/y"])));
+    for (const list of [[""], ["a", ""], ["a,b"], [" a"], ["a", "a"], []]) {
+      rerender(editor(withFallback(list)));
+      expect(field().value).toBe(list.join(", "));
+    }
+  });
+
   it("is rewritten when the draft changes from outside, and when another preset is picked", () => {
     render(<Harness onChange={() => {}} />);
     typeInto(field(), "vendor/a,");

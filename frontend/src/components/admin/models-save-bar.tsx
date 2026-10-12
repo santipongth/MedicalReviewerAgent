@@ -20,12 +20,12 @@ function costLine(preset: string, c: CostEstimate): string {
 
 /** Check the draft (errors block, warnings inform, cost per preset), then save it as a new version.
  * `base` is the version the draft was edited from (null while llm.yaml is in use): a save on top of a newer version
- * is refused with 409 and handed to the page. `onSaved` gets the document that was saved and returns when the page has
- * re-read, and the bar stays busy until then. `serverConfig` is the configuration the page last read: the "saved" note
+ * is refused with 409 and handed to the page. `onSaved` gets the document that was saved and the id it was saved as, and
+ * returns when the page has re-read; the bar stays busy until then. `serverConfig` is the configuration the page last read: the "saved" note
  * stays while the draft is the saved document or that one, and goes once the draft is edited again. */
 export function ModelsSaveBar({ base, draft, serverConfig, onSaved, onConflict }: {
   base: number | null; draft: LlmConfigDoc; serverConfig?: LlmConfigDoc;
-  onSaved: (saved: LlmConfigDoc) => void | Promise<void>; onConflict: (draftYaml: string) => void;
+  onSaved: (saved: LlmConfigDoc, id: number) => void | Promise<void>; onConflict: (draftYaml: string) => void;
 }) {
   const { fail } = useAdmin();
   const [note, setNote] = useState("");
@@ -36,6 +36,8 @@ export function ModelsSaveBar({ base, draft, serverConfig, onSaved, onConflict }
   const noteId = useId();
   const savedRef = useRef<HTMLDivElement>(null);
   const focusSaved = useRef(false);
+  /** The draft as it is now, for the end of an await: the closure of a click is from before the admin kept typing. */
+  const latest = useRef(draft);
 
   // The last check (its errors, warnings and cost) belongs to the draft it was run on: once the draft is edited, it is
   // not shown as the draft's. An equal copy of the draft (a re-read gives a new object) still counts as the same.
@@ -43,6 +45,8 @@ export function ModelsSaveBar({ base, draft, serverConfig, onSaved, onConflict }
   const checkErrors = current && !current.ok ? current.errors.join("\n") : null;
   const report = current?.ok ? current : null;
   const savedShown = saved !== null && (sameConfig(saved.draft, draft) || (serverConfig !== undefined && sameConfig(serverConfig, draft)));
+
+  useEffect(() => { latest.current = draft; }, [draft]);
 
   useEffect(() => {
     if (saved && focusSaved.current) {
@@ -70,13 +74,18 @@ export function ModelsSaveBar({ base, draft, serverConfig, onSaved, onConflict }
     const sent = draft;
     try {
       r = await check();
-      if (!r?.ok) return;
+      if (!r) return;
+      if (!r.ok) {
+        // The errors belong to `sent`; if the admin typed meanwhile they are hidden, and this click must not look like nothing happened.
+        if (!sameConfig(latest.current, sent)) setError("ร่างเปลี่ยนระหว่างตรวจ: กดบันทึกอีกครั้ง");
+        return;
+      }
       const result = await adminApi.saveLlm({ config: sent, base_version: base, ...(note.trim() ? { note: note.trim() } : {}) });
       setNote("");
       focusSaved.current = true; // the save button stays disabled until the page has re-read, so focus waits on the note
       // `=== false`: only an answer that says the publish failed is a warning
       setSaved({ id: result.id, workersNotified: result.workers_notified !== false, draft: sent });
-      await onSaved(sent);
+      await onSaved(sent, result.id);
     } catch (e) {
       if (e instanceof AdminApiError && e.status === 409) {
         onConflict(r?.yaml ?? "");
