@@ -20,6 +20,7 @@ from app.schemas.review import (
     compute_cache_key,
     hash_ip,
 )
+from app.services.admin_auth import AdminPrincipal
 from app.services.api_keys import ApiKeyInfo, reviews_since
 from app.services.budget import review_cost_cap
 from app.services.capacity import AdmissionBusy
@@ -35,10 +36,15 @@ log = get_logger(__name__)
 class Identity:
     ip: str
     api_key: ApiKeyInfo | None = None
+    admin: AdminPrincipal | None = None  # set by require_admin: a signed-in admin or an admin API key (Plan 23a)
 
     @property
     def rate_key(self) -> str:
         return f"key:{self.api_key.id}" if self.api_key else f"ip:{self.ip}"
+
+    @property
+    def is_admin(self) -> bool:
+        return self.admin is not None or bool(self.api_key and self.api_key.is_admin)
 
 
 class ServiceError(Exception):
@@ -234,21 +240,25 @@ class ReviewService:
         async with self.session_factory() as session:
             return await ReviewRepository(session).queue_position(review)
 
-    async def cancel(self, review_id: uuid.UUID, *, identity: Identity) -> str:
-        """Owner key (or an admin key) cancels a queued/running review; the worker job is aborted."""
+    async def cancel(self, review_id: uuid.UUID, *, identity: Identity, audit=None) -> str:
+        """Owner key, admin key or signed-in admin cancels a queued/running review; the worker job is aborted.
+        `audit(session, review)` (admin console) runs inside the cancel's transaction, only when it changed the status."""
         key = identity.api_key
-        if key is None:
+        if key is None and not identity.is_admin:
             raise Forbidden("an API key is required")
         review = await self.get(review_id)
         if review is None:
             raise NotFound("review not found")
-        if not key.is_admin and review.api_key_id != key.id:
+        owner = key is not None and review.api_key_id == key.id
+        if not owner and not identity.is_admin:
             raise Forbidden("only the API key that created this review (or an admin key) can cancel it")
-        by = "owner" if review.api_key_id == key.id else "admin"  # key names stay private
+        by = "owner" if owner else "admin"  # key names stay private
         async with self.session_factory() as session, session.begin():
             changed = await ReviewRepository(session).update_unless(
                 review_id, TERMINAL_STATUSES, status="cancelled", finished_at=datetime.now(UTC),
                 error=f"cancelled by the {by}")
+            if changed and audit is not None:
+                await audit(session, review)
         if not changed:
             raise Conflict(f"review is already {review.status}")
         await self.event_sink.emit(review_id, "cancelled", {"by": by})

@@ -108,7 +108,8 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     app.include_router(events.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(reviews.router, prefix="/api/v1", tags=["reviews"])
     app.include_router(papers.router, prefix="/api/v1", tags=["papers"])
-    app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
+    # Admin console routes (Plan 23a) are documented in docs/api.md, not in the public OpenAPI.
+    app.include_router(admin.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     mcp = build_mcp(lambda: app.state.deps, settings)
     app.state.mcp = mcp
     app.mount("/mcp", mcp.streamable_http_app(stateless_http=True, json_response=True, streamable_http_path="/",
