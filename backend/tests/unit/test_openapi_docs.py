@@ -8,7 +8,6 @@ EXPECTED_ERRORS = {
     ("get", "/api/v1/papers/search"): {"401", "422", "429", "502"},
     ("get", "/api/v1/healthz"): {"503"},
     ("get", "/api/v1/status"): set(),
-    ("post", "/api/v1/admin/mcp/reload"): {"401", "403", "422"},
 }
 
 

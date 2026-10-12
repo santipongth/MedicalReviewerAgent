@@ -12,7 +12,8 @@ deployment: `GET /api/v1/status`; interactive OpenAPI at `/api/docs`).
 4. One origin for everything (Caddy): http://localhost:8088 (web app, `/api/...`, `/mcp`). Direct ports for
    development: web http://localhost:3000 · API docs http://localhost:8000/api/docs · SearXNG http://localhost:8080
 5. Production: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` (only Caddy is
-   published; set `SITE_ADDRESS`, `TURNSTILE_*`). Scale: `API_WORKERS` (uvicorn processes), `WORKER_REPLICAS` × `MAX_CONCURRENT_REVIEWS_PER_WORKER` (concurrent
+   published; set `SITE_ADDRESS`, `PUBLIC_BASE_URL=https://your.domain` (it also makes the admin cookie Secure),
+   `TURNSTILE_*`). Scale: `API_WORKERS` (uvicorn processes), `WORKER_REPLICAS` × `MAX_CONCURRENT_REVIEWS_PER_WORKER` (concurrent
    reviews). Capacity guards: `MAX_QUEUED_REVIEWS`, `MAX_REVIEWS_PER_DAY`, `MAX_USD_PER_DAY`, `MAX_COST_PER_REVIEW_USD`
    (see `.env.example` and the capacity section of `docs/api.md`, incl. load-test numbers).
 
@@ -46,6 +47,11 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
   docker compose exec api python -m app.cli.keys revoke mra_XXXXXXXX
   ```
   Send it as `X-API-Key: <key>` or `Authorization: Bearer <key>`.
+- **Admin console** at `/admin` on the site address (`http://localhost:8088/admin` locally, through Caddy; it does
+  not work on the web container's own port). Create the first admin with
+  `docker compose exec api python -m app.cli.admin create --username <name>`. The console has a dashboard, review
+  management (cancel, hide or show, delete), API keys (mint, edit, revoke) and an audit log of every change. See
+  `docs/api.md` → Admin API.
 - **Webhooks:** `POST /api/v1/reviews` with `"callback_url": "https://..."` (key required, HTTPS public host).
   When the review ends (done, error, rejected or cancelled) we POST `{"review_id","status","result_url"}` (up to 3
   tries, 10 s / 20 s apart, retried on network errors, 5xx and 429) with

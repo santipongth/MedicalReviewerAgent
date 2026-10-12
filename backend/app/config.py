@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     max_queued_reviews: int = 50
     max_reviews_per_day: int = 500
     max_usd_per_day: float = 10.0
+    # Admin console (Plan 23a): sessions live in Redis; the cookie is Secure when the site is https.
+    admin_session_ttl_seconds: int = 28800
+    admin_login_max_failures: int = 5  # per username and per IP, within admin_lockout_seconds
+    admin_lockout_seconds: int = 900
+    # None: Secure when public_base_url is https, or behind the trusted proxy (trust_proxy) on https
+    # (X-Forwarded-Proto); the rule is app.api.auth.admin_cookie_secure
+    admin_cookie_secure: bool | None = None
     # Per-review LLM spend cap scales with the request (Plan 21): base + per analysed paper + per screened candidate.
     # Steps beyond the cap are skipped; the review finishes with what it has. max_cost_per_review_usd is only the
     # hard ceiling no computed cap may exceed.

@@ -54,6 +54,7 @@ class FakeJobQueue:
     def __init__(self) -> None:
         self.enqueued: list[str] = []
         self.aborted: list[str] = []
+        self.checkpoint_deletes: list[str] = []
 
     async def enqueue_review(self, review_id) -> bool:
         self.enqueued.append(str(review_id))
@@ -61,6 +62,10 @@ class FakeJobQueue:
 
     async def abort_review(self, review_id) -> bool:
         self.aborted.append(str(review_id))
+        return True
+
+    async def enqueue_checkpoint_delete(self, review_id) -> bool:
+        self.checkpoint_deletes.append(str(review_id))
         return True
 
 
@@ -75,10 +80,13 @@ def test_settings():
 
 
 @pytest.fixture
-async def app(session_factory, redis, queue, test_settings):
+async def app(session_factory, redis, queue, test_settings, monkeypatch):
+    import app.api.admin as admin_api
     import app.api.ratelimit as rl
 
     rl.limiter.reset()
+    # The sign-in semaphore is per process and binds to the first event loop that waits on it; each test has its own.
+    monkeypatch.setattr(admin_api, "VERIFY_SLOTS", asyncio.Semaphore(admin_api.VERIFY_CONCURRENCY))
     sink = EventSink(session_factory, redis, ttl_seconds=60)
     deps = AppDeps(session_factory=session_factory, redis=redis, queue=queue, event_sink=sink)
     application = create_app(test_settings, deps=deps)
@@ -111,3 +119,13 @@ def fake_anthropic():
 def pytest_runtest_setup(item):
     if "live" in item.keywords and not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
         pytest.skip("live test: set OPENROUTER_API_KEY (or ANTHROPIC_API_KEY)")
+
+
+@pytest.fixture(autouse=True)
+def fast_password_hashing(monkeypatch):
+    """argon2's defaults cost tens of milliseconds per hash; unit tests use the cheapest valid parameters."""
+    from argon2 import PasswordHasher
+
+    from app.services import admin_auth
+
+    monkeypatch.setattr(admin_auth, "HASHER", PasswordHasher(time_cost=1, memory_cost=8, parallelism=1))

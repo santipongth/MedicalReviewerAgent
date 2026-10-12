@@ -33,6 +33,7 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 - Send the key as `X-API-Key: mra_...` or `Authorization: Bearer mra_...`.
 - An invalid or revoked key gets **401** on every route that reads identity. It is never silently treated as anonymous.
 - Keys are minted with `python -m app.cli.keys mint --name "lab" [--quota N] [--admin]`. Only SHA-256 hashes are stored.
+- Keys can also be minted, edited and revoked in the admin console (see Admin API).
 
 **Limits.** Defaults are below. The current values are always in `GET /api/v1/status → limits`.
 
@@ -74,7 +75,8 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 | `GET /papers/search?q=&limit=10` (q 2–300 chars, limit 1–25) | 200 `[Candidate]` | 401, 422, 429, 502 |
 | `GET /status` | 200 status and limits | none |
 | `GET /healthz` | 200 `{status: "ok", db, redis}` | 503 `{status: "degraded", …}` |
-| `POST /admin/mcp/reload` (admin key) | 200 `{servers, path}` (validates `config/mcp_servers.json`) | 401, 403, 422 |
+
+The admin routes (`/admin/*`) are listed under Admin API below.
 
 ### `POST /api/v1/reviews`
 
@@ -612,6 +614,90 @@ The web app also serves the whole interactive report as one HTML file that works
 
 The daily budget figures are private. When the budget runs out, the status shows only `accepting: false` with `reason: "daily_budget"`. `accepting` assumes the largest allowed request, so near the end of the day it can read false while a smaller request would still be admitted.
 
+## Admin API (Plan 23a)
+
+The admin console (`/admin` on the site address) and scripts use these routes. They are **not in the public
+OpenAPI**. All are under `/api/v1/admin` and need either:
+- **a signed-in admin**: the `mra_admin` cookie from `POST /admin/session`. The cookie is HttpOnly, SameSite=Strict
+  and `Path=/api/v1/admin`, and lasts 8 hours by default (`ADMIN_SESSION_TTL_SECONDS`, never extended by use). It is
+  Secure on an https site: when `PUBLIC_BASE_URL` is https, or behind the trusted proxy (`TRUST_PROXY=true`, as the
+  production overlay sets) when Caddy reports `X-Forwarded-Proto: https`. `ADMIN_COOKIE_SECURE=true|false` overrides
+  both. Cookie-authenticated `POST`, `PUT`, `PATCH` and `DELETE` (and the sign-in itself) must send
+  `X-MRA-Admin: 1`; without it the answer is **403**.
+- **an admin API key** (`--admin`), sent as on every other route. Key requests need no `X-MRA-Admin` header. A key
+  that is presented decides on its own: an invalid key is **401** and a key without `--admin` is **403**, never a
+  fallback to the cookie.
+
+Admins are created only with the CLI (`python -m app.cli.admin`, run in the API container):
+
+```bash
+docker compose exec api python -m app.cli.admin create --username <name>   # asks for the password twice
+docker compose exec api python -m app.cli.admin passwd <name>              # new password; ends that admin's sessions
+docker compose exec api python -m app.cli.admin disable <name>             # ends that admin's sessions
+docker compose exec api python -m app.cli.admin enable <name>
+docker compose exec api python -m app.cli.admin list
+# scripted: one line on stdin instead of the prompts (-T: no terminal, so stdin reaches the command)
+printf '%s\n' "$ADMIN_PASSWORD" | docker compose exec -T api python -m app.cli.admin create --username <name> --password-stdin
+```
+
+`passwd` takes `--password-stdin` too. A username is 3-32 characters of `a-z`, `0-9`, `.`, `_` or `-` (stored
+lower-case); a password is 12-256 characters, hashed with argon2id.
+
+**Sign-in lockout.** Every sign-in attempt is counted, per username and per address, **before** the password is
+checked (one atomic Redis step), so parallel attempts cannot get more than the limit. By default, five failed
+attempts in a 15-minute window (`ADMIN_LOGIN_MAX_FAILURES`, `ADMIN_LOCKOUT_SECONDS`) lock that username or address
+until the window ends: the next attempt is refused with **429** and `Retry-After` (the wait in seconds), the password
+is not checked, and even the right password waits. The window starts at the first attempt and later ones do not
+extend it. A successful sign-in clears that username's count and does not count against the address. Usernames are
+trimmed and lower-cased before counting, so changing the case does not get round the lockout. A missing field, a
+`username` over 64 characters or with control characters, or a password over 256 characters is **422**, before any
+hashing.
+
+**Audit log.** Every review and key change, every successful sign-in, sign-out and lockout, and every CLI account
+change (`create`, `passwd`, `disable`, `enable`) is written to the audit log with the actor, the target, `before`,
+`after` and the time. The row is written in the same transaction as the change. Failed sign-ins are not logged one by
+one (a flood would bury the log); the lockout row records them. Fields that look like secrets are dropped at any
+depth before a row is stored: the names `password`, `token`, `secret`, `key` and `raw_key`, and any name ending in
+`password`, `token`, `secret` or `_hash`. So the log never holds a password, hash, raw key or session token (a key
+appears only by its `key_prefix`).
+
+| Method and path | Success | Errors |
+|---|---|---|
+| `POST /admin/session` `{username, password}` | 204 + `Set-Cookie: mra_admin=…` | 401 (wrong name or password, or a disabled admin), 403 (no `X-MRA-Admin`), 422, 429 (locked; `Retry-After`) |
+| `DELETE /admin/session` | 204, cookie cleared (the session is ended; with an admin key there is nothing to end) | 401, 403 |
+| `GET /admin/me` | 200 `{kind: "user" \| "key", label}` (the username, or the key prefix) | 401, 403 |
+| `GET /admin/dashboard?days=30` (1–90) | 200 `{days, since, per_day, totals, error_rate_7d, by_model, capacity}`. Days are UTC. `by_model` groups review cost by synthesizer model, since cost is stored per review | 401, 403, 422 |
+| `GET /admin/reviews?q=&status=&listed=&before=&limit=50` (1–100) | 200 `{items, next}`, newest first. `q` (up to 200 characters) is a literal, case-insensitive topic match. `status` is one of the review statuses. `listed=true` keeps only reviews shown in the public recent list, `listed=false` only hidden ones (omit it for both). `before` is the previous page's `next` | 401, 403, 422 (also an unknown `status` or a bad `before`) |
+| `POST /admin/reviews/{id}/cancel` | 200 `{id, status: "cancelled"}`; the event says `by: "admin"`, or `by: "owner"` when the admin API key making the call is the key that created the review | 401, 403, 404, 409 (already finished), 422 (malformed id) |
+| `PATCH /admin/reviews/{id}` `{is_listed}` | 200 `{id, is_listed}` (shown or hidden in the public recent list; setting the value it already has changes nothing and writes no audit row) | 401, 403, 404, 422 |
+| `DELETE /admin/reviews/{id}` | 204. Finished reviews only; its events, paper links, live stream and checkpoint go too | 401, 403, 404, 409 (cancel it first), 422 (malformed id) |
+| `GET /admin/keys` | 200 `[{id, key_prefix, name, daily_quota, is_admin, created_at, revoked_at, reviews_24h}]`, revoked keys too | 401, 403 |
+| `POST /admin/keys` `{name, daily_quota=100, is_admin=false}` | 201 `{key, …}` with `Cache-Control: no-store`: the raw `key` is shown once, then the fields above | 401, 403, 422 (`name` 1–100 characters, not blank; `daily_quota` 1–100000) |
+| `PATCH /admin/keys/{id}` `{name?, daily_quota?}` | 200 key (the admin flag is set only at mint; a patch that changes nothing writes no audit row) | 401, 403, 404, 409 (revoked), 422 (also any other field, such as `is_admin`) |
+| `POST /admin/keys/{id}/revoke` | 200 key (idempotent) | 401, 403, 404, 422 (malformed id) |
+| `GET /admin/audit?before=&limit=50` (1–100) | 200 `{items, next}`, newest first. `before` is the id of the last row seen | 401, 403, 422 |
+| `POST /admin/mcp/reload` | 200 `{servers, path}` (validates `config/mcp_servers.json`) | 401, 403, 422 |
+
+The payloads in more detail:
+- **Dashboard.** `since` is the first day of the window. `per_day` lists every day in it, zero-filled:
+  `[{date, by_status, cost_usd}]`. `totals` is
+  `{reviews, by_status, cost_usd, avg_cost_done_usd}` (the average is null when no review is done).
+  `error_rate_7d` is `error / (done + error)` over the last 7 days, or null when both are zero. `by_model` is
+  `[{synthesizer, reviews, cost_usd}]`; reviews that recorded no model (errors, rejections, cancellations and reviews
+  still running) are grouped under `"unknown"`, and the console labels that row. `capacity` is
+  `{accepting, reason, queued, running, max_queued_reviews, reviews_today, max_reviews_per_day, usd_today,
+  max_usd_per_day}`; it carries the daily caps that the public `/status` keeps private.
+- **Review items.** `{id, topic (first 200 characters), status, review_type, created_at, finished_at, cost_usd,
+  is_listed, api_key_prefix, prompt_version, error}`. `review_type` is `slr` when the review's options do not say.
+- **Deleting a review.** In one transaction its events and paper links go, then the review, with an audit row whose
+  `before` keeps the topic, status, creation time, cost and prompt version. Papers stay (other reviews share them).
+  After the commit the live event stream is dropped and a worker job drops the LangGraph checkpoint; both are
+  best-effort, so a failure there is only logged and the answer is still 204.
+- **Audit rows.** `{id, created_at, actor_kind, actor_label, action, target_type, target_id, before, after}`, where
+  `actor_kind` is `"user" | "key" | "cli"`. `actor_label` is the username, the key prefix, or `cli`. `action` is one of
+  `review.cancel`, `review.hide`, `review.show`, `review.delete`, `key.mint`, `key.update`, `key.revoke`,
+  `admin.login`, `admin.logout`, `admin.lockout`, `admin.create`, `admin.passwd`, `admin.disable`, `admin.enable`.
+
 ## Paper count and pool (Plan 21)
 
 - The agent screens a pool of up to `candidate_limit` (default 120) candidates that have abstracts and analyses the `max_papers` (5–50, default 30) most relevant. Reading is on abstracts only.
@@ -744,5 +830,6 @@ uv run --project backend python scripts/loadtest.py --base http://localhost:8088
 **Production checklist:**
 - Run `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`. The overlay publishes only Caddy (80/443; set `SITE_ADDRESS=your.domain` for automatic HTTPS) and sets `PUBLIC_API_URL=/` and `TRUST_PROXY=true`.
 - Never enable `TRUST_PROXY` while the API port is reachable directly: a client could forge `X-Forwarded-For` and get a fresh rate-limit bucket per request. Without it behind Caddy, every visitor shares the proxy's bucket.
+- Set `PUBLIC_BASE_URL=https://your.domain`. Webhook `result_url` and MCP links use it, and it also makes the admin console's cookie Secure.
 - Set the `TURNSTILE_*` keys.
 - Size `WORKER_REPLICAS` and `MAX_CONCURRENT_REVIEWS_PER_WORKER` for the traffic you expect, and set `MAX_USD_PER_DAY` to your budget.

@@ -162,3 +162,36 @@ class ReviewEvent(Base):
     type: Mapped[str] = mapped_column(String(32))
     payload: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AdminUser(Base):
+    """An admin console account (Plan 23a). Created only by `python -m app.cli.admin create`."""
+
+    __tablename__ = "admin_users"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    username: Mapped[str] = mapped_column(String(32), unique=True)
+    password_hash: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AdminAudit(Base):
+    """Who changed what, before and after, and when. Never edited or deleted by the application."""
+
+    __tablename__ = "admin_audit"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    actor_kind: Mapped[str] = mapped_column(String(8))  # user | key | cli
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    actor_label: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(48))
+    target_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    before: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
+    after: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
+    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)

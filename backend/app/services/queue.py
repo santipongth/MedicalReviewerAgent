@@ -31,6 +31,11 @@ class ArqJobQueue:
         job = await self.pool.enqueue_job("deliver_webhook", str(review_id), _job_id=f"webhook:{review_id}")
         return job is not None
 
+    async def enqueue_checkpoint_delete(self, review_id: uuid.UUID) -> bool:
+        """A deleted review's LangGraph thread is dropped by a worker, which owns the checkpointer (Plan 23a)."""
+        job = await self.pool.enqueue_job("delete_checkpoint", str(review_id), _job_id=f"checkpoint-delete:{review_id}")
+        return job is not None
+
     async def abort_review(self, review_id: uuid.UUID) -> bool:
         """Ask arq to abort the job (a running job gets CancelledError). Results are not kept
         (keep_result=0), so confirmation cannot be awaited; the request itself is what counts."""

@@ -1,0 +1,327 @@
+# Plan 23a: admin console (login, dashboard, reviews, keys, audit) — design (2026-10-12)
+
+**สรุปภาษาไทย:** หน้า admin สำหรับดูแลบริการจากที่เดียว เข้าด้วย username + password (สร้างบัญชีแรกด้วย CLI)
+รอบนี้ทำ 23a: login, dashboard (จำนวนรีวิวและค่าใช้จ่ายรายวัน, คิว, error rate), จัดการรีวิว (ค้นหา, ยกเลิก, ซ่อน/แสดง, ลบ),
+จัดการ API key (สร้าง, แก้ quota, revoke) และ audit log ที่บันทึกทุกการแก้ไข หน้าเว็บอยู่ใน Next.js เดิมที่ `/admin`
+และใช้ผ่าน origin เดียว (Caddy) API key แบบ admin ยังใช้กับสคริปต์ได้เหมือนเดิม 23b (จัดการโมเดล) และ 23c (settings,
+glossary, harness) ทำเป็น spec แยกภายหลัง
+
+Context: `docs/superpowers/notes/2026-10-11-roadmap-thai-evidence.md` section 6b. The owner approved this design in chat on 2026-10-12.
+
+## 1. Goal and success
+
+The owner runs the service from one place behind a username and password, instead of CLIs and the database.
+
+**Success for 23a:**
+- `python -m app.cli.admin create --username owner` creates the first admin; the owner signs in at `/admin` through the
+  single origin (Caddy `:8088` locally, the real domain in production).
+- The dashboard shows real numbers from `reviews` and the capacity counters.
+- The owner can find a review, cancel it, hide or show it in the public list, and delete a finished one.
+- The owner can mint a key (shown once), change its name or quota, and revoke it.
+- Every change above, every successful sign-in and every lockout appears in the audit log with who, what, before, after
+  and when.
+- Admin API keys keep working for scripts on every admin route, and no admin route appears in `/api/openapi.json`.
+- Five wrong passwords lock the username (and the IP) until the 15-minute window ends (Retry-After gives the wait).
+
+**Out of scope (later plans):**
+- 23b: providers, presets and per-role models in the DB with live reload.
+- 23c: runtime settings, the glossary editor, harness reports. The dashboard's "latest harness score" moves to 23c with
+  the harness page, because the reports are markdown files and the raw `runs/` are not in the image.
+- Roles and permissions (every admin is equal), 2FA, password reset by email (`cli.admin passwd` only), per-model
+  cost attribution (cost is stored per review, not per call).
+
+## 2. Decisions (owner, 2026-10-12)
+
+| Topic | Decision |
+|---|---|
+| Split | Plan 23 is three spec/plan cycles: 23a now, then 23b, then 23c |
+| Who signs in | A few equal admins; no roles |
+| Password hash | argon2id via `argon2-cffi` (new backend dependency) |
+| First admin | CLI only (`app.cli.admin create`); there is no sign-up page |
+| Session | Opaque random token, stored hashed in Redis, 8 hours, carried in an httpOnly SameSite=Strict cookie |
+| Brute force | 5 failures in a 15-minute window per username or per IP lock it until the window ends (Retry-After gives the wait); attempts are counted before the password is checked |
+| CSRF | SameSite=Strict, plus a required `X-MRA-Admin: 1` header on cookie-authenticated writes |
+| Scripts | Admin API keys work on every admin route, as today |
+| Public API docs | Admin routes are hidden from OpenAPI (`include_in_schema=False`) and described in `docs/api.md` |
+| Frontend | Inside the existing Next.js app at `/admin`, same-origin relative calls, no CORS with credentials |
+| Harness on the dashboard | Moved to 23c |
+
+## 3. Data model
+
+One Alembic migration adds two tables.
+
+**`admin_users`**
+- `id` uuid pk
+- `username` varchar(32), unique; stored lower-case, 3–32 chars of `[a-z0-9._-]`
+- `password_hash` text (argon2id encoded string)
+- `created_at`, `last_login_at` (nullable), `disabled_at` (nullable)
+
+**`admin_audit`**
+- `id` bigint pk (integer on sqlite, as `review_events`)
+- `created_at` timestamptz, indexed
+- `actor_kind`: `user | key | cli`
+- `actor_id` uuid, nullable (null for `cli`)
+- `actor_label` varchar(64): the username, the key prefix, or `cli`
+- `action` varchar(48), for example `review.cancel`, `review.hide`, `review.show`, `review.delete`, `key.mint`,
+  `key.update`, `key.revoke`, `admin.login`, `admin.logout`, `admin.lockout`, `admin.create`, `admin.passwd`,
+  `admin.disable`, `admin.enable`
+- `target_type` varchar(16), nullable (`review | key | admin`); `target_id` varchar(64), nullable
+- `before`, `after`: JSON, nullable. Never a raw key, a password, a hash or a session token: fields that look like
+  secrets are dropped at any depth before the row is stored (the names `password`, `token`, `secret`, `key` and
+  `raw_key`, and any name ending in `password`, `token`, `secret` or `_hash`, in any case). `key_prefix` is kept.
+- `ip_hash` varchar(64), nullable (the same salted hash as `reviews.ip_hash`)
+
+The audit row is written in the same transaction as the change it records. Audit rows are never edited or deleted by
+the application.
+
+`ApiKeyInfo` gains `key_prefix`, so key-authenticated admin actions can be labelled.
+
+## 4. Authentication
+
+### 4.1 Passwords and the CLI
+`app/services/admin_auth.py` holds hashing and the user repository calls.
+- `PasswordHasher()` from `argon2-cffi` with its defaults (argon2id). Passwords are 12–256 characters.
+- Hashing and verifying run in `asyncio.to_thread`, so a sign-in never blocks the event loop.
+- On a successful sign-in, `check_needs_rehash` upgrades an old hash in place.
+
+`python -m app.cli.admin`:
+- `create --username NAME` — the password comes from `getpass` twice, or from one line of stdin with `--password-stdin`
+- `passwd NAME` — sets a new password and ends every session of that user
+- `disable NAME` / `enable NAME` — disabling ends every session
+- `list` — username, created, last sign-in, disabled
+
+Each CLI change writes an audit row with `actor_kind = cli`.
+
+### 4.2 Sessions
+`app/services/admin_sessions.py`, Redis only (so any number of API processes agree, like capacity):
+- A token is `secrets.token_urlsafe(32)`. Redis stores `mra:admin:session:<sha256(token)>` → `{user_id, username,
+  created_at}` with TTL `admin_session_ttl_seconds` (default 28,800). The TTL is absolute; it is not extended on use.
+- `mra:admin:user:<user_id>:sessions` is a set of that user's session hashes, so `passwd` and `disable` can end them all.
+- Each cookie-authenticated request loads the session, then the user row; a missing or disabled user ends the
+  session and answers 401.
+- Sign-out deletes the session and clears the cookie.
+
+The cookie is `mra_admin`: `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/admin`, `Max-Age` equal to the TTL, and
+`Secure` by the rule in `admin_cookie_secure(request, settings)` (`app/api/auth.py`), used by sign-in and sign-out alike:
+- `admin_cookie_secure` (setting, `ADMIN_COOKIE_SECURE`) decides when it is set, true or false;
+- otherwise Secure when `public_base_url` starts with `https://`,
+- or when `trust_proxy` is on and the request's `X-Forwarded-Proto` is `https` (Caddy sets it when it terminates TLS;
+  uvicorn runs with `--no-proxy-headers`, so the request's own scheme is always http behind Caddy). Without
+  `trust_proxy` the header comes from the client and is ignored.
+
+The production overlay sets `TRUST_PROXY=true`, so an https site gets a Secure cookie even before the operator sets
+`PUBLIC_BASE_URL=https://…` (which the production docs ask for anyway).
+
+### 4.3 Sign-in and lockout
+`POST /api/v1/admin/session` with `{username, password}`. The body is checked first: `username` is 1-64 characters
+without control characters, `password` is 1-256 characters, and anything else is 422 before any hashing. Then:
+1. Require the `X-MRA-Admin: 1` header (403 without it).
+2. Normalise the username (strip, lower-case).
+3. Count this attempt before the password is checked. One Redis transaction does `INCR` on both
+   `mra:admin:fail:u:<username>` and `mra:admin:fail:ip:<ip_hash>`, and sets `EXPIRE NX` of `admin_lockout_seconds`
+   (default 900), so the window starts at the first attempt and later ones do not extend it. Because the count is
+   taken first and atomically, parallel attempts cannot get more than `admin_login_max_failures` (default 5) checks.
+4. If either counter is above the limit, answer 429 with `Retry-After` (the longest remaining window among the
+   counters over the limit, at least 1). The password is not checked, so even the right one waits.
+5. Otherwise verify the password. The account (id, hash, disabled) is read in a short read-only session that is
+   closed before the check, so the slow argon2 step holds no connection and no transaction. An unknown or disabled
+   user is verified against a fixed dummy hash, so the answer takes the same time either way. At most 4 checks run at
+   once per API process (`VERIFY_SLOTS` in `app/api/admin.py`); the rest wait their turn.
+6. On failure, answer 401 `invalid username or password`. When this attempt brought either counter to the limit
+   (the 5th failure), write one `admin.lockout` audit row. The 6th attempt is the first to be refused.
+7. On success, one short transaction re-loads the account; if it was disabled, removed or given a new password while
+   the password was being checked, the attempt fails as in step 6. Otherwise it applies the rehash, sets
+   `last_login_at` and writes `admin.login`. Then give the attempt back: delete the username counter, and decrement
+   the IP counter (deleted at zero), so a success does not count against the address and failures by other people on
+   it still do. Create the session, set the cookie, and answer 204.
+
+Failed attempts are not audited one by one (a flood would bury the log); the lockout row and the counters record them.
+
+### 4.4 Who is calling
+`require_admin` (in `app/api/auth.py`) returns an `Identity` whose new field `admin: AdminPrincipal | None` is set:
+- If an API key is presented (`X-API-Key` or `Authorization: Bearer`), the key path decides, exactly as today: an
+  invalid key is 401, a non-admin key is 403. The principal is `AdminPrincipal(kind="key", id, label=key_prefix)`
+  (the first 12 characters of the key name when it has no prefix).
+- Otherwise the `mra_admin` cookie decides. No cookie or an unknown session is 401. The principal is
+  `AdminPrincipal(kind="user", id, label=username)`.
+- For a cookie-authenticated `POST`, `PUT`, `PATCH` or `DELETE`, the request must carry `X-MRA-Admin: 1`, or it is 403
+  (checked after the cookie, so no cookie is still 401).
+  The sign-in route needs the header too (login CSRF). Key-authenticated requests carry no ambient credential and are
+  exempt.
+
+`Identity.is_admin` is true for either kind. `ReviewService.cancel` accepts `identity.is_admin` in place of an admin
+API key, so a signed-in admin cancels through the same code path (event, webhook, job abort) and the event says
+`by: admin`.
+
+## 5. Admin API
+
+All routes are under `/api/v1/admin`, hidden from OpenAPI, and need `require_admin` except sign-in. Errors use the
+service's usual `{detail}` shape. The review and audit lists use keyset paging: `before` is the previous page's `next`,
+`limit` is 1–100 (default 50), and the answer is `{items, next}` (`next` is null on the last page). For reviews the
+cursor is an opaque string; for the audit log it is the last row's id. The key list is not paged: it is a plain array.
+A malformed id in a path, an unknown `status` and a bad cursor are 422.
+
+| Method and path | What it does |
+|---|---|
+| `POST /session` | Sign in (section 4.3) |
+| `DELETE /session` | Sign out; 204. A signed-in admin's session ends and `admin.logout` is written; with an admin key there is nothing to end |
+| `GET /me` | `{kind, label}` of the caller |
+| `GET /dashboard?days=30` | Section 7; `days` is 1–90 |
+| `GET /reviews?q=&status=&listed=&before=&limit=` | `q` (up to 200 characters) matches the topic as a literal, case-insensitive substring (`%` and `_` are not wildcards); newest first. Items: `id`, `topic` (first 200 chars), `status`, `review_type` (from `options`, `slr` when missing), `created_at`, `finished_at`, `cost_usd`, `is_listed`, `api_key_prefix`, `prompt_version`, `error` |
+| `POST /reviews/{id}/cancel` | `ReviewService.cancel`; 409 when already finished; audit `review.cancel` |
+| `PATCH /reviews/{id}` | `{is_listed}`; audit `review.hide` or `review.show` with before and after (none when the value does not change) |
+| `DELETE /reviews/{id}` | Section 8; 409 unless the review is finished; audit `review.delete` |
+| `GET /keys` | Every key, revoked ones too: `id`, `key_prefix`, `name`, `daily_quota`, `is_admin`, `created_at`, `revoked_at`, `reviews_24h` |
+| `POST /keys` | `{name, daily_quota, is_admin}` (`name` 1–100 characters, not blank; `daily_quota` 1–100000, default 100); answers 201 with the raw key once and `Cache-Control: no-store`; audit `key.mint` (prefix only) |
+| `PATCH /keys/{id}` | `{name?, daily_quota?}` (same limits as mint; any other field, such as `is_admin`, is 422); a revoked key is 409; audit `key.update` (none when nothing changes). The admin flag is set only at mint |
+| `POST /keys/{id}/revoke` | Idempotent; audit `key.revoke` on the first revoke only |
+| `GET /audit?before=&limit=` | Newest first |
+| `POST /mcp/reload` | Unchanged behaviour; now also open to signed-in admins (with the `X-MRA-Admin` header) and hidden from OpenAPI. It validates a file and changes nothing, so it writes no audit row |
+
+Business logic lives in focused service modules (`app/services/admin_reviews.py`, `admin_keys.py`,
+`admin_dashboard.py`, `audit.py`); the routes in `app/api/admin*.py` stay thin adapters, as the rest of the API. Repositories never commit; the service opens
+`session.begin()` and writes the audit row in the same transaction.
+
+## 6. Settings
+
+New fields in `app/config.py` (env-overridable like the rest):
+- `admin_session_ttl_seconds: int = 28800`
+- `admin_login_max_failures: int = 5`
+- `admin_lockout_seconds: int = 900`
+- `admin_cookie_secure: bool | None = None`
+
+## 7. Dashboard
+
+`GET /dashboard?days=N` reads one window of review rows (`created_at`, `status`, `cost_usd`, `model_versions`) and
+the capacity counters, and aggregates in Python. That keeps one code path for Postgres and sqlite, and the window is
+at most 90 days of a small service. Days are UTC, the same days as the daily caps; the UI says so.
+
+```json
+{
+  "days": 30, "since": "2026-09-13",
+  "per_day": [{"date": "2026-10-12", "by_status": {"done": 4, "error": 1}, "cost_usd": 0.31}],
+  "totals": {"reviews": 120, "by_status": {"done": 100, "error": 6, "rejected": 10, "cancelled": 4},
+             "cost_usd": 7.9, "avg_cost_done_usd": 0.072},
+  "error_rate_7d": 0.05,
+  "by_model": [{"synthesizer": "openrouter:qwen/qwen3.5-flash-02-23", "reviews": 118, "cost_usd": 7.8}],
+  "capacity": {"accepting": true, "reason": null, "queued": 0, "running": 1, "max_queued_reviews": 20,
+               "reviews_today": 5, "max_reviews_per_day": 500, "usd_today": 0.4, "max_usd_per_day": 10.0}
+}
+```
+
+- `per_day` lists every day in the window, zero-filled.
+- `error_rate_7d` is `error / (done + error)` over the last 7 days, or null when both are zero. Guard rejections and
+  cancellations are not errors.
+- `by_model` groups by `model_versions["synthesizer"]`. Only a review that finishes records its models, so errors,
+  rejections, cancellations and reviews still in flight are grouped under `"unknown"`; the UI labels that row in
+  words. Cost is stored per review, so this is "cost of reviews whose synthesizer was X", not a per-model bill; the
+  UI labels it that way.
+- `capacity` gives the queue counts from `reviews`, today's counters from `Capacity`, the admission verdict from
+  `Capacity.check` (as `/status` computes it), and the caps from `Settings` (`max_queued_reviews`,
+  `max_reviews_per_day`, `max_usd_per_day`). The daily caps are not in the public `/status`, so the admin endpoint
+  carries them; the UI never hard-codes them.
+
+## 8. Deleting a review
+
+Only a finished review (`done`, `error`, `rejected`, `cancelled`) can be deleted; a queued or running one is cancelled
+first. The delete:
+1. In one transaction: deletes the review's `review_events` and `review_papers` rows explicitly (sqlite in tests does
+   not enforce cascades), then the `reviews` row, and writes the audit row. Its `before` is `{topic, status,
+   created_at, cost_usd, prompt_version}`, so the log still says what was removed. Shared `papers` rows stay; they are
+   a cache used by other reviews.
+2. After the commit, deletes the review's Redis event stream (`stream_key`), and enqueues a new worker job
+   `delete_checkpoint` that calls the worker's `AsyncPostgresSaver.adelete_thread(str(review_id))` (it does nothing
+   when the graph has no checkpointer, as in stub mode). Both are best-effort: a failure is logged and the delete
+   still answers 204.
+
+A deleted review is gone from the result cache too, because `find_reusable` reads `reviews`.
+
+## 9. Frontend
+
+Routes under `frontend/src/app/admin/`. Each `page.tsx` is a thin server page that renders a client view from
+`src/components/admin/`.
+- `page.tsx`: the sign-in form (`SignInForm`). It calls `GET /me` first and goes straight to the dashboard when the
+  admin is already signed in. With `?expired=1` it says "หมดเวลาเข้าสู่ระบบ กรุณาเข้าใหม่".
+- `layout.tsx`: `robots: {index: false, follow: false}` metadata only.
+- `(console)/layout.tsx`: a route group around the four pages below, which wraps them in `AdminGate`. The gate calls
+  `GET /me` once and renders the admin nav (Dashboard, รีวิว, API keys, Audit log, ออกจากระบบ). A 401 sends the admin to
+  the sign-in page. A 404 means the page is not behind the single origin, so it shows
+  "หน้า admin ใช้ผ่านที่อยู่หลักของเว็บเท่านั้น" with the reason. Any later 401 (the session ran out while the console
+  was open) goes to `/admin?expired=1`.
+- `(console)/dashboard`: totals, an echarts stacked bar of reviews per day by status with the daily cost as a line,
+  the `by_model` table (the `"unknown"` row is explained in words), and the capacity block (accepting or not, with
+  the refusal reason in short Thai text and an unknown code as it came, the queue, and today's reviews and spend
+  against their caps, all from the dashboard payload).
+- `(console)/reviews`: search box, status and listed filters, a table with "โหลดเพิ่ม" paging, the public-list state
+  as text (แสดงอยู่ or ซ่อนอยู่, the filter's words) with a button naming its action (ซ่อนจากรายการ or แสดงในรายการ), and
+  row actions (ยกเลิก for a queued or running review, ลบ for a finished one). Each topic links to `/r/{id}`.
+- `(console)/keys`: the key table, a mint form whose result shows the raw key once with a copy button and a warning
+  that it will not be shown again (while it is shown, "สร้าง key" is disabled and says to close it first, so a second
+  mint cannot replace it unseen), inline quota and name edits, and revoke (not offered for a revoked key).
+- `(console)/audit`: the log, newest first, with before and after shown as a compact diff and "โหลดเพิ่ม" paging.
+
+Destructive actions (ลบ, revoke) ask again inside the page with a second confirm button. They never use the browser's
+`confirm()`.
+
+Client code:
+- `src/lib/admin-api.ts`: `fetch` with relative URLs, `credentials: "same-origin"`, and `X-MRA-Admin: 1` on every
+  call that is not a GET. A failed call throws one `AdminApiError` (status, message, `Retry-After`), and
+  `adminErrorText` turns it into Thai text; a 429 shows the wait from `Retry-After` in minutes.
+- `src/lib/admin-types.ts`: the payload types.
+
+The pages follow `DESIGN.md`. Labels are Thai with English technical terms, as the rest of the site. Nothing here
+renders a number from a paper, so the `VerifiedNumber` and `ComputedNumber` rules do not apply. Costs and counts
+are plain figures.
+
+**Same origin.**
+- Production and docker: Caddy already sends `/api/*` to the API, so `/admin` on the site address works unchanged.
+- `next dev` only: `next.config.ts` adds a rewrite of `/api/v1/admin/:path*` to `ADMIN_DEV_API_URL`
+  (default `http://localhost:8000`) when `NODE_ENV === "development"`. A standalone build carries no such rewrite.
+- Opening the web container directly (`:3000` in docker) gets the 404 message above.
+
+## 10. Testing
+
+Backend (unit, sqlite plus the fake Redis already in `tests/conftest.py`):
+- Hashing round trip, rehash on sign-in, length limits, username rules.
+- CLI: `create`, `passwd` (ends sessions), `disable`/`enable`, `list`, each with an audit row.
+- Sessions: create, load, TTL set, sign-out, `passwd` and `disable` end all sessions, a disabled user's cookie gets 401.
+- Sign-in: wrong password 401; the 5th failure locks the username and the IP, then 429 with `Retry-After` even for
+  the right password, and the password is not checked; parallel attempts get no more than the limit; an unknown user
+  takes the dummy-hash path; success clears the username counter and does not count against the IP; a username
+  typed in another case or with spaces counts against the same lockout; missing `X-MRA-Admin` 403; a control
+  character in the username, or an oversized or missing field, 422.
+- `require_admin`: cookie, admin key, non-admin key (403), invalid key (401), no credentials (401), CSRF header
+  rule for cookie writes only.
+- Every write route writes exactly one audit row with the right actor, action, before and after, and never a secret.
+- Reviews: search and filters, paging, cancel through the service (event emitted with `by: admin`), hide/show, delete
+  of a finished review (rows gone, stream deleted, checkpoint job enqueued), delete of a running review 409.
+- Keys: mint returns the raw key once and stores only its hash, update, revoke idempotent, update of a revoked key 409.
+- Dashboard: zero-filled days, status tallies, `error_rate_7d` (null on no data), `by_model` grouping with "unknown".
+- OpenAPI: no path under `/api/v1/admin` in `/api/openapi.json`.
+- Migration upgrade and downgrade (integration, Postgres).
+
+Frontend:
+- Vitest for `admin-api.ts` (header on writes, error mapping) and for each page (renders data, actions call the API,
+  the second confirm, the key shown once, the 404 message).
+- One Playwright flow against a mocked admin API, as every other e2e spec runs: sign in, see the dashboard, mint a
+  key, revoke it, see both in the audit log, sign out; axe-clean and no sideways scroll at 1440 and 390, light and dark.
+- A scripted smoke check against the rebuilt docker stack through Caddy (`:8088`): create an admin with the CLI in
+  the container, sign in, read the dashboard, sign out.
+
+## 11. Docs
+
+- `docs/api.md`: an "Admin API" section (sign-in, cookie, CSRF header, routes, that they are not in OpenAPI).
+- Root `CLAUDE.md`: one convention line on admin auth (the cookie or an admin key through `require_admin`,
+  the audit row in the same transaction, routes hidden from OpenAPI).
+- The operator note in the README or deploy doc: create the first admin with
+  `docker compose exec api python -m app.cli.admin create --username <name>`.
+- Roadmap row 23: 23a done, when it is.
+
+## 12. Risks
+
+- **A stolen cookie** is good for up to 8 hours. HttpOnly limits script theft, and `passwd` or `disable` ends it.
+- **Lockout as a nuisance:** anyone can lock a known username until the 15-minute window ends (Retry-After gives the
+  wait). That is acceptable for a few admins;
+  admin keys still work during a lockout.
+- **Dev versus production paths:** the dev rewrite exists only in `next dev`, so production depends on Caddy routing
+  `/api/*`, which it already does. The docker smoke check runs through Caddy to cover that path.

@@ -34,6 +34,15 @@ async def resume_review(ctx: dict, review_id: str) -> dict:
     return await run_review(ctx, review_id)
 
 
+async def delete_checkpoint(ctx: dict, review_id: str) -> dict:
+    """Drop the LangGraph thread of a review an admin deleted (Plan 23a)."""
+    checkpointer = getattr(ctx["graph"], "checkpointer", None)
+    if checkpointer is None:
+        return {"deleted": False}
+    await checkpointer.adelete_thread(review_id)
+    return {"deleted": True}
+
+
 async def deliver_webhook(ctx: dict, review_id: str) -> dict:
     """POST the signed completion notice; retried by arq on network errors and 5xx."""
     settings = ctx["settings"]

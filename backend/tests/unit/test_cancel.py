@@ -7,8 +7,10 @@ from langgraph.graph import END, START, StateGraph
 
 from app.db.repositories import EventRepository, ReviewRepository
 from app.graph.state import ReviewState
+from app.services.admin_auth import AdminPrincipal
 from app.services.api_keys import mint_key
 from app.services.events import EventSink
+from app.services.review_service import Conflict, Forbidden, Identity
 from app.worker.runner import ReviewRunner
 
 
@@ -53,6 +55,48 @@ async def test_anonymous_review_can_only_be_cancelled_by_admin(client, session_f
     rid = r.json()["review_id"]
     plain = await mint(session_factory)
     assert (await client.delete(f"/api/v1/reviews/{rid}", headers={"X-API-Key": plain})).status_code == 403
+
+
+async def test_signed_in_admin_without_a_key_cancels_and_the_audit_runs_in_the_transaction(
+        app, client, session_factory):
+    owner = await mint(session_factory, name="owner")
+    rid = uuid.UUID(await create(client, owner))
+    service = app.state.deps.service
+    admin = Identity(ip="203.0.113.7", admin=AdminPrincipal(kind="user", id=uuid.uuid4(), label="ops"))
+    seen: list[uuid.UUID] = []
+
+    async def audit(session, review):
+        seen.append(review.id)
+
+    assert await service.cancel(rid, identity=admin, audit=audit) == "cancelled"
+    assert seen == [rid]
+    async with session_factory() as s:
+        review = await ReviewRepository(s).get(rid)
+    assert review.status == "cancelled" and review.error == "cancelled by the admin"
+    with pytest.raises(Conflict):  # already terminal: the status did not change, so no second audit row
+        await service.cancel(rid, identity=admin, audit=audit)
+    assert seen == [rid]
+
+
+async def test_a_failing_audit_rolls_the_cancel_back(app, client, session_factory):
+    owner = await mint(session_factory, name="owner")
+    rid = uuid.UUID(await create(client, owner))
+    service = app.state.deps.service
+    admin = Identity(ip="203.0.113.7", admin=AdminPrincipal(kind="user", id=uuid.uuid4(), label="ops"))
+
+    async def broken(session, review):
+        raise RuntimeError("audit write failed")
+
+    with pytest.raises(RuntimeError):
+        await service.cancel(rid, identity=admin, audit=broken)
+    async with session_factory() as s:
+        assert (await ReviewRepository(s).get(rid)).status == "queued"
+
+
+async def test_an_identity_with_neither_key_nor_admin_cannot_cancel(app, client, session_factory):
+    rid = uuid.UUID(await create(client, await mint(session_factory)))
+    with pytest.raises(Forbidden):
+        await app.state.deps.service.cancel(rid, identity=Identity(ip="203.0.113.7"))
 
 
 async def _queued(session_factory):
