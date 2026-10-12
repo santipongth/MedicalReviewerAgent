@@ -1,0 +1,217 @@
+"""LLM configuration versions (Plan 23b). config/llm.yaml is the seed; every save from the admin console appends an
+immutable, validated version, and the newest version is the configuration in use. Workers learn of a new version from
+the Redis key LLM_VERSION_KEY and report what they loaded in LOADED_KEY."""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import Settings
+from app.db.models import LlmConfigVersion
+from app.logging import get_logger
+from app.services.admin_auth import AdminPrincipal
+from app.services.audit import record
+from app.services.llm_config import (
+    LLMConfig,
+    ResolvedLLMConfig,
+    parse_llm_config,
+    read_llm_yaml,
+    resolve_llm_config,
+)
+from app.services.review_service import Conflict, NotFound
+
+log = get_logger(__name__)
+
+LLM_VERSION_KEY = "mra:llm:config_version"
+LOADED_KEY = "mra:llm:loaded"
+LOADED_MAX_AGE = timedelta(days=1)
+NOTE_MAX = 500
+_ACTIONS = {"edit": "llm_config.save", "restore": "llm_config.restore", "file": "llm_config.reset"}
+
+
+@dataclass(frozen=True)
+class EffectiveConfig:
+    source: Literal["db", "file"]
+    version: int | None
+    raw: dict[str, Any]
+    config: LLMConfig
+    env_preset: str | None
+
+    @property
+    def label(self) -> str:
+        return f"db:{self.version}" if self.source == "db" else "file"
+
+    @property
+    def active_id(self) -> str:
+        return str(self.version) if self.source == "db" else "file"
+
+    def resolve(self) -> ResolvedLLMConfig:
+        """LLM_PRESET overrides the active preset only while config/llm.yaml is the source."""
+        preset = self.env_preset if self.source == "file" else None
+        return resolve_llm_config(self.config, preset, where=self.label)
+
+
+async def _newest(session: AsyncSession) -> LlmConfigVersion | None:
+    stmt = select(LlmConfigVersion).order_by(LlmConfigVersion.id.desc()).limit(1)
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def load_effective(session: AsyncSession, settings: Settings) -> EffectiveConfig:
+    row = await _newest(session)
+    if row is not None:
+        return EffectiveConfig("db", row.id, row.config, parse_llm_config(row.config, where=f"version {row.id}"),
+                               settings.llm_preset)
+    raw = read_llm_yaml(settings.llm_config_path)
+    return EffectiveConfig("file", None, raw, parse_llm_config(raw, where=settings.llm_config_path),
+                           settings.llm_preset)
+
+
+def _models(raw: dict[str, Any], preset: str, role: str) -> tuple[str | None, Any]:
+    spec = ((raw.get("presets") or {}).get(preset) or {}).get(role)
+    return (spec or {}).get("model"), spec
+
+
+def summarize_change(old_raw: dict[str, Any] | None, new_raw: dict[str, Any]) -> dict[str, Any]:
+    """What a save changed, for history and the audit log: the active preset, presets added or removed, each role's
+    model (or "settings changed"), and the other top-level sections that differ."""
+    old = old_raw or {}
+    out: dict[str, Any] = {}
+    if old.get("active_preset") != new_raw.get("active_preset"):
+        out["active_preset"] = f"{old.get('active_preset')} → {new_raw.get('active_preset')}"
+    old_presets, new_presets = old.get("presets") or {}, new_raw.get("presets") or {}
+    if added := sorted(set(new_presets) - set(old_presets)):
+        out["presets_added"] = added
+    if removed := sorted(set(old_presets) - set(new_presets)):
+        out["presets_removed"] = removed
+    roles: dict[str, str] = {}
+    for preset in sorted(set(old_presets) & set(new_presets)):
+        for role in sorted(set(old_presets[preset] or {}) | set(new_presets[preset] or {})):
+            (a, spec_a), (b, spec_b) = _models(old, preset, role), _models(new_raw, preset, role)
+            if a != b:
+                roles[f"{preset}.{role}"] = f"{a or '—'} → {b or '—'}"
+            elif spec_a != spec_b:
+                roles[f"{preset}.{role}"] = "settings changed"
+    if roles:
+        out["roles"] = roles
+    if sections := [k for k in ("default_provider", "providers", "harness", "overrides") if old.get(k) != new_raw.get(k)]:
+        out["sections"] = sections
+    return out
+
+
+async def save_version(session: AsyncSession, actor: AdminPrincipal, raw: Any, *, settings: Settings,
+                       base_version: int | None, note: str | None = None, source: str = "edit",
+                       restored_from: int | None = None, ip_hash: str | None = None) -> LlmConfigVersion:
+    """Validate (schema and the active preset), refuse a stale base, append the version and its audit row."""
+    config = parse_llm_config(raw, where="config")
+    resolve_llm_config(config, None, where="config")
+    stored = config.model_dump(mode="json", exclude_unset=True)
+    current = await _newest(session)
+    current_id = current.id if current is not None else None
+    if base_version != current_id:
+        active = f"version {current_id}" if current_id is not None else "llm.yaml"
+        raise Conflict(f"{active} is in use now; reload the latest version and try again")
+    previous = current.config if current is not None else read_llm_yaml(settings.llm_config_path)
+    changes = summarize_change(previous, stored)
+    row = LlmConfigVersion(created_at=datetime.now(UTC), created_by=actor.label[:64],
+                           note=(note or "").strip()[:NOTE_MAX] or None, source=source,
+                           restored_from=restored_from, config=stored, changes=changes)
+    session.add(row)
+    await session.flush()
+    await record(session, actor, _ACTIONS[source], target_type="llm_config", target_id=row.id,
+                 before={"version": current_id}, after={"version": row.id, **changes}, ip_hash=ip_hash)
+    return row
+
+
+async def get_version(session: AsyncSession, version_id: int) -> LlmConfigVersion:
+    row = await session.get(LlmConfigVersion, version_id)
+    if row is None:
+        raise NotFound(f"version {version_id} not found")
+    return row
+
+
+async def restore_version(session: AsyncSession, actor: AdminPrincipal, version_id: int, *, settings: Settings,
+                          base_version: int | None, note: str | None = None,
+                          ip_hash: str | None = None) -> LlmConfigVersion:
+    old = await get_version(session, version_id)
+    return await save_version(session, actor, old.config, settings=settings, base_version=base_version,
+                              note=note or f"restored from version {version_id}", source="restore",
+                              restored_from=version_id, ip_hash=ip_hash)
+
+
+async def reset_to_file(session: AsyncSession, actor: AdminPrincipal, *, settings: Settings,
+                        base_version: int | None, note: str | None = None,
+                        ip_hash: str | None = None) -> LlmConfigVersion:
+    return await save_version(session, actor, read_llm_yaml(settings.llm_config_path), settings=settings,
+                              base_version=base_version, note=note or "reset to llm.yaml", source="file",
+                              ip_hash=ip_hash)
+
+
+async def list_versions(session: AsyncSession, *, before: int | None = None,
+                        limit: int = 50) -> tuple[list[LlmConfigVersion], int | None]:
+    stmt = select(LlmConfigVersion).order_by(LlmConfigVersion.id.desc()).limit(limit + 1)
+    if before is not None:
+        stmt = stmt.where(LlmConfigVersion.id < before)
+    rows = list((await session.execute(stmt)).scalars())
+    cursor = rows[limit - 1].id if len(rows) > limit else None
+    return rows[:limit], cursor
+
+
+def version_out(row: LlmConfigVersion) -> dict[str, Any]:
+    return {"id": row.id, "created_at": row.created_at, "created_by": row.created_by, "note": row.note,
+            "source": row.source, "restored_from": row.restored_from,
+            "active_preset": (row.config or {}).get("active_preset"), "changes": row.changes or {}}
+
+
+async def publish_version(redis, version_id: int) -> None:
+    """Tell every worker (and the cache key) that a new version is active. Best-effort: a miss falls back to the DB."""
+    try:
+        await redis.set(LLM_VERSION_KEY, str(version_id))
+    except Exception:  # noqa: BLE001 - workers and the cache key read the DB when the key is missing
+        log.warning("llm_version_publish_failed", version=version_id)
+
+
+async def active_version_id(session_factory, redis) -> str:
+    """The active version id as text ("file" while the table is empty): Redis first, the DB on a miss or an error."""
+    try:
+        cached = await redis.get(LLM_VERSION_KEY)
+    except Exception:  # noqa: BLE001 - Redis down must not block review creation
+        cached = None
+    if cached:
+        return cached
+    async with session_factory() as session:
+        newest = await session.scalar(select(func.max(LlmConfigVersion.id)))
+    value = str(newest) if newest is not None else "file"
+    if newest is not None:
+        try:
+            await redis.set(LLM_VERSION_KEY, value)
+        except Exception:  # noqa: BLE001 - the next reader asks the DB again
+            log.warning("llm_version_cache_failed", version=value)
+    return value
+
+
+async def report_loaded(redis, worker: str, version: str, preset: str, error: str | None = None) -> None:
+    payload = {"version": version, "preset": preset, "loaded_at": datetime.now(UTC).isoformat(),
+               "error": (error or None) and error[:300]}
+    try:
+        await redis.hset(LOADED_KEY, worker, json.dumps(payload))
+    except Exception:  # noqa: BLE001 - reporting never breaks a worker
+        log.warning("llm_loaded_report_failed", worker=worker)
+
+
+async def loaded_workers(redis, now: datetime | None = None) -> list[dict[str, Any]]:
+    now = now or datetime.now(UTC)
+    out: list[dict[str, Any]] = []
+    for worker, raw in sorted((await redis.hgetall(LOADED_KEY)).items()):
+        try:
+            item = json.loads(raw)
+            loaded_at = datetime.fromisoformat(item["loaded_at"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        if now - loaded_at <= LOADED_MAX_AGE:
+            out.append({"worker": worker, **item})
+    return out
