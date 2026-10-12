@@ -1,0 +1,164 @@
+import pytest
+
+from app.config import Settings
+from app.harness.glossary import SEED_GLOSSARY, ActiveGlossary
+from app.services.admin_auth import AdminPrincipal
+from app.services.budget import worst_case_review_cap
+from app.services.capacity import Capacity
+from app.services.config_store import DocumentError, newest, publish, save_version
+from app.services.glossary_store import GLOSSARY_KIND
+from app.services.runtime_config import RuntimeConfig, load_runtime
+from app.services.runtime_settings import (
+    BY_NAME,
+    SETTINGS_KIND,
+    SPECS,
+    apply_overrides,
+    coerce,
+    summarize_settings,
+    validate_settings,
+)
+
+OWNER = AdminPrincipal(kind="user", id=None, label="owner")
+BASE = Settings(_env_file=None)
+
+
+def test_the_editable_list_is_fixed_and_holds_nothing_sensitive():
+    assert [s.name for s in SPECS] == [
+        "review_rate_limit", "api_key_rate_limit", "paper_search_rate_limit", "sse_max_per_ip",
+        "max_queued_reviews", "max_reviews_per_day", "max_usd_per_day", "review_cost_base_usd",
+        "review_cost_per_paper_usd", "review_cost_per_candidate_usd", "max_cost_per_review_usd",
+        "llm_concurrency", "result_cache_ttl_seconds"]
+    for spec in SPECS:
+        assert spec.name in Settings.model_fields
+        assert not any(w in spec.name for w in ("secret", "salt", "_url", "proxy", "password", "admin", "turnstile",
+                                                "harness"))
+
+
+@pytest.mark.parametrize("name, value, expected", [
+    ("review_rate_limit", " 10/hour ", "10/hour"),
+    ("max_queued_reviews", 80, 80),
+    ("max_queued_reviews", 80.0, 80),
+    ("max_usd_per_day", 25, 25.0),
+    ("result_cache_ttl_seconds", 0, 0),
+])
+def test_values_are_coerced(name, value, expected):
+    got = coerce(BY_NAME[name], value)
+    assert got == expected and type(got) is type(expected)
+
+
+@pytest.mark.parametrize("name, value", [
+    ("review_rate_limit", "5 per hour"), ("review_rate_limit", "0/hour"), ("review_rate_limit", 5),
+    ("max_queued_reviews", 0), ("max_queued_reviews", 1001), ("max_queued_reviews", 2.5),
+    ("max_queued_reviews", True), ("max_queued_reviews", "50"), ("max_usd_per_day", float("inf")),
+    ("max_usd_per_day", float("nan")), ("llm_concurrency", 65),
+    ("max_usd_per_day", 10**400), ("review_cost_base_usd", -10**400),
+])
+def test_bad_values_are_refused(name, value):
+    with pytest.raises(ValueError):
+        coerce(BY_NAME[name], value)
+
+
+def test_validation_names_fields_and_never_echoes_a_bad_name():
+    with pytest.raises(DocumentError) as info:
+        validate_settings({"values": {"max_queued_reviews": 0, "database_url": "x", "\ud800": 1}}, BASE)
+    assert [e["field"] for e in info.value.errors] == ["max_queued_reviews", "database_url", None]
+    assert all("\ud800" not in e["message"] for e in info.value.errors)
+    for raw in (None, [], {"values": []}, {"values": {}, "extra": 1}):
+        with pytest.raises(DocumentError):
+            validate_settings(raw, BASE)
+
+
+def test_a_daily_budget_below_one_review_is_refused_and_a_tight_one_warns():
+    worst = worst_case_review_cap(BASE)
+    with pytest.raises(DocumentError, match="no review could be admitted") as info:
+        validate_settings({"values": {"max_usd_per_day": round(worst / 2, 2)}}, BASE)
+    assert info.value.errors[0]["field"] == "max_usd_per_day"
+    doc, warnings = validate_settings({"values": {"max_usd_per_day": round(worst * 2, 2), "llm_concurrency": 8}}, BASE)
+    assert doc == {"values": {"max_usd_per_day": round(worst * 2, 2), "llm_concurrency": 8}}
+    assert any("daily budget" in w for w in warnings) and any("llm_concurrency" in w for w in warnings)
+    assert validate_settings({"values": {}}, BASE) == ({"values": {}}, [])
+
+
+def test_overrides_apply_and_bad_stored_values_are_skipped():
+    s = apply_overrides(BASE, {"max_queued_reviews": 80, "review_rate_limit": "9/hour", "gone_setting": 1,
+                               "sse_max_per_ip": "lots"})
+    assert (s.max_queued_reviews, s.review_rate_limit, s.sse_max_per_ip) == (80, "9/hour", BASE.sse_max_per_ip)
+    assert BASE.max_queued_reviews == 50 and apply_overrides(BASE, {}) is BASE
+
+
+def test_change_summary_says_env_for_unset_values():
+    assert summarize_settings({"values": {"max_queued_reviews": 50}}, {"values": {"review_rate_limit": "9/hour"}}) == {
+        "max_queued_reviews": "50 → env", "review_rate_limit": "env → 9/hour"}
+    assert SETTINGS_KIND.seed() == {"values": {}}
+    assert SETTINGS_KIND.mirror({"values": {"max_queued_reviews": 1}}) == {"values": {"max_queued_reviews": 1}}
+
+
+async def test_capacity_checks_against_the_settings_it_is_given(redis):
+    cap = Capacity(redis, BASE)
+    assert cap.worst_case_cap() == worst_case_review_cap(BASE)
+    assert await cap.check(queued=1) is None
+    refusal = await cap.check(queued=1, settings=apply_overrides(BASE, {"max_queued_reviews": 1}))
+    assert refusal is not None and refusal.reason == "queue_full"
+
+
+async def save(session_factory, kind, raw):
+    async with session_factory() as s, s.begin():
+        current = await newest(s, kind)
+        return await save_version(s, OWNER, kind, raw, settings=BASE,
+                                  base_version=current.version if current else None)
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+async def test_runtime_config_caches_for_the_ttl_and_follows_a_publish(session_factory, redis):
+    clock = Clock()
+    rc = RuntimeConfig(BASE, session_factory, redis, ttl=5.0, clock=clock)
+    assert await rc.settings() is BASE and await rc.settings_version() is None and await rc.glossary_label() == "file"
+    row = await save(session_factory, SETTINGS_KIND, {"values": {"max_queued_reviews": 80}})
+    await publish(redis, SETTINGS_KIND, row)
+    assert (await rc.settings()).max_queued_reviews == 50  # still cached
+    clock.now = 5.1
+    assert (await rc.settings()).max_queued_reviews == 80 and await rc.settings_version() == 1
+    g = await save(session_factory, GLOSSARY_KIND, {"terms": [{"en": "placebo", "th": "ยาหลอก"}]})
+    await publish(redis, GLOSSARY_KIND, g)
+    rc.invalidate()
+    assert await rc.glossary_label() == "1"
+
+
+async def test_runtime_config_keeps_the_last_values_when_everything_is_down(session_factory, redis):
+    clock = Clock()
+    rc = RuntimeConfig(BASE, session_factory, redis, ttl=5.0, clock=clock)
+    row = await save(session_factory, SETTINGS_KIND, {"values": {"sse_max_per_ip": 9}})
+    await publish(redis, SETTINGS_KIND, row)
+    assert (await rc.settings()).sse_max_per_ip == 9
+
+    class Down:
+        async def get(self, *_):
+            raise ConnectionError("down")
+
+        async def set(self, *_, **__):
+            raise ConnectionError("down")
+
+    def broken_factory():
+        raise OSError("db down")
+
+    rc.redis, rc.session_factory = Down(), broken_factory
+    clock.now = 10.0
+    assert (await rc.settings()).sse_max_per_ip == 9  # the last values it knew
+    assert await RuntimeConfig(BASE, broken_factory, Down(), clock=clock).settings() is BASE  # none known yet: env
+
+
+async def test_load_runtime_reads_the_db(session_factory):
+    rt = await load_runtime(session_factory, BASE)
+    assert (rt.settings, rt.settings_version, rt.glossary) == (BASE, "env", SEED_GLOSSARY)
+    await save(session_factory, SETTINGS_KIND, {"values": {"llm_concurrency": 4}})
+    await save(session_factory, GLOSSARY_KIND, {"terms": [{"en": "placebo", "th": "ยาหลอก"}]})
+    rt = await load_runtime(session_factory, BASE)
+    assert rt.settings.llm_concurrency == 4 and rt.settings_version == "1"
+    assert rt.glossary == ActiveGlossary(1, "placebo = ยาหลอก")
