@@ -11,6 +11,7 @@ pytestmark = pytest.mark.integration
 
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg://mra:mra@localhost:5432/mra_test")
 ADMIN_TABLES = {"admin_users", "admin_audit"}
+BEFORE_ADMIN = "d4a8e2f61c37"  # the revision the admin migration (e1f3a5c7b9d2) builds on
 
 
 def test_admin_migration_upgrades_and_downgrades(monkeypatch):
@@ -24,7 +25,7 @@ def test_admin_migration_upgrades_and_downgrades(monkeypatch):
     try:
         command.upgrade(cfg, "head")
         assert ADMIN_TABLES <= set(inspect(engine).get_table_names())
-        command.downgrade(cfg, "-1")
+        command.downgrade(cfg, BEFORE_ADMIN)
         assert not ADMIN_TABLES & set(inspect(engine).get_table_names())
         command.upgrade(cfg, "head")
         assert ADMIN_TABLES <= set(inspect(engine).get_table_names())
