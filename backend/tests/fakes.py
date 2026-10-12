@@ -31,3 +31,17 @@ class FakeStructuredLLM:
         if isinstance(value, BaseException):
             raise value
         return LLMResult(value=value, cost_usd=self.cost, model=self.model, input_tokens=100, output_tokens=10)
+
+
+def bind_by_role(llms, overrides=None):
+    """Test double for LLMs.for_schema: fakes answer whatever their responder returns, so binding a role to another
+    schema reuses that role's current fake (read at call time); `overrides` maps a schema to a fake factory. Every
+    request is recorded in `.requests` so a test can assert which schema a call asked for."""
+    overrides = overrides or {}
+
+    def for_schema(role, schema):
+        for_schema.requests.append((role, schema))
+        return overrides[schema](role) if schema in overrides else getattr(llms, role)
+
+    for_schema.requests = []
+    return for_schema

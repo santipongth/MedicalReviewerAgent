@@ -29,7 +29,7 @@ from app.graph.schemas import (
 )
 from app.services.llm import LLMOutputError, LLMs
 from app.services.llm_config import HarnessSpec
-from tests.fakes import FakeStructuredLLM, to_thai
+from tests.fakes import FakeStructuredLLM, bind_by_role, to_thai
 
 ABSTRACT = (
     "Methods: We enrolled 1,234 adults with type 2 diabetes in a population-based cohort. "
@@ -110,13 +110,10 @@ def thai(system, user):
     return TranslationBatch(items=[TranslationItem(id=i["id"], text=to_thai(i["text"])) for i in items])
 
 
-def eval_schema_fakes(role, schema):
-    """The eval harness binds the planner's model to its own schemas; by default the primary-outcome matcher finds no
-    match. Any other schema must be faked by the test that needs it."""
+def eval_match_none(role):
+    """The eval's primary-outcome matcher (planner bound to OutcomeMatch) finds no match by default."""
     from app.evals.run import OutcomeMatch
-    if schema is OutcomeMatch:
-        return FakeStructuredLLM(f"{role}:match", lambda s, u: OutcomeMatch(index=None))
-    raise AssertionError(f"no fake for {role} bound to {schema.__name__}")
+    return FakeStructuredLLM(f"{role}:match", lambda s, u: OutcomeMatch(index=None))
 
 
 def make_deps(*, allowed=True, results=None, extractor=None):
@@ -139,9 +136,11 @@ def make_deps(*, allowed=True, results=None, extractor=None):
             executive_summary="Metformin is associated with lower CRC risk [P1, P2].", evidence_strength="low",
             evidence_rationale="observational cohorts [P1]", research_gaps=["RCTs"])),
         localizer=FakeStructuredLLM("loc", thai),
-        harness=HarnessSpec(max_repairs=1, dual_extraction=False), for_schema=eval_schema_fakes,
+        harness=HarnessSpec(max_repairs=1, dual_extraction=False),
         preset="test", models={"extractor": "openrouter:ext"},
     )
+    from app.evals.run import OutcomeMatch
+    llms.for_schema = bind_by_role(llms, {OutcomeMatch: eval_match_none})
     return GraphDeps(settings=Settings(_env_file=None, searxng_pages=1), llms=llms,
                      searxng=FakeSearxng(results), europepmc=FakeEpmc())
 
