@@ -2,13 +2,13 @@
 the probe. Every change writes its audit row in the same transaction; the probe writes its own."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+from urllib.parse import urlsplit
 
-import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, PlainTextResponse
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 from app.api.auth import ip_hash_of, require_admin
 from app.api.deps import get_deps
@@ -16,7 +16,15 @@ from app.api.reviews import service_error_response
 from app.runtime import AppDeps
 from app.services.audit import record
 from app.services.llm import _api_key
-from app.services.llm_config import LLMConfigError, parse_llm_config, resolve_llm_config
+from app.services.llm_config import (
+    CONFIG_ERRORS,
+    LLMConfigError,
+    config_error_text,
+    has_bad_text,
+    parse_llm_config,
+    parse_yaml_text,
+    resolve_llm_config,
+)
 from app.services.llm_probe import probe
 from app.services.llm_store import (
     NOTE_MAX,
@@ -39,6 +47,15 @@ YAML_MAX = 200_000
 TEST_RATE = "10/minute"
 
 
+def _clean_note(value: str | None) -> str | None:
+    if value is not None and has_bad_text(value):
+        raise ValueError("the note must not contain a NUL or an invalid character")
+    return value
+
+
+Note = Annotated[str | None, Field(max_length=NOTE_MAX), AfterValidator(_clean_note)]
+
+
 class Draft(BaseModel):
     config: dict[str, Any] | None = None
     yaml: str | None = Field(None, max_length=YAML_MAX)
@@ -48,9 +65,9 @@ class Draft(BaseModel):
             raise HTTPException(status_code=422, detail="send either config or yaml, not both")
         if self.yaml is not None:
             try:
-                parsed = yaml.safe_load(self.yaml)
-            except yaml.YAMLError as exc:
-                raise HTTPException(status_code=422, detail=f"invalid YAML: {exc}") from exc
+                parsed = parse_yaml_text(self.yaml)
+            except LLMConfigError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             if not isinstance(parsed, dict):
                 raise HTTPException(status_code=422, detail="the YAML must be a mapping (active_preset, presets, …)")
             return parsed
@@ -61,12 +78,12 @@ class Draft(BaseModel):
 
 class SaveBody(Draft):
     base_version: int | None
-    note: str | None = Field(None, max_length=NOTE_MAX)
+    note: Note = None
 
 
 class BaseBody(BaseModel):
     base_version: int | None
-    note: str | None = Field(None, max_length=NOTE_MAX)
+    note: Note = None
 
 
 class TestBody(Draft):
@@ -74,8 +91,8 @@ class TestBody(Draft):
     role: str = Field(min_length=1, max_length=32)
 
 
-def _config_error(exc: LLMConfigError) -> JSONResponse:
-    return JSONResponse(status_code=422, content={"detail": str(exc)})
+def _config_error(exc: BaseException) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": config_error_text(exc)})
 
 
 async def _catalog(deps: AppDeps):
@@ -131,7 +148,7 @@ async def _write(deps: AppDeps, identity: Identity, action):
     try:
         async with deps.session_factory() as session, session.begin():
             row = await action(session)
-    except LLMConfigError as exc:
+    except CONFIG_ERRORS as exc:  # a bad document (or a failure while dumping it) is the admin's 422, not a 500
         return _config_error(exc)
     except ServiceError as exc:
         return service_error_response(exc)
@@ -183,18 +200,24 @@ async def llm_test(body: TestBody, deps: AppDeps = Depends(get_deps), identity: 
     settings = deps.service.settings
     try:
         raw = body.raw(required=False)
-        if raw is None:
+        if raw is not None:  # a draft: its own active preset, or the one asked for
+            resolved = resolve_llm_config(parse_llm_config(raw, where="config"), body.preset, where="config")
+        else:  # what the workers run: LLM_PRESET applies while llm.yaml is the source, as in the worker
             async with deps.session_factory() as session:
-                raw = (await load_effective(session, settings)).raw
-        resolved = resolve_llm_config(parse_llm_config(raw, where="config"), body.preset, where="config")
-    except LLMConfigError as exc:
+                effective = await load_effective(session, settings)
+            resolved = (effective.resolve() if body.preset is None
+                        else resolve_llm_config(effective.config, body.preset, where=effective.label))
+    except CONFIG_ERRORS as exc:
         return _config_error(exc)
     role = resolved.roles.get(body.role)
     if role is None:
         raise HTTPException(status_code=422, detail=f"preset {resolved.preset} has no {body.role} role")
     result = await probe(role, settings, await _catalog(deps))
+    # which provider and host the draft pointed the call at (host only: no path or query)
+    host = urlsplit(role.provider_spec.base_url or "").hostname
     async with deps.session_factory() as session, session.begin():
         await record(session, identity.admin, "llm.test", target_type="llm_model", target_id=role.spec.model,
-                     after={"preset": resolved.preset, "role": body.role, "ok": result["ok"],
-                            "cost_usd": result["cost_usd"]}, ip_hash=ip_hash_of(identity, deps))
+                     after={"preset": resolved.preset, "role": body.role, "provider": role.provider,
+                            "base_url_host": host, "ok": result["ok"], "cost_usd": result["cost_usd"]},
+                     ip_hash=ip_hash_of(identity, deps))
     return result

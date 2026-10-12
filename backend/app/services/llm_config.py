@@ -1,12 +1,14 @@
 """Operator-editable LLM configuration (config/llm.yaml): presets of per-role model settings."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 Role = Literal[
     "guard", "planner", "screener", "extractor", "synthesizer",
@@ -32,8 +34,91 @@ class LLMConfigError(ValueError):
     pass
 
 
+# What a bad document can raise anywhere between parsing and dumping: LLMConfigError, pydantic's ValidationError and
+# serialization errors are all ValueErrors. Callers that must answer 422 and never 500 catch these.
+CONFIG_ERRORS = (ValueError, RecursionError)
+
+
+def config_error_text(exc: BaseException) -> str:
+    if isinstance(exc, RecursionError):
+        return "the config is nested too deeply"
+    return str(exc) or type(exc).__name__
+
+
+# A provider key is read from the server's settings or environment by name, so the name is restricted to the shape of
+# a provider key (a draft must not be able to name DATABASE_URL, IP_HASH_SALT, ...), and OpenRouter / Anthropic keys
+# are only ever sent to those providers' own hosts. A local model server (openai_compatible) may be anywhere, but
+# then it gets only its own key.
+API_KEY_ENV = re.compile(r"[A-Z][A-Z0-9_]*_API_KEY")
+PINNED_HOSTS = {"openrouter": "openrouter.ai", "anthropic": "api.anthropic.com"}
+FREE_HOST_KEYS = {"openai_compatible": "OPENAI_COMPATIBLE_API_KEY"}
+VISIBLE_ASCII = re.compile(r"[\x21-\x7e]+")
+MAX_FREEFORM_DEPTH = 8  # nesting of an extra_body or of one overrides entry
+MAX_YAML_DEPTH = 20
+
+
+def _is_https_host(url: str, host: str) -> bool:
+    """True only for an https URL whose whole authority is `host`: no userinfo, port or look-alike suffix."""
+    if not VISIBLE_ASCII.fullmatch(url) or "\\" in url:  # nothing a URL parser might silently drop or reinterpret
+        return False
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    return parts.scheme == "https" and parts.netloc.lower() == host
+
+
+def _nesting(value: Any) -> int:
+    """Levels of nested dicts and lists in value (a scalar is 0), measured without recursion and cut short once the
+    cap is passed."""
+    deepest, stack = 0, [(value, 0)]
+    while stack:
+        item, level = stack.pop()
+        if isinstance(item, dict):
+            children = list(item.values())
+        elif isinstance(item, list | tuple):
+            children = list(item)
+        else:
+            continue
+        deepest = max(deepest, level + 1)
+        if deepest > MAX_FREEFORM_DEPTH:
+            break
+        stack.extend((child, level + 1) for child in children)
+    return deepest
+
+
+def has_bad_text(value: Any) -> bool:
+    """True when a string anywhere in value (a dict key too) holds a NUL or cannot be encoded as UTF-8 (a lone
+    surrogate): Postgres refuses both, so they are stopped before anything is stored or paid for."""
+    seen: set[int] = set()
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            if "\x00" in item:
+                return True
+            try:
+                item.encode("utf-8")
+            except UnicodeEncodeError:
+                return True
+        elif isinstance(item, dict | list | tuple) and id(item) not in seen:
+            seen.add(id(item))
+            if isinstance(item, dict):
+                stack.extend(item.keys())
+                stack.extend(item.values())
+            else:
+                stack.extend(item)
+    return False
+
+
+def _check_depth(value: dict[str, Any], what: str) -> dict[str, Any]:
+    if _nesting(value) > MAX_FREEFORM_DEPTH:
+        raise ValueError(f"{what} is nested more than {MAX_FREEFORM_DEPTH} levels deep")
+    return value
+
+
 class ProviderSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     base_url: str | None = None
     api_key_env: str
@@ -41,9 +126,17 @@ class ProviderSpec(BaseModel):
     app_url: str | None = None
     require_parameters: bool = True
 
+    @field_validator("api_key_env")
+    @classmethod
+    def _key_name(cls, value: str) -> str:
+        if not API_KEY_ENV.fullmatch(value):
+            raise ValueError(f"api_key_env '{value}' must look like OPENROUTER_API_KEY (capital letters, digits and "
+                             "underscores, ending in _API_KEY)")
+        return value
+
 
 class RoleSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     model: str = Field(min_length=1)
     provider: ProviderName | None = None
@@ -56,11 +149,16 @@ class RoleSpec(BaseModel):
     fallback_models: list[str] = Field(default_factory=list)
     extra_body: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("extra_body")
+    @classmethod
+    def _extra_body_depth(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _check_depth(value, "extra_body")
+
 
 class HarnessSpec(BaseModel):
     """Quality harness for smaller/open models: repairs, voting, verification, escalation, localization."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     max_repairs: int = Field(2, ge=0, le=5)
     refine_critique: bool = True  # one self-critique/revise round on the interpreted question
@@ -76,7 +174,7 @@ class HarnessSpec(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     active_preset: str
     default_provider: ProviderName = "openrouter"
@@ -85,8 +183,24 @@ class LLMConfig(BaseModel):
     harness: HarnessSpec = Field(default_factory=HarnessSpec)
     overrides: dict[Role, dict[str, Any]] = Field(default_factory=dict)
 
+    @field_validator("overrides")
+    @classmethod
+    def _overrides_depth(cls, value: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        for role, override in value.items():
+            _check_depth(override, f"overrides.{role}")
+        return value
+
     @model_validator(mode="after")
     def _check(self) -> LLMConfig:
+        for name, provider_spec in self.providers.items():
+            host = PINNED_HOSTS.get(name)
+            if host and provider_spec.base_url and not _is_https_host(provider_spec.base_url, host):
+                raise ValueError(f"providers.{name}.base_url must be an https://{host}/ address "
+                                 f"(the {name} key is only sent there)")
+            own_key = FREE_HOST_KEYS.get(name)
+            if own_key and provider_spec.api_key_env != own_key:
+                raise ValueError(f"providers.{name}.api_key_env must be {own_key}: a server of your choosing "
+                                 "only receives its own key")
         for name, roles in self.presets.items():
             missing = [r for r in ROLES if r not in roles]
             if missing:
@@ -132,9 +246,37 @@ def read_llm_yaml(path: str | Path) -> dict[str, Any]:
     return raw
 
 
+class _DocumentLoader(yaml.SafeLoader):
+    """A SafeLoader for a document an admin typed: no anchors or aliases (a few hundred characters of aliases expand
+    to millions of values once the document is dumped) and a nesting cap, so a deep document cannot recurse."""
+
+    _depth = 0
+
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent) or getattr(self.peek_event(), "anchor", None) is not None:
+            raise yaml.YAMLError("YAML anchors (&name) and aliases (*name) are not allowed in the config")
+        self._depth += 1
+        try:
+            if self._depth > MAX_YAML_DEPTH:
+                raise yaml.YAMLError(f"the YAML is nested more than {MAX_YAML_DEPTH} levels deep")
+            return super().compose_node(parent, index)
+        finally:
+            self._depth -= 1
+
+
+def parse_yaml_text(text: str) -> Any:
+    """The value of an admin-supplied YAML document; anything that does not load is an LLMConfigError."""
+    try:
+        return yaml.load(text, Loader=_DocumentLoader)
+    except (yaml.YAMLError, ValueError, RecursionError) as exc:  # ValueError: a date like 2020-13-45, a huge integer
+        raise LLMConfigError(f"invalid YAML: {exc}") from exc
+
+
 def parse_llm_config(raw: Any, *, where: str = "llm config") -> LLMConfig:
     if not isinstance(raw, dict):
         raise LLMConfigError(f"{where}: the config must be a mapping")
+    if has_bad_text(raw):
+        raise LLMConfigError(f"{where}: the config contains a NUL or an invalid character")
     try:
         return LLMConfig.model_validate(raw)
     except ValidationError as exc:
@@ -154,7 +296,10 @@ def resolve_llm_config(config: LLMConfig, preset: str | None = None, *,
         elif role in FALLBACK_ROLES:
             spec = preset_roles[FALLBACK_ROLES[role]]
         elif role in config.overrides and "model" in config.overrides[role]:
-            spec = RoleSpec(model=config.overrides[role]["model"])  # enabled purely via overrides
+            try:
+                spec = RoleSpec(model=config.overrides[role]["model"])  # enabled purely via overrides
+            except ValidationError as exc:
+                raise LLMConfigError(f"{where}: overrides.{role}: {exc}") from exc
         else:
             continue
         if role in config.overrides:

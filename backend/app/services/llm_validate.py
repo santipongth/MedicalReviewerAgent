@@ -8,7 +8,12 @@ import yaml
 
 from app.config import Settings
 from app.services.llm import _api_key
-from app.services.llm_config import LLMConfigError, parse_llm_config, resolve_llm_config
+from app.services.llm_config import (
+    CONFIG_ERRORS,
+    config_error_text,
+    parse_llm_config,
+    resolve_llm_config,
+)
 from app.services.llm_cost import estimate_review_cost
 from app.services.model_catalog import ModelInfo, validate_role
 
@@ -19,10 +24,15 @@ def to_yaml(raw: dict[str, Any]) -> str:
 
 def validate_document(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None) -> dict[str, Any]:
     try:
-        config = parse_llm_config(raw, where="config")
-        resolve_llm_config(config, None, where="config")
-    except LLMConfigError as exc:
-        return {"ok": False, "errors": [str(exc)], "warnings": [], "cost": {}, "config": None, "yaml": None}
+        return _validate(raw, settings, catalog)
+    except CONFIG_ERRORS as exc:  # a bad document is a result to show, never a server error
+        return {"ok": False, "errors": [config_error_text(exc)], "warnings": [], "cost": {}, "config": None,
+                "yaml": None}
+
+
+def _validate(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None) -> dict[str, Any]:
+    config = parse_llm_config(raw, where="config")
+    resolve_llm_config(config, None, where="config")
     normalized = config.model_dump(mode="json", exclude_unset=True)
     warnings: list[str] = []
     cost: dict[str, Any] = {}

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -41,6 +44,15 @@ class McpPathMiddleware:
         if scope["type"] == "http" and scope["path"] == "/mcp":
             scope = {**scope, "path": "/mcp/", "raw_path": b"/mcp/"}
         await self.app(scope, receive, send)
+
+
+async def admin_validation_errors(request: Request, exc: RequestValidationError) -> Response:
+    """The admin console's 422 never echoes the request back (FastAPI's default does): a lone surrogate in a JSON
+    string makes the echoed error unencodable, and a deeply nested body overflows the encoder; both would be a 500."""
+    if not request.url.path.startswith("/api/v1/admin"):
+        return await request_validation_exception_handler(request, exc)
+    errors = [{"type": e["type"], "loc": list(e["loc"]), "msg": e["msg"]} for e in exc.errors()]
+    return Response(json.dumps({"detail": errors}), status_code=422, media_type="application/json")
 
 
 _PAPERS = (ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le"),
@@ -105,6 +117,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     app.state.settings = settings
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RequestValidationError, admin_validation_errors)
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(McpPathMiddleware)
     if deps is not None:
