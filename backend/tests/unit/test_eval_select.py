@@ -209,3 +209,32 @@ async def test_continue_refuses_when_the_draw_changed_since_the_stratum_started(
     with pytest.raises(ValueError, match="draw order of cv changed"):  # Europe PMC added a record meanwhile
         await select(deps, FakeHttp([rec(i, "Search up to 2023") for i in range(1, 7)]), "u", m(partial))
     assert (root / "frames" / "cv.json").read_bytes() == frame_before  # the original draw stays on record
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_run_over_a_stale_frame_file_passes_and_rewrites_it(root):
+    import json
+    deps = make_deps()
+    bind(deps, judge)
+    (root / "frames").mkdir()
+    (root / "frames" / "cv.json").write_text(json.dumps({"ids_in_draw_order": ["CD999999"]}), encoding="utf-8")
+    out = await select(deps, FakeHttp([rec(i, "Search up to 2023") for i in range(1, 4)]), "u",
+                       Manifest(seed=1, per_stratum=2, strata=[Stratum(name="cv", query="x")]))  # select --force
+    assert len([r for r in out.reviews if r.status == "eligible"]) == 2
+    assert "CD999999" not in json.loads((root / "frames" / "cv.json").read_text(encoding="utf-8"))["ids_in_draw_order"]
+
+
+@pytest.mark.asyncio
+async def test_continue_leaves_a_full_stratum_alone_even_if_its_draw_drifted(root):
+    deps = make_deps()
+    bind(deps, judge)
+    strata = [Stratum(name="cv", query="x"), Stratum(name="lung", query="y")]
+    first = await select(deps, FakeHttp([rec(i, "Search up to 2023") for i in range(1, 6)]), "u",
+                         Manifest(seed=3, per_stratum=2, strata=strata))
+    cv_frame = (root / "frames" / "cv.json").read_bytes()
+    partial = [r for r in first.reviews if r.stratum == "cv"] + [r for r in first.reviews if r.stratum == "lung"][:1]
+    drifted = FakeHttp([rec(i, "Search up to 2023") for i in range(1, 8)])  # Europe PMC added records meanwhile
+    with pytest.raises(ValueError, match="draw order of lung changed"):  # the stratum being topped up is guarded
+        await select(deps, drifted, "u", Manifest(seed=3, per_stratum=2, strata=strata, reviews=partial))
+    assert len(drifted.calls) == 1  # only lung was fetched
+    assert (root / "frames" / "cv.json").read_bytes() == cv_frame  # the full stratum keeps its committed draw

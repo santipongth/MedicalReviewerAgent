@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import shutil
 import subprocess
@@ -156,7 +157,8 @@ def main() -> None:
     from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 
     settings = get_settings()
-    sys.stdout.reconfigure(errors="replace")  # an LLM's reason with "≥" must not crash select on a cp1252 console
+    if isinstance(sys.stdout, io.TextIOWrapper):  # piped or redirected stdout is cp1252 here: "≥" must not crash
+        sys.stdout.reconfigure(errors="replace")
 
     async def go() -> int:
         http = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)

@@ -112,6 +112,11 @@ async def select(deps, http, base_url: str, manifest: Manifest,
     reviews = list(manifest.reviews)
     judged = {e.id for e in reviews}  # a review lands in the first stratum that reaches it
     for stratum in manifest.strata:
+        # a top-up (select --continue) starts from the stratum's eligible entries already in the manifest; a full
+        # stratum is not fetched again, so its committed frame file keeps documenting the draw its entries came from
+        eligible = sum(1 for e in reviews if e.stratum == stratum.name and e.status == "eligible")
+        if eligible >= manifest.per_stratum:
+            continue
         found, hit_count = await frame(http, base_url, manifest, stratum)
         deduped = latest_per_review(found)
         # sorted first: Europe PMC's relevance order drifts over time, the seeded draw must not
@@ -128,8 +133,6 @@ async def select(deps, http, base_url: str, manifest: Manifest,
             "query": frame_query(manifest, stratum), "run_date": datetime.now(UTC).isoformat(timespec="seconds"),
             "hit_count": hit_count, "collected": len(deduped),
             "ids_in_draw_order": draw})
-        # a top-up (select --continue) starts from the stratum's eligible entries already in the manifest
-        eligible = sum(1 for e in reviews if e.stratum == stratum.name and e.status == "eligible")
         for r in records:
             if eligible >= manifest.per_stratum:
                 break
