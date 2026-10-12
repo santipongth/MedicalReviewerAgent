@@ -35,8 +35,10 @@ SYSTEM_HASHES = {
     # Plan 20 (prompt_version 2026-10-10.7, report audit issues 1-3): the narrative also writes `answer` (a 1-2
     # sentence bottom line with the GRADE certainty wording) and 3-5 numberless `key_findings` (outcome, statement,
     # refs); the report renders their numbers from the verified cards and the computed pools. 2026-10-10.8 changed
-    # only the qualitative screen/extract blocks (appended when ticked), and current version 2026-10-11.1 (Plan 21:
-    # pool of about 120 with a SearXNG top-up, 5-50 papers) changed no prompt, so these SLR pins hold.
+    # only the qualitative screen/extract blocks (appended when ticked), and 2026-10-11.1 (Plan 21: pool of about
+    # 120 with a SearXNG top-up, 5-50 papers) changed no prompt. Current version 2026-10-12.1: narrative and scoping
+    # reviews get the synthesizer bound to NarrativeNoGrade (it was SynthesisNarrative, which asked for a grade the
+    # code then discarded); the SLR schema and prompts are unchanged, so these SLR pins hold.
     "narrative_system": (prompts.narrative_system, "16278465ee36d386eede4011a039ce7adf15588592669958c92883bcc06b3b7d"),
 }
 

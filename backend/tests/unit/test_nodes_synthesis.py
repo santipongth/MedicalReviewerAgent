@@ -28,7 +28,7 @@ from app.graph.schemas import (
 )
 from app.services.llm import LLMError, LLMs
 from app.services.llm_config import HarnessSpec
-from tests.fakes import FakeStructuredLLM, to_thai
+from tests.fakes import FakeStructuredLLM, bind_by_role, to_thai
 
 
 def card(outcome="CRC incidence", direction="positive", design="cohort", n=1000, rob="moderate"):
@@ -57,7 +57,9 @@ def deps(**roles):
     u = unexpected("u")
     base = {"guard": u, "planner": u, "screener": u, "extractor": u, "synthesizer": u,
             "harness": HarnessSpec(max_repairs=1)}
-    return GraphDeps(settings=Settings(_env_file=None), llms=LLMs(**{**base, **roles}))
+    llms = LLMs(**{**base, **roles})
+    llms.for_schema = bind_by_role(llms)
+    return GraphDeps(settings=Settings(_env_file=None), llms=llms)
 
 
 def items_in(user):
@@ -468,13 +470,16 @@ async def test_ungraded_synthesis_has_no_strength_and_a_fixed_rationale(rt):
     papers = [paper("P1", card())]
     synth = FakeStructuredLLM("ds", lambda s, u: NarrativeNoGrade(executive_summary="Themes [P1].",
                                                                   research_gaps=["RCTs"]))
-    out = await make_write_synthesis(deps(synthesizer=synth))(
+    d = deps(synthesizer=synth)
+    out = await make_write_synthesis(d)(
         state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en", options={"review_type": rt}))
     s = out["synthesis"]
     assert s["evidence_strength"] is None and s["grade_baseline"] is None
     assert s["evidence_rationale"] == f"Certainty of evidence is not graded in a {rt} review."
     assert s["research_gaps"] == ["RCTs"] and s["comparison"][0]["outcome"] == "CRC incidence"
     assert "override any conflicting rule" in synth.calls[0][0]
+    from app.graph.schemas import NarrativeNoGrade as NoGrade
+    assert d.llms.for_schema.requests == [("synthesizer", NoGrade)]  # the model is given the schema without a grade
 
 
 async def test_ungraded_synthesis_citation_check_and_fallback():
@@ -509,3 +514,13 @@ async def test_non_slr_narrative_prompt_has_no_grade_text(rt):
     assert "GRADE" not in user and "evidence_strength" not in user and "one level" not in user
     assert "evidence_rationale" not in system.split("override any conflicting rule")[1]
     assert (out["synthesis"]["consensus"] == []) == (rt == "scoping")
+
+
+async def test_graded_synthesis_uses_the_synthesizer_role_as_built():
+    papers = [paper("P1", card()), paper("P2", card())]
+    synth = FakeStructuredLLM("syn", lambda s, u: SynthesisNarrative(
+        executive_summary="Lower risk [P1].", evidence_strength="low", evidence_rationale="cohorts [P1]",
+        research_gaps=[]))
+    d = deps(synthesizer=synth)
+    await make_write_synthesis(d)(state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en"))
+    assert synth.calls and d.llms.for_schema.requests == []

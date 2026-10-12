@@ -1086,8 +1086,10 @@ def make_write_synthesis(deps):
                                       external_context=state.get("external_context") or [],
                                       review_type=review_type if not no_quantitative else "narrative",
                                       pooled_analysis=pools_for_prompt(meta) if meta else None)
+        # the synthesizer role is bound to SynthesisNarrative; an ungraded review needs the schema without a grade
+        synth = deps.llms.synthesizer if graded else deps.llms.with_schema("synthesizer", NarrativeNoGrade)
         narrative_call = harness_runner(deps).call(
-            deps.llms.synthesizer, prompts.narrative_system(review_type if not no_quantitative else "narrative", _themes_only(papers)), user,
+            synth, prompts.narrative_system(review_type if not no_quantitative else "narrative", _themes_only(papers)), user,
             schema=SynthesisNarrative if graded else NarrativeNoGrade, validate=validate, trigger="narrative")
         # outside the ticked designs or a related report of a trial: not evidence, but their cards are still shown in
         # the user's language
