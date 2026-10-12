@@ -1,6 +1,11 @@
 import asyncio
+import contextlib
+import json
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from functools import partial
+
+import pytest
 
 from app.config import Settings
 from app.graph.graph import GraphDeps
@@ -10,10 +15,19 @@ from app.services.llm_store import (
     LOADED_KEY,
     loaded_workers,
     publish_version,
+    report_loaded,
     save_version,
 )
-from app.worker import tasks
-from app.worker.llm_reload import initial_llm_config, refresh_llms, worker_id
+from app.worker import llm_reload, tasks
+from app.worker.llm_reload import (
+    init_llms,
+    initial_llm_config,
+    poll_llm_config,
+    refresh_llms,
+    report_state,
+    stop_llms,
+    worker_id,
+)
 from tests.llm_helpers import MINIMAL, with_model, write_yaml
 
 OWNER = AdminPrincipal(kind="user", id=None, label="owner")
@@ -155,3 +169,119 @@ async def test_run_review_refreshes_before_it_builds_the_runner(tmp_path, sessio
     monkeypatch.setattr(tasks, "_runner", fake_runner)
     result = await tasks.run_review(ctx, "00000000-0000-0000-0000-000000000001")
     assert result["status"] == "done" and seen["graph"] is not old_graph and ctx["llm_version"] == str(vid)
+
+
+async def test_a_poll_without_a_version_change_still_refreshes_loaded_at(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    old = {"version": "file", "preset": "cheap", "error": None,
+           "loaded_at": (datetime.now(UTC) - timedelta(hours=20)).isoformat()}
+    await redis.hset(LOADED_KEY, worker_id(), json.dumps(old))
+    graph = ctx["graph"]
+    poller = asyncio.create_task(poll_llm_config(ctx, interval=0.01))
+    try:
+        report = old
+        for _ in range(300):
+            await asyncio.sleep(0.01)
+            [report] = await loaded_workers(redis)
+            if report["loaded_at"] != old["loaded_at"]:
+                break
+    finally:
+        poller.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await poller
+    assert report["loaded_at"] > old["loaded_at"] and report["version"] == "file" and ctx["graph"] is graph
+
+
+async def test_a_heartbeat_keeps_a_failure_report_until_a_reload_succeeds(tmp_path, session_factory, redis,
+                                                                         monkeypatch):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    vid = await save(session_factory, ctx["settings"], MINIMAL, None)
+    await publish_version(redis, vid)
+
+    def broken(*_a, **_k):
+        raise RuntimeError("cannot build")
+
+    monkeypatch.setattr("app.worker.llm_reload.build_llms", broken)
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is False
+    assert "cannot build" in ctx["llm_error"]
+    await redis.delete(LOADED_KEY)
+    await report_state(ctx)  # what the poller does on every pass
+    [report] = await loaded_workers(redis)
+    assert report["version"] == "file" and "cannot build" in report["error"]
+    monkeypatch.undo()
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is True
+    assert ctx["llm_error"] is None
+    await report_state(ctx)
+    [report] = await loaded_workers(redis)
+    assert report["version"] == str(vid) and report["error"] is None
+
+
+async def test_stop_llms_ends_the_poller_and_removes_only_this_worker(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    await report_loaded(redis, worker_id(), "file", "cheap")
+    await report_loaded(redis, "other-host:1", "file", "cheap")
+    poller = ctx["llm_poller"] = asyncio.create_task(poll_llm_config(ctx, interval=0.01))
+    await asyncio.sleep(0.05)
+    await stop_llms(ctx)
+    assert poller.done()
+    assert [r["worker"] for r in await loaded_workers(redis)] == ["other-host:1"]
+
+
+async def test_stop_llms_never_raises(tmp_path, session_factory, redis):
+    class DownRedis:
+        async def hdel(self, *_a):
+            raise ConnectionError("redis is down")
+
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    ctx["events_redis"] = DownRedis()
+    await stop_llms(ctx)  # no poller and Redis down
+    ctx["llm_poller"] = asyncio.create_task(asyncio.sleep(0))
+    await asyncio.sleep(0.01)
+    await stop_llms(ctx)  # a poller that already finished
+
+
+async def startup_ctx(tmp_path, session_factory, redis):
+    base = await make_ctx(tmp_path, session_factory, redis)
+    return {k: base[k] for k in ("settings", "session_factory", "events_redis")} | {"http": object()}
+
+
+async def test_startup_builds_the_saved_version_and_reports_it(tmp_path, session_factory, redis):
+    ctx = await startup_ctx(tmp_path, session_factory, redis)
+    vid = await save(session_factory, ctx["settings"], {**MINIMAL, "active_preset": "better"}, None)
+    await init_llms(ctx, None, "CP", build_graph_fn=build_graph_fn)
+    llms = ctx["graph_deps"].llms
+    assert llms.preset == "better" and llms.config_version == f"db:{vid}" and llms.synthesizer.sem is ctx["llm_sem"]
+    assert ctx["graph"].checkpointer == "CP" and ctx["llm_version"] == str(vid) and ctx["llm_error"] is None
+    [report] = await loaded_workers(redis)
+    assert (report["version"], report["preset"], report["error"]) == (str(vid), "better", None)
+
+
+async def test_startup_falls_back_to_the_file_when_the_saved_version_cannot_be_built(tmp_path, session_factory,
+                                                                                    redis, monkeypatch):
+    ctx = await startup_ctx(tmp_path, session_factory, redis)
+    await save(session_factory, ctx["settings"], {**MINIMAL, "active_preset": "better"}, None)
+    real = llm_reload.build_graph_deps
+
+    def flaky(*args, **kwargs):
+        if kwargs.get("config_version") != "file":
+            raise RuntimeError("cannot build")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(llm_reload, "build_graph_deps", flaky)
+    await init_llms(ctx, None, "CP", build_graph_fn=build_graph_fn)
+    assert ctx["llm_version"] == "file" and "cannot build" in ctx["llm_error"]
+    assert ctx["graph_deps"].llms.config_version == "file" and ctx["graph_deps"].llms.preset == "cheap"
+    assert ctx["graph"].checkpointer == "CP"
+    [report] = await loaded_workers(redis)
+    assert report["version"] == "file" and "cannot build" in report["error"]
+
+
+async def test_startup_does_not_hide_a_broken_file(tmp_path, session_factory, redis, monkeypatch):
+    ctx = await startup_ctx(tmp_path, session_factory, redis)
+
+    def broken(*_a, **_k):
+        raise RuntimeError("file cannot build")
+
+    monkeypatch.setattr(llm_reload, "build_graph_deps", broken)
+    with pytest.raises(RuntimeError, match="file cannot build"):  # no usable configuration: the worker must not start
+        await init_llms(ctx, None, "CP", build_graph_fn=build_graph_fn)

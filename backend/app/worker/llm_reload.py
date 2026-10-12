@@ -1,19 +1,28 @@
 """Workers pick up a saved LLM configuration without a restart (Plan 23b). Each worker compares the Redis key
 LLM_VERSION_KEY with the version it loaded, when a review job starts and every 30 seconds; on a change it rebuilds its
 LLMs (same per-process semaphore) and graph (same checkpointer). Runners already holding the old graph keep it, so a
-review never switches models mid-way. A configuration that fails to build keeps the old models and is reported."""
+review never switches models mid-way. A configuration that fails to build keeps the old models and is reported.
+Each worker also re-reports its state on every poll (a heartbeat), so `loaded_at` in LOADED_KEY means "last seen"."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import os
 import socket
 
+from app.graph.factory import build_graph_deps
 from app.graph.graph import build_graph
 from app.logging import get_logger
 from app.services.llm import build_llms
-from app.services.llm_config import ResolvedLLMConfig
-from app.services.llm_store import LLM_VERSION_KEY, load_effective, publish_version, report_loaded
+from app.services.llm_config import ResolvedLLMConfig, load_llm_config
+from app.services.llm_store import (
+    LLM_VERSION_KEY,
+    LOADED_KEY,
+    load_effective,
+    publish_version,
+    report_loaded,
+)
 
 log = get_logger(__name__)
 POLL_SECONDS = 30.0
@@ -32,7 +41,6 @@ async def initial_llm_config(session_factory, settings) -> tuple[ResolvedLLMConf
         return effective.resolve(), effective.active_id, None
     except Exception as exc:  # noqa: BLE001
         log.error("llm_config_load_failed", error=str(exc))
-        from app.services.llm_config import load_llm_config
         return load_llm_config(settings.llm_config_path, settings.llm_preset), "file", str(exc)
 
 
@@ -68,20 +76,75 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph) -> bool:
                 graph = build_graph_fn(deps, checkpointer=getattr(ctx["graph"], "checkpointer", None))
         except Exception as exc:  # noqa: BLE001 - keep serving with the models already loaded
             log.error("llm_reload_failed", wanted=wanted, error=str(exc))
-            await report_loaded(redis, worker_id(), ctx.get("llm_version") or "file",
-                                getattr(getattr(ctx["graph_deps"], "llms", None), "preset", "") or "", error=str(exc))
+            ctx["llm_error"] = str(exc)
+            await report_state(ctx)
             return False
         ctx["graph_deps"], ctx["graph"], ctx["llm_version"] = deps, graph, effective.active_id
-        await report_loaded(redis, worker_id(), effective.active_id, resolved.preset)
+        ctx["llm_preset"], ctx["llm_error"] = resolved.preset, None
+        await report_state(ctx)
         log.info("llm_reloaded", version=effective.active_id, preset=resolved.preset)
         return True
 
 
+async def report_state(ctx: dict) -> None:
+    """Report this worker's current state to LOADED_KEY: the version it runs, its preset and the last load error
+    (ctx["llm_error"], cleared by the next successful load). `loaded_at` therefore means "last seen", not "loaded at"."""
+    preset = ctx.get("llm_preset") or getattr(getattr(ctx.get("graph_deps"), "llms", None), "preset", "") or ""
+    await report_loaded(ctx["events_redis"], worker_id(), ctx.get("llm_version") or "file", preset,
+                        error=ctx.get("llm_error"))
+
+
 async def poll_llm_config(ctx: dict, interval: float = POLL_SECONDS) -> None:
-    """Background check so an idle worker also picks up (and reports) a new version."""
+    """Background check so an idle worker also picks up a new version. Every pass ends with report_state, a heartbeat
+    that keeps this worker listed (and any failure shown) while it is alive."""
     while True:
         try:
             await refresh_llms(ctx)
+            await report_state(ctx)
         except Exception as exc:  # noqa: BLE001 - the poller must never die
             log.error("llm_poll_failed", error=str(exc))
         await asyncio.sleep(interval)
+
+
+def _wire(ctx: dict, resolved: ResolvedLLMConfig | None, active_id: str, checkpointer, build_graph_fn):
+    deps = build_graph_deps(ctx["settings"], ctx["http"], ctx["events_redis"], ctx["catalog"], resolved=resolved,
+                            sem=ctx["llm_sem"], config_version=f"db:{active_id}" if active_id != "file" else "file")
+    return deps, build_graph_fn(deps, checkpointer=checkpointer)
+
+
+async def init_llms(ctx: dict, catalog, checkpointer, *, build_graph_fn=build_graph) -> None:
+    """Worker startup: the process-wide LLM semaphore and lock, the effective configuration, the graph deps and the
+    graph, then the first report. A saved version that resolves but cannot be built is as recoverable as a failed
+    reload: the worker falls back to config/llm.yaml, reports the error and the poller retries the version. A
+    configuration file that cannot be built either leaves nothing to run on, so that error propagates."""
+    settings = ctx["settings"]
+    ctx["catalog"] = catalog
+    ctx["llm_sem"] = asyncio.Semaphore(max(1, settings.llm_concurrency))
+    ctx["llm_lock"] = asyncio.Lock()
+    resolved, active_id, error = await initial_llm_config(ctx["session_factory"], settings)
+    try:
+        deps, graph = _wire(ctx, resolved, active_id, checkpointer, build_graph_fn)
+    except Exception as exc:
+        if active_id == "file":
+            raise
+        log.error("llm_startup_build_failed", version=active_id, error=str(exc))
+        resolved = load_llm_config(settings.llm_config_path, settings.llm_preset)
+        active_id, error = "file", str(exc)
+        deps, graph = _wire(ctx, resolved, active_id, checkpointer, build_graph_fn)
+    ctx["graph_deps"], ctx["graph"], ctx["llm_version"] = deps, graph, active_id
+    ctx["llm_preset"], ctx["llm_error"] = resolved.preset if resolved else "", error
+    await report_state(ctx)
+
+
+async def stop_llms(ctx: dict) -> None:
+    """Worker shutdown: end the poller (awaited, so its heartbeat cannot re-add the worker), then drop this worker's
+    entry from LOADED_KEY. Best effort: nothing here may stop the rest of the shutdown."""
+    poller = ctx.get("llm_poller")
+    if poller is not None:
+        poller.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await poller
+    try:
+        await ctx["events_redis"].hdel(LOADED_KEY, worker_id())
+    except Exception:  # noqa: BLE001
+        log.warning("llm_loaded_remove_failed", worker=worker_id())

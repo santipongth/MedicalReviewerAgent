@@ -227,6 +227,8 @@ async def active_version_id(session_factory, redis) -> str:
 
 
 async def report_loaded(redis, worker: str, version: str, preset: str, error: str | None = None) -> None:
+    """Record what a worker runs. Workers repeat this on every poll (a heartbeat), so `loaded_at` means "last seen",
+    and loaded_workers drops entries that were not refreshed for LOADED_MAX_AGE."""
     payload = {"version": version, "preset": preset, "loaded_at": datetime.now(UTC).isoformat(),
                "error": (error or None) and error[:300]}
     try:
