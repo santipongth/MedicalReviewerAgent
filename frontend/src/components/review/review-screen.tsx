@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getReview } from "@/lib/api";
+import { FALLBACK_TITLE, isPersonalRefusal } from "@/lib/title";
 import { readAudience, saveAudience } from "@/lib/use-audience";
 import { useReview } from "@/lib/use-review";
 import { LiveRun } from "./live-run";
@@ -25,9 +26,13 @@ export function ReviewScreen({ id }: { id: string }) {
     return () => clearInterval(timer);
   }, [id, waiting]);
   // Name the tab after the question once it is known (effect only: no hydration mismatch).
+  // Plan 26: not for a personal medical refusal, whose page shows no topic (nor the tab, history or previews).
+  const personalRefusal = phase === "terminal" && run.status === "rejected"
+    && isPersonalRefusal(run.code ?? review?.refusal_code, run.message ?? review?.error);
   useEffect(() => {
-    if (knownTopic) document.title = knownTopic;
-  }, [knownTopic]);
+    if (personalRefusal) document.title = FALLBACK_TITLE;
+    else if (knownTopic) document.title = knownTopic;
+  }, [knownTopic, personalRefusal]);
   const queuePosition = polledPosition === undefined ? review?.queue_position : polledPosition;
 
   if (phase === "loading") {

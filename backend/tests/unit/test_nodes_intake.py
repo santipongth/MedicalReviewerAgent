@@ -46,7 +46,11 @@ async def test_guard_rejects_and_refusal_counts_as_rejection():
     assert out["rejected"] == "not medical"
     refusing = FakeStructuredLLM("h", lambda s, u: LLMRefusal("declined"))
     out2 = await make_topic_guard(_deps(_llms(guard=refusing)))({"topic": "x", "language": "en"})
-    assert out2["rejected"].startswith("The topic was declined")
+    # Plan 26 final fix A1: a provider refusal gets the fixed personal message (1669 and 1323), never the topic
+    from app.services.safety import refusal_code_of
+    assert out2["rejected"].startswith("personal_medical: ")
+    assert refusal_code_of("rejected", out2["rejected"]) == "personal_medical"
+    assert "1669" in out2["rejected"] and "1323" in out2["rejected"]
 
 
 def test_route_after_guard():

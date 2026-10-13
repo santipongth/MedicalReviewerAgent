@@ -53,7 +53,8 @@ def make_topic_guard(deps):
             res = await harness_runner(deps).call(deps.llms.guard, prompts.GUARD_SYSTEM,
                                                   prompts.guard_user(state["topic"]), schema=TopicVerdict)
         except LLMRefusal:
-            return {"rejected": "The topic was declined by the safety filter."}
+            # provider refusals cluster on self-harm/violence text: give the fixed message with 1669 and 1323
+            return {"rejected": rejection_error("personal_medical")}
         if res.value is None:
             raise LLMOutputError(f"topic check failed: {'; '.join(res.problems) or 'no valid answer'}")
         if res.value.category == "personal_medical":  # Plan 26: a fixed message; the model's reason is not shown
