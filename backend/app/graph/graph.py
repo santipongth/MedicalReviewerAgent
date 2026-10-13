@@ -129,8 +129,7 @@ def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
     # Plan 25: the support check reads the English synthesis, so it runs beside localize; finalize waits for both
     b.add_edge("write_synthesis", "localize")
     b.add_edge("write_synthesis", "check_support")
-    b.add_edge("localize", "finalize")
-    b.add_edge("check_support", "finalize")
+    b.add_edge(["localize", "check_support"], "finalize")  # an explicit join: finalize runs once, after both
     b.add_edge("finalize", END)
 
 

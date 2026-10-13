@@ -49,7 +49,7 @@ export function CheckedMark({ refId, lang }: { refId: string; lang: Lang }) {
 
 /** Whether any citation of these groups carries the badge (then the legend explains the mark). */
 export function hasCheckedMark(support: MarkerSupport | null | undefined): boolean {
-  return !!support?.claims.some((c) => c?.citations.some((x) => isChecked(x, support.papers.get(x.ref))));
+  return !!support?.claims.some((c) => c?.citations.some((x) => isChecked(x, support.papers.get(x.ref), c)));
 }
 
 /** The legend under a text or a list that shows the badge. */
@@ -81,7 +81,7 @@ export function CitedText({ text, onSelect, refs, support }: {
               <button type="button" onClick={() => (claim ? onSelect(id, undefined, claim.id) : onSelect(id))}
                 className="font-display text-[0.85em] font-semibold text-primary hover:underline">{id}</button>
             ) : id}
-            {support && claim && isChecked(citationOf(claim, id), support.papers.get(id)) && <CheckedMark refId={id} lang={support.lang} />}
+            {support && claim && isChecked(citationOf(claim, id), support.papers.get(id), claim) && <CheckedMark refId={id} lang={support.lang} />}
           </Fragment>
         ))}]
       </span>,

@@ -612,7 +612,7 @@ Plan 25 adds (absent in results stored before it):
   unjudged past the cap of 30, `computed` claims restate a pooled value, `supported`, `partial` and `unsupported`
   count the labels, `verified` citations carry the badge. `judge` is `ok`, `incomplete` (some pairs have no usable
   verdict), `failed` (no usable verdict), `skipped_budget`, `none` (nothing to judge) or `crashed` (the entry then
-  holds only `judge` and `seconds`).
+  shows `judge: "crashed"` and `seconds`, and every count as 0, as `harness/quality.py` fills them).
 
 ### Exports
 
@@ -1123,7 +1123,7 @@ were already verified (above); this checks that the sentence citing a paper says
   `support` null. None of them fails a review or removes a citation.
 - **Cost.** A typical review sends about 24 pairs: about 5,000 input and under 1,000 output tokens, about $0.0005 on
   the `budget` preset. At most (30 long pairs and one repair round, so two attempts) about 13,000 input tokens per
-  attempt and about $0.004, inside the review's cost cap (at least $0.08).
+  attempt and about $0.004, inside the review's cost cap. These figures (about $0.004, and a cap of at least $0.08) hold at the default settings; the `review_cost_*` settings change the cap.
 
 `result.support` is absent in results stored before Plan 25 (and in stub results from before it; the stub now carries
 one, with every state), and `null` when the check crashed. Otherwise it is:
@@ -1132,7 +1132,7 @@ one, with every state), and `null` when the check crashed. Otherwise it is:
 - `claims[]`: `{id, where, markers, finding, claim, refs, numbers_checked, computed, citations[]}`. `id` is `s<n>`
   (summary) or `k<i>` (key finding i); `where` is `summary` or `key_finding`; `markers` (summary) are the claim's
   group indexes and `finding` (key finding) its index; `claim` is the English text; `numbers_checked` says every
-  number traces as above.
+  number traces as above. The check is on the claim as a whole: its numbers are compared with the verified numbers of all of its cited refs together, not of each cited paper alone, so a number verified for one cited paper counts for the claim's other citations too.
 - `citations[]`: `{ref, label, evidence, score, not_evidence, verified}`. `label` is `supported`, `partial` or
   `unsupported`, or null (unknown) when the paper has no usable abstract sentence, the claim is over the cap of 30
   pairs, the judge's verdict was dropped as invalid, or the judge was skipped or failed; a paper that is not evidence
@@ -1144,7 +1144,7 @@ one, with every state), and `null` when the check crashed. Otherwise it is:
 
 **Tying the shown text to the claims.** A translated summary keeps every citation group but may move it. When the
 groups come in the same order, group k is marker k. Otherwise a group is tied only when its ref list occurs exactly
-once in both texts; any other group gets no badge, so a badge never sits on the wrong sentence. Key findings keep their
+once in both texts; any other group gets no badge. This makes a badge on the wrong sentence unlikely, not impossible: when two groups with the identical ref sequence swap places in translation, the order check cannot tell. `display_aligned` is informational (it says whether the shown groups kept their order); the client does the tying itself. Key findings keep their
 index. The report shows the badge as a check mark on the citation, and opening the paper lists "ทำไมจึงอ้างอิงงานนี้":
 each sentence that cites it (in English, as checked), its label (unsupported is shown as "ไม่พบประโยคที่รองรับ") and
 the abstract sentence. The Markdown and CSV exports do not change; the JSON export and the MCP `get_review_result`

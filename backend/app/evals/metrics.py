@@ -89,8 +89,9 @@ def review_metrics(rec: RunRecord, stratum: str) -> ReviewMetrics:
     m.glossary = [hit for k in en if k in th for hit in check_pair(en[k], th[k], terms)]
     m.answer_present = bool(((result.get("synthesis_en") or {}).get("answer") or "").strip())
     m.papers_analysed = len(result.get("papers") or [])
-    cites = [c for claim in (result.get("support") or {}).get("claims") or [] for c in claim.get("citations") or []
-             if not c.get("not_evidence")]
+    # a computed (pooled) claim is never judged or badged, so its citations are not in the denominator
+    cites = [c for claim in (result.get("support") or {}).get("claims") or [] if not claim.get("computed")
+             for c in claim.get("citations") or [] if not c.get("not_evidence")]
     m.support_citations = len(cites)
     m.support_judged = sum(1 for c in cites if c.get("label") is not None)
     m.support_supported = sum(1 for c in cites if c.get("label") == "supported")

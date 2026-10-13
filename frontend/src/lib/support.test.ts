@@ -54,6 +54,8 @@ describe("sentence support (Plan 25)", () => {
     expect(isChecked(cite("P1", "supported", false), paper("P1"))).toBe(false);
     expect(isChecked(cite("P1", "partial", true), paper("P1"))).toBe(false);
     expect(isChecked(undefined, paper("P1"))).toBe(false);
+    expect(isChecked(c, paper("P1"), claim("s0", { computed: false }))).toBe(true);
+    expect(isChecked(c, paper("P1"), claim("s0", { computed: true }))).toBe(false); // even when the engine marked it
   });
 
   it("names each state, unsupported and unchecked included", () => {

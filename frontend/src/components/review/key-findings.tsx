@@ -74,7 +74,7 @@ export function KeyFindings({ findings, lang, onSelect, support, papers }: {
   if (!findings.length) return null;
   const checks = findings.map((_, i) => {
     const claim = findingClaim(support, i);
-    const refs = new Set(claim?.citations.filter((c) => isChecked(c, papers?.get(c.ref))).map((c) => c.ref) ?? []);
+    const refs = new Set(claim?.citations.filter((c) => isChecked(c, papers?.get(c.ref), claim)).map((c) => c.ref) ?? []);
     return { claim: claim?.id, refs };
   });
   return (

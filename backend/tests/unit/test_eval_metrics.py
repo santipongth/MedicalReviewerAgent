@@ -137,3 +137,14 @@ def test_header_has_date_range_and_batch_cost():
             review_metrics(rec(1, 2, started="2026-10-11T08:00"), "cv")]
     md = render_report("p", "r", Manifest(seed=1), rows, {})
     assert "2026-10-09T08:00 … 2026-10-11T08:00" in md and "batch cost $0.04" in md
+
+
+def test_citations_of_a_computed_claim_stay_out_of_the_badge_denominator():
+    r = rec(1, 1)
+    cite = lambda label, verified=False: {"ref": "P1", "label": label, "verified": verified, "not_evidence": False}
+    r.result["support"] = {"judge": "ok", "markers": [], "claims": [
+        {"id": "k0", "computed": False, "citations": [cite("supported", True), cite("partial")]},
+        {"id": "k1", "computed": True, "citations": [cite(None), cite(None), cite(None)]}]}
+    m = review_metrics(r, "cv")
+    assert (m.support_citations, m.support_verified) == (2, 1)
+    assert aggregate([m])["support_verified_rate"][0] == pytest.approx(1 / 2)

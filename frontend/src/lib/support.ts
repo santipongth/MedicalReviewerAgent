@@ -44,9 +44,10 @@ export function citationOf(claim: SupportClaim | null | undefined, ref: string):
   return claim?.citations.find((c) => c.ref === ref);
 }
 
-/** The badge: the engine's rule (`verified`) and a supported label, never on a paper that is not evidence. */
-export function isChecked(c: SupportCitation | undefined, paper: Paper | undefined): boolean {
-  return !!c?.verified && c.label === "supported" && !isNotEvidence(paper);
+/** The badge: the engine's rule (`verified`) and a supported label, never on a paper that is not evidence and,
+ * when the claim is known, never on a claim that restates a computed (pooled) number. */
+export function isChecked(c: SupportCitation | undefined, paper: Paper | undefined, claim?: SupportClaim): boolean {
+  return !!c?.verified && c.label === "supported" && !isNotEvidence(paper) && !claim?.computed;
 }
 
 export type SupportState = "checked" | "numbers" | "partial" | "unsupported" | "computed" | "not_evidence" | "unchecked";
@@ -55,7 +56,7 @@ export type SupportState = "checked" | "numbers" | "partial" | "unsupported" | "
 export function supportState(claim: SupportClaim, c: SupportCitation, paper: Paper | undefined): SupportState {
   if (c.not_evidence || isNotEvidence(paper)) return "not_evidence";
   if (claim.computed) return "computed";
-  if (isChecked(c, paper)) return "checked";
+  if (isChecked(c, paper, claim)) return "checked";
   if (c.label === "supported") return "numbers"; // supported, but a number of the claim is not verified
   if (c.label === "partial") return "partial";
   if (c.label === "unsupported") return "unsupported";
