@@ -99,6 +99,13 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
         e.get("europepmc_failed", 0) for e in by_stage.get("enrich", []))
     if epmc_failed:
         extra["europepmc_failures"] = epmc_failed
+    # Plan 24: what the ThaiJO search and the OAI-PMH step did; absent when ThaiJO is off
+    if search and "thaijo" in search[-1]:
+        extra["thaijo"] = dict(search[-1]["thaijo"])
+    oai = by_stage.get("thaijo_metadata") or []
+    if oai:
+        extra.setdefault("thaijo", {})["metadata"] = {k: oai[-1].get(k, 0) for k in ("asked", "found", "failed")} | {
+            "timed_out": bool(oai[-1].get("timed_out"))}
     enrich = by_stage.get("enrich") or []
     if enrich and "off_focus" in enrich[-1]:  # candidates naming no key term, moved behind the on-topic ones
         extra["off_focus_demoted"] = enrich[-1]["off_focus"]

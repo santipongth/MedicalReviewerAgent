@@ -10,8 +10,11 @@ from app.graph.progress import progress_writer
 from app.graph.schemas import Candidate
 from app.graph.state import ReviewState
 from app.harness.trials import trial_acronyms, trial_key
+from app.logging import get_logger
 from app.schemas.review import ReviewOptions
 from app.services.dedupe import PaperIndex, merge_candidates
+
+log = get_logger(__name__)
 
 # Papers are analysed from their abstracts, so a candidate needs one long enough to hold a result.
 MIN_ABSTRACT_CHARS = 150
@@ -163,6 +166,47 @@ def on_focus(c: Candidate, terms: list[str]) -> bool:
     return len(found) >= MIN_FOCUS_WORDS
 
 
+# ---- ThaiJO (Plan 24) ------------------------------------------------------------------------------------------
+THAIJO_SHARE = 8  # ThaiJO may fill at most 1/8 of the candidate pool
+
+
+def thaijo_cap(settings, options: ReviewOptions) -> int:
+    """The most ThaiJO candidates one review takes: thaijo_max_candidates, and at most 1/8 of candidate_limit, so Thai
+    studies add to the international evidence and never displace it (120 -> 15, 60 -> 7, 20 -> 2)."""
+    return max(0, min(settings.thaijo_max_candidates, options.candidate_limit // THAIJO_SHARE))
+
+
+async def thaijo_search(deps, queries: list[str], options: ReviewOptions) -> tuple[list[Candidate], dict]:
+    """ThaiJO candidates for the planner's queries and the search entry's `thaijo` block. Never raises (cancellation
+    aside): a failure or a timeout leaves what arrived, and the block says what went wrong."""
+    started = time.perf_counter()
+    cap = thaijo_cap(deps.settings, options)
+    out: list[Candidate] = []
+    stats: dict = {}
+    try:
+        await asyncio.wait_for(deps.thaijo.collect(queries, limit=cap, out=out, stats=stats),
+                               deps.settings.thaijo_timeout_seconds)
+    except TimeoutError:
+        stats["timed_out"] = True
+    except Exception as exc:  # noqa: BLE001 - an optional source: the review goes on without it
+        stats["failed"] = type(exc).__name__
+    return out, {**stats, "cap": cap, "kept": len(out), "seconds": round(time.perf_counter() - started, 3)}
+
+
+def thaijo_errors(entry: dict, timeout: float) -> list[str]:
+    """`errors` lines for a ThaiJO search that failed, timed out or lost requests (none when it went well)."""
+    out = []
+    if entry.get("failed"):
+        out.append(f"ThaiJO search failed: {entry['failed']}")
+    if entry.get("timed_out"):
+        out.append(f"ThaiJO search timed out after {timeout:g} s; kept {entry['kept']} candidate(s)")
+    lost = [f"{entry[k]} {name}" for k, name in (("search_failed", "search(es)"),
+                                                 ("detail_failed", "abstract lookup(s)")) if entry.get(k)]
+    if lost:
+        out.append(f"ThaiJO: {' and '.join(lost)} failed")
+    return out
+
+
 def make_search(deps):
     async def search(state: ReviewState) -> dict:
         started = time.perf_counter()
@@ -179,6 +223,9 @@ def make_search(deps):
             async with gate:
                 return await deps.searxng.search(q, pageno=page)
 
+        # Plan 24: ThaiJO runs alongside SearXNG (its own timeout is shorter), only when enabled
+        thaijo = (asyncio.ensure_future(thaijo_search(deps, queries, options))
+                  if getattr(deps, "thaijo", None) is not None else None)
         results = await asyncio.gather(
             *(searx(q, p) for q, p in jobs),
             *(deps.europepmc.search_trials(q, page_size=settings.trial_search_page_size) for q in trial_queries),
@@ -198,6 +245,16 @@ def make_search(deps):
             else:  # its own list in the round-robin, after the SearXNG queries
                 per_query[f"trials:{q}"] = list(res)
                 trial_hits += len(res)
+        thaijo_entry: dict | None = None
+        if thaijo is not None:  # its own list in the round-robin too, after the trial searches
+            thaijo_hits, thaijo_entry = await thaijo
+            per_query["thaijo:"] = thaijo_hits
+            if failures := thaijo_errors(thaijo_entry, deps.settings.thaijo_timeout_seconds):
+                errors.extend(failures)
+                log.warning("thaijo_search_degraded", failed=thaijo_entry.get("failed"),
+                            timed_out=bool(thaijo_entry.get("timed_out")), kept=thaijo_entry["kept"],
+                            search_failed=thaijo_entry.get("search_failed", 0),
+                            detail_failed=thaijo_entry.get("detail_failed", 0))
         # Plan 20 Task 10: one more Europe PMC RCT search for the trial acronyms the first round names, scoped to the
         # review's intervention; its best hits lead the candidate list (they are the landmark trials of the question).
         names: list[str] = []
@@ -237,6 +294,8 @@ def make_search(deps):
                  "seconds": round(time.perf_counter() - started, 3)}
         if trial_queries:  # Plan 20 Task 10: Europe PMC failures after the retries, and the trial-name search
             entry |= {"trial_failed": trial_failed, "trial_names": names, "trial_name_hits": len(name_hits)}
+        if thaijo_entry is not None:  # Plan 24
+            entry["thaijo"] = thaijo_entry
         return {"candidates": [c.model_dump() for c in found], "errors": errors,
                 "search_stats": {"found": len(found), "per_source": dict(per_source), "searched_at": searched_at},
                 "quality": [entry]}

@@ -32,6 +32,7 @@ class GraphDeps:
     openalex: Any = None  # app.services.openalex.OpenAlexClient; None -> no citation step
     mcp: Any = None  # app.services.mcp_client.McpRegistry (external MCP tools); None → never consulted
     glossary: Any = None  # app.harness.glossary.ActiveGlossary; None → the built-in glossary (Plan 23c)
+    thaijo: Any = None  # app.services.thaijo.ThaiJoClient (Plan 24); None → ThaiJO is never searched
 
 
 def initial_state(

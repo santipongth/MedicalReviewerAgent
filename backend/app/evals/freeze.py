@@ -9,6 +9,12 @@ from app.evals.models import Fixture, Manifest, ManifestEntry
 from app.graph.graph import build_freeze_graph, initial_state
 
 
+def freeze_engines(settings) -> list[str]:
+    """The sources a frozen pool was searched with: the SearXNG engines, plus thaijo when it was on (Plan 24)."""
+    engines = [e.strip() for e in str(settings.searxng_engines).split(",") if e.strip()]
+    return engines + (["thaijo"] if settings.thaijo_enabled else [])
+
+
 def entry_options(entry: ManifestEntry) -> dict:
     return {"review_type": entry.review_type, "max_papers": 30, "candidate_limit": 120}
 

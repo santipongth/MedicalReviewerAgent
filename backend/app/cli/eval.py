@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 
 from app.evals import models
 from app.evals.batch import run_all
-from app.evals.freeze import freeze_all
+from app.evals.freeze import freeze_all, freeze_engines
 from app.evals.models import load_manifest, save_manifest
 from app.evals.results import load_rows, write_report
 from app.evals.select import select
@@ -173,9 +173,8 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
             print(f"{len(unchecked)} eligible review(s) lack checked_by_owner: {', '.join(unchecked[:10])}")
             return 1
     if args.cmd == "freeze":
-        engines = [e.strip() for e in str(deps.settings.searxng_engines).split(",") if e.strip()]
         fixtures = await freeze_all(deps, manifest, ids=args.ids, force=args.force, git_sha=git_sha(),
-                                    engines=engines)
+                                    engines=freeze_engines(deps.settings))
         print(", ".join(f"{f.id}:{f.status}:{len(f.candidates)}" for f in fixtures))
         return 0
     if args.cmd == "run":

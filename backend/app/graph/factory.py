@@ -9,6 +9,7 @@ from app.services.llm import build_llms
 from app.services.mcp_client import McpRegistry
 from app.services.openalex import OpenAlexClient
 from app.services.searxng import SearxngClient
+from app.services.thaijo import ThaiJoClient
 
 
 def build_graph_deps(settings: Settings, http: HttpClient, redis=None, catalog=None, *, resolved=None, sem=None,
@@ -26,7 +27,17 @@ def build_graph_deps(settings: Settings, http: HttpClient, redis=None, catalog=N
         europepmc=EuropePmcClient(http, settings.europepmc_url),
         openalex=OpenAlexClient(http, settings.openalex_url, api_key=settings.openalex_api_key,
                                 mailto=settings.openalex_mailto, timeout=settings.openalex_timeout_seconds),
+        thaijo=build_thaijo(settings, http, redis),
     )
+
+
+def build_thaijo(settings: Settings, http: HttpClient, redis=None) -> ThaiJoClient | None:
+    """The ThaiJO client when THAIJO_ENABLED (Plan 24), else None. `redis` (decode_responses=True) caches abstracts
+    and OAI records by article; without it nothing is cached."""
+    if not settings.thaijo_enabled:
+        return None
+    return ThaiJoClient(http, settings.thaijo_url, cache=redis, timeout=settings.thaijo_request_timeout_seconds,
+                        cache_ttl=settings.thaijo_cache_ttl_seconds)
 
 
 async def close_graph_deps(deps: GraphDeps) -> None:

@@ -122,6 +122,8 @@ class ReviewService:
             version = f"{version}+llm{await self.llm_version()}"
         if self.runtime is not None and (glossary := await self.runtime.glossary_label()) != "file":
             version = f"{version}+g{glossary}"
+        if self.settings.thaijo_enabled:  # Plan 24: a pool with ThaiJO is a different search
+            version = f"{version}+thaijo"
         return version
 
     async def _reuse(self, cache_key: str, settings: Settings | None = None) -> ReviewCreated | None:
