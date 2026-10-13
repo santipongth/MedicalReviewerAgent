@@ -29,6 +29,7 @@ from app.services.review_service import Conflict, NotFound, ServiceError, Unproc
 
 WORKER_KEY = "mra:harness:worker"
 WORKER_TTL_SECONDS = 90
+ACTIVE = ("queued", "running")
 DEFAULT_CAP_USD = 1.0
 REPEATS_MAX = 2
 LABEL_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
@@ -218,13 +219,14 @@ async def finish(session_factory, run_pk: int, *, status: str, summary=None, rep
 
 
 async def claim(session_factory, run_pk: int) -> HarnessRun | None:
-    """queued → running; a retry after a shutdown finds it queued again. None, with the row untouched, when the run
-    is missing, holds no active slot, or is not queued (cancelled, errored, finished or already running): a job can
-    outlive its row (an enqueue that raised after Redis took the job leaves a job for a row already marked error, and
-    cancelling a queued run frees its slot at once)."""
+    """queued → running. A row still `running` is claimed too: it is a run whose worker was killed before it could put
+    it back (arq delivers a job to one worker at a time, so no other attempt is running it), and the retry resumes it
+    with the earlier spend. None, with the row untouched, when the run is missing, holds no active slot, or is not
+    queued or running (cancelled, errored, finished): a job can outlive its row (an enqueue that raised after Redis
+    took the job leaves a job for a row already marked error, and cancelling a queued run frees its slot at once)."""
     async with session_factory() as session, session.begin():
         row = await session.get(HarnessRun, run_pk)
-        if row is None or row.active is None or row.status != "queued":
+        if row is None or row.active is None or row.status not in ACTIVE:
             return None
         row.status = "running"
         row.started_at = row.started_at or datetime.now(UTC)

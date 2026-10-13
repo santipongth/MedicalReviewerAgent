@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -119,8 +120,7 @@ async def test_cancelled_runs_are_not_claimed(session_factory, root):
     {"status": "queued", "active": None},  # no active slot: not ours to run
     {"status": "error", "active": 1},  # the status alone refuses it, whatever the slot says
     {"status": "cancelled", "active": 1},
-    {"status": "running", "active": 1},  # another delivery of a job that is running: never run a batch twice
-], ids=["error", "done", "stopped", "no-active-slot", "error-with-slot", "cancelled-with-slot", "already-running"])
+], ids=["error", "done", "stopped", "no-active-slot", "error-with-slot", "cancelled-with-slot"])
 async def test_only_a_queued_run_that_holds_the_active_slot_is_claimed(session_factory, root, fields):
     pk = await add_run(session_factory, **fields)
     calls = []
@@ -139,6 +139,19 @@ async def test_only_a_queued_run_that_holds_the_active_slot_is_claimed(session_f
     assert calls == [] and (row.status, row.active, row.started_at, row.finished_at) == (
         fields["status"], fields["active"], None, None)
     assert row.error == fields.get("error")
+
+
+async def test_a_run_left_running_by_a_killed_worker_resumes_with_the_earlier_spend(session_factory, root):
+    started = datetime(2026, 10, 13, 1, 0, tzinfo=UTC)
+    pk = await add_run(session_factory, status="running", started_at=started)  # the worker died before requeue()
+    write_run(S.prompt_version, "console-1", [("CD0", 1, 0.25), ("CD1", 1, 0.125)])
+    seen = {}
+    out = await run_harness(ctx_for(session_factory, fake_run_all(BatchSummary(done=1, skipped=2, spent=0.5), seen)), pk)
+    assert out["status"] == "done"
+    assert seen["spent_before"] == pytest.approx(0.375) and seen["strict_cap"] is True and seen["max_usd"] == 1.0
+    row = await get(session_factory, pk)
+    assert (row.status, row.active, row.skipped) == ("done", None, 2)
+    assert row.started_at.replace(tzinfo=UTC) == started  # the first attempt's start time is kept
 
 
 async def test_a_missing_run_is_skipped(session_factory, root):
