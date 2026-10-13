@@ -9,6 +9,7 @@ import json
 import math
 import secrets
 from datetime import UTC, datetime
+from decimal import ROUND_CEILING, Decimal
 from typing import Annotated, Any, Literal
 
 import yaml
@@ -66,7 +67,11 @@ def selection(manifest: Manifest, strata: list[str], max_reviews: int | None) ->
 
 
 def per_review_cap(settings: Settings, entries: list[ManifestEntry]) -> float:
-    return max((review_cost_cap(settings, ReviewOptions.clamped(entry_options(e))) for e in entries), default=0.0)
+    """The largest review cap of the selection, rounded UP to 4 places: the page shows this value as the lowest
+    allowed cap and start_run compares against the same value, so a cap typed from the page is never refused (and
+    never below the true cap). Decimal of the repr keeps 0.28 at 0.28 (0.28 * 10_000 is 2800.0000000000005)."""
+    cap = max((review_cost_cap(settings, ReviewOptions.clamped(entry_options(e))) for e in entries), default=0.0)
+    return float(Decimal(repr(cap)).quantize(Decimal("0.0001"), rounding=ROUND_CEILING))
 
 
 def run_out(row: HarnessRun) -> dict[str, Any]:
@@ -120,7 +125,7 @@ async def harness_state(session_factory, redis, settings: Settings) -> dict[str,
             "pool_version": manifest.pool_version if manifest else None, "strata": strata,
             "fixtures": {"selected": selected, "present": present}, "worker": worker,
             "ceiling_usd": settings.harness_max_usd, "default_usd": DEFAULT_CAP_USD,
-            "per_review_cap_usd": round(cap, 4),
+            "per_review_cap_usd": cap,
             "typical_review_usd": round(last.spent_usd / (last.done + last.failed), 4) if last else None,
             "active": run_out(active) if active else None}
 
@@ -143,7 +148,7 @@ async def start_run(session_factory, redis, settings: Settings, actor: AdminPrin
     if body.max_usd > ceiling:
         raise Unprocessable(f"the cap is above the ceiling of ${ceiling:.2f} (HARNESS_MAX_USD)")
     if body.max_usd < cap:
-        raise Unprocessable(f"the cap must cover at least one review's own cap (${cap:.2f})")
+        raise Unprocessable(f"the cap must cover at least one review's own cap (${cap:.4f})")
     if body.compare_run and body.compare_run not in {r["label"] for r in list_results()}:
         raise Unprocessable("the comparison run has no run files")
     now = datetime.now(UTC)
@@ -203,15 +208,18 @@ async def get_run(session_factory, run_pk: int) -> HarnessRun:
 
 
 async def finish(session_factory, run_pk: int, *, status: str, summary=None, report: str | None = None,
-                 error: str | None = None) -> str | None:
+                 error: str | None = None, spent_usd: float | None = None) -> str | None:
     """The run's end: counts, report and error; the active slot is freed; a cancelled run stays cancelled. Returns
-    the status the run ended with ("cancelled" when the admin cancelled it first), None when the row is gone."""
+    the status the run ended with ("cancelled" when the admin cancelled it first), None when the row is gone.
+    `spent_usd` is for an end without a summary (the run files' prior_spend); a non-finite value is never stored."""
     values: dict[str, Any] = {"active": None, "finished_at": datetime.now(UTC), "report": report,
                               "error": error[:500] if error else None}
     if summary is not None:
         values |= {"done": summary.done, "failed": summary.failed, "skipped": summary.skipped}
         if math.isfinite(summary.spent):  # unknown earlier spend (an unreadable marker) is infinite: never stored
             values["spent_usd"] = round(summary.spent, 6)
+    if spent_usd is not None and math.isfinite(spent_usd):
+        values["spent_usd"] = round(spent_usd, 6)
     async with session_factory() as session, session.begin():
         current = await session.scalar(select(HarnessRun.status).where(HarnessRun.id == run_pk))
         if current is None:

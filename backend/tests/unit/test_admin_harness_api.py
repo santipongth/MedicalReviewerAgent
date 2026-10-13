@@ -408,3 +408,25 @@ async def test_an_unexpected_key_is_never_echoed(client, session_factory, redis,
     assert r.status_code == 422 and secret not in r.text
     assert [(e["type"], e["loc"]) for e in r.json()["detail"]] == [("extra_forbidden", ["body", "<extra>"])]
     assert queue.harness == [] and await runs_count(session_factory) == 0
+
+
+async def test_the_shown_cap_is_rounded_up_and_is_exactly_the_lowest_accepted_cap(session_factory, redis, root):
+    from app.config import Settings
+    from app.services.admin_auth import AdminPrincipal
+
+    base = Settings(_env_file=None)
+    settings = base.model_copy(update={"review_cost_base_usd": base.review_cost_base_usd + 0.00003})
+    raw = harness_runs.per_review_cap(base, harness_runs.selection(models.load_manifest(), [], None)) + 0.00003
+    await worker_up(redis)
+    state = await harness_runs.harness_state(session_factory, redis, settings)
+    shown = state["per_review_cap_usd"]
+    assert shown == pytest.approx(0.2801) and shown >= raw  # up, never down to 0.28 (below the true cap)
+    owner = AdminPrincipal(kind="cli", id=None, label="cli")
+    with pytest.raises(harness_runs.Unprocessable, match=r"\$0\.2801"):
+        await harness_runs.start_run(session_factory, redis, settings, owner,
+                                     harness_runs.StartBody(**start_body(max_usd=0.28)))
+    assert await runs_count(session_factory) == 0
+    run = await harness_runs.start_run(session_factory, redis, settings, owner,
+                                       harness_runs.StartBody(**start_body(max_usd=shown)))
+    assert run.max_usd == shown
+

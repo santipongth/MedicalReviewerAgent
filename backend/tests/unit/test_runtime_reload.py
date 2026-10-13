@@ -124,6 +124,32 @@ async def test_stub_mode_rebuilds_the_graph_and_has_no_models_to_rebuild(tmp_pat
     assert ctx["graph_deps"].llms is None and ctx["settings_version"] == "1" and ctx["llm_sem_size"] == 9
 
 
+async def test_a_concurrency_change_without_a_resolved_config_keeps_the_old_semaphore(tmp_path, session_factory,
+                                                                                         redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    ctx["llm_resolved"] = None  # the LLMs cannot be rebuilt on a new semaphore
+    old_sem, old_llms = ctx["llm_sem"], ctx["graph_deps"].llms
+    await save_and_publish(session_factory, redis, SETTINGS_KIND, {"values": {"llm_concurrency": 9}})
+    assert await refresh_runtime(ctx, build_graph_fn=build_graph_fn) is True
+    assert ctx["llm_sem"] is old_sem and ctx["llm_sem_size"] == 4  # nothing new recorded: the LLMs still hold it
+    assert ctx["graph_deps"].llms is old_llms and ctx["settings"].llm_concurrency == 9
+
+
+async def test_a_failed_rebuild_on_a_concurrency_change_keeps_semaphore_size_and_versions(tmp_path, session_factory,
+                                                                                         redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    old_sem = ctx["llm_sem"]
+    await save_and_publish(session_factory, redis, SETTINGS_KIND, {"values": {"llm_concurrency": 9}})
+    await save_and_publish(session_factory, redis, GLOSSARY_KIND, {"terms": [{"en": "placebo", "th": "ยาหลอก"}]})
+
+    def boom(deps, checkpointer=None):
+        raise RuntimeError("graph build failed")
+
+    assert await refresh_runtime(ctx, build_graph_fn=boom) is False
+    assert ctx["llm_sem"] is old_sem and ctx["llm_sem_size"] == 4
+    assert (ctx["settings_version"], ctx["glossary_version"]) == ("env", "file") and ctx["runtime_error"]
+
+
 async def test_a_failed_reload_keeps_the_old_state_and_reports_it(tmp_path, session_factory, redis):
     ctx = await make_ctx(tmp_path, session_factory, redis)
     before = (ctx["settings"], ctx["graph"], ctx["graph_deps"])

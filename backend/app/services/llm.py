@@ -264,6 +264,10 @@ class LimitedLLM:
         if budget is not None and budget.exhausted:
             raise BudgetExceeded(f"cost cap of ${budget.cap_usd:.2f} per review reached; step skipped")
         async with self.sem:
+            # Re-check after the wait: calls queued on the semaphore must not start once an earlier call has
+            # spent the cap. Only calls already in flight (at most the semaphore size) can still run past it.
+            if budget is not None and budget.exhausted:
+                raise BudgetExceeded(f"cost cap of ${budget.cap_usd:.2f} per review reached; step skipped")
             res = await self.inner.ainvoke(system, user)
         if budget is not None:
             budget.charge(res.cost_usd)

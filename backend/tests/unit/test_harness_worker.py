@@ -19,18 +19,20 @@ from app.services.config_store import save_version
 from app.services.glossary_store import GLOSSARY_KIND
 from app.services.harness_runs import WORKER_KEY
 from app.services.http import HttpClient
+from app.services.model_catalog import ModelInfo
 from app.services.runtime_settings import SETTINGS_KIND
 from app.worker import harness as harness_worker
 from app.worker import llm_reload
 from app.worker.harness import (
     MARKER_UNREADABLE,
+    SPEND_UNKNOWN,
     HarnessWorkerSettings,
     build_eval_deps,
     heartbeat,
     run_harness,
 )
 from tests.harness_helpers import make_eval_root, write_run
-from tests.llm_helpers import MINIMAL, write_yaml
+from tests.llm_helpers import MINIMAL, with_model, write_yaml
 
 S = Settings(_env_file=None)
 ROOT = Path(__file__).resolve().parents[3]
@@ -366,8 +368,7 @@ async def test_eval_deps_use_the_models_settings_glossary_and_catalog_in_force(t
     loaders = []
 
     async def fake_cached(redis_client, loader):
-        loaders.append(loader)
-        return {}
+        loaders.append(loader)  # returns None: cached_catalog's "unavailable" (it never returns an empty dict)
 
     monkeypatch.setattr(harness_worker, "cached_catalog", fake_cached)
     http = HttpClient(timeout=5)
@@ -390,7 +391,7 @@ async def test_eval_deps_apply_the_saved_settings_override(tmp_path, session_fac
                            {"values": {"review_cost_per_paper_usd": 0.02}}, settings=settings, base_version=None)
 
     async def no_catalog(redis_client, loader):
-        return {}
+        return None
 
     monkeypatch.setattr(harness_worker, "cached_catalog", no_catalog)
     http = HttpClient(timeout=5)
@@ -401,3 +402,75 @@ async def test_eval_deps_apply_the_saved_settings_override(tmp_path, session_fac
         await http.aclose()
     assert deps.settings.review_cost_per_paper_usd == 0.02 and labels["settings_version"] == "1"
     assert settings.review_cost_per_paper_usd != 0.02  # the base settings object is not mutated
+
+
+async def test_unpriced_roles_end_the_run_as_an_error_before_anything_is_spent(tmp_path, session_factory, redis,
+                                                                              monkeypatch, root):
+    raw = with_model(with_model(MINIMAL, "cheap", "screener", "vendor/secret-x"), "cheap", "extractor", "vendor/secret-x")
+    settings = Settings(_env_file=None, openrouter_api_key="sk-or-x",
+                        llm_config_path=str(write_yaml(tmp_path / "llm.yaml", raw)))
+    priced = ModelInfo(id="vendor/cheap", context_length=1000, price_in=1e-7, price_out=1e-7,
+                       supported_parameters=frozenset())
+
+    async def catalog(redis_client, loader):
+        return {"vendor/cheap": priced}
+
+    monkeypatch.setattr(harness_worker, "cached_catalog", catalog)
+    pk = await add_run(session_factory)
+    called = []
+
+    async def run_all(*a, **k):
+        called.append("run_all")
+
+    http = HttpClient(timeout=5)
+    try:
+        out = await run_harness({"settings": settings, "session_factory": session_factory, "redis_client": redis,
+                                 "http": http, "run_all": run_all}, pk)
+    finally:
+        await http.aclose()
+    row = await get(session_factory, pk)
+    assert out["status"] == "error" and called == [] and row.active is None
+    # conflict_explainer falls back to the extractor model; the message names roles only, never a model id
+    assert row.error == "models without a known price: screener, extractor, conflict_explainer"
+    assert row.spent_usd == 0.0 and row.config == {}
+
+
+async def test_the_deadline_and_the_last_interruption_store_what_the_run_files_account_for(session_factory, root,
+                                                                                          monkeypatch):
+    monkeypatch.setattr(harness_worker, "JOB_DEADLINE_SECONDS", 0.05)
+
+    async def slow_forever(*a, **k):
+        await asyncio.sleep(30)
+
+    pk = await add_run(session_factory)
+    write_run(S.prompt_version, "console-1", [("CD0", 1, 0.25)])
+    folder = models.run_path(S.prompt_version, "console-1", "CD1", 1).parent
+    (folder / "CD1.0a1b2c3d.inflight").write_text(json.dumps({"cap": 0.4}), encoding="utf-8")
+    await run_harness(ctx_for(session_factory, slow_forever), pk)
+    row = await get(session_factory, pk)
+    assert (row.status, row.error, row.spent_usd) == ("error", "timed out", pytest.approx(0.65))
+
+    async def interrupted(*a, **k):
+        raise asyncio.CancelledError
+
+    last = await add_run(session_factory, run_id="console-2", spent_usd=0.1)
+    write_run(S.prompt_version, "console-2", [("CD0", 1, 0.3)])
+    with pytest.raises(asyncio.CancelledError):
+        await run_harness(ctx_for(session_factory, interrupted) | {"job_try": 3}, last)
+    row = await get(session_factory, last)
+    assert (row.status, row.error, row.spent_usd) == ("error", "interrupted 3 times", pytest.approx(0.3))
+
+
+async def test_unknown_spend_at_the_deadline_keeps_the_last_value_and_says_why(session_factory, root, monkeypatch):
+    monkeypatch.setattr(harness_worker, "JOB_DEADLINE_SECONDS", 0.05)
+    pk = await add_run(session_factory, spent_usd=0.2)
+    folder = models.run_path(S.prompt_version, "console-1", "CD1", 1).parent
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "CD1.0a1b2c3d.inflight").write_text("not json", encoding="utf-8")
+
+    async def slow(*a, **k):
+        await asyncio.sleep(30)
+
+    await run_harness(ctx_for(session_factory, slow), pk)
+    row = await get(session_factory, pk)
+    assert (row.status, row.spent_usd, row.error) == ("error", 0.2, f"timed out; {SPEND_UNKNOWN}")

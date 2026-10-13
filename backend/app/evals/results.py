@@ -72,24 +72,31 @@ def _inflight_cap(path: Path) -> float:
     its review's spend is unknown, so the run stops rather than assume it was zero."""
     try:
         cap = float(json.loads(path.read_text(encoding="utf-8"))["cap"])
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, OverflowError):  # OverflowError: a huge integer
         return math.inf
     return cap if math.isfinite(cap) and cap >= 0 else math.inf
+
+
+def _record_cost(path: Path) -> float:
+    """The cost a run record holds (a missing or null cost is 0.0, as replay writes it). A record that does not read,
+    or holds a cost that is not a finite non-negative number, counts as infinite, like an unreadable marker."""
+    try:
+        cost = float(json.loads(path.read_text(encoding="utf-8")).get("cost_usd") or 0.0)
+    except (OSError, ValueError, AttributeError, TypeError, OverflowError):
+        return math.inf
+    return cost if math.isfinite(cost) and cost >= 0 else math.inf
 
 
 def prior_spend(prompt_version: str, run_id: str) -> float:
     """What a run folder already accounts for, which a retried harness job counts against its cap: the cost of every
     record, plus the cap of every in-flight marker (models.inflight_path). A marker is a review that started in a
     strict run and never wrote its record, because the worker was killed or interrupted mid-review, so it may have
-    spent anything up to its cap. Record files that do not read are skipped; a marker that does not read makes the
-    result infinite (see _inflight_cap)."""
+    spent anything up to its cap. A record or a marker that does not read, or holds no usable cost, makes the result
+    infinite (its spend is unknown, so the run stops rather than assume it was zero; see _inflight_cap)."""
     folder = models.EVAL_ROOT / "runs" / prompt_version / run_id
     total = 0.0
     for path in folder.glob("*.json"):
-        try:
-            total += float(json.loads(path.read_text(encoding="utf-8")).get("cost_usd") or 0.0)
-        except (OSError, ValueError, AttributeError, TypeError):
-            continue
+        total += _record_cost(path)
     for marker in folder.glob(f"*{models.INFLIGHT_SUFFIX}"):
         total += _inflight_cap(marker)
     return total

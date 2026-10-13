@@ -63,12 +63,18 @@ async def _wanted(ctx: dict, *, poll: bool) -> tuple[str | None, str | None]:
 
 
 def _rebuild(ctx: dict, runtime: Runtime, build_graph_fn):
+    """The new deps and graph, and the semaphore (and its size) the worker records. The semaphore changes only
+    together with the LLMs that use it: when the LLMs cannot be rebuilt (no resolved config), the old semaphore and
+    size are kept, so llm_sem is always the one the current LLMs hold (the size takes effect at the next settings
+    reload that can rebuild them, or a restart). In stub mode there are no LLMs, so the new size is recorded as is."""
     settings = runtime.settings
-    sem, size = ctx["llm_sem"], max(1, settings.llm_concurrency)
+    sem, size, want = ctx["llm_sem"], ctx.get("llm_sem_size"), max(1, settings.llm_concurrency)
     llms = getattr(ctx["graph_deps"], "llms", None)
-    if size != ctx.get("llm_sem_size"):
-        sem = asyncio.Semaphore(size)
-        if llms is not None and ctx.get("llm_resolved") is not None:
+    if want != size:
+        if llms is None:  # stub mode: nothing holds the semaphore
+            sem, size = asyncio.Semaphore(want), want
+        elif ctx.get("llm_resolved") is not None:
+            sem, size = asyncio.Semaphore(want), want
             llms = build_llms(settings, ctx.get("catalog"), resolved=ctx["llm_resolved"], sem=sem,
                               config_version=getattr(llms, "config_version", "file"))
     deps = dataclasses.replace(ctx["graph_deps"], settings=settings, llms=llms, glossary=runtime.glossary)

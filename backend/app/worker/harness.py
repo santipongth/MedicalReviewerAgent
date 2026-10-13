@@ -45,6 +45,7 @@ from app.services.harness_runs import (
 )
 from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 from app.services.llm_store import load_effective
+from app.services.llm_validate import unpriced_roles
 from app.services.model_catalog import cached_catalog
 from app.services.queue import HARNESS_QUEUE
 from app.services.runtime_config import load_runtime
@@ -56,8 +57,16 @@ JOB_DEADLINE_SECONDS = JOB_TIMEOUT_SECONDS - 60  # the job's own deadline fires 
 MAX_TRIES = 3
 CLAIM_RETRY_SECONDS = 30
 HEARTBEAT_SECONDS = 30
-MARKER_UNREADABLE = ("an in-flight marker of an earlier attempt could not be read, so its spend is unknown; "
-                     "the run was stopped to protect the cap")
+SPEND_UNKNOWN = "a run record or an in-flight marker could not be read, so the spend is unknown"
+MARKER_UNREADABLE = f"{SPEND_UNKNOWN}; the run was stopped to protect the cap"
+
+
+class UnpricedModels(RuntimeError):
+    """A role whose calls the cap cannot count (unpriced_roles): the run ends as an error before anything is spent.
+    The message names the roles only, never a model id or a price."""
+
+    def __init__(self, roles: list[str]) -> None:
+        super().__init__("models without a known price: " + ", ".join(roles))
 
 
 async def build_eval_deps(ctx: dict):
@@ -65,13 +74,16 @@ async def build_eval_deps(ctx: dict):
     LLM_PRESET applies while llm.yaml is the source), the settings and glossary in force, and the OpenRouter catalog the
     API and the review workers share (cached_catalog with 23b's one-attempt worker loader), so structured-output
     methods and prices match production. No citation network and no external tools, as in the eval CLI. Returns the
-    deps and the labels the run records."""
+    deps and the labels the run records. A role the cap cannot price (unpriced_roles) raises UnpricedModels before
+    any LLM is built, so the run ends as an error and spends nothing."""
     base = ctx["settings"]
     async with ctx["session_factory"]() as session:
         effective = await load_effective(session, base)
     resolved = effective.resolve()  # an LLM_PRESET that names no preset fails here, before anything is spent
     runtime = await load_runtime(ctx["session_factory"], base)
     catalog = await cached_catalog(ctx["redis_client"], load_live_catalog)
+    if unpriced := unpriced_roles(resolved, catalog):
+        raise UnpricedModels(unpriced)
     deps = build_graph_deps(runtime.settings, ctx["http"], catalog=catalog, resolved=resolved,
                             config_version=effective.label, glossary=runtime.glossary)
     deps.openalex, deps.mcp = None, None
@@ -81,6 +93,16 @@ async def build_eval_deps(ctx: dict):
 
 def _try(ctx: dict) -> int:
     return ctx.get("job_try", 1)
+
+
+def _final_spend(row, error: str) -> tuple[float | None, str]:
+    """For an end that has no batch summary (the deadline, the last interruption): what the run files account for
+    (prior_spend: every record's cost plus the cap of every review left in flight), so the row never shows less than
+    may have been spent. Unknown spend (infinite) keeps the row's last value and says why."""
+    spent = prior_spend(row.prompt_version, row.run_id)
+    if math.isfinite(spent):
+        return spent, error
+    return None, f"{error}; {SPEND_UNKNOWN}"
 
 
 async def run_harness(ctx: dict, run_pk: int) -> dict:
@@ -100,14 +122,20 @@ async def run_harness(ctx: dict, run_pk: int) -> dict:
             return await _replay(ctx, row)
     except asyncio.CancelledError:
         if _try(ctx) >= MAX_TRIES:  # arq will not call this job again: free the slot now
-            await finish(session_factory, run_pk, status="error", error=f"interrupted {MAX_TRIES} times")
+            spent, error = _final_spend(row, f"interrupted {MAX_TRIES} times")
+            await finish(session_factory, run_pk, status="error", error=error, spent_usd=spent)
         else:
             await requeue(session_factory, run_pk)
         raise
     except Exception as exc:  # recorded on the run, not retried (log.exception keeps the traceback)
         if isinstance(exc, TimeoutError) and deadline.expired():
             log.error("harness_run_timed_out", run=run_pk)
-            error = "timed out"
+            spent, error = _final_spend(row, "timed out")
+            final = await finish(session_factory, run_pk, status="error", error=error, spent_usd=spent)
+            return {"run": run_pk, "status": final or "error"}
+        if isinstance(exc, UnpricedModels):
+            log.error("harness_run_unpriced", run=run_pk, error=str(exc))
+            error = str(exc)
         else:
             log.exception("harness_run_failed", run=run_pk)
             error = f"{type(exc).__name__}: {exc}"

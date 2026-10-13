@@ -187,6 +187,26 @@ async def test_an_unreadable_marker_counts_as_infinite_and_stops_a_strict_run(ro
     assert (s.done, s.skipped, s.stopped_for_budget) == (0, 1, True)
 
 
+@pytest.mark.parametrize("content", ["not json", "[]", '{"cost_usd": "x"}', '{"cost_usd": -1}',
+                                     '{"cost_usd": NaN}', '{"cost_usd": Infinity}', '{"cost_usd": 1e999}',
+                                     '{"cost_usd": ' + "9" * 400 + "}"], ids=lambda c: c[:12])
+def test_an_unreadable_record_counts_as_infinite_like_a_marker(root, content):
+    pv = S.prompt_version
+    models.write_json_atomic(models.run_path(pv, "r", "CD0", 1), record("CD0", 0.1, pv=pv))
+    models.run_path(pv, "r", "CD1", 1).write_text(content, encoding="utf-8")
+    assert math.isinf(prior_spend(pv, "r"))  # its spend is unknown: the run stops rather than count it as zero
+
+
+def test_a_record_without_a_cost_counts_as_zero_and_a_huge_marker_cap_as_infinite(root):
+    pv = S.prompt_version
+    models.write_json_atomic(models.run_path(pv, "r", "CD0", 1), record("CD0", 0.1, pv=pv))
+    models.run_path(pv, "r", "CD1", 1).write_text('{"cost_usd": null}', encoding="utf-8")
+    assert prior_spend(pv, "r") == pytest.approx(0.1)
+    folder = models.run_path(pv, "r", "CD0", 1).parent
+    (folder / "CD2.0a1b2c3d.inflight").write_text('{"cap": ' + "9" * 400 + "}", encoding="utf-8")
+    assert math.isinf(prior_spend(pv, "r"))  # float() of a huge integer raises OverflowError: counted as unknown
+
+
 async def test_replay_records_the_glossary_it_used(root):
     deps, m = make_deps(), manifest(1)
     deps.glossary = ActiveGlossary(4, "placebo = ยาหลอก")
@@ -230,7 +250,7 @@ def test_prior_spend_load_rows_and_the_report(root):
     broken = models.run_path("pv", "b", "CD9", 1)
     broken.parent.mkdir(parents=True, exist_ok=True)
     broken.write_text("not json", encoding="utf-8")
-    assert prior_spend("pv", "b") == 0.0  # an unreadable file is skipped
+    assert math.isinf(prior_spend("pv", "b"))  # an unreadable record is unknown spend, never zero (A5)
 
 
 async def test_eval_runtime_uses_the_db_unless_a_config_file_is_given(session_factory):

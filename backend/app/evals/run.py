@@ -88,6 +88,7 @@ async def replay(deps, fixture: Fixture, *, options: dict[str, Any], repeat: int
                          status="error", error=f"{type(exc).__name__}: {exc}",
                          citations={"proposed": tally.proposed, "stripped": tally.stripped})
     return RunRecord(**common, elapsed_s=round(time.monotonic() - t0, 2),
-                     cost_usd=round(float(values.get("cost_usd", 0.0)) + match_cost, 6), status="done",
+                     cost_usd=round(max(budget.spent, float(values.get("cost_usd", 0.0)) + match_cost), 6),
+                     status="done",
                      citations={"proposed": tally.proposed, "stripped": tally.stripped}, primary_match=match,
                      result=result)
