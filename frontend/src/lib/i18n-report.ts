@@ -885,6 +885,8 @@ export const RC = {
       `Read ${read} ${pl(read, "study", "studies")} · cited ${cited}`],
     citedCount: (cited: number): Pair => [`อ้างอิง ${cited} ฉบับ`, `Cited ${cited} ${pl(cited, "study", "studies")}`],
     tallyTitle: ["ทิศทางของผลในงานที่อ้างอิง", "Direction of results in the cited studies"],
+    /** the public guide notice's heading on the quick page (the body stays Plan 26's approved text) */
+    guideLabel: ["อ่านคำตอบนี้อย่างไร", "How to read this answer"],
     checkedLegend: ["✓ หลังเลขอ้างอิง = พบประโยคที่รองรับในบทคัดย่อของงานนั้น และตัวเลขผ่านการตรวจ",
       "✓ after a reference number = the study's abstract has a sentence that supports it, and its numbers were checked"],
     upgrade: ["ทำรีวิวฉบับเต็ม", "Run a full review"],

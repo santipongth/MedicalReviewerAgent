@@ -45,11 +45,15 @@ export function quickParts(text: string, refs: string[]): QuickPart[] {
 
 /** A possible sentence end: a citation group (with an optional full stop after it) or a full stop, then a space. */
 const END = /(\[P\d+(?:\s*,\s*P\d+)*\][.!?]?|[.!?])\s+(?=\S)/g;
+/** Thai words that carry a sentence on after a citation group ("and", "or", "which", "by", "including"); "แต่" (but)
+ * does start a new line. */
+const JOINING_TH = ["และ", "หรือ", "ซึ่ง", "โดย", "รวมถึง"];
 /** Words whose full stop never ends a sentence. */
 const ABBREV = /(?:^|[\s(])(?:vs|e\.g|i\.e|et al|etc|approx|cf|ca|incl)\.$/i;
 
 /** The answer as sentences, each with the citation group that closes it, so each can stand on its own line. A Thai
- * sentence ends at a citation group followed by a space (Thai writes no full stop); an English one at a full stop, or
+ * sentence ends at a citation group followed by a space (Thai writes no full stop), unless the next word joins it on
+ * (และ, หรือ, ซึ่ง, โดย, รวมถึง) or a bracket follows; an English one at a full stop, or
  * at a group followed by a capital. A full stop before a citation group stays with it; a decimal, an abbreviation or a
  * comma never splits. Joined with single spaces the sentences give back the answer. */
 export function quickSentences(text: string): string[] {
@@ -58,7 +62,8 @@ export function quickSentences(text: string): string[] {
   for (const m of text.matchAll(END)) {
     const end = m.index + m[1].length;
     const next = text[m.index + m[0].length];
-    if (next === "[" || /[a-z0-9,;:)]/.test(next)) continue; // a citation of this sentence, or the sentence goes on
+    if (next === "[" || /[a-z0-9,;:()]/.test(next)) continue; // a citation of this sentence, or the sentence goes on
+    if (m[1].startsWith("[") && JOINING_TH.some((w) => text.startsWith(w, m.index + m[0].length))) continue;
     if (!m[1].startsWith("[") && ABBREV.test(text.slice(Math.max(at, end - 12), end))) continue;
     out.push(text.slice(at, end).trim());
     at = m.index + m[0].length;

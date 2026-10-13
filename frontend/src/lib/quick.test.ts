@@ -38,6 +38,9 @@ describe("Plan 27 quick answer helpers", () => {
     // a full stop before a citation stays with it; decimals and common abbreviations never split
     expect(quickSentences("Risk fell vs. placebo, e.g. by 1.5 points. [P1] Next one [P2]."))
       .toEqual(["Risk fell vs. placebo, e.g. by 1.5 points. [P1]", "Next one [P2]."]);
+    // Thai: a joining word or an opening bracket after the group carries the sentence on; "แต่" starts a new one
+    expect(quickSentences("ความเสี่ยงต่ำลง [P1] และอัตราตายไม่ต่าง [P2] (HR 1.0) [P3] หรือสูงขึ้น [P4] ซึ่งยังไม่ชัด [P5] โดยรวม [P6] รวมถึงผู้สูงอายุ [P7] แต่มีข้อจำกัด [P8]"))
+      .toEqual(["ความเสี่ยงต่ำลง [P1] และอัตราตายไม่ต่าง [P2] (HR 1.0) [P3] หรือสูงขึ้น [P4] ซึ่งยังไม่ชัด [P5] โดยรวม [P6] รวมถึงผู้สูงอายุ [P7]", "แต่มีข้อจำกัด [P8]"]);
     expect(quickSentences("No study matched.")).toEqual(["No study matched."]);
     expect(quickSentences("  ")).toEqual([]);
   });

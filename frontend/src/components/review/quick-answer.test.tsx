@@ -52,6 +52,14 @@ describe("Plan 27 quick answer page", () => {
     const tally = within(evidence).getByRole("list", { name: "ทิศทางของผลในงานที่อ้างอิง" });
     expect(within(tally).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["สนับสนุนผล2", "ตรงข้าม/อันตราย1"]);
     expect(within(tally).getByRole("img", { name: "ตรงข้าม/อันตราย" })).toBeInTheDocument(); // colour always with its glyph
+    // the full report's caveats: a count of studies (its term), and an SR/MA (P4) may overlap the primary studies
+    expect(evidence).toHaveTextContent("จำนวนงานวิจัยตามทิศทางผลที่เอเจนต์อ่าน");
+    expect(evidence.querySelector("[data-quick-overlap]")).toHaveTextContent("งานทบทวน/วิเคราะห์อภิมานอาจซ้อนกับงานวิจัยหลักที่นับรวม");
+  });
+
+  it("no overlap line when no SR/MA is cited", () => {
+    render(<QuickAnswer review={{ ...quickReviewFixture, result: { ...quickReviewFixture.result!, quick: { refs: ["P3", "P1"], papers_read: 4 } } }} />);
+    expect(document.querySelector("[data-quick-overlap]")).toBeNull();
   });
 
   it("an ungraded answer shows no meter, only its words", () => {
@@ -69,11 +77,11 @@ describe("Plan 27 quick answer page", () => {
     render(<QuickAnswer review={{ ...quickReviewFixture, result: { ...quickReviewFixture.result!, papers } }} />);
     const items = within(screen.getByRole("list", { name: "เอกสารอ้างอิง" })).getAllByRole("listitem");
     const facts = items.map((li) => li.querySelector("[data-quick-facts]")!);
-    expect(facts[0]).toHaveTextContent(/Cohort.*2021.*n = 1,234.*สนับสนุนผล/);
+    expect(facts[0]).toHaveTextContent(/^Cohort·n = 1,234·สนับสนุนผล$/);
     expect(facts[0].querySelector(".num-verified")).toHaveTextContent("1,234");
     expect(facts[1].querySelector(".hole")).not.toBeNull(); // P1: its sample size was blanked
     expect(facts[1].querySelector(".num-verified")).toBeNull();
-    expect(facts[2]).toHaveTextContent(/SR\/MA ของงานเชิงสังเกต.*2020.*n = 6,331/);
+    expect(facts[2]).toHaveTextContent(/SR\/MA ของงานเชิงสังเกต·n = 6,331/);
     expect(within(facts[2] as HTMLElement).getByRole("img", { name: "ตรงข้าม/อันตราย" })).toBeInTheDocument();
   });
 
@@ -119,7 +127,7 @@ describe("Plan 27 quick answer page", () => {
 
   it("keeps the public safety notices: the reader guide and the harms gap", () => {
     render(<QuickAnswer review={quickReviewFixture} />);
-    expect(document.querySelector('[data-notice="guide"]')).not.toBeNull();
+    expect(document.querySelector('[data-notice="guide"]')).toHaveAccessibleName("อ่านคำตอบนี้อย่างไร"); // not "this report"
     expect(document.querySelector('[data-notice="harms"]')).not.toBeNull();
     expect(document.querySelector("[data-audience-switch]")).toBeNull(); // one presentation
   });
