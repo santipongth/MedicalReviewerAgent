@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HOTLINE_LABEL, PERSONAL_MEDICAL_COPY } from "@/lib/refusal-copy";
+import { isPersonalRefusal } from "@/lib/title";
 
 const COPY = {
   rejected: {
@@ -41,7 +42,7 @@ export function TerminalState({
   status, message, topic, code,
 }: { status: "rejected" | "error" | "cancelled"; message?: string | null; topic: string; code?: string | null }) {
   // the code from the event or the review; the stored error's prefix covers a client that missed both
-  if (status === "rejected" && (code === "personal_medical" || !!message?.startsWith("personal_medical: "))) return <PersonalMedical />;
+  if (status === "rejected" && isPersonalRefusal(code, message)) return <PersonalMedical />;
   const copy = COPY[status];
   const retryHref = `/?q=${encodeURIComponent(topic)}#request`;
   const primary = status === "rejected" ? "แก้หัวข้อแล้วส่งใหม่" : "ลองอีกครั้ง";
@@ -61,6 +62,14 @@ export function TerminalState({
           <summary className="cursor-pointer">รายละเอียดทางเทคนิค</summary>
           <p className="mt-2 break-words font-code">{message}</p>
         </details>
+      )}
+      {status === "rejected" && (
+        <p className="text-[0.92rem] text-muted" data-hotlines>
+          หากเป็นภาวะฉุกเฉิน{" "}
+          <a href="tel:1669" aria-label={HOTLINE_LABEL["1669"]} className="underline underline-offset-2">โทร 1669</a>
+          {" · "}สายด่วนสุขภาพจิต{" "}
+          <a href="tel:1323" aria-label={HOTLINE_LABEL["1323"]} className="underline underline-offset-2">1323</a>
+        </p>
       )}
       <div className="flex flex-wrap gap-3">
         <Link href={retryHref} className="w-fit rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary no-underline hover:brightness-110">

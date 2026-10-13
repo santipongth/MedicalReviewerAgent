@@ -131,6 +131,13 @@ describe("Plan 26: a personal medical question", () => {
     expect(screen.getByRole("heading")).toHaveTextContent(/ไม่ใช่คำถามวิจัยทางการแพทย์/);
   });
 
+  it("the generic rejected page still offers the hotlines (Plan 26 final fix B4)", () => {
+    render(<TerminalState status="rejected" code="declined" topic="pizza" message="not medical" />);
+    expect(screen.getByText(/หากเป็นภาวะฉุกเฉิน/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "โทร 1669 บริการการแพทย์ฉุกเฉิน" })).toHaveAttribute("href", "tel:1669");
+    expect(screen.getByRole("link", { name: "โทร 1323 สายด่วนสุขภาพจิต" })).toHaveAttribute("href", "tel:1323");
+  });
+
   it("the rejected event carries the code into the run state", () => {
     const run = reduceRun(initialRun(), { seq: 1, type: "rejected", payload: { reason: "personal_medical: x", code: "personal_medical" } });
     expect(run).toMatchObject({ status: "rejected", code: "personal_medical", terminal: true });

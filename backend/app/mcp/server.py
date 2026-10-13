@@ -180,7 +180,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
     @mcp.resource("review://{review_id}", mime_type="application/json", description="Review status and result")
     async def review_resource(review_id: str) -> dict[str, Any]:
         r = await review_or_error(review_id)
-        return {"review_id": review_id, "topic": r.topic, "status": r.status, "result": r.result, "error": r.error}
+        return {"review_id": review_id, "topic": r.topic, "status": r.status, "result": r.result, "error": r.error,
+                "refusal_code": refusal_code_of(r.status, r.error)}
 
     @mcp.resource("review://{review_id}/report.md", mime_type="text/markdown",
                   description="Review as a Markdown report")

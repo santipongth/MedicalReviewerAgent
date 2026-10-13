@@ -91,3 +91,23 @@ async def test_mcp_status_and_result_carry_the_refusal_code(app, session_factory
     assert status["status"] == "rejected" and status["refusal_code"] == "personal_medical"
     assert result["result"] is None and result["refusal_code"] == "personal_medical"
     assert str(uuid.UUID(status["review_id"])) == str(review.id)
+    async with Client(app.state.mcp) as c:  # the resource carries the code too (Plan 26 final fix B3)
+        res = await c.read_resource(f"review://{review.id}")
+    assert json.loads(res[0].text)["refusal_code"] == "personal_medical"
+
+
+def test_the_frontend_thai_copy_equals_the_backend_messages():  # Plan 26 final fix B2
+    import re
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[3] / "frontend" / "src" / "lib" / "refusal-copy.ts"
+    if not path.exists():
+        pytest.skip("frontend folder absent (backend image)")
+    text = path.read_text(encoding="utf-8")
+    bodies = {key: re.search(rf"\b{key}: \{{\s*title: \"[^\"]*\",\s*body: \"([^\"]*)\"", text) for key in
+              ("medical", "self_harm")}
+    personal = re.search(r"PERSONAL_MEDICAL_COPY = \{\s*title: \"[^\"]*\",\s*body: \"([^\"]*)\"", text)
+    assert all(bodies.values()) and personal
+    assert bodies["medical"].group(1) == safety.MESSAGES["emergency"]["th"]
+    assert bodies["self_harm"].group(1) == safety.MESSAGES["self_harm"]["th"]
+    assert personal.group(1) == safety.MESSAGES["personal_medical"]["th"]

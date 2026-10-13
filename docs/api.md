@@ -1174,10 +1174,16 @@ answer those with "see a doctor, or call 1669", never with a review (roadmap sec
   Thai mental health hotline first).
 - Every message is fixed text: English in `detail` (REST) and `message` (MCP), Thai in `message_th`. None repeats the
   topic. The `personal_medical` message names both 1669 and 1323, and the personal-question page has a call link for each.
+  The personal-question page and its browser title (tab, history, link preview) never show the topic. A provider's own
+  refusal of the topic (an `LLMRefusal` in the guard) is treated as `personal_medical`, since such refusals cluster on
+  self-harm and violence text: the same fixed message with both hotlines. The generic `declined` page also carries a
+  muted line with 1669 and 1323.
 - **The red-flag pass (high precision).** Code flags a topic only in one of three cases: a first-person self-harm phrase
   (always); a medical red flag (chest pain, cannot breathe, stroke signs, heavy bleeding, overdose, unconsciousness,
-  seizure, anaphylaxis; English and Thai) with an explicit personal anchor (I, me, my or our plus a kin word in English;
-  a Thai pronoun, or a kin word at the start); or a short conversational topic (Thai with no framing word and at most 40
+  seizure, anaphylaxis; English and Thai) with an explicit personal anchor (English: I, me, my, our, myself, someone or
+  "right now", so "my or our plus a kin word" is one case of these; a Thai pronoun, or a kin word at the start). The
+  self-harm words (suicide, self-harm and their Thai equivalents) need an anchor too, except the always-count
+  first-person phrases; or a short conversational topic (Thai with no framing word and at most 40
   characters; English with at most 8 words, no framing word and a conversational cue). A topic with research framing
   (study, trial, evidence, patients, incidence; งานวิจัย, การศึกษา, ผู้ป่วย …) is not flagged, so "chest pain in the
   emergency department: troponin accuracy" and "suicide prevention in adolescents" are reviewed as usual.

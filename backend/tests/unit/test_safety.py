@@ -92,6 +92,7 @@ def test_further_self_harm_reaches_1323(topic):
     "me and my colleagues want to know about chest pain management", "เราอยากรู้เรื่องหายใจลำบากในเด็ก",
     "ตัวเองเป็นหมอ อยากรู้เรื่องหมดสติจากน้ำตาลต่ำ", "someone with type I diabetes and unconscious episodes",
     "stage I and II stroke", "grade i anaphylaxis", "i.v. paracetamol overdose",
+    "walking 10 kms per day and mortality", "cycling 20 kms daily cardiovascular risk", "running 5kms and mortality",
     "ฉันอยากทราบเรื่องการใช้ยาเกินขนาดในวัยรุ่น", "เรากินยาเกินขนาด แนวทางรักษา", "someone who overdosed: naloxone",
 ])
 def test_further_research_topics_are_not_emergencies(topic):

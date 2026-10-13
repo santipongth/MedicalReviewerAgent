@@ -186,6 +186,8 @@ def _english(phrases: tuple[str, ...], *, prefix: bool = False, patterns: tuple[
     for p in sorted(_norm_en(phrases), key=len, reverse=True):
         if p == "i":
             parts.append(_ROMAN_I + r"i(?!\.[a-z])")  # not "i.v." or "i.e."
+        elif p == "kms":
+            parts.append(r"(?<!\d)(?<!\d )kms")  # not kilometres: "10 kms", "20kms"
         elif p in ("someone", "somebody"):
             parts.append(p + r"(?! with| who)")
         else:
