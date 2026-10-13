@@ -172,7 +172,7 @@ test("an English report paints its first frame with the English header (no Thai 
 const SHARED_PHRASES = ["Medical Reviewer Agent", "Europe PMC", "Mendelian randomization", "Case-control", "GRADE-lite", "95% CI",
   "SR/MA", "SE (ln)", "Forest plot", "PRISMA-ScR", "PRISMA 2020"];
 const SHARED_WORDS = new Set(["k", "n", "SE", "CI", "AUC", "HR", "OR", "RR", "MD", "SMD", "RD", "r", "PICO", "PCC", "PICo", "HTML",
-  "Markdown", "CSV", "JSON", "PubMed", "OpenAlex", "RCT", "Cohort", "PRISMA", "GRADE",
+  "Markdown", "CSV", "JSON", "PubMed", "OpenAlex", "RCT", "Cohort", "PRISMA", "GRADE", "HTA",
   // the question framework's letters (PICO, PECO, PCC, SPIDER): "C · ตัวเปรียบเทียบ"
   "P", "I", "C", "O", "E", "S", "D", "R", "PI", "Q"]);
 /** A study's label: its code, first author and year are names (data), e.g. "P3 Lindqvist 2021". Only that prefix is

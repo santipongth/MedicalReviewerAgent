@@ -57,7 +57,7 @@ async function printState(page: Page) {
       nav: [...report.querySelectorAll("nav")].some((n) => shown(n) && !n.closest("[data-lit-pager]")),
       toggles: [...report.querySelectorAll("figure button[aria-pressed]")].some(shown),
       copy: [...report.querySelectorAll("button")].some((b) => shown(b) && /คัดลอก|Copy/.test(b.textContent ?? "")),
-      rail: shown(report.querySelector("aside")),
+      rail: shown(report.querySelector("aside[data-source-rail]")),
       filters: [...report.querySelectorAll("button[aria-expanded]")].some((b) => shown(b) && /^(กรอง|Filter)/.test(b.textContent ?? "")),
       print: [...report.querySelectorAll("button")].some((b) => shown(b) && /^(พิมพ์|Print)$/.test(b.textContent ?? "")),
       scrollHints: [...report.querySelectorAll("[data-scroll-hint]")].some(shown),

@@ -299,16 +299,6 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
                 </p>
               </div>
             )}
-            <fieldset className="grid gap-1">
-              <legend className="label p-0">รายงานนี้สำหรับ</legend>
-              <div className="grid gap-x-6 sm:grid-cols-2">
-                {AUDIENCES.map((a) => (
-                  <label key={a} className="flex min-h-11 items-center gap-2"><input type="radio" name={`${id}-audience`} checked={audience === a}
-                    onChange={() => setAudience(a)} className="size-4 accent-primary" />{audienceName(a)}</label>
-                ))}
-              </div>
-              <p className="text-[0.88rem] leading-[1.7] text-muted">เปลี่ยนได้ภายหลังในหน้ารายงาน ผลการทบทวนเหมือนกันทุกมุมมอง</p>
-            </fieldset>
             <div className="grid gap-1">
               <label className="label" htmlFor={`${id}-year`}>ตั้งแต่ปี (ไม่บังคับ)</label>
               <input id={`${id}-year`} inputMode="numeric" pattern="(19[5-9][0-9]|20[0-9][0-9])" placeholder="เช่น 2015"
@@ -316,6 +306,17 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
                 className="min-h-11 w-36 rounded-sm border border-rule bg-ground px-3 py-1.5 text-ink outline-none focus:border-primary" />
             </div>
           </div>
+          {/* Plan 26: its own row, so the language / paper count / year row above keeps its layout */}
+          <fieldset className="grid gap-1 pb-5">
+            <legend className="label p-0">รายงานนี้สำหรับ</legend>
+            <div className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-4">
+              {AUDIENCES.map((a) => (
+                <label key={a} className="flex min-h-11 items-center gap-2"><input type="radio" name={`${id}-audience`} checked={audience === a}
+                  onChange={() => setAudience(a)} className="size-4 accent-primary" />{audienceName(a)}</label>
+              ))}
+            </div>
+            <p className="text-[0.88rem] leading-[1.7] text-muted">เปลี่ยนได้ภายหลังในหน้ารายงาน ผลการทบทวนเหมือนกันทุกมุมมอง</p>
+          </fieldset>
         </details>
         <div data-testid="submit-row" className="flex flex-col gap-3 border-t border-rule px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <p className="text-[0.92rem] text-muted">{TYPICAL_DURATION_TH} และจะเห็นว่าระบบตีความคำถามอย่างไรก่อนเริ่มค้น</p>
