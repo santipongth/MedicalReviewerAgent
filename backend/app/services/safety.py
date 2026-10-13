@@ -94,8 +94,9 @@ MEDICAL_PATTERNS_TH = (r"กินยา.{0,12}[\d๐-๙]+เม็ด",)
 # help / now / urgent / child / kid / son / baby / friend are NOT anchors. Compounds in NONPERSONAL_TH neutralise only the
 # marker they contain. A Thai topic with no anchor still counts when it is short (at most 40 characters without spaces)
 # and has no framer (FRAMERS_TH) and no research word, because Thai drops pronouns ("เจ็บหน้าอกมาก หายใจไม่ออก").
-# Known misses handed to the guard: English without an anchor ("dad is having a stroke what to do", "baby not
-# breathing", "someone"-less third person), a long Thai description of an emergency, and any framed Thai sentence.
+# English mirrors the Thai rule: a topic of at most 8 words with no framing word (FRAMERS_EN, RESEARCH_EN) counts
+# without an anchor ("baby not breathing"; not for noun-like flags: NOANCHOR_EXCLUDED_EN). Known misses handed to the
+# guard: a longer or framed English description with no anchor, a long Thai description, any framed Thai sentence.
 PERSONAL_EN = ("i", "i'm", "im", "i've", "i am", "me", "my", "our", "myself", "someone", "somebody", "right now",
                "just now")
 PERSONAL_TH = ("ฉัน", "ดิฉัน", "ผม", "หนู", "เรา", "กู")  # pronouns; เรา not before ะ (หัวเราะ), กู not กู้ (resuscitation)
@@ -108,6 +109,18 @@ NONPERSONAL_TH = ("ลูกน้ำ", "ลูกค้า", "ลูกเห�
 FRAMERS_TH = ("ภาวะ", "การ", "อาการ", "สาเหตุ", "ปัจจัย", "ผล", "ความ", "สำหรับ", "หลัง", "ใน", "ของ", "กับ",
               "ระหว่าง", "ต่อ", "เทียบ", "ป้องกัน", "รักษา")
 PRO_DROP_MAX_CHARS = 40
+# English mirror of the short-topic rule: a medical red flag with no anchor counts when the topic has at most
+# SHORT_EN_MAX_WORDS words and none of these framing words (or any RESEARCH_EN word). Noun-like flags that are
+# usually a subject are not eligible without an anchor (NOANCHOR_EXCLUDED_EN). Conversational urgency ("what to do")
+# is not required.
+SHORT_EN_MAX_WORDS = 8
+FRAMERS_EN = ("in", "of", "for", "among", "with", "without", "vs", "versus", "compared", "effect", "effects", "risk",
+              "risks", "therapy", "prevention", "policy", "deaths", "death", "mortality", "causes", "cause",
+              "factors", "factor", "guidelines", "and", "or", "by", "on", "from", "after", "during", "between",
+              "about", "symptoms", "signs", "syndrome", "recovery", "care", "know", "lung", "after", "than",
+              "as", "at", "among", "rate", "rates", "epidemiology", "overview", "history", "definition",
+              "lines", "leading", "protests", "pollution")
+NOANCHOR_EXCLUDED_EN = ("anaphylaxis", "anaphylactic", "severe allergic reaction", "overdose", "overdosed")
 # Research framing: the topic asks about evidence for a population, so a red flag in it is a research subject.
 RESEARCH_EN = ("study", "studies", "trial", "research", "evidence", "review", "systematic", "meta-analys",
                "meta analys", "cohort", "efficacy", "effectiveness", "incidence", "prevalence", "patients",
@@ -163,6 +176,9 @@ def _thai(phrases: tuple[str, ...], patterns: tuple[str, ...] = ()) -> re.Patter
 _ALWAYS_EN, _SELF_HARM_EN = _english(SELF_HARM_ALWAYS_EN), _english(SELF_HARM_EN)
 _MEDICAL_EN = _english(MEDICAL_EN, patterns=MEDICAL_PATTERNS_EN)
 _PERSONAL_EN, _RESEARCH_EN = _english(PERSONAL_EN), _english(RESEARCH_EN, prefix=True)
+_FRAMERS_EN = _english(FRAMERS_EN)
+_MEDICAL_EN_NOANCHOR = _english(tuple(p for p in MEDICAL_EN if p not in NOANCHOR_EXCLUDED_EN),
+                                patterns=MEDICAL_PATTERNS_EN)
 _ALWAYS_TH, _SELF_HARM_TH = _thai(SELF_HARM_ALWAYS_TH), _thai(SELF_HARM_TH)
 _MEDICAL_TH = _thai(MEDICAL_TH, MEDICAL_PATTERNS_TH)
 _RESEARCH_TH, _FRAMERS_TH, _NONPERSONAL_TH = _thai(RESEARCH_TH), _thai(FRAMERS_TH), _thai(NONPERSONAL_TH)
@@ -202,7 +218,9 @@ def red_flag(topic: str) -> Emergency | None:
     pro_drop = len(th) <= PRO_DROP_MAX_CHARS and not _FRAMERS_TH.search(th)
     if _SELF_HARM_EN.search(text) and personal or _SELF_HARM_TH.search(th) and (anchored_th or pro_drop):
         return Emergency("self_harm")
-    if personal and _MEDICAL_EN.search(text) or _MEDICAL_TH.search(th) and (anchored_th or pro_drop):
+    short_en = len(text.split()) <= SHORT_EN_MAX_WORDS and not _FRAMERS_EN.search(text)
+    if (personal and _MEDICAL_EN.search(text) or short_en and _MEDICAL_EN_NOANCHOR.search(text)
+            or _MEDICAL_TH.search(th) and (anchored_th or pro_drop)):
         return Emergency("medical")
     return None
 

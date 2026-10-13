@@ -102,7 +102,16 @@ def test_an_excluded_compound_silences_only_its_own_marker(topic):
 
 
 @pytest.mark.parametrize("topic", [
-    "dad is having a stroke what to do", "baby not breathing", "chest pain now help", "help a friend with chest pain now",
+    "dad is having a stroke what to do", "baby not breathing", "chest pain now help", "mom collapsed please help",
+])
+def test_a_short_unframed_english_topic_counts_without_an_anchor(topic):
+    assert safety.red_flag(topic) == safety.Emergency("medical")
+
+
+@pytest.mark.parametrize("topic", [
+    "help a friend with chest pain now",  # framed ("with")
+    "a very long description of a man who was having a stroke at the shop yesterday afternoon",  # over 8 words
+    "paracetamol overdose", "anaphylaxis",  # noun-like flags need an anchor
 ])
 def test_known_misses_without_an_anchor_are_left_to_the_guard(topic):
     assert safety.red_flag(topic) is None
