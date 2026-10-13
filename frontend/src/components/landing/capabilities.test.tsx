@@ -13,6 +13,21 @@ describe("Capabilities", () => {
     expect(screen.getByText("ตารางงานวิจัย")).toBeInTheDocument();
   });
 
+  it("lists the sources /status reports, and says when ThaiJO is searched directly", () => {
+    const { container } = render(<Capabilities sources={[
+      { id: "pubmed", label: "PubMed" }, { id: "europepmc", label: "Europe PMC" }, { id: "thaijo", label: "ThaiJO" },
+    ]} />);
+    const list = screen.getByRole("list", { name: "แหล่งข้อมูลที่ค้น" });
+    expect([...list.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["PubMed", "Europe PMC", "ThaiJO"]);
+    expect(container.textContent).toContain("และค้นวารสารไทยจาก ThaiJO โดยตรง");
+  });
+
+  it("keeps the default eight and no ThaiJO line when /status gives no sources", () => {
+    const { container } = render(<Capabilities sources={null} />);
+    expect(screen.getByRole("list", { name: "แหล่งข้อมูลที่ค้น" })).toHaveTextContent("OpenAIRE");
+    expect(container.textContent).not.toContain("ThaiJO");
+  });
+
   it("explains each review type in plain Thai and glosses the jargon in brackets", () => {
     const { container } = render(<Capabilities />);
     const types = screen.getByRole("list", { name: "รูปแบบการทบทวนที่มี" });

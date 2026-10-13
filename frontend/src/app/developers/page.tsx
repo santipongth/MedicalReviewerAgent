@@ -8,6 +8,7 @@ import { LiveLimits } from "@/components/developers/live-limits";
 import { Gloss } from "@/components/ui/gloss";
 import { limitsCopy } from "@/lib/developers-copy";
 import { publicApiUrl } from "@/lib/public-api";
+import { joinThai, sourceLabels } from "@/lib/search-sources";
 import { getServerStatus } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "API และ MCP" };
@@ -73,7 +74,7 @@ const TOC = [
 ];
 
 const MCP_TOOLS: [string, string][] = [
-  ["search_papers", "ค้นงานวิจัยจาก 8 แหล่งในครั้งเดียว ได้ชื่อเรื่อง บทคัดย่อ และรหัสประจำบทความ"],
+  ["search_papers", "ค้นงานวิจัยจากแหล่งที่ค้นผ่าน SearXNG ในครั้งเดียว ได้ชื่อเรื่อง บทคัดย่อ และรหัสประจำบทความ"],
   ["start_review", "เริ่มรีวิวได้ 4 รูปแบบเหมือนหน้าเว็บ เลือกชนิดงานวิจัยและปีได้ รายงานเป็นภาษาไทยหรืออังกฤษ"],
   ["get_review_status", "ดูสถานะ: รอคิว (queued) กำลังทำ (running) เสร็จ (done) ผิดพลาด (error) ไม่รับหัวข้อ (rejected) หรือยกเลิก (cancelled)"],
   ["get_review_result", "คำถามวิจัย ตารางเทียบ ข้อขัดแย้ง ระดับหลักฐาน เครือข่ายการอ้างอิง และค่ารวมจากการวิเคราะห์อภิมาน พร้อมประโยคต้นฉบับของทุกตัวเลข"],
@@ -147,7 +148,9 @@ export default async function DevelopersPage() {
   await connection();
   const api = await publicApiUrl();
   const s = snippets(api);
-  const lc = limitsCopy((await getServerStatus())?.limits ?? null);
+  const status = await getServerStatus();
+  const lc = limitsCopy(status?.limits ?? null);
+  const sources = sourceLabels(status?.sources); // Plan 23d: the sources in force, the default eight without /status
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-12 pt-12">
       <header className="grid grid-cols-[minmax(0,1fr)] gap-8">
@@ -199,7 +202,8 @@ export default async function DevelopersPage() {
             <ol aria-label="ขั้นตอนของระบบ" className="grid border-t border-rule">
               {[
                 <>รับหัวข้อหรือคำถาม (ไม่เกิน 600 ตัวอักษร) แล้วตีความเป็นคำถามวิจัยตาม <Gloss k="pico" /> หรือ <Gloss k="pcc" /> สำหรับการทบทวนขอบเขต</>,
-                <>ค้น 8 แหล่ง: PubMed, Europe PMC (รวม <Gloss k="preprint" /> จาก medRxiv/bioRxiv), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ และ OpenAIRE ผ่าน <Gloss k="searxng" /> แล้วตัดงานซ้ำ</>,
+                <>ค้น {sources.length} แหล่ง: {joinThai(sources)} (ฐานข้อมูลสากลค้นผ่าน <Gloss k="searxng" />
+                  {sources.includes("Europe PMC") && <> และ Europe PMC รวม <Gloss k="preprint" /> จาก medRxiv/bioRxiv</>}) แล้วตัดงานซ้ำ</>,
                 <>คัดกรองงานที่มี<Gloss k="abstract" />{lc.screen && ` ${lc.screen}`} ตามเกณฑ์ของรูปแบบการทบทวน พร้อมเหตุผลที่คัดออกตาม <Gloss k="prisma" /></>,
                 <>อ่านบทคัดย่อของฉบับที่เกี่ยวข้องที่สุด{lc.read} สกัดผล ตัวเลข และ<Gloss k="riskOfBias" /> ตรวจตัวเลขทุกตัวกับประโยคต้นฉบับ</>,
                 <>เทียบผลข้ามงานวิจัย อธิบายจุดที่ขัดกัน สรุปผล (ประเมินระดับความแข็งแรงของหลักฐานเฉพาะ <Gloss k="slr" /> และ <Gloss k="metaAnalysis" />{" "}
