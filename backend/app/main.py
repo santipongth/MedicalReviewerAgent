@@ -82,12 +82,16 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
         from app.services.review_service import ReviewService
 
         d.limits = d.limits or RateLimits(settings.ratelimit_storage_uri)
+        if d.runtime is None:
+            from app.services.runtime_config import RuntimeConfig
+            d.runtime = RuntimeConfig(settings, d.session_factory, d.redis)
         if d.service is None:
             from app.services.capacity import Capacity
             from app.services.llm_store import active_version_id
             d.service = ReviewService(d.session_factory, d.queue, d.event_sink, settings, d.limits,
                                       capacity=Capacity(d.redis, settings),
-                                      llm_version=lambda: active_version_id(d.session_factory, d.redis))
+                                      llm_version=lambda: active_version_id(d.session_factory, d.redis),
+                                      runtime=d.runtime)
         return d
 
     @asynccontextmanager

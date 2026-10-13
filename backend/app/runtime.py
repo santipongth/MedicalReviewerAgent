@@ -15,3 +15,4 @@ class AppDeps:
     limits: Any = None  # app.services.ratelimits.RateLimits (built by create_app when omitted)
     service: Any = None  # app.services.review_service.ReviewService
     papers: Any = None  # app.services.paper_search.PaperSearch
+    runtime: Any = None  # app.services.runtime_config.RuntimeConfig (built by create_app when omitted, Plan 23c)

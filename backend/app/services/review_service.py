@@ -99,7 +99,7 @@ class Conflict(ServiceError):
 
 class ReviewService:
     def __init__(self, session_factory, queue, event_sink, settings: Settings, limits: RateLimits,
-                 url_check=is_public_http_url, capacity=None, llm_version=None) -> None:
+                 url_check=is_public_http_url, capacity=None, llm_version=None, runtime=None) -> None:
         self.url_check = url_check
         self.capacity = capacity  # app.services.capacity.Capacity; None → no admission control (unit tests)
         self.llm_version = llm_version  # async () -> str: the active LLM config version (Plan 23b); None → prompt_version only
@@ -108,9 +108,25 @@ class ReviewService:
         self.event_sink = event_sink
         self.settings = settings
         self.limits = limits
+        self.runtime = runtime  # RuntimeConfig (Plan 23c); None → env settings only (unit tests)
 
-    async def _reuse(self, cache_key: str) -> ReviewCreated | None:
-        done_after = datetime.now(UTC) - timedelta(seconds=self.settings.result_cache_ttl_seconds)
+    async def effective(self) -> Settings:
+        """The settings in force: env values with the admin console's saved overrides, at most 5 seconds old.
+        Env-only values (salts, Turnstile, prompt_version) read the same either way."""
+        return self.settings if self.runtime is None else await self.runtime.settings()
+
+    async def _version(self) -> str:
+        """The cache key's pipeline version: prompt, LLM config (23b) and, once one is saved, the glossary (23c)."""
+        version = self.settings.prompt_version
+        if self.llm_version is not None:
+            version = f"{version}+llm{await self.llm_version()}"
+        if self.runtime is not None and (glossary := await self.runtime.glossary_label()) != "file":
+            version = f"{version}+g{glossary}"
+        return version
+
+    async def _reuse(self, cache_key: str, settings: Settings | None = None) -> ReviewCreated | None:
+        ttl = (settings or self.settings).result_cache_ttl_seconds
+        done_after = datetime.now(UTC) - timedelta(seconds=ttl)
         async with self.session_factory() as session:
             existing = await ReviewRepository(session).find_reusable(cache_key, done_after)
         if existing is None:
@@ -130,16 +146,17 @@ class ReviewService:
             raise Forbidden("human verification failed; reload the page and try again")
 
     async def _admit_and_insert(self, req: CreateReviewRequest, identity: Identity, options: dict,
-                                cache_key: str) -> uuid.UUID | ReviewCreated:
+                                cache_key: str, settings: Settings) -> uuid.UUID | ReviewCreated:
         if self.capacity is not None:  # after the cache: cache hits are free even when the service is full
             async with self.session_factory() as session:
                 repo = ReviewRepository(session)
                 queued, running = await repo.count_by_status("queued"), await repo.count_by_status("running")
-            this_cap = review_cost_cap(self.settings, ReviewOptions.model_validate(options))
-            refusal = await self.capacity.check(queued=queued, running=running, this_cap=this_cap)
+            this_cap = review_cost_cap(settings, ReviewOptions.model_validate(options))
+            refusal = await self.capacity.check(queued=queued, running=running, this_cap=this_cap,
+                                                settings=settings)
             if refusal is not None:
                 raise Unavailable(refusal.detail, refusal.retry_after, refusal.reason)
-        rate = self.settings.api_key_rate_limit if identity.api_key else self.settings.review_rate_limit
+        rate = settings.api_key_rate_limit if identity.api_key else settings.review_rate_limit
         decision = await self.limits.hit("review", identity.rate_key, rate)
         if not decision.allowed:
             raise RateLimited(decision.retry_after)
@@ -154,7 +171,7 @@ class ReviewService:
                 review_id = review.id
         except IntegrityError:
             # Another request/replica inserted the active review for this cache key first.
-            if (cached := await self._reuse(cache_key)) is not None:
+            if (cached := await self._reuse(cache_key, settings)) is not None:
                 return cached
             raise
         return review_id
@@ -162,14 +179,12 @@ class ReviewService:
     async def create(self, req: CreateReviewRequest, *, identity: Identity, human_token: str | None = None,
                      human_check: bool = True) -> ReviewCreated:
         """human_check=False for MCP: agents cannot solve a browser challenge (they are rate-limited instead)."""
+        s = await self.effective()
         options = req.options.model_dump()
-        version = self.settings.prompt_version
-        if self.llm_version is not None:
-            version = f"{version}+llm{await self.llm_version()}"
-        cache_key = compute_cache_key(req.topic, req.language, options, version)
+        cache_key = compute_cache_key(req.topic, req.language, options, await self._version())
         if req.callback_url and identity.api_key is None:
             raise Forbidden("callback_url requires an API key")
-        if (cached := await self._reuse(cache_key)) is not None:  # cache hits are free; no webhook for them
+        if (cached := await self._reuse(cache_key, s)) is not None:  # cache hits are free; no webhook for them
             return cached
         if human_check:
             await self._check_human(human_token, identity)
@@ -185,7 +200,7 @@ class ReviewService:
         # submissions all read "queue not full" before any of them is inserted (measured: 100 at once, cap 50).
         try:
             async with (self.capacity.admission() if self.capacity is not None else contextlib.nullcontext()):
-                outcome = await self._admit_and_insert(req, identity, options, cache_key)
+                outcome = await self._admit_and_insert(req, identity, options, cache_key, s)
         except AdmissionBusy as exc:
             raise Unavailable("too many submissions at this moment; please try again in a few seconds", 5,
                               "busy") from exc
@@ -213,10 +228,12 @@ class ReviewService:
 
     async def status(self) -> dict:
         """Public service status: whether new reviews are accepted and the limits callers must respect."""
+        s = await self.effective()
         async with self.session_factory() as session:
             repo = ReviewRepository(session)
             queued, running = await repo.count_by_status("queued"), await repo.count_by_status("running")
-        refusal = await self.capacity.check(queued=queued, running=running) if self.capacity is not None else None
+        refusal = (await self.capacity.check(queued=queued, running=running, settings=s)
+                   if self.capacity is not None else None)
         fields = ReviewOptions.model_fields
 
         def bounds(name: str) -> dict:
@@ -224,7 +241,6 @@ class ReviewService:
             return {"min": next(m.ge for m in meta if getattr(m, "ge", None) is not None),
                     "max": next(m.le for m in meta if getattr(m, "le", None) is not None),
                     "default": fields[name].default}
-        s = self.settings
         return {
             "accepting": refusal is None, "reason": refusal.reason if refusal else None,
             "retry_after": refusal.retry_after if refusal else None,

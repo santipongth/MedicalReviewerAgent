@@ -21,7 +21,8 @@ async def search_papers(q: str = Query(min_length=2, max_length=300), limit: int
     """Literature search (SearXNG academic engines: PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ, OpenAIRE; Europe PMC
     also supplies curated metadata). No LLM involved."""
     try:
-        decision = await deps.limits.hit("papers", identity.rate_key, deps.service.settings.paper_search_rate_limit)
+        decision = await deps.limits.hit("papers", identity.rate_key,
+                                         (await deps.service.effective()).paper_search_rate_limit)
         if not decision.allowed:
             raise RateLimited(decision.retry_after)
         return await deps.papers.search(q, limit)

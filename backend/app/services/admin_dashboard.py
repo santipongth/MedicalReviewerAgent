@@ -59,7 +59,8 @@ async def build_dashboard(session_factory, capacity, settings, *, days: int,
         model["cost_usd"] += cost
 
     judged = week["done"] + week["error"]
-    refusal = await capacity.check(queued=queued, running=running) if capacity is not None else None
+    refusal = (await capacity.check(queued=queued, running=running, settings=settings)
+               if capacity is not None else None)
     return {
         "days": days,
         "since": first_day.isoformat(),
