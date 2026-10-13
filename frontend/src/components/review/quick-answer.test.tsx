@@ -57,6 +57,15 @@ describe("Plan 27 quick answer page", () => {
     expect(evidence.querySelector("[data-quick-overlap]")).toHaveTextContent("งานทบทวน/วิเคราะห์อภิมานอาจซ้อนกับงานวิจัยหลักที่นับรวม");
   });
 
+  it("draws adjacent citation groups both, each keeping its marker's support", () => {
+    const text = "ผู้ใช้เมตฟอร์มินมีความเสี่ยงต่ำกว่า [P3][P1] แต่การศึกษาหนึ่งพบมากขึ้น [P4]";
+    render(<QuickAnswer review={{ ...quickReviewFixture, result: { ...quickReviewFixture.result!, summary: text,
+      support: { ...quickReviewFixture.result!.support!, markers: [["P3"], ["P1"], ["P4"]] } } }} />);
+    expect(document.querySelector("[data-quick-text]")!.textContent).toBe("ผู้ใช้เมตฟอร์มินมีความเสี่ยงต่ำกว่า [1✓][2] แต่การศึกษาหนึ่งพบมากขึ้น [3]");
+    expect(screen.getByRole("link", { name: "อ้างอิง 2" })).toHaveAttribute("href", "#qref-2");
+    expect(document.querySelectorAll("[data-quick-cite]")).toHaveLength(3);
+  });
+
   it("no overlap line when no SR/MA is cited", () => {
     render(<QuickAnswer review={{ ...quickReviewFixture, result: { ...quickReviewFixture.result!, quick: { refs: ["P3", "P1"], papers_read: 4 } } }} />);
     expect(document.querySelector("[data-quick-overlap]")).toBeNull();

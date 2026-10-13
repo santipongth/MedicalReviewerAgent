@@ -76,7 +76,8 @@ function Sentence({ parts, claims, byRef, lang }: {
   return (
     <>
       {parts.map((p, i) => {
-        if (p.kind === "cite") return i === 0 ? cite(p, "lead") : null; // otherwise drawn with the text before it
+        // a group with no text before it (at the start, or right after another group) is drawn alone
+        if (p.kind === "cite") return i === 0 || parts[i - 1].kind !== "text" ? cite(p, `c${i}`) : null;
         const group = cite(parts[i + 1]);
         if (!group) return <ThaiText key={i}>{p.text}</ThaiText>;
         const [head, tail] = splitLastWord(p.text);
