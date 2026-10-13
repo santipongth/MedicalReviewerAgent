@@ -1,6 +1,8 @@
 """MCP server (/mcp, streamable HTTP, stateless): thin adapter over the same service layer as REST."""
 from __future__ import annotations
 
+import asyncio
+import time
 import uuid
 from collections.abc import Callable
 from typing import Any, Literal
@@ -14,6 +16,7 @@ from app import __version__
 from app.api.auth import identity_from
 from app.api.ratelimit import ip_from
 from app.config import Settings
+from app.db.models import TERMINAL_STATUSES
 from app.runtime import AppDeps
 from app.schemas.review import (
     QUICK_CANDIDATE_LIMIT,
@@ -21,7 +24,7 @@ from app.schemas.review import (
     CreateReviewRequest,
     ReviewOptions,
 )
-from app.services.report import render_markdown
+from app.services.report import quick_view, render_markdown
 from app.services.review_service import Identity, RateLimited, Refused, ServiceError, Unavailable
 from app.services.safety import refusal_code_of
 
@@ -43,7 +46,9 @@ rejected or cancelled (done usually takes 1-3 minutes) → on done call get_revi
 review://{{id}}/report.md); on error/rejected/cancelled read the error field (a rejected review also has a refusal_code:
 personal_medical for a question about one person's own symptoms, diagnosis, dose or treatment, declined otherwise).
 A topic that reads as an emergency is not started: start_review returns status "refused" with code "emergency", the
-hotlines (1669, and 1323 for self-harm) and a fixed message to pass on. search_papers answers quick literature
+hotlines (1669, and 1323 for self-harm) and a fixed message to pass on. For a short referenced answer instead of a
+report, call quick_answer(topic) (Plan 27: about {_QUICK_PAPERS} studies read, a 2-4 sentence answer with numbered
+references, usually about a minute; it waits for the answer). search_papers answers quick literature
 questions without starting a review. When the service is busy, start_review fails with a reason (queue_full,
 daily_reviews, daily_budget) and how many seconds to wait. Results are a rapid, automated review of published
 papers, not medical advice."""
@@ -68,6 +73,20 @@ Returns review_id, status, cached
 and status_url; or, for a topic that reads as an emergency, status "refused" with code "emergency", kind, hotlines,
 message and message_th (no review is created). The same topic, language and options within 24 hours (or still running) return that review
 (cached=true). Fails with a reason and a wait time when the service is busy."""
+
+QUICK_WAIT_DEFAULT, QUICK_WAIT_MAX, QUICK_POLL_SECONDS = 60, 90, 2.0
+_sleep = asyncio.sleep  # replaced in tests
+
+QUICK_ANSWER_DOC = f"""Ask a quick question (Plan 27, "ถามเร็ว"; e.g. "does metformin lower colorectal cancer risk?",
+up to 600 characters) and get a short, referenced answer. The agent screens about {_QUICK_POOL} candidates with
+abstracts, reads the {_QUICK_PAPERS} most relevant, and writes 2-4 sentences, each citing the studies it rests on,
+then one line on the certainty (computed) and the main limitation. It waits up to `wait_seconds` (0-{QUICK_WAIT_MAX},
+default {QUICK_WAIT_DEFAULT}) for the answer. Returns review_id, status, cached and status_url; when done also
+`answer` (the [1]..[n] numbers point into `references`), `closing`, `certainty`, `papers_read` and `references`
+(n, ref, citation, links to PubMed, DOI, PubMed Central or ThaiJO). When still running, poll get_review_status and
+call get_review_result. It counts as one review against the same limits as start_review. `study_types` and `year_from`
+work as in start_review. A topic that reads as an emergency returns status "refused" as in start_review. Not
+medical advice."""
 
 
 
@@ -149,12 +168,13 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
                            review_type: Literal["narrative", "slr", "scoping", "meta_analysis"] = "slr",
                            study_types: list[str] | None = None, year_from: int | None = None,
                            mode: Literal["full", "quick"] = "full") -> dict[str, Any]:
+        return await create(topic, ctx, language, {"max_papers": max_papers, "review_type": review_type,
+                                                   "study_types": study_types or [], "year_from": year_from,
+                                                   "mode": mode})
+
+    async def create(topic: str, ctx: Context, language: str, options: dict[str, Any]) -> dict[str, Any]:
         try:
-            req = CreateReviewRequest(topic=topic, language=language,
-                                      options=ReviewOptions.clamped({"max_papers": max_papers,
-                                                                             "review_type": review_type,
-                                                                             "study_types": study_types or [],
-                                                                             "year_from": year_from, "mode": mode}))
+            req = CreateReviewRequest(topic=topic, language=language, options=ReviewOptions.clamped(options))
             created = await get_deps().service.create(req, identity=await identity(ctx), human_check=False)
         except Refused as exc:  # Plan 26: an emergency gets the hotlines, not a review
             return {"review_id": None, "status": "refused", "message": exc.detail, **exc.body()}
@@ -163,6 +183,29 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
         rid = str(created.review_id)
         return {"review_id": rid, "status": created.status, "cached": created.cached,
                 "status_url": f"{settings.public_base_url.rstrip('/')}/api/v1/reviews/{rid}"}
+
+    @mcp.tool(description=QUICK_ANSWER_DOC)
+    async def quick_answer(topic: str, ctx: Context, language: Literal["th", "en"] = "th",
+                           study_types: list[str] | None = None, year_from: int | None = None,
+                           wait_seconds: int = QUICK_WAIT_DEFAULT) -> dict[str, Any]:
+        started = await create(topic, ctx, language, {"mode": "quick", "study_types": study_types or [],
+                                                      "year_from": year_from})
+        if started["review_id"] is None:  # refused (an emergency): nothing to wait for
+            return started
+        rid = uuid.UUID(started["review_id"])
+        deadline = time.monotonic() + max(0, min(wait_seconds, QUICK_WAIT_MAX))
+        review = await get_deps().service.get(rid)
+        while review is not None and review.status not in TERMINAL_STATUSES and time.monotonic() < deadline:
+            await _sleep(QUICK_POLL_SECONDS)
+            review = await get_deps().service.get(rid)
+        if review is None:
+            raise ToolError(f"review {rid} not found")
+        out = {**started, "status": review.status}
+        if review.status == "done" and review.result:
+            return out | quick_view(review.result)
+        if review.status in TERMINAL_STATUSES:
+            return out | {"error": review.error, "refusal_code": refusal_code_of(review.status, review.error)}
+        return out | {"message": "still running; poll get_review_status, then call get_review_result"}
 
     @mcp.tool()
     async def get_review_status(review_id: str) -> dict[str, Any]:

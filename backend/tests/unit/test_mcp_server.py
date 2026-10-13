@@ -29,7 +29,7 @@ async def test_tools_resources_and_prompt_are_listed(mcp):
         names = {t.name for t in await c.list_tools()}
         templates = {t.uri_template for t in await c.list_resource_templates()}
         prompt = await c.get_prompt("literature_review", {"topic": "metformin"})
-    assert names == {"search_papers", "start_review", "get_review_status", "get_review_result"}
+    assert names == {"search_papers", "start_review", "quick_answer", "get_review_status", "get_review_result"}
     assert templates == {"review://{review_id}", "review://{review_id}/report.md"}
     assert "start_review" in prompt.messages[0].content.text
 
