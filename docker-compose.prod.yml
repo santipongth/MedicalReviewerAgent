@@ -1,23 +1,49 @@
 # Production overlay: only the Caddy front is published, so the API's X-Forwarded-For handling can be trusted.
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 # Set SITE_ADDRESS=your.domain (automatic HTTPS), PUBLIC_BASE_URL=https://your.domain (webhook and MCP links; it also
-# makes the admin cookie Secure) and the TURNSTILE_* keys in .env.
+# makes the admin cookie Secure), MCP_ALLOWED_HOSTS (add the domain) and the TURNSTILE_* keys in .env.
+# Point the domain's DNS straight at this host (Cloudflare "DNS only"): behind a CDN proxy every visitor would share
+# the proxy's address, and with it the per-IP rate limits, unless Caddy is told to trust that proxy.
+
+# Every service restarts after a crash or a host reboot, and its Docker logs rotate instead of filling the disk.
+x-prod: &prod
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
 services:
   api:
+    <<: *prod
     ports: !reset []
     environment:
       TRUST_PROXY: "true"   # safe only because nothing but Caddy can reach the API
+  worker:
+    <<: *prod
+  migrate:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
   web:
+    <<: *prod
     ports: !reset []
     environment:
       PUBLIC_API_URL: "/"   # the browser calls the API on its own origin, through Caddy
   postgres:
+    <<: *prod
     ports: !reset []
   searxng:
+    <<: *prod
     ports: !reset []
   redis:
+    <<: *prod
     ports: !reset []
   caddy:
+    <<: *prod
     ports: !override
       - "80:80"
       - "443:443"
