@@ -53,7 +53,7 @@ test("home: the scope form spans the content width, two columns from 1024, even 
   await mockApi(page);
   for (const width of [1440, 1024, 800, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
+    await page.goto("/?mode=full"); // Plan 27: the three steps of the full review
     const box = (await form(page).boundingBox())!;
     const main = (await page.locator("main").boundingBox())!;
     expect(box.width).toBeGreaterThanOrEqual(main.width - 32 - 1); // the full content width inside the 16px gutters
@@ -117,7 +117,7 @@ test("home: disclosure chevrons turn when open, and only switch (no rotation) un
 test("home: at 1440 the form's two columns end close together (no empty band under step 2)", async ({ page }) => {
   await mockApi(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/");
+  await page.goto("/?mode=full");
   const left = (await form(page).getByRole("combobox", { name: /รูปแบบการทบทวน/ }).locator("xpath=..").boundingBox())!; // step 2 picker
   const right = (await form(page).getByRole("group", { name: /หลักฐานและเกณฑ์คัดเลือก/ }).boundingBox())!;
   expect(Math.abs(left.y + left.height - (right.y + right.height))).toBeLessThanOrEqual(48);

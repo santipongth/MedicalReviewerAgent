@@ -6,7 +6,7 @@ import { DESIGN_LABEL } from "@/lib/i18n";
 import { EvidenceBoard } from "./evidence-board";
 import { formatElapsed, type Scene } from "@/lib/agent-scene";
 import { isReviewType, showsDirection } from "@/lib/review-type";
-import { AS_READ_TH, READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
+import { AS_READ_TH, QUICK_DURATION_TH, READING_OR_QUEUED, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { readCounts, STEPS, type RunState, type StepKey } from "@/lib/progress";
 import type { Connection } from "@/lib/use-review";
 import { MilestoneStatus } from "./stage/milestone-status";
@@ -38,9 +38,10 @@ export function clockElapsed(startedAt: string | null | undefined, now: number, 
 }
 
 /** What the agent is doing right now: the agent stage, and a text ledger of steps, counts and each paper read. */
-export function LiveRun({ run, scene, topic, connection, queuePosition, startedAt, reviewType }: {
+export function LiveRun({ run, scene, topic, connection, queuePosition, startedAt, reviewType, quick = false }: {
   run: RunState; scene: Scene; topic: string; connection: Connection; queuePosition?: number | null; startedAt?: string | null;
   reviewType?: unknown; // review.options.review_type (unvalidated JSON)
+  quick?: boolean; // Plan 27: a quick answer, with its own expected time
 }) {
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -80,7 +81,7 @@ export function LiveRun({ run, scene, topic, connection, queuePosition, startedA
                   ? (queuePosition ? `อยู่ในคิวลำดับที่ ${queuePosition} จะเริ่มเมื่อถึงคิว` : "อยู่ในคิว จะเริ่มในไม่ช้า")
                   : null}
             </span>
-            {!waiting && <>ผ่านไป <span className="font-display tabular-nums">{formatElapsed(elapsed)}</span> · {TYPICAL_DURATION_TH}</>}
+            {!waiting && <>ผ่านไป <span className="font-display tabular-nums">{formatElapsed(elapsed)}</span> · {quick ? QUICK_DURATION_TH : TYPICAL_DURATION_TH}</>}
           </p>
           {(connection === "reconnecting" || connection === "polling") && (
             <p role="status" className="w-fit rounded-sm bg-warn-bg px-3 py-1.5 text-sm text-ink">

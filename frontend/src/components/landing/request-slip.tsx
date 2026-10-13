@@ -4,12 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, createReview, getStatus } from "@/lib/api";
 import { AUDIENCES, type Audience } from "@/lib/audience";
-import { TYPICAL_DURATION_TH } from "@/lib/copy";
+import { QUICK_DURATION_TH, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { GLOSS } from "@/lib/glossary";
 import { RC } from "@/lib/i18n-report";
 import { usableLimits } from "@/lib/limits";
+import type { FormStart } from "@/lib/quick";
 import { emergencyKind, type EmergencyKind } from "@/lib/refusal-copy";
-import type { ReviewType, ServiceLimits, ServiceStatus } from "@/lib/types";
+import type { ReviewMode, ReviewType, ServiceLimits, ServiceStatus } from "@/lib/types";
 import { storeAudience, useStoredAudience } from "@/lib/use-audience";
 import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { Gloss } from "../ui/gloss";
@@ -55,6 +56,17 @@ const TOPIC_MAX = 600;
 const EXAMPLES = ["เมตฟอร์มินกับมะเร็งลำไส้ใหญ่", "statins and dementia", "SGLT2 inhibitors and heart failure"];
 /** Plan 26: who the report is for (lib/audience.ts); remembered in this browser, never sent to the API. */
 const audienceName = (a: Audience): string => RC.audience.name[a][0];
+const CANONICAL_TYPES: readonly string[] = STUDY_TYPES.map(([value]) => value);
+
+/** Plan 27: the two ways to ask. The quick answer's paper count comes from /status (`limits.quick`), never from copy. */
+function modeCopy(mode: ReviewMode, quickPapers?: number): { name: string; plain: string } {
+  if (mode === "quick") {
+    return { name: "ถามเร็ว (≈1 นาที)", plain: quickPapers
+      ? `คำตอบสั้น 2–4 ประโยค จากบทคัดย่อของงานวิจัยที่เกี่ยวข้องที่สุด ${quickPapers} ฉบับ พร้อมเลขอ้างอิง`
+      : "คำตอบสั้น 2–4 ประโยค จากบทคัดย่อของงานวิจัยที่เกี่ยวข้องที่สุด พร้อมเลขอ้างอิง" };
+  }
+  return { name: "รีวิวฉบับเต็ม", plain: "รายงานครบ ตารางเปรียบเทียบ กราฟ และระดับหลักฐาน เลือกรูปแบบและจำนวนงานวิจัยได้ ใช้เวลา 1–3 นาที" };
+}
 
 function waitText(seconds?: number): string {
   if (!seconds) return "สักครู่";
@@ -114,16 +126,22 @@ function Tile({ id, checked, onChange, name, term, plain }: {
  * year) and a full-width submit row. One column below 1024px; the DOM order (and so the keyboard order) is unchanged.
  * The paper-count slider's range and start come from /status (`limits`: server-rendered, then the browser's own read);
  * with no usable limits it is not shown and the request leaves the count to the API. */
-export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTopic?: string; limits?: ServiceLimits | null }) {
+export function RequestSlip({ initialTopic, limits: serverLimits, start }: {
+  initialTopic?: string; limits?: ServiceLimits | null;
+  /** Plan 27: starting values from the address (`?mode=full&…`, the quick answer's "ทำรีวิวฉบับเต็ม") */
+  start?: FormStart;
+}) {
   const router = useRouter();
   const id = useId();
-  const [topic, setTopic] = useState(initialTopic ?? "");
-  const [language, setLanguage] = useState<"th" | "en">("th");
+  const startOther = start?.studyTypes?.find((t) => t.startsWith("Other: "))?.slice("Other: ".length) ?? "";
+  const [topic, setTopic] = useState(initialTopic ?? start?.topic ?? "");
+  const [mode, setMode] = useState<ReviewMode>(start?.mode ?? "quick"); // Plan 27: the public default
+  const [language, setLanguage] = useState<"th" | "en">(start?.language ?? "th");
   const [chosenPapers, setChosenPapers] = useState<number | null>(null); // null: the service default
-  const [yearFrom, setYearFrom] = useState("");
-  const [types, setTypes] = useState<string[]>([]);
-  const [otherOn, setOtherOn] = useState(false);
-  const [other, setOther] = useState("");
+  const [yearFrom, setYearFrom] = useState(start?.yearFrom ?? "");
+  const [types, setTypes] = useState<string[]>(() => (start?.studyTypes ?? []).filter((t) => CANONICAL_TYPES.includes(t)));
+  const [otherOn, setOtherOn] = useState(!!startOther);
+  const [other, setOther] = useState(startOther);
   const [reviewType, setReviewType] = useState<ReviewType>("slr");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -166,12 +184,14 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
   const audience = chosenAudience ?? storedAudience;
   const tokenPending = !!siteKey && !token && !widgetFailed;
   const limits = usableLimits(status?.limits) ?? usableLimits(serverLimits);
-  const range = limits?.max_papers;
+  const quick = mode === "quick";
+  const quickPapers = (status?.limits ?? serverLimits)?.quick?.max_papers;
+  const range = quick ? undefined : limits?.max_papers; // a quick answer's count is fixed by the service
   const poolSize = limits?.candidate_limit.default;
   const maxPapers = range ? Math.min(range.max, Math.max(range.min, chosenPapers ?? range.default)) : null;
   const summary = [
     language === "th" ? "ภาษาไทย" : "English",
-    ...(maxPapers != null ? [`วิเคราะห์ ${maxPapers} ฉบับ`] : []),
+    ...(maxPapers != null ? [`วิเคราะห์ ${maxPapers} ฉบับ`] : quick && quickPapers ? [`อ่าน ${quickPapers} ฉบับ`] : []),
     yearFrom ? `ตั้งแต่ปี ${yearFrom}` : "ทุกปี",
   ].join(" · ");
   const otherText = otherOn ? other.trim().slice(0, OTHER_MAX) : "";
@@ -186,7 +206,9 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
     setEmergency(null);
     storeAudience(audience);
     try {
-      const options: Record<string, unknown> = { ...(maxPapers != null ? { max_papers: maxPapers } : {}), review_type: reviewType };
+      // Plan 27: a quick answer sends only its mode and the eligibility; the service fixes its sizes and type
+      const options: Record<string, unknown> = quick ? { mode: "quick" }
+        : { ...(maxPapers != null ? { max_papers: maxPapers } : {}), review_type: reviewType };
       if (yearFrom) options.year_from = Number(yearFrom);
       if (studyTypes.length) options.study_types = studyTypes;
       const body = { topic: topic.trim(), language, options };
@@ -214,9 +236,29 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
         <div className="grid gap-1 border-b border-rule px-4 py-4 sm:px-6">
           <h2 className="font-display text-[1.35rem] font-semibold">กำหนดขอบเขตการทบทวน</h2>
           <p className="text-[0.95rem] text-muted">
-            ตอบ 3 ข้อแล้วกดส่ง <Gloss k="aiAgent" /> จะเริ่มค้นและอ่านให้ ข้อ 2 และ 3 ใช้ค่าเริ่มต้นได้เลยถ้ายังไม่แน่ใจ
+            {quick
+              ? <>เลือกแบบคำตอบ ตอบ 2 ข้อแล้วกดส่ง <Gloss k="aiAgent" /> จะเริ่มค้นและอ่านให้ ข้อ 2 ใช้ค่าเริ่มต้นได้เลยถ้ายังไม่แน่ใจ</>
+              : <>ตอบ 3 ข้อแล้วกดส่ง <Gloss k="aiAgent" /> จะเริ่มค้นและอ่านให้ ข้อ 2 และ 3 ใช้ค่าเริ่มต้นได้เลยถ้ายังไม่แน่ใจ</>}
           </p>
         </div>
+        <fieldset data-mode-choice className="grid gap-2 border-b border-rule px-4 py-4 sm:px-6">
+          <legend className="label float-left mb-2 p-0">ต้องการคำตอบแบบไหน</legend>
+          <div className="clear-left grid gap-2 sm:grid-cols-2">
+            {(["quick", "full"] as const).map((m) => {
+              const copy = modeCopy(m, quickPapers);
+              return (
+                <label key={m} className={TILE}>
+                  <input type="radio" name={`${id}-mode`} value={m} checked={mode === m} onChange={() => setMode(m)}
+                    className="mt-1 size-4 flex-none accent-primary" aria-describedby={`${id}-mode-${m}`} />
+                  <span className="grid min-w-0 gap-0.5">
+                    <span className="font-display font-semibold leading-snug">{copy.name}</span>
+                    <span id={`${id}-mode-${m}`} className="text-[0.85rem] leading-snug text-muted">{segmented(copy.plain)}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
         <div className="grid gap-8 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-0 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           {/* From 1024px the question box grows to fill the column, so steps 1-2 end level with step 3's tiles. */}
           <div className="flex min-w-0 flex-col gap-7 lg:pr-8">
@@ -235,13 +277,15 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
                 {topic.length > TOPIC_MAX - 100 && <span className="font-display tabular-nums">{topic.length}/{TOPIC_MAX}</span>}
               </p>
             </div>
-            <div className="grid gap-2">
-              <label className={STEP_HEADING} htmlFor={`${id}-type`}><StepNo n={2} />รูปแบบการทบทวน</label>
-              <ReviewTypePicker id={`${id}-type`} value={reviewType} onChange={setReviewType} available={status?.limits?.review_types} />
-            </div>
+            {!quick && ( // a quick answer is always a short systematic search (Plan 27)
+              <div className="grid gap-2">
+                <label className={STEP_HEADING} htmlFor={`${id}-type`}><StepNo n={2} />รูปแบบการทบทวน</label>
+                <ReviewTypePicker id={`${id}-type`} value={reviewType} onChange={setReviewType} available={status?.limits?.review_types} />
+              </div>
+            )}
           </div>
           <fieldset className="grid min-w-0 content-start gap-3 lg:border-l lg:border-rule lg:pl-8">
-            <legend className={`${STEP_HEADING} mb-2`}><StepNo n={3} />หลักฐานและเกณฑ์คัดเลือก</legend>
+            <legend className={`${STEP_HEADING} mb-2`}><StepNo n={quick ? 2 : 3} />หลักฐานและเกณฑ์คัดเลือก</legend>
             <p className="text-[0.95rem] leading-[1.7] text-muted">ชนิดงานวิจัยที่ต้องการ เลือกได้หลายแบบ · <span className="nw">ไม่เลือก = ไม่จำกัดชนิดงานวิจัย</span></p>
             {/* Equal-height rows only where the tiles form a grid (640–1023px); a one-column list keeps natural heights. */}
             <div className="grid gap-2 sm:auto-rows-fr sm:grid-cols-2 lg:auto-rows-auto lg:grid-cols-1">
@@ -319,7 +363,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
           </fieldset>
         </details>
         <div data-testid="submit-row" className="flex flex-col gap-3 border-t border-rule px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-[0.92rem] text-muted">{TYPICAL_DURATION_TH} และจะเห็นว่าระบบตีความคำถามอย่างไรก่อนเริ่มค้น</p>
+          <p className="text-[0.92rem] text-muted">{quick ? QUICK_DURATION_TH : TYPICAL_DURATION_TH} และจะเห็นว่าระบบตีความคำถามอย่างไรก่อนเริ่มค้น</p>
           <button type="submit" disabled={busy || closed || (!!siteKey && !token)}
             aria-describedby={tokenPending ? `${id}-wait` : undefined}
             className="min-h-12 w-full flex-none rounded-sm border border-primary bg-primary px-8 font-display text-[1.05rem] font-semibold text-on-primary hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto">

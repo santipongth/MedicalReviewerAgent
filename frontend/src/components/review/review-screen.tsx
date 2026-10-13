@@ -76,5 +76,5 @@ export function ReviewScreen({ id }: { id: string }) {
     return <Report review={review} initialAudience={readAudience()} onAudience={saveAudience} />;
   }
   return <LiveRun run={run} scene={scene} topic={topic} connection={connection} queuePosition={queuePosition} startedAt={review?.started_at}
-    reviewType={review?.options?.review_type} />;
+    reviewType={review?.options?.review_type} quick={isQuickReview(review)} />;
 }

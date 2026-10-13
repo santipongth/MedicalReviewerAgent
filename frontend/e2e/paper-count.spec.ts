@@ -41,7 +41,7 @@ test("home: the paper-count slider runs over /status limits and the chosen count
   await mockApi(page, {
     "POST /api/v1/reviews": (route) => { body = route.request().postDataJSON(); return json(route, 202, { review_id: RID, status: "queued", cached: false }); },
   });
-  await page.goto("/");
+  await page.goto("/?mode=full"); // Plan 27: the paper count belongs to the full review
   await form(page).getByText("ตัวเลือกเพิ่มเติม").click();
   const s = slider(page);
   await expect(s).toHaveAttribute("min", String(OPEN_STATUS.limits.max_papers.min));
@@ -85,7 +85,7 @@ for (const [name, width, height, scheme] of [["slider-1440", 1440, 1000, "light"
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     await mockApi(page);
-    await page.goto("/");
+    await page.goto("/?mode=full");
     await form(page).getByText("ตัวเลือกเพิ่มเติม").click();
     await expect(slider(page)).toBeVisible();
     await page.evaluate(() => document.fonts.ready);

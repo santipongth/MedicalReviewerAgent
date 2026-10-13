@@ -8,5 +8,6 @@ export const STATUS_FIXTURE: ServiceStatus = {
     review_types: ["narrative", "slr", "scoping", "meta_analysis"],
     max_papers: { min: 5, max: 50, default: 30 }, candidate_limit: { min: 20, max: 120, default: 120 },
     max_queued_reviews: 50, sse_max_per_ip: 5,
+    modes: ["full", "quick"], quick: { max_papers: 8, candidate_limit: 30, review_type: "slr" }, // Plan 27
   },
 };

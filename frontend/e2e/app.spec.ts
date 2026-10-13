@@ -367,7 +367,7 @@ test("landing: the scope form sends the chosen review_type", async ({ page }) =>
   await mockApi(page, {
     "POST /api/v1/reviews": (route) => { body = route.request().postDataJSON(); return json(route, 202, { review_id: RID, status: "queued", cached: false }); },
   });
-  await page.goto("/");
+  await page.goto("/?mode=full");
   const select = page.getByRole("combobox", { name: /รูปแบบการทบทวน/ });
   await expect(select).toHaveValue("slr");
   await select.selectOption("scoping");
@@ -383,7 +383,7 @@ test("landing: choosing the meta-analysis type sends review_type=meta_analysis",
   await mockApi(page, {
     "POST /api/v1/reviews": (route) => { body = route.request().postDataJSON(); return json(route, 202, { review_id: RID, status: "queued", cached: false }); },
   });
-  await page.goto("/");
+  await page.goto("/?mode=full");
   await page.getByRole("combobox", { name: /รูปแบบการทบทวน/ }).selectOption("meta_analysis");
   await page.getByLabel(/คำถามหรือวัตถุประสงค์/).fill("metformin colorectal cancer");
   await page.getByRole("button", { name: "ส่งให้เอเจนต์ทบทวน" }).click();
@@ -454,7 +454,7 @@ test("axe: landing with the review-type picker at 1440 and 390, light and dark",
   await mockApi(page);
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
+    await page.goto("/?mode=full");
     await expect(page.getByRole("combobox", { name: /รูปแบบการทบทวน/ })).toBeVisible();
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await noSeriousA11y(page);

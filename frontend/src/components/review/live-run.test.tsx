@@ -252,3 +252,15 @@ describe("LiveRun progress details", () => {
     expect(container.querySelector(".num-verified")).toBeNull();
   });
 });
+
+describe("LiveRun for a quick answer (Plan 27)", () => {
+  it("states the quick answer's expected time instead of the review's", () => {
+    const { run, scene } = statesOf([["started", {}], ["screening", { batch: 10 }]]);
+    const { unmount } = render(<LiveRun run={run} scene={scene} topic="x" connection="open" quick />);
+    expect(document.body.textContent).toContain("ปกติใช้ราว 1 นาที");
+    expect(document.body.textContent).not.toContain("ปกติใช้ 1–3 นาที");
+    unmount();
+    render(<LiveRun run={run} scene={scene} topic="x" connection="open" />);
+    expect(document.body.textContent).toContain("ปกติใช้ 1–3 นาที");
+  });
+});
