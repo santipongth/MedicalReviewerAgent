@@ -206,7 +206,7 @@ audience switch and above the bottom line, in every view, only when the review h
 | The guard omits `category` (a provider without strict schemas) | Pydantic fills `research`; `allowed` still decides as before |
 | The guard answers `allowed: true` with `personal_medical` | Refused as personal (the category wins) |
 | The guard answers `allowed: false` with `research` | Rejected with the model's reason (`declined`) |
-| The guard refuses or raises | As today (`LLMRefusal` → rejected "declined by the safety filter"; other errors fail the review) |
+| The guard refuses or raises | A provider `LLMRefusal` → rejected with the fixed `personal_medical` message (1669 and 1323; final review A1); other errors fail the review |
 | A client that predates `refusal_code` / `code` | Reads `status: "rejected"` and `error` as before |
 | The live page misses the event's `code` | `review.refusal_code`, then the `error` prefix, still select the personal page |
 | Storage blocked (private window), the offline file | The view falls back to `public`; a switch still works for the page |
