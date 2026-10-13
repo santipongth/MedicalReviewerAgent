@@ -213,6 +213,24 @@ class LlmConfigVersion(Base):
     changes: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
 
 
+class LlmProviderKey(Base):
+    """An LLM provider's API key entered in the admin console (Plan 23e), one row per provider name. Never part of a
+    config version: a restore must not bring an old key back. `ciphertext` is a Fernet token of
+    {"v": 1, "provider", "origin", "key"} under LLM_KEYS_SECRET; a delete keeps the row with `ciphertext`, `last4` and
+    `bound_origin` null (a tombstone), so `revision` (the newest of which is the keys version workers follow) never
+    goes backwards."""
+
+    __tablename__ = "llm_provider_keys"
+
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    bound_origin: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    revision: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_by: Mapped[str] = mapped_column(String(64))
+
+
 class ConfigVersion(Base):
     """One saved runtime document (Plan 23c): kind "settings" (the admin's overrides of env settings) or "glossary"
     (the Thai glossary). Never updated or deleted; the newest version of a kind is in use, and while a kind has none

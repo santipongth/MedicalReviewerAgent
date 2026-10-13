@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
-import { ROLE_ORDER, copyPreset, deletePreset, setActive, setRole } from "@/lib/admin-models";
+import { KIND_LABEL, ROLE_ORDER, copyPreset, deletePreset, providerKind, setActive, setRole } from "@/lib/admin-models";
 import type { LlmConfigDoc, LlmRoleSpec, ProbeResult } from "@/lib/admin-types";
 import { ConfirmButton } from "./confirm-button";
 import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT, TABLE_REGION, TD, TH } from "./ui";
@@ -38,6 +38,45 @@ function FallbackInput({ role, models, onChange }: { role: string; models: strin
   );
 }
 
+/** Plan 23e: a role's provider, picked from the draft's providers ("" = the default provider), and its prices when the
+ * provider is not OpenRouter (USD per 1M tokens; required there, so the review cost cap counts the calls). An Anthropic
+ * model the code prices already shows that price as the placeholder. */
+function ProviderCell({ role, spec, draft, knownPrices, edit }: {
+  role: string; spec: LlmRoleSpec; draft: LlmConfigDoc; knownPrices?: Record<string, [number, number]>;
+  edit: (role: string, patch: Partial<LlmRoleSpec>) => void;
+}) {
+  const names = Object.keys(draft.providers);
+  const chosen = spec.provider ?? "";
+  const options = chosen && !names.includes(chosen) ? [...names, chosen] : names;
+  const effective = chosen || draft.default_provider || "openrouter";
+  const kind = providerKind(effective, draft.providers[effective]);
+  const known = kind === "anthropic" ? knownPrices?.[spec.model] : undefined;
+  const unpriced = kind !== "openrouter" && !known && (spec.price_in == null || spec.price_out == null);
+  return (
+    <div className="grid gap-1">
+      <select aria-label={`provider ของ ${role}`} value={chosen} className={`${INPUT} w-44`}
+        onChange={(e) => edit(role, { provider: e.target.value || null })}>
+        <option value="">{`ค่าเริ่มต้น (${draft.default_provider ?? "openrouter"})`}</option>
+        {options.map((name) => {
+          const k = providerKind(name, draft.providers[name]);
+          return <option key={name} value={name}>{`${name} (${KIND_LABEL[k] ?? k})`}</option>;
+        })}
+      </select>
+      {kind !== "openrouter" && (
+        <div className="grid grid-cols-2 gap-1">
+          <input aria-label={`ราคา input ของ ${role} (USD ต่อ 1M token)`} type="number" min={0} max={1000} step="any"
+            className={`${INPUT} w-24`} placeholder={known ? String(known[0]) : "input"} value={spec.price_in ?? ""}
+            onChange={(e) => edit(role, { price_in: num(e.target.value) ?? null })} />
+          <input aria-label={`ราคา output ของ ${role} (USD ต่อ 1M token)`} type="number" min={0} max={1000} step="any"
+            className={`${INPUT} w-24`} placeholder={known ? String(known[1]) : "output"} value={spec.price_out ?? ""}
+            onChange={(e) => edit(role, { price_out: num(e.target.value) ?? null })} />
+        </div>
+      )}
+      {unpriced && <span className="text-sm text-err">ต้องใส่ราคา input และ output (USD ต่อ 1M token)</span>}
+    </div>
+  );
+}
+
 function ProbeLine({ result }: { result: ProbeResult }) {
   return result.ok
     ? <span className="text-sm">{`ใช้ได้ · ${result.latency_ms} ms · $${result.cost_usd.toFixed(4)}`}</span>
@@ -45,8 +84,10 @@ function ProbeLine({ result }: { result: ProbeResult }) {
 }
 
 /** The presets tab: pick a preset, edit its roles in the draft, copy, delete, make it active, test a role. */
-export function ModelsPresets({ draft, setDraft, fail }: {
+export function ModelsPresets({ draft, setDraft, fail, knownPrices }: {
   draft: LlmConfigDoc; setDraft: (d: LlmConfigDoc) => void; fail: (e: unknown) => string;
+  /** Plan 23e: the code's prices of direct Anthropic models, by model id (USD per 1M tokens, input and output). */
+  knownPrices?: Record<string, [number, number]>;
 }) {
   const [preset, setPreset] = useState(draft.active_preset);
   const [newName, setNewName] = useState("");
@@ -131,8 +172,7 @@ export function ModelsPresets({ draft, setDraft, fail }: {
                   <th scope="row" className={`${TD} font-display`}>{role}</th>
                   <td className={TD}><input aria-label={`model ของ ${role}`} value={spec.model} className={INPUT}
                     onChange={(e) => edit(role, { model: e.target.value })} /></td>
-                  <td className={TD}><input aria-label={`provider ของ ${role}`} value={spec.provider ?? ""} className={`${INPUT} w-32`}
-                    placeholder={draft.default_provider ?? "openrouter"} onChange={(e) => edit(role, { provider: e.target.value || null })} /></td>
+                  <td className={TD}><ProviderCell role={role} spec={spec} draft={draft} knownPrices={knownPrices} edit={edit} /></td>
                   <td className={TD}><input aria-label={`max_tokens ของ ${role}`} type="number" min={1} max={128000} className={`${INPUT} w-28`}
                     value={spec.max_tokens ?? ""} onChange={(e) => edit(role, { max_tokens: num(e.target.value) })} /></td>
                   <td className={TD}><input aria-label={`temperature ของ ${role}`} type="number" min={0} max={2} step={0.1} className={`${INPUT} w-24`}

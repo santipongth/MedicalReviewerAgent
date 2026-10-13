@@ -12,8 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import AdminAudit
 from app.services.admin_auth import AdminPrincipal
 
-SECRET_FIELDS = frozenset({"password", "password_hash", "key", "key_hash", "raw_key", "token"})
-SECRET_SUFFIXES = ("password", "token", "secret", "_hash")
+# Plan 23e: api_key, ciphertext and llm_keys_secret too, a backstop for any caller that passes one (the key routes
+# never do: their rows hold provider, kind, origin and revision only)
+SECRET_FIELDS = frozenset({"password", "password_hash", "key", "key_hash", "raw_key", "token", "api_key", "ciphertext",
+                           "llm_keys_secret"})
+SECRET_SUFFIXES = ("password", "token", "secret", "_hash", "api_key")
 
 
 def _is_secret(name: Any) -> bool:

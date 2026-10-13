@@ -101,7 +101,7 @@ def _rebuild(ctx: dict, runtime: Runtime, build_graph_fn):
         elif ctx.get("llm_resolved") is not None:
             sem, size = asyncio.Semaphore(want), want
             llms = build_llms(settings, ctx.get("catalog"), resolved=ctx["llm_resolved"], sem=sem,
-                              config_version=getattr(llms, "config_version", "file"))
+                              config_version=getattr(llms, "config_version", "file"), keys=ctx.get("llm_keys"))
     deps = dataclasses.replace(ctx["graph_deps"], settings=settings, llms=llms, glossary=runtime.glossary,
                                sources=runtime.sources)
     return deps, build_graph_fn(deps, checkpointer=getattr(ctx["graph"], "checkpointer", None)), sem, size

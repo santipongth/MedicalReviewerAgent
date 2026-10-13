@@ -5,7 +5,13 @@ rebuilds its LLMs (on the worker's current semaphore, ctx["llm_sem"], which a Pl
 for reviews that start afterwards; the catalog the API sees) and graph (same checkpointer). Runners already
 holding the old graph keep it, so a review never switches models mid-way. A configuration that fails to build keeps the
 old models and is reported. Each worker also re-reports its state on every poll (a heartbeat), so `loaded_at` in
-LOADED_KEY means "last seen"."""
+LOADED_KEY means "last seen".
+
+Plan 23e: the provider keys entered in the console are a second value the worker follows, the keys revision
+(KEYS_VERSION_KEY, mirrored from llm_provider_keys like the config id). A change of either rebuilds the LLMs, under the
+same lock, from the DB's config and key ring; a keys-only change keeps the config, its label and the semaphore. A key
+ring that cannot be read keeps the old LLMs and is reported as keys_error; so are stored keys this worker cannot decrypt
+(a missing or changed LLM_KEYS_SECRET). A running review keeps the key it started with."""
 from __future__ import annotations
 
 import asyncio
@@ -20,11 +26,14 @@ from app.logging import get_logger
 from app.services import model_catalog
 from app.services.llm import build_llms
 from app.services.llm_config import ResolvedLLMConfig, load_llm_config
+from app.services.llm_keys import KeyRing, load_keyring
 from app.services.llm_store import (
+    KEYS_VERSION_KEY,
     LLM_VERSION_KEY,
     LOADED_KEY,
     load_effective,
     publish_version,
+    reconcile_keys_version,
     reconcile_version_key,
     report_loaded,
 )
@@ -58,37 +67,70 @@ async def initial_llm_config(session_factory, settings) -> tuple[ResolvedLLMConf
         return load_llm_config(settings.llm_config_path, settings.llm_preset), "file", str(exc)
 
 
+def keys_label(revision: int | None) -> str:
+    """The keys revision as a worker reports it: "none" while no key was ever stored."""
+    return "none" if revision is None else str(revision)
+
+
+def keys_problem(ring: KeyRing) -> str | None:
+    """The heartbeat's keys_error for stored keys this worker cannot read (never a key, only provider names)."""
+    if not ring.unreadable:
+        return None
+    why = ring.state if ring.state != "ok" else "unreadable"
+    return f"{why}: stored keys cannot be read for {', '.join(sorted(ring.unreadable))}"
+
+
+class _KeysUnreadable(Exception):
+    """The key ring could not be loaded (the DB failed while reading it)."""
+
+
+async def _load(ctx: dict, settings):
+    """The DB's effective config and key ring, read together."""
+    async with ctx["session_factory"]() as session:
+        effective = await load_effective(session, settings)
+        try:
+            ring = await load_keyring(session, settings)
+        except Exception as exc:
+            raise _KeysUnreadable(str(exc)) from exc
+    return effective, ring
+
+
 async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph, poll: bool = False) -> bool:
-    """Rebuild the models when the active version changed. True when this call switched to a new version.
-    A job start trusts the Redis key (one cheap GET). A poll reads the DB's newest id instead, repairs the key to match
-    and clears a load error that is stale because the worker already runs the DB's active id."""
+    """Rebuild the models when the active version or (Plan 23e) the keys revision changed. True when this call
+    switched. A job start trusts the Redis keys (one MGET). A poll reads the DB's newest ids instead, repairs the keys
+    to match and clears a load error that is stale because the worker already runs the DB's active id."""
     redis = ctx["events_redis"]
+    have_keys = ctx.get("llm_keys_version") or "none"
     try:
         if poll:
             newest = await reconcile_version_key(redis, ctx["session_factory"])
             wanted = str(newest) if newest is not None else "file"
+            wanted_keys = keys_label(await reconcile_keys_version(redis, ctx["session_factory"]))
             if wanted == ctx.get("llm_version"):
                 ctx["llm_error"] = None
+            if wanted_keys == have_keys and ctx.get("llm_keys") is not None:
+                # the DB answered and this worker runs its revision: a past read failure is over
+                ctx["llm_keys_error"] = keys_problem(ctx["llm_keys"])
         else:
-            wanted = await redis.get(LLM_VERSION_KEY)
+            wanted, wanted_keys = await redis.mget(LLM_VERSION_KEY, KEYS_VERSION_KEY)  # a missing key is no news
     except Exception as exc:  # noqa: BLE001 - keep the current models while Redis or the DB is unreachable
         if poll:
             log.warning("llm_poll_reconcile_failed", error=str(exc))
         return False
-    if not wanted or wanted == ctx.get("llm_version"):
+    config_moved = bool(wanted) and wanted != ctx.get("llm_version")
+    keys_moved = bool(wanted_keys) and wanted_keys != have_keys
+    if not config_moved and not keys_moved:
         return False
     async with ctx["llm_lock"]:
-        if wanted == ctx.get("llm_version"):
-            return False
         settings = ctx["settings"]
         try:
-            async with ctx["session_factory"]() as session:
-                effective = await load_effective(session, settings)
-            if effective.source == "db" and effective.active_id != wanted:
+            effective, ring = await _load(ctx, settings)
+            if config_moved and effective.source == "db" and effective.active_id != wanted:
                 # Redis holds a stale id (a lost or out-of-order publish): put the DB's newest back so the next poll
                 # sees no change. publish_version only ever raises the key.
                 await publish_version(redis, effective.version)
-            if effective.active_id == ctx.get("llm_version"):
+            same_keys = keys_label(ring.revision) == (ctx.get("llm_keys_version") or "none")
+            if effective.active_id == ctx.get("llm_version") and same_keys:
                 return False  # Redis and the DB disagree but this worker already runs what the DB says
             resolved = effective.resolve()
             catalog = None
@@ -99,9 +141,14 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph, poll: bool = Fa
                 # only when that is unavailable, so a model added since startup is built with its real capabilities.
                 catalog = await cached_catalog(redis, load_live_catalog) or ctx.get("catalog")
                 llms = build_llms(settings, catalog, resolved=resolved, sem=ctx["llm_sem"],
-                                  config_version=effective.label)
+                                  config_version=effective.label, keys=ring)
                 deps = dataclasses.replace(ctx["graph_deps"], llms=llms)
                 graph = build_graph_fn(deps, checkpointer=getattr(ctx["graph"], "checkpointer", None))
+        except _KeysUnreadable as exc:  # keep the models and keys already loaded
+            log.error("llm_keys_reload_failed", error=str(exc))
+            ctx["llm_keys_error"] = f"could not read the provider keys: {exc}"[:300]
+            await report_state(ctx)
+            return False
         except Exception as exc:  # noqa: BLE001 - keep serving with the models already loaded
             log.error("llm_reload_failed", wanted=wanted, error=str(exc))
             ctx["llm_error"] = str(exc)
@@ -109,10 +156,11 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph, poll: bool = Fa
             return False
         ctx["graph_deps"], ctx["graph"], ctx["llm_version"] = deps, graph, effective.active_id
         ctx["llm_preset"], ctx["llm_error"], ctx["llm_resolved"] = resolved.preset, None, resolved
+        ctx["llm_keys"], ctx["llm_keys_version"], ctx["llm_keys_error"] = ring, keys_label(ring.revision), keys_problem(ring)
         if catalog is not None:
             ctx["catalog"] = catalog
         await report_state(ctx)
-        log.info("llm_reloaded", version=effective.active_id, preset=resolved.preset)
+        log.info("llm_reloaded", version=effective.active_id, preset=resolved.preset, keys=ctx["llm_keys_version"])
         return True
 
 
@@ -125,7 +173,9 @@ async def report_state(ctx: dict) -> None:
     `loaded_at` therefore means "last seen", not "loaded at"."""
     preset = ctx.get("llm_preset") or getattr(getattr(ctx.get("graph_deps"), "llms", None), "preset", "") or ""
     extra = {"settings": ctx.get("settings_version") or "env", "glossary": ctx.get("glossary_version") or "file",
-             "sources": ctx.get("sources_version") or "env", "runtime_error": ctx.get("runtime_error")}
+             "sources": ctx.get("sources_version") or "env", "runtime_error": ctx.get("runtime_error"),
+             # Plan 23e: the provider-key revision this worker built its LLMs with, and why stored keys are unusable
+             "keys": ctx.get("llm_keys_version") or "none", "keys_error": ctx.get("llm_keys_error")}
     await report_loaded(ctx["events_redis"], worker_id(), ctx.get("llm_version") or "file", preset,
                         error=ctx.get("llm_error"), extra=extra)
 
@@ -145,8 +195,22 @@ async def poll_llm_config(ctx: dict, interval: float = POLL_SECONDS) -> None:
 def _wire(ctx: dict, resolved: ResolvedLLMConfig | None, active_id: str, checkpointer, build_graph_fn):
     deps = build_graph_deps(ctx["settings"], ctx["http"], ctx["events_redis"], ctx["catalog"], resolved=resolved,
                             sem=ctx["llm_sem"], config_version=f"db:{active_id}" if active_id != "file" else "file",
-                            glossary=ctx.get("glossary"), sources=ctx.get("sources"))
+                            glossary=ctx.get("glossary"), sources=ctx.get("sources"), keys=ctx.get("llm_keys"))
     return deps, build_graph_fn(deps, checkpointer=checkpointer)
+
+
+async def initial_keys(ctx: dict) -> None:
+    """Worker startup (Plan 23e): the console's key ring. A DB that cannot be read starts on env keys only (no ring),
+    reports keys_error and leaves the revision unknown, so the first poll loads the ring."""
+    try:
+        async with ctx["session_factory"]() as session:
+            ring = await load_keyring(session, ctx["settings"])
+    except Exception as exc:  # noqa: BLE001
+        log.error("llm_keys_load_failed", error=str(exc))
+        ctx["llm_keys"], ctx["llm_keys_version"] = None, "unknown"
+        ctx["llm_keys_error"] = f"could not read the provider keys: {exc}"[:300]
+        return
+    ctx["llm_keys"], ctx["llm_keys_version"], ctx["llm_keys_error"] = ring, keys_label(ring.revision), keys_problem(ring)
 
 
 async def init_llms(ctx: dict, catalog, checkpointer, *, build_graph_fn=build_graph) -> None:
@@ -159,6 +223,7 @@ async def init_llms(ctx: dict, catalog, checkpointer, *, build_graph_fn=build_gr
     ctx["llm_sem"] = asyncio.Semaphore(max(1, settings.llm_concurrency))
     ctx["llm_sem_size"] = max(1, settings.llm_concurrency)  # Plan 23c: refresh_runtime compares it with the setting
     ctx["llm_lock"] = asyncio.Lock()
+    await initial_keys(ctx)
     resolved, active_id, error = await initial_llm_config(ctx["session_factory"], settings)
     try:
         deps, graph = _wire(ctx, resolved, active_id, checkpointer, build_graph_fn)

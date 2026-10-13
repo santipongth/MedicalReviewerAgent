@@ -44,6 +44,7 @@ from app.services.harness_runs import (
     set_config,
 )
 from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
+from app.services.llm_keys import load_keyring
 from app.services.llm_store import load_effective
 from app.services.llm_validate import unpriced_roles
 from app.services.model_catalog import cached_catalog
@@ -79,13 +80,14 @@ async def build_eval_deps(ctx: dict):
     base = ctx["settings"]
     async with ctx["session_factory"]() as session:
         effective = await load_effective(session, base)
+        keys = await load_keyring(session, base)  # Plan 23e: the console's provider keys, as a review worker uses them
     resolved = effective.resolve()  # an LLM_PRESET that names no preset fails here, before anything is spent
     runtime = await load_runtime(ctx["session_factory"], base)
     catalog = await cached_catalog(ctx["redis_client"], load_live_catalog)
     if unpriced := unpriced_roles(resolved, catalog):
         raise UnpricedModels(unpriced)
     deps = build_graph_deps(runtime.settings, ctx["http"], catalog=catalog, resolved=resolved,
-                            config_version=effective.label, glossary=runtime.glossary)
+                            config_version=effective.label, glossary=runtime.glossary, keys=keys)
     deps.openalex, deps.mcp, deps.thaijo = None, None, None  # a replay never calls TCI
     return deps, {"llm_config": effective.label, "settings_version": runtime.settings_version,
                   "glossary": runtime.glossary.label}

@@ -165,7 +165,7 @@ async def test_test_call_resolves_the_draft_rate_limits_and_audits(client, sessi
     h = await admin_headers(client, session_factory)
     seen = []
 
-    async def fake_probe(role, settings, catalog=None):
+    async def fake_probe(role, settings, catalog=None, keys=None):
         seen.append((role.role, role.spec.model))
         return {"ok": True, "latency_ms": 5, "cost_usd": 0.0001, "model": role.spec.model, "error": None}
 
@@ -198,6 +198,13 @@ def provider_draft(name="openrouter", **fields):
     return out
 
 
+def free_draft(name="deepseek", **fields):
+    """MINIMAL plus a provider with a free name (Plan 23e), declared only."""
+    out = copy.deepcopy(MINIMAL)
+    out["providers"][name] = {"kind": "openai_compatible", "base_url": "https://api.deepseek.com/v1", **fields}
+    return out
+
+
 def nested(depth):
     top, inner = {}, {}
     top["a"] = inner
@@ -211,7 +218,7 @@ def nested(depth):
 def probe_calls(monkeypatch):
     calls = []
 
-    async def fake_probe(role, settings, catalog=None):
+    async def fake_probe(role, settings, catalog=None, keys=None):
         calls.append((role.role, role.spec.model))
         return {"ok": True, "latency_ms": 5, "cost_usd": 0.0001, "model": role.spec.model, "error": None}
 
@@ -237,6 +244,17 @@ HOSTILE_PROVIDERS = {
     "anthropic-foreign-host": provider_draft("anthropic", base_url="https://evil.example"),
     "free-host-with-another-key": provider_draft("openai_compatible", base_url="https://evil.example/v1",
                                                  api_key_env="OPENROUTER_API_KEY"),
+    # Plan 23e: providers with free names
+    "free-name-database-url": free_draft(api_key_env="DATABASE_URL"),
+    "free-name-openalex-key": free_draft(api_key_env="OPENALEX_API_KEY"),
+    "free-name-master-secret": free_draft(api_key_env="LLM_KEYS_SECRET"),
+    "free-name-another-providers-key": free_draft(api_key_env="LLM_KEY_OTHER"),
+    "openrouter-renamed-kind": provider_draft(kind="openai_compatible", base_url="https://evil.example/v1"),
+    "openrouter-kind-under-another-name": free_draft("cheapo", kind="openrouter", base_url=None),
+    "free-name-http-to-a-public-host": free_draft(base_url="http://api.deepseek.com/v1"),
+    "free-name-private-address": free_draft(base_url="https://10.0.0.5/v1"),
+    "free-name-link-local": free_draft(base_url="https://169.254.169.254/latest"),
+    "free-name-userinfo-lookalike": free_draft(base_url="https://api.deepseek.com@evil.example/v1"),
 }
 
 
@@ -668,11 +686,16 @@ async def test_validate_warns_about_roles_whose_price_is_unknown(client, session
     draft["presets"]["cheap"]["guard"] = {"model": "claude-unknown-9", "provider": "anthropic"}
     draft["presets"]["cheap"]["planner"] = {"model": "claude-haiku-4-5", "provider": "anthropic"}  # priced
     checked = (await client.post(f"{BASE}/llm-config/validate", json={"config": draft}, headers=h)).json()
+    # Plan 23e: a direct Anthropic model without a known price is an error now, not a warning
+    assert checked["ok"] is False and checked["errors"] == [
+        ("presets.cheap.guard: price_in and price_out (USD per 1M tokens) are required for provider 'anthropic' "
+         "(anthropic); the review cost cap cannot count its calls otherwise")]
+    draft["presets"]["cheap"]["guard"].update(price_in=3, price_out=15)
+    checked = (await client.post(f"{BASE}/llm-config/validate", json={"config": draft}, headers=h)).json()
     assert checked["ok"] is True
     unpriced = [w for w in checked["warnings"] if "no known price" in w]
-    assert unpriced[0] == "cheap: no known price for guard: the review cost cap cannot count their calls"
-    assert unpriced[1].startswith("better: no known price for guard, planner, screener")  # not in the catalog
-    assert len(unpriced) == 2
+    assert unpriced[0].startswith("better: no known price for guard, planner, screener")  # not in the catalog
+    assert len(unpriced) == 1
 
 
 async def test_state_shows_a_saved_version_that_no_longer_parses_and_restore_still_works(client, session_factory):

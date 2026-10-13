@@ -1,8 +1,8 @@
 import type {
   AdminKey, AdminMe, AdminReview, AdminStatus, AuditEntry, CatalogModel, CatalogQuery, Dashboard, FieldError, GlossaryReport, GlossaryState,
   GlossaryTerm, HarnessCompare, HarnessReportItem, HarnessResultItem, HarnessRun, HarnessStartBody, HarnessState, LlmConfigDoc,
-  LlmConfigState, LlmDraft, LlmSaveResult, LlmVersion, MintedKey, Page, ProbeResult, RuntimeKind, RuntimeVersion, SavedVersion,
-  SettingValue, SettingsReport, SettingsState, SourcesReport, SourcesState, ValidateReport,
+  LlmConfigState, LlmDraft, LlmKeysState, LlmKeysWrite, LlmSaveResult, LlmVersion, MintedKey, Page, ProbeResult, RuntimeKind,
+  RuntimeVersion, SavedVersion, SettingValue, SettingsReport, SettingsState, SourcesReport, SourcesState, TestBody, ValidateReport,
 } from "./admin-types";
 
 /** Admin calls are relative and same-origin: the session cookie (Path=/api/v1/admin) never leaves the site, and Caddy
@@ -124,8 +124,11 @@ export const adminApi = {
     const qs = p.toString();
     return call<{ items: CatalogModel[]; available: boolean }>(`/llm-models${qs ? `?${qs}` : ""}`);
   },
-  testLlm: (body: Partial<LlmDraft> & { preset?: string; role: string }) =>
-    call<ProbeResult>("/llm-models/test", send("POST", body)),
+  testLlm: (body: TestBody) => call<ProbeResult>("/llm-models/test", send("POST", body)),
+  /** Plan 23e: provider keys. The key travels only in the PUT body and is never answered back. */
+  llmKeys: () => call<LlmKeysState>("/llm-keys"),
+  setLlmKey: (provider: string, key: string) => call<LlmKeysWrite>(`/llm-keys/${enc(provider)}`, send("PUT", { key })),
+  deleteLlmKey: (provider: string) => call<LlmKeysWrite>(`/llm-keys/${enc(provider)}`, send("DELETE")),
   settings: () => call<SettingsState>("/settings"),
   validateSettings: (values: Record<string, SettingValue>) => call<SettingsReport>("/settings/validate", send("POST", { values })),
   saveSettings: (body: { values: Record<string, SettingValue>; base_version: number | null; note?: string }) =>

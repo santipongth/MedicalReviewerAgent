@@ -31,6 +31,25 @@ class ModelInfo:
         return input_tokens * self.price_in + output_tokens * self.price_out
 
 
+@dataclass(frozen=True)
+class FixedPrice:
+    """A price typed into the configuration (Plan 23e), in USD per 1M tokens: off OpenRouter there is no catalog."""
+
+    price_in: float
+    price_out: float
+
+    def cost(self, input_tokens: int, output_tokens: int) -> float:
+        return (input_tokens * self.price_in + output_tokens * self.price_out) / 1_000_000
+
+
+def role_price(role: ResolvedRole) -> FixedPrice | None:
+    """The role's own price, when the configuration gives one."""
+    spec = role.spec
+    if spec.price_in is None or spec.price_out is None:
+        return None
+    return FixedPrice(spec.price_in, spec.price_out)
+
+
 def _price(value: Any) -> float:
     try:
         return max(float(value), 0.0)
@@ -152,7 +171,7 @@ def choose_structured_method(configured: str, info: ModelInfo | None) -> str:
 
 def validate_role(role: ResolvedRole, catalog: dict[str, ModelInfo]) -> list[str]:
     """Problems with one role's settings against the OpenRouter catalog (OpenRouter roles only)."""
-    if role.provider != "openrouter":
+    if role.kind != "openrouter":
         return []
     spec = role.spec
     info = catalog.get(spec.model)

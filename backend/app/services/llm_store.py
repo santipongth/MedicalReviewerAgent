@@ -19,17 +19,22 @@ from app.services.admin_auth import AdminPrincipal
 from app.services.audit import record
 from app.services.llm_config import (
     LLMConfig,
+    LLMConfigError,
     ResolvedLLMConfig,
     ensure_storable,
     parse_llm_config,
     read_llm_yaml,
     resolve_llm_config,
 )
+from app.services.llm_keys import keys_revision
+from app.services.llm_validate import document_errors, save_error_text
 from app.services.review_service import Conflict, NotFound
 
 log = get_logger(__name__)
 
 LLM_VERSION_KEY = "mra:llm:config_version"
+# Plan 23e: the newest provider-key revision (app/services/llm_keys.py); raised only, like LLM_VERSION_KEY
+KEYS_VERSION_KEY = "mra:llm:keys_version"
 LOADED_KEY = "mra:llm:loaded"
 # Plan 30: workers re-report every 30 s, so an entry not refreshed for 3 minutes (six missed heartbeats) is a worker that
 # is gone (a rebuild, a crash): it is no longer listed, and loaded_workers removes it from the hash
@@ -119,9 +124,13 @@ def summarize_change(old_raw: dict[str, Any] | None, new_raw: dict[str, Any]) ->
 async def save_version(session: AsyncSession, actor: AdminPrincipal, raw: Any, *, settings: Settings,
                        base_version: int | None, note: str | None = None, source: str = "edit",
                        restored_from: int | None = None, ip_hash: str | None = None) -> LlmConfigVersion:
-    """Validate (schema and the active preset), refuse a stale base, append the version and its audit row."""
+    """Validate (schema, the active preset and, Plan 23e, document_errors: prices off OpenRouter and the default
+    provider), refuse a stale base, append the version and its audit row. Restore and reset go through here too, so an
+    old version or llm.yaml without a now-required price is refused with the same error."""
     config = parse_llm_config(raw, where="config")
     resolve_llm_config(config, None, where="config")
+    if errors := document_errors(config):
+        raise LLMConfigError(f"config: {save_error_text(errors)}")
     stored = config.model_dump(mode="json", exclude_unset=True)
     ensure_storable(stored)
     if session.get_bind().dialect.name == "postgresql":  # READ COMMITTED would let two saves pass the same check
@@ -203,23 +212,33 @@ async def publish_version(redis, version_id: int) -> bool:
     order. True when the key now holds an id >= version_id. False on a Redis error (after PUBLISH_ATTEMPTS lost
     WATCH races or a connection failure): the key then keeps its previous value, so workers do not reload and the
     cache key stays on that version until a later publish succeeds."""
+    return await _raise_key(redis, LLM_VERSION_KEY, version_id, "llm_version")
+
+
+async def publish_keys_version(redis, revision: int) -> bool:
+    """Plan 23e: raise KEYS_VERSION_KEY to a provider-key revision after its write committed, by publish_version's
+    rules. False when Redis could not be updated: the workers' 30 s poll reads the DB and repairs it."""
+    return await _raise_key(redis, KEYS_VERSION_KEY, revision, "llm_keys_version")
+
+
+async def _raise_key(redis, key: str, value: int, what: str) -> bool:
     try:
         for _ in range(PUBLISH_ATTEMPTS):
             async with redis.pipeline(transaction=True) as pipe:
                 try:
-                    await pipe.watch(LLM_VERSION_KEY)
-                    stored = _as_id(await pipe.get(LLM_VERSION_KEY))
-                    if stored is not None and stored >= version_id:
+                    await pipe.watch(key)
+                    stored = _as_id(await pipe.get(key))
+                    if stored is not None and stored >= value:
                         return True
                     pipe.multi()
-                    pipe.set(LLM_VERSION_KEY, str(version_id))
+                    pipe.set(key, str(value))
                     await pipe.execute()
                     return True
                 except WatchError:
                     continue  # another client wrote the key between WATCH and EXEC: read it again
-        log.warning("llm_version_publish_contended", version=version_id)
+        log.warning(f"{what}_publish_contended", version=value)
     except Exception:  # noqa: BLE001 - the caller already committed the version; Redis trouble must not fail it
-        log.warning("llm_version_publish_failed", version=version_id)
+        log.warning(f"{what}_publish_failed", version=value)
     return False
 
 
@@ -239,6 +258,23 @@ async def reconcile_version_key(redis, session_factory) -> int | None:
         await publish_version(redis, newest)
     elif stored > newest:
         await redis.set(LLM_VERSION_KEY, str(newest))
+    return newest
+
+
+async def reconcile_keys_version(redis, session_factory) -> int | None:
+    """Plan 23e: make KEYS_VERSION_KEY agree with the DB's newest key revision, by reconcile_version_key's rules, and
+    return it (None while llm_provider_keys is empty)."""
+    raw = await redis.get(KEYS_VERSION_KEY)
+    stored = _as_id(raw)
+    async with session_factory() as session:
+        newest = await keys_revision(session)
+    if newest is None:
+        if raw is not None:
+            await redis.delete(KEYS_VERSION_KEY)
+    elif stored is None or stored < newest:
+        await publish_keys_version(redis, newest)
+    elif stored > newest:
+        await redis.set(KEYS_VERSION_KEY, str(newest))
     return newest
 
 

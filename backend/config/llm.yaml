@@ -16,14 +16,17 @@
 #
 # Per-role fields (all optional except model):
 #   model              provider model id (OpenRouter ids look like "vendor/model")
-#   provider           openrouter | anthropic | openai_compatible   (default: default_provider)
+#   provider           a name under providers: below                 (default: default_provider)
 #   max_tokens         output token cap
 #   temperature, top_p sampling (ignored for Anthropic models that do not accept them)
 #   reasoning_effort   none | minimal | low | medium | high | xhigh | max   (only for reasoning models)
 #   structured_output  auto | json_schema | tool_calling | json_mode       (auto = from OpenRouter catalog)
 #   timeout_seconds    per request
-#   fallback_models    OpenRouter fallback chain if the primary model is unavailable
+#   fallback_models    OpenRouter fallback chain if the primary model is unavailable (OpenRouter only)
 #   extra_body         raw fields merged into the provider request
+#   price_in, price_out  USD per 1M tokens, both or neither. Required (the console refuses to save without them) for
+#                      every role off OpenRouter, so the per-review cost cap counts its calls: an openai_compatible
+#                      provider (0 for a local server), or an Anthropic model the code has no price for.
 #
 # Browse models with prices:   uv run python -m app.cli.models list --search gemini --structured
 # Validate this file:          uv run python -m app.cli.models check
@@ -32,9 +35,16 @@
 active_preset: budget
 default_provider: openrouter
 
-# api_key_env must keep its name: OPENROUTER_API_KEY, ANTHROPIC_API_KEY and OPENAI_COMPATIBLE_API_KEY, each only for its
-# own provider. The openrouter and anthropic keys are only ever sent to https://openrouter.ai and https://api.anthropic.com,
-# so their base_url must stay there; openai_compatible (a local server) may use any http(s) URL.
+# Providers (Plan 23e): each has a kind, openrouter | anthropic | openai_compatible. The three names below have the kind
+# of their name and may leave it out; openrouter and anthropic exist only under their own names. Any other name
+# (a-z, 0-9, _; at most 12 providers) is an openai_compatible provider with its own base_url, e.g.
+#   deepseek: {kind: openai_compatible, base_url: https://api.deepseek.com/v1, require_parameters: false}
+# api_key_env may be left out; when given it must be the provider's own variable: OPENROUTER_API_KEY, ANTHROPIC_API_KEY,
+# OPENAI_COMPATIBLE_API_KEY, or LLM_KEY_<NAME> for another name (used only with LLM_KEY_<NAME>_ORIGIN set to the
+# provider's origin). Keys may also be entered in the admin console (/admin/models, "ผู้ให้บริการและคีย์"), stored
+# encrypted, which beats the env key. The openrouter and anthropic keys are only ever sent to https://openrouter.ai and
+# https://api.anthropic.com, so their base_url must stay there; openai_compatible (a local server) may use any http(s)
+# URL; another name needs https to a public host, or http to localhost, 127.0.0.1, ::1 or host.docker.internal.
 providers:
   openrouter:
     base_url: https://openrouter.ai/api/v1

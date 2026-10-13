@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatWhen } from "@/lib/admin-copy";
-import { missingKeyEnvs, sameConfig } from "@/lib/admin-models";
+import { type MissingKey, missingKeys, sameConfig } from "@/lib/admin-models";
 import type { LlmConfigDoc, LlmConfigState } from "@/lib/admin-types";
 import { isStale } from "@/lib/admin-workers";
 import { useAdmin } from "./admin-gate";
@@ -11,13 +11,26 @@ import { ConfirmButton } from "./confirm-button";
 import { ModelsCatalog } from "./models-catalog";
 import { ModelsHistory } from "./models-history";
 import { ModelsPresets } from "./models-presets";
+import { ModelsProviders } from "./models-providers";
 import { ModelsSaveBar, type WriteTracker } from "./models-save-bar";
 import { ModelsYaml } from "./models-yaml";
 import { BUTTON_GHOST } from "./ui";
 import { useWorkerFollowUp } from "./use-worker-follow-up";
 
-export type ModelsTab = "presets" | "yaml" | "history" | "catalog";
-const TABS: [ModelsTab, string][] = [["presets", "Presets"], ["yaml", "YAML ขั้นสูง"], ["history", "ประวัติ"], ["catalog", "Catalog"]];
+export type ModelsTab = "presets" | "providers" | "yaml" | "history" | "catalog";
+const TABS: [ModelsTab, string][] = [
+  ["presets", "Presets"], ["providers", "ผู้ให้บริการและคีย์"], ["yaml", "YAML ขั้นสูง"], ["history", "ประวัติ"], ["catalog", "Catalog"],
+];
+
+/** A header warning for a provider the running preset uses without a usable key (Plan 23e). */
+function missingKeyText({ provider, env, status }: MissingKey): string {
+  const cannot = "role ที่ใช้ provider นี้จะรันไม่ได้";
+  if (status === "origin_mismatch") return `${provider}: คีย์ที่เก็บไว้ผูกกับ origin อื่น: ${cannot}`;
+  if (status === "unreadable") return `${provider}: ถอดรหัสคีย์ที่เก็บไว้ไม่ได้: ${cannot}`;
+  if (status === "env_origin_missing") return `${provider}: ${env}_ORIGIN ไม่ตรงกับ origin ของ provider: ${cannot}`;
+  if (env.startsWith("LLM_KEY_")) return `${provider}: ยังไม่มีคีย์ (ใส่ได้ที่แท็บ "ผู้ให้บริการและคีย์"): ${cannot}`;
+  return `${env} ยังไม่ได้ตั้ง: ${cannot}`; // a legacy name: worded as before Plan 23e
+}
 
 /** Why the save is refused while the YAML box holds text that is not the draft. */
 const YAML_NOT_APPLIED = 'กด "ใช้ YAML นี้" ก่อน เพื่อให้ข้อความในกล่องเป็นร่างที่จะบันทึก';
@@ -34,7 +47,7 @@ const hasLaggingWorker = (s: LlmConfigState, now: number): boolean =>
 export function ModelsHeader({ state, now, settling = false }: { state: LlmConfigState; now?: number; settling?: boolean }) {
   const [mountedAt] = useState(() => Date.now());
   const at = now ?? mountedAt;
-  const missing = missingKeyEnvs(state);
+  const missing = missingKeys(state);
   const wanted = wantedVersion(state);
   return (
     <div className="mt-4 grid gap-2">
@@ -48,8 +61,8 @@ export function ModelsHeader({ state, now, settling = false }: { state: LlmConfi
       {state.env_preset && state.source === "file" && (Object.hasOwn(state.config.presets, state.env_preset)
         ? <p className="rounded-sm bg-info-bg px-3 py-2 text-sm">{`LLM_PRESET=${state.env_preset} มีผลอยู่ (ใช้ llm.yaml)`}</p>
         : <p className="rounded-sm bg-warn-bg px-3 py-2 text-sm">{`LLM_PRESET=${state.env_preset} ไม่มีใน presets: worker จะเริ่มไม่ได้`}</p>)}
-      {missing.map((name) => (
-        <p key={name} className="rounded-sm bg-warn-bg px-3 py-2 text-sm">{`${name} ยังไม่ได้ตั้ง: role ที่ใช้ provider นี้จะรันไม่ได้`}</p>
+      {missing.map((m) => (
+        <p key={m.provider} className="rounded-sm bg-warn-bg px-3 py-2 text-sm">{missingKeyText(m)}</p>
       ))}
       <ul className="text-sm" aria-label="worker">
         {state.loaded.length === 0 && <li className="text-muted">ยังไม่มี worker รายงาน (worker จะรายงานภายใน 30 วินาทีหลังเริ่มทำงาน)</li>}
@@ -247,7 +260,8 @@ export function ModelsView() {
             ))}
           </div>
           {tab === "history" && <ModelsHistory base={state.version} onChanged={reload} writes={track} />}
-          {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} />}
+          {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} knownPrices={state.known_prices} />}
+          {tab === "providers" && <ModelsProviders draft={edit.doc} setDraft={setDraft} fail={fail} version={state.version} />}
           {(tab === "yaml" || yamlPending) && (
             <div hidden={tab !== "yaml"}>
               <ModelsYaml key={yamlKey} draft={edit.doc} setDraft={setDraft} initialText={edit.refused}
@@ -255,7 +269,7 @@ export function ModelsView() {
             </div>
           )}
           {tab === "catalog" && <ModelsCatalog draft={edit.doc} setDraft={setDraft} />}
-          {(tab === "presets" || tab === "yaml") && (
+          {(tab === "presets" || tab === "providers" || tab === "yaml") && (
             <>
               {moved && (
                 <div className="mt-6 grid gap-2 rounded-sm bg-warn-bg px-4 py-3">
