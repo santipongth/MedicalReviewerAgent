@@ -34,7 +34,13 @@ from app.graph.schemas import (
     TranslationBatch,
 )
 from app.services.budget import current_budget
-from app.services.llm_config import HarnessSpec, ResolvedLLMConfig, ResolvedRole, load_llm_config
+from app.services.llm_config import (
+    PROVIDER_KEYS,
+    HarnessSpec,
+    ResolvedLLMConfig,
+    ResolvedRole,
+    load_llm_config,
+)
 from app.services.model_catalog import ModelInfo, choose_structured_method
 
 # USD per million tokens (input, output) for direct Anthropic calls. Source: claude-api skill, 2026-09.
@@ -318,29 +324,30 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
                    schema: type[BaseModel] | None = None):
     schema = schema or SCHEMAS[role.role]
     spec, ps = role.spec, role.provider_spec
-    key = _api_key(settings, ps.api_key_env)
+    env_name = PROVIDER_KEYS.get(role.provider, "")  # a provider with a free name has no env key before Plan 23e Task 3
+    key = _api_key(settings, env_name) if env_name else ""
     effort = None if spec.reasoning_effort in (None, "none") else spec.reasoning_effort
-    if role.provider == "anthropic":
+    if role.kind == "anthropic":
         if not key:
-            return MissingKeyLLM(spec.model, ps.api_key_env)
+            return MissingKeyLLM(spec.model, env_name)
         return AnthropicStructuredLLM(schema, model=spec.model, api_key=key, max_tokens=spec.max_tokens,
                                       effort=effort, base_url=ps.base_url, timeout=spec.timeout_seconds)
-    if not key and role.provider == "openrouter":
-        return MissingKeyLLM(spec.model, ps.api_key_env)
-    info = (catalog or {}).get(spec.model) if role.provider == "openrouter" else None
-    if spec.reasoning_effort == "none" and role.provider == "openrouter" and (info is None or info.supports("reasoning")):
+    if not key and role.kind == "openrouter":
+        return MissingKeyLLM(spec.model, env_name)
+    info = (catalog or {}).get(spec.model) if role.kind == "openrouter" else None
+    if spec.reasoning_effort == "none" and role.kind == "openrouter" and (info is None or info.supports("reasoning")):
         # Some models reason by default (Qwen3.5 Flash on Alibaba) and then break structured output; an explicit
         # "none" turns that off. Never sent to models without reasoning support (require_parameters would 404).
         effort = "none"
-    base_url = ps.base_url or (OPENROUTER_BASE_URL if role.provider == "openrouter" else "")
+    base_url = ps.base_url or (OPENROUTER_BASE_URL if role.kind == "openrouter" else "")
     headers = {}
-    if role.provider == "openrouter":
+    if role.kind == "openrouter":
         headers = {k: v for k, v in (("HTTP-Referer", ps.app_url), ("X-Title", ps.app_name)) if v}
     return OpenAICompatibleStructuredLLM(
         schema, model=spec.model, api_key=key or "not-needed", base_url=base_url,
         max_tokens=spec.max_tokens, temperature=spec.temperature, top_p=spec.top_p, reasoning_effort=effort,
         method=choose_structured_method(spec.structured_output, info), timeout=spec.timeout_seconds,
-        headers=headers or None, require_parameters=ps.require_parameters and role.provider == "openrouter",
+        headers=headers or None, require_parameters=ps.require_parameters and role.kind == "openrouter",
         fallback_models=spec.fallback_models, extra_body=spec.extra_body, price=info,
     )
 

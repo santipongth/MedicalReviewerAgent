@@ -98,7 +98,7 @@ def test_preset_argument_and_per_role_provider(tmp_path):
         (lambda t: t.replace("active_preset: cheap", "active_preset: nope"), "Unknown preset 'nope'"),
         (lambda t: t.replace("reasoning_effort: high, fallback", "reasoning_effort: extreme, fallback"), "reasoning_effort"),
         (lambda t: t.replace("    screener:    {model: google/gemini-2.5-flash-lite}\n", "", 1), "missing roles: screener"),
-        (lambda t: t.replace("provider: anthropic}", "provider: bedrock}", 1), "provider"),
+        (lambda t: t.replace("provider: anthropic}", "provider: bedrock}", 1), "Provider 'bedrock' is not configured"),
         (lambda t: t.replace("  anthropic: {api_key_env: ANTHROPIC_API_KEY}\n", ""), "Provider 'anthropic' is not configured"),
         (lambda t: t.replace("temperature: 0}", "temperature: 5}"), "temperature"),
     ],

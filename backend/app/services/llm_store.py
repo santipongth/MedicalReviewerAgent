@@ -19,12 +19,14 @@ from app.services.admin_auth import AdminPrincipal
 from app.services.audit import record
 from app.services.llm_config import (
     LLMConfig,
+    LLMConfigError,
     ResolvedLLMConfig,
     ensure_storable,
     parse_llm_config,
     read_llm_yaml,
     resolve_llm_config,
 )
+from app.services.llm_validate import document_errors, save_error_text
 from app.services.review_service import Conflict, NotFound
 
 log = get_logger(__name__)
@@ -119,9 +121,13 @@ def summarize_change(old_raw: dict[str, Any] | None, new_raw: dict[str, Any]) ->
 async def save_version(session: AsyncSession, actor: AdminPrincipal, raw: Any, *, settings: Settings,
                        base_version: int | None, note: str | None = None, source: str = "edit",
                        restored_from: int | None = None, ip_hash: str | None = None) -> LlmConfigVersion:
-    """Validate (schema and the active preset), refuse a stale base, append the version and its audit row."""
+    """Validate (schema, the active preset and, Plan 23e, document_errors: prices off OpenRouter and the default
+    provider), refuse a stale base, append the version and its audit row. Restore and reset go through here too, so an
+    old version or llm.yaml without a now-required price is refused with the same error."""
     config = parse_llm_config(raw, where="config")
     resolve_llm_config(config, None, where="config")
+    if errors := document_errors(config):
+        raise LLMConfigError(f"config: {save_error_text(errors)}")
     stored = config.model_dump(mode="json", exclude_unset=True)
     ensure_storable(stored)
     if session.get_bind().dialect.name == "postgresql":  # READ COMMITTED would let two saves pass the same check

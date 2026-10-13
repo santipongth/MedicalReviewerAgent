@@ -74,7 +74,7 @@ def _check(args, catalog: dict[str, ModelInfo], out: TextIO) -> int:
     problems: list[str] = []
     total = 0.0
     for name, role in config.roles.items():
-        info = catalog.get(role.spec.model) if role.provider == "openrouter" else None
+        info = catalog.get(role.spec.model) if role.kind == "openrouter" else None
         method = choose_structured_method(role.spec.structured_output, info)
         calls, tin, tout = TYPICAL_CALLS[name]
         cost = calls * info.cost(tin, tout) if info else 0.0

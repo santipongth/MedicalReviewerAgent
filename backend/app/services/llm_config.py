@@ -1,6 +1,7 @@
 """Operator-editable LLM configuration (config/llm.yaml): presets of per-role model settings."""
 from __future__ import annotations
 
+import ipaddress
 import json
 import math
 import re
@@ -27,7 +28,11 @@ FALLBACK_ROLES: dict[str, str] = {
 }
 OPTIONAL_ROLES: tuple[str, ...] = (*FALLBACK_ROLES, "screener_secondary", "extractor_secondary", "escalation")
 EscalationTrigger = Literal["repair_failed", "verification_failed", "disagreement"]
-ProviderName = Literal["openrouter", "anthropic", "openai_compatible"]
+# Plan 23e: a provider is a free name with a kind. The three legacy names keep their kind without saying so.
+ProviderKind = Literal["openrouter", "anthropic", "openai_compatible"]
+LEGACY_PROVIDERS: tuple[str, ...] = ("openrouter", "anthropic", "openai_compatible")
+PROVIDER_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
+MAX_PROVIDERS = 12
 Effort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 StructuredMethod = Literal["auto", "json_schema", "tool_calling", "json_mode"]
 
@@ -68,10 +73,15 @@ def config_error_summary(exc: BaseException) -> str:
 # A provider's key is read from the server's settings or environment by name, so a provider may only name its own
 # variable: a draft cannot make the server send DATABASE_URL, or one provider's key to another's host. OpenRouter and
 # Anthropic keys are only ever sent to those providers' own hosts; a local model server (openai_compatible) may be
-# anywhere, but it gets only its own key.
+# anywhere, but it gets only its own key. A provider with a free name (Plan 23e) may only name LLM_KEY_<NAME>.
 PROVIDER_KEYS = {"openrouter": "OPENROUTER_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
                  "openai_compatible": "OPENAI_COMPATIBLE_API_KEY"}
 PINNED_HOSTS = {"openrouter": "openrouter.ai", "anthropic": "api.anthropic.com"}
+# Where OpenRouter and Anthropic calls go when their base_url is left out (llm.py's OPENROUTER_BASE_URL, ChatAnthropic's
+# default): the origin a stored key of theirs is bound to.
+DEFAULT_ORIGINS = {"openrouter": "https://openrouter.ai", "anthropic": "https://api.anthropic.com"}
+# A provider with a free name may use plain http only on this machine (a local model server, Ollama in docker).
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
 VISIBLE_ASCII = re.compile(r"[!-~]+")  # the printable ASCII range without the space
 # Visible words with single spaces between them: nothing that could end a header line, and no leading or trailing
 # space (the HTTP client refuses a header value with one, and then every call fails).
@@ -107,6 +117,51 @@ def _is_http_url_with_host(url: str) -> bool:
         return False
     try:
         return urlsplit(url).scheme in ("http", "https") and url_host(url) is not None
+    except ValueError:
+        return False
+
+
+def _is_open_provider_url(url: str) -> bool:
+    """A base URL for a provider with a free name (Plan 23e): https to a host name or a global IP address, or plain
+    http to this machine only; no userinfo, query or fragment. Host names are not resolved here (DNS can change between
+    this check and the call), so the IP rule only stops literals: private, link-local and metadata addresses."""
+    if not VISIBLE_ASCII.fullmatch(url) or "\\" in url:
+        return False
+    try:
+        parts = urlsplit(url)
+        parts.port  # noqa: B018 - raises ValueError for a port out of range
+        host = parts.hostname
+    except ValueError:
+        return False
+    if not host or "@" in parts.netloc or parts.query or parts.fragment:
+        return False
+    if parts.scheme == "http":
+        return host in LOCAL_HOSTS
+    if parts.scheme != "https":
+        return False
+    try:
+        return ipaddress.ip_address(host).is_global
+    except ValueError:
+        return True  # a host name
+
+
+def url_origin(url: str) -> str:
+    """scheme://host[:port] of a URL, lower case, without a default port: the unit a stored key is bound to (Plan 23e).
+    A path change keeps the origin; another host, scheme or port is another origin. Raises ValueError for a URL that
+    does not parse."""
+    parts = urlsplit(url)
+    scheme, host, port = parts.scheme.lower(), parts.hostname or "", parts.port
+    if ":" in host:
+        host = f"[{host}]"
+    default = {"http": 80, "https": 443}.get(scheme)
+    return f"{scheme}://{host}" + (f":{port}" if port is not None and port != default else "")
+
+
+def is_local_origin(origin: str) -> bool:
+    """An http origin on this machine: a local model server, which needs no key."""
+    try:
+        parts = urlsplit(origin)
+        return parts.scheme == "http" and parts.hostname in LOCAL_HOSTS
     except ValueError:
         return False
 
@@ -195,8 +250,9 @@ def _check_depth(value: dict[str, Any], what: str) -> dict[str, Any]:
 class ProviderSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
+    kind: ProviderKind | None = None  # may be left out only under the three legacy names, where it is the name
     base_url: str | None = None
-    api_key_env: str
+    api_key_env: str | None = None
     app_name: str | None = None
     app_url: str | None = None
     require_parameters: bool = True
@@ -220,7 +276,7 @@ class RoleSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     model: str = Field(min_length=1)
-    provider: ProviderName | None = None
+    provider: str | None = Field(None, max_length=32)
     max_tokens: int = Field(4096, ge=1, le=128_000)
     temperature: float | None = Field(None, ge=0, le=2)
     top_p: float | None = Field(None, ge=0, le=1)
@@ -229,6 +285,10 @@ class RoleSpec(BaseModel):
     timeout_seconds: float = Field(300.0, gt=0)
     fallback_models: list[str] = Field(default_factory=list)
     extra_body: dict[str, Any] = Field(default_factory=dict)
+    # Plan 23e: USD per 1M tokens, both or neither. Required (at validate and save) off OpenRouter, where no catalog
+    # prices a call: the review cost cap charges these.
+    price_in: float | None = Field(None, ge=0, le=1000)
+    price_out: float | None = Field(None, ge=0, le=1000)
 
     @field_validator("extra_body")
     @classmethod
@@ -237,6 +297,58 @@ class RoleSpec(BaseModel):
             if key in value and not isinstance(value[key], dict):
                 raise ValueError(f"extra_body.{key} must be a mapping")
         return _check_depth(value, "extra_body")
+
+    @model_validator(mode="after")
+    def _both_prices_or_neither(self) -> RoleSpec:
+        if (self.price_in is None) != (self.price_out is None):
+            raise ValueError("price_in and price_out go together: set both or neither")
+        return self
+
+
+def provider_kind(name: str, spec: ProviderSpec) -> str:
+    """The provider's kind: its `kind`, or its name for the three legacy names. The only way code asks for a kind."""
+    return spec.kind or name
+
+
+def key_env(name: str) -> str:
+    """The one variable a provider's env key may come from: the fixed name of a legacy provider, else LLM_KEY_<NAME>."""
+    return PROVIDER_KEYS.get(name) or f"LLM_KEY_{name.upper()}"
+
+
+def provider_origin(name: str, spec: ProviderSpec) -> str:
+    """The origin the provider's calls go to, which a stored key is bound to: its base_url's, else the default host of
+    OpenRouter or Anthropic."""
+    if spec.base_url:
+        return url_origin(spec.base_url)
+    return DEFAULT_ORIGINS.get(provider_kind(name, spec), "")
+
+
+def _check_provider(name: str, spec: ProviderSpec) -> None:
+    if not PROVIDER_NAME.fullmatch(name):
+        raise ValueError(f"providers: {name[:40]!r} is not a provider name (a lower-case letter, then up to 31 "
+                         "lower-case letters, digits or _)")
+    kind = spec.kind or (name if name in LEGACY_PROVIDERS else None)
+    if kind is None:
+        raise ValueError(f"providers.{name}.kind is required: openrouter, anthropic or openai_compatible")
+    if (kind in PINNED_HOSTS or name in PINNED_HOSTS) and kind != name:
+        raise ValueError(f"providers.{name}.kind: the openrouter and anthropic kinds exist only under their own names")
+    expected = key_env(name)
+    if spec.api_key_env is not None and spec.api_key_env != expected:
+        raise ValueError(f"providers.{name}.api_key_env must be {expected} or left out: a provider's key is only "
+                         "sent to that provider")
+    host = PINNED_HOSTS.get(name)
+    if host and spec.base_url and not _is_https_host(spec.base_url, host):
+        raise ValueError(f"providers.{name}.base_url must be an https://{host}/ address "
+                         f"(the {name} key is only sent there)")
+    if name == "openai_compatible" and not spec.base_url:
+        raise ValueError("providers.openai_compatible.base_url is required, e.g. http://localhost:11434/v1")
+    if name == "openai_compatible" and not _is_http_url_with_host(spec.base_url):
+        raise ValueError("providers.openai_compatible.base_url must be an http(s) URL with a host, "
+                         "e.g. http://localhost:11434/v1")
+    if kind == "openai_compatible" and name != "openai_compatible" and not (
+            spec.base_url and _is_open_provider_url(spec.base_url)):
+        raise ValueError(f"providers.{name}.base_url must be an https:// URL with a public host (or http:// to "
+                         "localhost, 127.0.0.1, ::1 or host.docker.internal), without a user, query or fragment")
 
 
 class HarnessSpec(BaseModel):
@@ -270,8 +382,8 @@ class LLMConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     active_preset: str
-    default_provider: ProviderName = "openrouter"
-    providers: dict[ProviderName, ProviderSpec]
+    default_provider: str = Field("openrouter", max_length=32)
+    providers: dict[str, ProviderSpec]
     presets: dict[str, dict[Role, RoleSpec]]
     harness: HarnessSpec = Field(default_factory=HarnessSpec)
     overrides: dict[Role, dict[str, Any]] = Field(default_factory=dict)
@@ -285,19 +397,10 @@ class LLMConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> LLMConfig:
+        if len(self.providers) > MAX_PROVIDERS:
+            raise ValueError(f"providers: at most {MAX_PROVIDERS} providers")
         for name, provider_spec in self.providers.items():
-            if provider_spec.api_key_env != PROVIDER_KEYS[name]:
-                raise ValueError(f"providers.{name}.api_key_env must be {PROVIDER_KEYS[name]}: a provider's key is "
-                                 "only sent to that provider")
-            host = PINNED_HOSTS.get(name)
-            if host and provider_spec.base_url and not _is_https_host(provider_spec.base_url, host):
-                raise ValueError(f"providers.{name}.base_url must be an https://{host}/ address "
-                                 f"(the {name} key is only sent there)")
-            if name == "openai_compatible" and not provider_spec.base_url:
-                raise ValueError("providers.openai_compatible.base_url is required, e.g. http://localhost:11434/v1")
-            if name == "openai_compatible" and not _is_http_url_with_host(provider_spec.base_url):
-                raise ValueError("providers.openai_compatible.base_url must be an http(s) URL with a host, "
-                                 "e.g. http://localhost:11434/v1")
+            _check_provider(name, provider_spec)
         for name, roles in self.presets.items():
             missing = [r for r in ROLES if r not in roles]
             if missing:
@@ -315,9 +418,15 @@ class ResolvedRole:
     provider: str
     provider_spec: ProviderSpec
     spec: RoleSpec
+    kind: str = ""  # Plan 23e: filled from the provider when left empty
+
+    def __post_init__(self) -> None:
+        if not self.kind:
+            object.__setattr__(self, "kind", provider_kind(self.provider, self.provider_spec))
 
     def with_spec(self, **changes: Any) -> ResolvedRole:
-        return ResolvedRole(self.role, self.provider, self.provider_spec, self.spec.model_copy(update=changes))
+        return ResolvedRole(self.role, self.provider, self.provider_spec, self.spec.model_copy(update=changes),
+                            self.kind)
 
 
 @dataclass(frozen=True)

@@ -5,7 +5,7 @@ from typing import Any
 
 from app.schemas.review import ReviewOptions
 from app.services.llm_config import ResolvedLLMConfig
-from app.services.model_catalog import ModelInfo
+from app.services.model_catalog import ModelInfo, role_price
 
 _PAPERS = ReviewOptions.model_fields["max_papers"].default
 _POOL = ReviewOptions.model_fields["candidate_limit"].default
@@ -30,14 +30,14 @@ TYPICAL_CALLS: dict[str, tuple[int, int, int]] = {  # role: (calls, input tokens
 
 
 def estimate_review_cost(resolved: ResolvedLLMConfig, catalog: dict[str, ModelInfo]) -> dict[str, Any]:
-    """Rough USD cost of one default review with this preset (OpenRouter prices); models the catalog does not know
-    (other providers, typos) are listed instead of priced."""
+    """Rough USD cost of one default review with this preset (a role's own price, Plan 23e, else OpenRouter's);
+    models neither prices (other providers without a price, typos) are listed instead of priced."""
     per_role: dict[str, float] = {}
     unknown: list[str] = []
     total = 0.0
     for name, role in resolved.roles.items():
         calls, tokens_in, tokens_out = TYPICAL_CALLS.get(name, (0, 0, 0))
-        info = catalog.get(role.spec.model) if role.provider == "openrouter" else None
+        info = role_price(role) or (catalog.get(role.spec.model) if role.kind == "openrouter" else None)
         if info is None:
             unknown.append(f"{name}: {role.provider}:{role.spec.model}")
             continue
