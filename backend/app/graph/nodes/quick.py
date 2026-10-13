@@ -106,6 +106,17 @@ _CERTAINTY_TALK = re.compile(
     r"|\bquality\s+of\s+(?:the\s+|this\s+)?(?:body\s+of\s+)?evidence\b|\bstrength\s+of\s+(?:the\s+)?evidence\b")
 
 
+# Plan 30: direct advice to a person ("Patients should stop…", "Take X…", "you should…") is never a limits sentence;
+# such a sentence is dropped like a certainty claim (fail-safe: the next clean sentence, else none). Research wording
+# ("patients should be followed up longer in future trials") is not advice: the verbs are the ones a person acts on.
+_ACT = r"(?:stop|start|take|avoid|switch|use|ask|consult|see|talk|discuss|continue|keep|try|reduce|increase)"
+_ADVICE = re.compile(
+    rf"(?i)^\W*(?:please\s+)?(?:{_ACT}|do\s+not|don'?t|never|always\s+{_ACT})\b(?!-|\s+of\b)"
+    rf"|\b(?:you|your|yourself)\b"
+    rf"|\b(?:patients?|people|readers?|anyone|everyone|adults|parents)\s+(?:should|must|need\s+to|ought\s+to)"
+    rf"\s+(?:not\s+)?{_ACT}\b")
+
+
 def _claims_level(sentence: str, strength: str | None) -> bool:
     """The sentence (read without its [Pn] groups) mentions a certainty level for the evidence (any level: the closing
     line states the computed one, so a model-stated level is never needed), or claims another level than `strength`
@@ -162,11 +173,11 @@ def checked_answer(draft: QuickAnswerDraft, allowed: set[str], prose: ProseConte
 def closing_line(limits: str, prose: ProseContext, strength: str | None) -> str:
     """The certainty sentence (the GRADE-lite baseline, or "not graded") and the model's limits sentence when it
     passes the numberless check (its first sentence that says nothing about certainty or evidence quality, without
-    citations)."""
+    citations, and (Plan 30) no direct advice to a person)."""
     text, _counts = fix_statement(_CITE_GROUP.sub("", limits or "").strip(), prose)
     text, _n = _drop_wrong_self_claims(text, strength)
     first = next((s for s in _split_sentences(text)
-                  if not _claims_level(s, strength) and not _CERTAINTY_TALK.search(s)), "")
+                  if not _claims_level(s, strength) and not _CERTAINTY_TALK.search(s) and not _ADVICE.search(s)), "")
     certainty = ANSWER_CERTAINTY.get(strength or "", NOT_GRADED)
     return f"{certainty} {first}".strip()
 
