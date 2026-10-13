@@ -70,12 +70,13 @@ class SearxngClient:
         self.engines = engines
         self.timeout = timeout
 
-    async def search(self, query: str, pageno: int = 1) -> list[Candidate]:
-        # engines= only: passing categories= as well would union in non-academic engines.
+    async def search(self, query: str, pageno: int = 1, engines: str | None = None) -> list[Candidate]:
+        # engines= only: passing categories= as well would union in non-academic engines. `engines` (Plan 23d): the
+        # engines the admin console has on; the constructor's (SEARXNG_ENGINES) when None.
         # One retry only: a slow query must not wait out several full timeouts (HttpClient retries default to 3).
         resp = await self.http.get(
             f"{self.base_url}/search",
-            params={"q": query, "format": "json", "engines": self.engines, "pageno": pageno},
+            params={"q": query, "format": "json", "engines": engines or self.engines, "pageno": pageno},
             timeout=self.timeout,
             retries=1,
         )

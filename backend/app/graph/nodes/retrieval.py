@@ -209,6 +209,26 @@ def thaijo_errors(entry: dict, timeout: float) -> list[str]:
     return out
 
 
+# ---- the search sources in force (Plan 23d) ---------------------------------------------------------------------
+# deps.sources is the admin console's set, fixed for the review; None (deps built by hand) asks every client present.
+def engine_args(deps) -> dict[str, str]:
+    """The `engines=` argument for SearXNG: the enabled engines, or nothing (the client's own) without sources."""
+    sources = getattr(deps, "sources", None)
+    return {} if sources is None else {"engines": sources.engines}
+
+
+def thaijo_on(deps) -> bool:
+    """ThaiJO is searched and its OAI-PMH step runs only with a client and while the sources have it on."""
+    sources = getattr(deps, "sources", None)
+    return getattr(deps, "thaijo", None) is not None and (sources is None or sources.thaijo)
+
+
+def trial_search_on(deps) -> bool:
+    """The direct Europe PMC RCT searches follow the Europe PMC switch (enrichment lookups and references do not)."""
+    sources = getattr(deps, "sources", None)
+    return getattr(deps, "europepmc", None) is not None and (sources is None or sources.has_europepmc)
+
+
 def make_search(deps):
     async def search(state: ReviewState) -> dict:
         started = time.perf_counter()
@@ -218,16 +238,15 @@ def make_search(deps):
         pages = search_pages(settings, options)
         jobs = [(q, page) for q in queries for page in range(1, pages + 1)]
         trial_queries = (trial_search_queries(queries, settings.trial_search_queries)
-                         if wants_trial_search(options) and getattr(deps, "europepmc", None) is not None else [])
+                         if wants_trial_search(options) and trial_search_on(deps) else [])
         gate = asyncio.Semaphore(SEARXNG_CONCURRENCY)
 
         async def searx(q: str, page: int) -> list[Candidate]:
             async with gate:
-                return await deps.searxng.search(q, pageno=page)
+                return await deps.searxng.search(q, pageno=page, **engine_args(deps))
 
         # Plan 24: ThaiJO runs alongside SearXNG (its own timeout is shorter), only when enabled
-        thaijo = (asyncio.ensure_future(thaijo_search(deps, queries, options))
-                  if getattr(deps, "thaijo", None) is not None else None)
+        thaijo = asyncio.ensure_future(thaijo_search(deps, queries, options)) if thaijo_on(deps) else None
         try:
             results = await asyncio.gather(
                 *(searx(q, p) for q, p in jobs),
@@ -305,6 +324,8 @@ def make_search(deps):
             entry |= {"trial_failed": trial_failed, "trial_names": names, "trial_name_hits": len(name_hits)}
         if thaijo_entry is not None:  # Plan 24
             entry["thaijo"] = thaijo_entry
+        if getattr(deps, "sources", None) is not None:  # Plan 23d: the sources this review searched
+            entry["sources"] = list(deps.sources.enabled)
         return {"candidates": [c.model_dump() for c in found], "errors": errors,
                 "search_stats": {"found": len(found), "per_source": dict(per_source), "searched_at": searched_at},
                 "quality": [entry]}
@@ -396,7 +417,7 @@ async def _topup_search(deps, queries: list[str], pages: list[int], errors: list
 
     async def searx(q: str, page: int) -> list[Candidate]:
         async with gate:
-            return await deps.searxng.search(q, pageno=page)
+            return await deps.searxng.search(q, pageno=page, **engine_args(deps))
 
     results = await asyncio.gather(*(searx(q, p) for q, p in jobs), return_exceptions=True)
     hits: list[Candidate] = []

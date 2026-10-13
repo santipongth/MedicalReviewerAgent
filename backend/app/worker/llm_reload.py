@@ -119,12 +119,13 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph, poll: bool = Fa
 async def report_state(ctx: dict) -> None:
     """Report this worker's current state to LOADED_KEY: the version it runs, its preset and the last load error
     (ctx["llm_error"], cleared by the next successful load), plus (Plan 23c, through `extra`) the settings version
-    ("env" when none), the glossary version ("file" when none) and runtime_error (the last failed settings/glossary
+    ("env" when none), the glossary version ("file" when none), the sources version (Plan 23d, "env" when none) and
+    runtime_error (the last failed settings/glossary
     reload, cleared by the next one that succeeds or by a poll that finds the worker on the DB's versions).
     `loaded_at` therefore means "last seen", not "loaded at"."""
     preset = ctx.get("llm_preset") or getattr(getattr(ctx.get("graph_deps"), "llms", None), "preset", "") or ""
     extra = {"settings": ctx.get("settings_version") or "env", "glossary": ctx.get("glossary_version") or "file",
-             "runtime_error": ctx.get("runtime_error")}
+             "sources": ctx.get("sources_version") or "env", "runtime_error": ctx.get("runtime_error")}
     await report_loaded(ctx["events_redis"], worker_id(), ctx.get("llm_version") or "file", preset,
                         error=ctx.get("llm_error"), extra=extra)
 
@@ -144,7 +145,7 @@ async def poll_llm_config(ctx: dict, interval: float = POLL_SECONDS) -> None:
 def _wire(ctx: dict, resolved: ResolvedLLMConfig | None, active_id: str, checkpointer, build_graph_fn):
     deps = build_graph_deps(ctx["settings"], ctx["http"], ctx["events_redis"], ctx["catalog"], resolved=resolved,
                             sem=ctx["llm_sem"], config_version=f"db:{active_id}" if active_id != "file" else "file",
-                            glossary=ctx.get("glossary"))
+                            glossary=ctx.get("glossary"), sources=ctx.get("sources"))
     return deps, build_graph_fn(deps, checkpointer=checkpointer)
 
 

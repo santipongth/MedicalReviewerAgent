@@ -8,10 +8,11 @@ from app.services.report import render_markdown
 
 class Searx:
     def __init__(self, results=None, fail=False):
-        self.results, self.fail, self.queries = results or [], fail, []
+        self.results, self.fail, self.queries, self.engines = results or [], fail, [], []
 
-    async def search(self, query, pageno=1):
+    async def search(self, query, pageno=1, engines=None):
         self.queries.append(query)
+        self.engines.append(engines)
         if self.fail:
             raise httpx.ConnectError("down")
         return list(self.results)
