@@ -18,6 +18,7 @@ from app.harness.study_types import missing_study_types
 from app.schemas.review import ReviewOptions
 from app.services.llm import LLMError, LLMOutputError, LLMRefusal
 from app.services.llm_config import HarnessSpec
+from app.services.safety import rejection_error
 
 MAX_QUERIES = 4
 MAX_QUERIES_META = 5  # meta-analysis: one more query (trial names / acronyms) for recall (audit I-9)
@@ -52,11 +53,16 @@ def make_topic_guard(deps):
             res = await harness_runner(deps).call(deps.llms.guard, prompts.GUARD_SYSTEM,
                                                   prompts.guard_user(state["topic"]), schema=TopicVerdict)
         except LLMRefusal:
-            return {"rejected": "The topic was declined by the safety filter."}
+            # provider refusals cluster on self-harm/violence text: give the fixed message with 1669 and 1323
+            return {"rejected": rejection_error("personal_medical")}
         if res.value is None:
             raise LLMOutputError(f"topic check failed: {'; '.join(res.problems) or 'no valid answer'}")
-        if not res.value.allowed:
-            return {"rejected": res.value.reason or "The topic is not a biomedical research question.",
+        if res.value.category == "personal_medical":  # Plan 26: a fixed message; the model's reason is not shown
+            return {"rejected": rejection_error("personal_medical"), "cost_usd": res.cost}
+        if not res.value.allowed or res.value.category != "research":  # either one rejecting is a rejection
+            # the model's free text must never start with a refusal code: refusal_code_of reads the stored prefix
+            reason = re.sub(r"^(?:\s*personal[\s_-]*medical\s*:)+\s*", "", res.value.reason, flags=re.IGNORECASE).strip()
+            return {"rejected": reason or "The topic is not a biomedical research question.",
                     "cost_usd": res.cost}
         return {"english_topic": res.value.english_topic or state["topic"], "cost_usd": res.cost}
 

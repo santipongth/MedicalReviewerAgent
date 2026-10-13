@@ -238,7 +238,7 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
   const card = paper ? (lang === "en" ? paper.card_en ?? paper.card : paper.card) : null;
   const cardEn = paper?.card_en ?? paper?.card;
   return (
-    <aside aria-label={L(lang, R.source)} aria-live="polite"
+    <aside aria-label={L(lang, R.source)} aria-live="polite" data-source-rail
       className="grid min-w-0 content-start gap-4 bg-rail p-6">
       <div className="flex items-center justify-between gap-2">
         <h2 id={headingId} tabIndex={-1} className="label">{L(lang, R.source)}{paper ? ` · ${paper.ref}` : ""}</h2>

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getReview } from "@/lib/api";
+import { FALLBACK_TITLE, isPersonalRefusal } from "@/lib/title";
+import { readAudience, saveAudience } from "@/lib/use-audience";
 import { useReview } from "@/lib/use-review";
 import { LiveRun } from "./live-run";
 import { Report } from "./report";
@@ -24,9 +26,13 @@ export function ReviewScreen({ id }: { id: string }) {
     return () => clearInterval(timer);
   }, [id, waiting]);
   // Name the tab after the question once it is known (effect only: no hydration mismatch).
+  // Plan 26: not for a personal medical refusal, whose page shows no topic (nor the tab, history or previews).
+  const personalRefusal = phase === "terminal" && run.status === "rejected"
+    && isPersonalRefusal(run.code ?? review?.refusal_code, run.message ?? review?.error);
   useEffect(() => {
-    if (knownTopic) document.title = knownTopic;
-  }, [knownTopic]);
+    if (personalRefusal) document.title = FALLBACK_TITLE;
+    else if (knownTopic) document.title = knownTopic;
+  }, [knownTopic, personalRefusal]);
   const queuePosition = polledPosition === undefined ? review?.queue_position : polledPosition;
 
   if (phase === "loading") {
@@ -57,10 +63,12 @@ export function ReviewScreen({ id }: { id: string }) {
     );
   }
   if (phase === "terminal" && (run.status === "rejected" || run.status === "error" || run.status === "cancelled")) {
-    return <TerminalState status={run.status} message={run.message ?? review?.error} topic={topic} />;
+    return <TerminalState status={run.status} message={run.message ?? review?.error} topic={topic}
+      code={run.code ?? review?.refusal_code} />;
   }
   if (phase === "report" && review) {
-    return <Report review={review} />;
+    // Plan 26: the view comes from ?view= or the stored choice; a change is stored and put in the address
+    return <Report review={review} initialAudience={readAudience()} onAudience={saveAudience} />;
   }
   return <LiveRun run={run} scene={scene} topic={topic} connection={connection} queuePosition={queuePosition} startedAt={review?.started_at}
     reviewType={review?.options?.review_type} />;

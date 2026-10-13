@@ -25,6 +25,7 @@ from app.services.api_keys import ApiKeyInfo, reviews_since
 from app.services.budget import review_cost_cap
 from app.services.capacity import AdmissionBusy
 from app.services.ratelimits import RateLimits
+from app.services.safety import red_flag
 from app.services.turnstile import TurnstileUnavailable, verify_turnstile
 from app.services.urlsafety import is_public_http_url
 from app.services.webhook import callback_url_problem
@@ -87,6 +88,19 @@ class Forbidden(ServiceError):
 
 class Unprocessable(ServiceError):
     status_code = 422
+
+
+class Refused(ServiceError):
+    """422: the request gets no review (Plan 26). `code` is "emergency" here (safety.REFUSAL_CODES); the detail is the
+    fixed English message, `message_th` the Thai one. Neither ever echoes the topic."""
+    status_code = 422
+
+    def __init__(self, code: str, detail: str, *, kind: str, hotlines: list[str], message_th: str) -> None:
+        super().__init__(detail)
+        self.code, self.kind, self.hotlines, self.message_th = code, kind, hotlines, message_th
+
+    def body(self) -> dict:
+        return {"code": self.code, "kind": self.kind, "hotlines": self.hotlines, "message_th": self.message_th}
 
 
 class NotFound(ServiceError):
@@ -180,7 +194,12 @@ class ReviewService:
 
     async def create(self, req: CreateReviewRequest, *, identity: Identity, human_token: str | None = None,
                      human_check: bool = True) -> ReviewCreated:
-        """human_check=False for MCP: agents cannot solve a browser challenge (they are rate-limited instead)."""
+        """human_check=False for MCP: agents cannot solve a browser challenge (they are rate-limited instead).
+        A topic that reads as an emergency is refused first (Plan 26): no cache lookup, row, rate-limit hit or LLM call."""
+        if (flag := red_flag(req.topic)) is not None:
+            log.info("refused_emergency", kind=flag.kind)  # never the topic
+            raise Refused("emergency", flag.message("en"), kind=flag.kind, hotlines=flag.hotlines,
+                          message_th=flag.message("th"))
         s = await self.effective()
         options = req.options.model_dump()
         cache_key = compute_cache_key(req.topic, req.language, options, await self._version())

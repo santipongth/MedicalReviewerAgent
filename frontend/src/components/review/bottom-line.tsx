@@ -48,12 +48,14 @@ export function PooledLine({ pool, lang, english }: { pool: Pool; lang: Lang; en
  * or "could not pool", how the papers split, and the grading rationale behind a disclosure. A result stored before
  * Plan 20 has no `answer`: its executive summary leads here instead (and no Discussion section repeats it).
  */
-export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, english, marks }: {
+export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, english, marks, openRationale }: {
   synthesis: Synthesis; result: ReviewResult; papers: Paper[]; lang: Lang; onSelect: Select; refs: Set<string>;
   /** the reader switched a Thai review to English: English pool names */
   english: boolean;
   /** Plan 25: the badge on the lead's citations when the summary leads (a result without an answer) */
   marks?: MarkerSupport | null;
+  /** Plan 26: the certainty rationale starts open (learner and committee views) */
+  openRationale?: boolean;
 }) {
   const hasPapers = papers.length > 0;
   const type = reviewTypeOf(result);
@@ -89,7 +91,7 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
         </p>
       )}
       {hasCheckedMark(marks) && <SupportLegend lang={lang} />}
-      {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} bar={!poolGap} />}
+      {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} bar={!poolGap} openRationale={openRationale} />}
       {pools.length > 0 && (
         <div className="grid gap-1.5" data-bottom-pools>
           <p className="label">{L(lang, B.pooledLabel)}</p>

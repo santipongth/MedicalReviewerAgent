@@ -27,6 +27,19 @@ describe("generateMetadata", () => {
     expect(meta.openGraph?.title).toBe(title);
   });
 
+  it("never puts a personal medical question in the title or the preview", async () => {
+    const body = { topic: "ฉันปวดหัวทุกวัน กินยาอะไรดี", status: "rejected" };
+    for (const extra of [{ refusal_code: "personal_medical" }, { error: "personal_medical: ข้อความ" }]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...body, ...extra }), { status: 200 })));
+      expect(await generateMetadata(props)).toEqual({ title: FALLBACK });
+    }
+  });
+
+  it("keeps the topic for another refusal code", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ topic: "pizza", refusal_code: "declined" }), { status: 200 })));
+    expect(await generateMetadata(props)).toEqual({ title: "pizza", openGraph: { title: "pizza" } });
+  });
+
   it("falls back on a network error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
     expect(await generateMetadata(props)).toEqual({ title: FALLBACK });

@@ -57,7 +57,9 @@ async function printState(page: Page) {
       nav: [...report.querySelectorAll("nav")].some((n) => shown(n) && !n.closest("[data-lit-pager]")),
       toggles: [...report.querySelectorAll("figure button[aria-pressed]")].some(shown),
       copy: [...report.querySelectorAll("button")].some((b) => shown(b) && /คัดลอก|Copy/.test(b.textContent ?? "")),
-      rail: shown(report.querySelector("aside")),
+      rail: shown(report.querySelector("aside[data-source-rail]")),
+      railExists: !!report.querySelector("aside[data-source-rail]"),
+      notice: shown(report.querySelector("aside[data-notice]")), // Plan 26: the fixed notices print
       filters: [...report.querySelectorAll("button[aria-expanded]")].some((b) => shown(b) && /^(กรอง|Filter)/.test(b.textContent ?? "")),
       print: [...report.querySelectorAll("button")].some((b) => shown(b) && /^(พิมพ์|Print)$/.test(b.textContent ?? "")),
       scrollHints: [...report.querySelectorAll("[data-scroll-hint]")].some(shown),
@@ -91,6 +93,9 @@ for (const [name, review, lang] of CASES) {
       nav: false, toggles: false, copy: false, rail: false, filters: false, print: false, scrollHints: false, siteHeader: false,
       masks: [], clamps: [], closed: 0, tapeDecoration: "underline", theme: "light", body: "rgb(255, 255, 255)",
     });
+    // a missing rail must not pass as "hidden", and the notices stay on paper (Plan 26 final fix B6)
+    expect(s.railExists).toBe(true);
+    expect(s.notice).toBe(true);
     expect(s.tapeAfter).toBe('"✓"');
     expect(s.tapeFace).toMatch(/Martian Mono/);
     await page.evaluate(() => document.fonts.ready);

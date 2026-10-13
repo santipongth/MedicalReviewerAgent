@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { audienceLayout, DEFAULT_AUDIENCE, learnerNoteAfter, opensRationale, type Audience } from "@/lib/audience";
 import { conceptTree } from "@/lib/concept-map";
 import { emptyFilters, filterPapers, isFiltered, isPooled, themePapers, type Filters } from "@/lib/charts-data";
 import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
@@ -11,12 +12,13 @@ import { robSummary } from "@/lib/rob-summary";
 import { alignMarkers } from "@/lib/support";
 import { cellOutcome, keyFindingViews, sameModelReadings, sofRows, type OutcomeContext } from "@/lib/report-view";
 import {
-  isGraded, metaPoolGap, reportLayout, reviewTypeOf, SECTION_ANCHOR, showsRiskOfBias, showsSection,
+  isGraded, metaPoolGap, reviewTypeOf, SECTION_ANCHOR, showsRiskOfBias, showsSection,
   type BlockId, type TopSectionId,
 } from "@/lib/review-type";
 import type { ComparisonRow, Paper, Review } from "@/lib/types";
 import { printPageCss } from "@/lib/print";
 import { VerifiedAppendix } from "./appendix";
+import { AudienceSwitch, LearnerNote, ReportNotices } from "./audience";
 import { BottomLine } from "./bottom-line";
 import { PrintMode, usePrintSetup } from "./print-mode";
 import { chartsContent } from "@/lib/charts-content";
@@ -91,12 +93,21 @@ function useDocumentLang(lang: Lang) {
  * of findings, study selection, characteristics, results, consistency, landscape, limitations, gaps, discussion,
  * methods, references and downloads; a left table of contents from 1280px, the source rail on the right.
  * offline: rendered inside a downloaded HTML file (no links back to the service).
+ * Plan 26: `initialAudience` (default public) picks the presentation (lib/audience.ts: section order, notes, what starts
+ * open); the switch under the title changes it and reports the choice through `onAudience`. The content never changes.
  */
-export function Report({ review, offline = false }: { review: Review; offline?: boolean }) {
+export function Report({ review, offline = false, initialAudience, onAudience }: {
+  review: Review; offline?: boolean; initialAudience?: Audience; onAudience?: (audience: Audience) => void;
+}) {
   const result = useMemo(() => review.result ?? {}, [review.result]);
   const original = (result.language ?? review.language ?? "th") as Lang;
   const [lang, setLang] = useState<Lang>(original);
   useDocumentLang(lang);
+  const [audience, setAudience] = useState<Audience>(initialAudience ?? DEFAULT_AUDIENCE);
+  function changeAudience(next: Audience) {
+    setAudience(next);
+    onAudience?.(next);
+  }
   const showEn = lang === "en" && original === "th";
   const synthesis = (showEn ? result.synthesis_en : result.synthesis) ?? result.synthesis ?? { executive_summary: result.summary ?? "" };
   const papers = useMemo(() => result.papers ?? [], [result.papers]);
@@ -225,7 +236,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     citations: { show: hasCitations, node: citations && <CitationNetworkSection citations={citations} papers={visible} lang={lang} onSelect={select} /> },
   };
 
-  const layout = reportLayout(type);
+  const layout = audienceLayout(type, audience);
   // The filters narrow every table and chart after them: they sit at the top of the first filtered group.
   const filterHome = layout.find((s) => (["characteristics", "results", "landscape"] as TopSectionId[]).includes(s.id)
     && s.blocks.some((b) => blocks[b].show))?.id;
@@ -250,12 +261,17 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     const node = sectionNode(id);
     if (node) sections.push({ id, node });
   }
+  // The learner view follows some sections with a learning note (not a section of its own: no table-of-contents entry)
+  for (const s of sections) {
+    const note = learnerNoteAfter(audience, s.id);
+    if (note) s.node = <>{s.node}<LearnerNote id={note} lang={lang} /></>;
+  }
 
   function sectionNode(id: TopSectionId): ReactNode {
     switch (id) {
       case "bottom_line":
         return <BottomLine synthesis={synthesis} result={result} papers={papers} lang={lang} onSelect={select} refs={refs} english={lang === "en"}
-          marks={answer ? null : discussionMarks} />;
+          marks={answer ? null : discussionMarks} openRationale={opensRationale(audience)} />;
       case "key_findings":
         return hasPapers && findings.length ? <KeyFindings findings={findings} lang={lang} onSelect={select} support={support} papers={byRef} /> : null;
       case "sof":
@@ -323,6 +339,8 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           {/* without studies there is no left table of contents: the short top list stays at every width */}
           <ReportNav items={navItems} label={L(lang, N.inThisReport)} always={!hasPapers} />
           <TitleBlock review={review} result={result} type={type} lang={lang} original={original} onLang={setLang} poolGap={poolGap} offline={offline} />
+          <AudienceSwitch value={audience} onChange={changeAudience} lang={lang} />
+          <ReportNotices result={result} audience={audience} lang={lang} hasPapers={hasPapers} />
 
           {sections.slice(0, lead).map((s) => <Fragment key={s.id}>{s.node}</Fragment>)}
 

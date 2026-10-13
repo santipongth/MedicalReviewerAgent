@@ -40,7 +40,7 @@ export function useReview(id: string, { pollMs = 4000 }: { pollMs?: number } = {
         return true;
       }
       if (TERMINAL_STATUS.has(r.status)) {
-        const payload = r.status === "rejected" ? { reason: r.error } : { message: r.error };
+        const payload = r.status === "rejected" ? { reason: r.error, code: r.refusal_code } : { message: r.error };
         const ev = { seq: Number.MAX_SAFE_INTEGER, type: r.status, payload };
         dispatch(ev);
         dispatchScene({ kind: "event", ev });

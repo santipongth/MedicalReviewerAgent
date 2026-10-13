@@ -40,7 +40,8 @@ SYSTEM_HASHES = {
     # reviews get the synthesizer bound to NarrativeNoGrade (it was SynthesisNarrative, which asked for a grade the
     # code then discarded); the SLR schema and prompts are unchanged, so these SLR pins hold. 2026-10-13.1 (Plan 25)
     # adds the sentence-support judge's own prompt and schema (pinned in test_support_prompts_are_pinned); no prompt
-    # above changed.
+    # above changed. 2026-10-13.2 (Plan 26) changes only the topic guard's prompt and schema (the personal_medical
+    # category, pinned in test_guard_prompt_is_pinned); no prompt above changed.
     "narrative_system": (prompts.narrative_system, "16278465ee36d386eede4011a039ce7adf15588592669958c92883bcc06b3b7d"),
 }
 
@@ -79,6 +80,13 @@ def test_slr_user_prompts_are_unchanged():
         "350972bf8305e1a387fcd65baee38ed8b6da9fb63e41b2b816d2ff079422d0eb"
     assert sha(prompts.plan_user(topic="t", english_topic="e", options=OPTIONS)) == \
         "62e2aa279649c998d48524f49a328bded2a683f672f70caaba24927e20b3e082"
+
+
+def test_guard_prompt_is_pinned():
+    # Plan 26 (prompt_version 2026-10-13.2): the topic guard's categories (research, personal_medical, declined), the
+    # same for every review type; its user prompt is unchanged
+    assert sha(prompts.GUARD_SYSTEM) == "e38d8f7ce0a198a65d069a7e017157d7c347fa72d529841c8f5c5b89e0c8462e"
+    assert sha(prompts.guard_user("t")) == "92fffe5f4585c3344799ba8b4f42b8ef991f5f3decab4b1e88b0920b1fd6c4a6"
 
 
 def test_support_prompts_are_pinned():
