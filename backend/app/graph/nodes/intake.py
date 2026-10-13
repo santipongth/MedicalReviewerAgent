@@ -60,7 +60,7 @@ def make_topic_guard(deps):
             return {"rejected": rejection_error("personal_medical"), "cost_usd": res.cost}
         if not res.value.allowed or res.value.category != "research":  # either one rejecting is a rejection
             # the model's free text must never start with a refusal code: refusal_code_of reads the stored prefix
-            reason = re.sub(r"^\s*personal[\s_-]*medical\s*:\s*", "", res.value.reason, flags=re.IGNORECASE).strip()
+            reason = re.sub(r"^(?:\s*personal[\s_-]*medical\s*:)+\s*", "", res.value.reason, flags=re.IGNORECASE).strip()
             return {"rejected": reason or "The topic is not a biomedical research question.",
                     "cost_usd": res.cost}
         return {"english_topic": res.value.english_topic or state["topic"], "cost_usd": res.cost}

@@ -124,7 +124,7 @@ POST /reviews  or  MCP start_review
        2. callback rule, cache, Turnstile, URL safety, key quota, capacity (atomic), hourly rate   (unchanged)
        3. insert + enqueue            (queue slot, daily counter)
 worker: review job
-  └─ topic_guard (guard role, one call, as before; prompt +806 characters)
+  └─ topic_guard (guard role, one call, as before; prompt +1072 characters)
        category personal_medical  → rejected, error "personal_medical: …", event {reason, code: "personal_medical"}
        category declined / allowed false → rejected with the model's reason, code "declined"   (as before)
        research                   → refine_question … (unchanged)
@@ -136,7 +136,7 @@ worker: review job
 | Personal medical | 1 (the guard) | The guard call: about $0.0001 on `budget` | Counted (as any rejected topic today) | Until the guard answers (seconds) | Yes, `rejected` |
 | Research | as today | as today + about $0.00001 (longer guard prompt) | as today | as today | as today |
 
-Extra cost per request: the guard's system prompt grows by 806 characters (about 200 tokens) and the answer by one
+Extra cost per request: the guard's system prompt grows by 1072 characters (about 270 tokens) and the answer by one
 enum field: about $0.00001 per review on `budget` (Qwen3.5 Flash, $0.065 / $0.26 per 1M), about $0.00003 on
 `balanced` (Gemini 3.1 Flash Lite). The admission reservation is unchanged (the per-review cap does not move).
 

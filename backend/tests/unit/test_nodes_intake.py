@@ -142,7 +142,8 @@ async def test_declined_or_not_allowed_keeps_the_guard_reason():
 
 async def test_a_model_reason_cannot_pose_as_a_refusal_code():
     from app.services.safety import refusal_code_of
-    for text in ("personal_medical: Not medical.", "  Personal_Medical :Not medical.", "PERSONAL MEDICAL: Not medical."):
+    for text in ("personal_medical: Not medical.", "  Personal_Medical :Not medical.", "PERSONAL MEDICAL: Not medical.",
+                 "personal_medical: personal_medical: Not medical.", "personal_medical:Personal-Medical : Not medical."):
         v = FakeStructuredLLM("h", lambda s, u, text=text: TopicVerdict(allowed=False, reason=text, english_topic="",
                                                                        category="declined"))
         out = await make_topic_guard(_deps(_llms(guard=v)))({"topic": "best pizza", "language": "en"})
@@ -153,7 +154,8 @@ async def test_a_model_reason_cannot_pose_as_a_refusal_code():
 def test_the_guard_prompt_sends_emergencies_self_harm_and_close_ones_to_personal_medical():
     from app.graph import prompts
     for phrase in ("someone close to the asker", "an emergency happening now", "suicidal thoughts or self-harm",
-                   "even if misspelled", "These are never declined", "causing harm to others"):
+                   "even if misspelled", "These are never declined", "suicide prevention in adolescents",
+                   "is research; personal_medical is for a person describing their own", "causing harm to others"):
         assert phrase in prompts.GUARD_SYSTEM
 
 

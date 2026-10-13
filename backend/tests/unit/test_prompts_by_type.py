@@ -85,7 +85,7 @@ def test_slr_user_prompts_are_unchanged():
 def test_guard_prompt_is_pinned():
     # Plan 26 (prompt_version 2026-10-13.2): the topic guard's categories (research, personal_medical, declined), the
     # same for every review type; its user prompt is unchanged
-    assert sha(prompts.GUARD_SYSTEM) == "3a0699017d2cbdea1dc3d60481b2dac35961f432a23cb01b20f988e49ecafeb2"
+    assert sha(prompts.GUARD_SYSTEM) == "e38d8f7ce0a198a65d069a7e017157d7c347fa72d529841c8f5c5b89e0c8462e"
     assert sha(prompts.guard_user("t")) == "92fffe5f4585c3344799ba8b4f42b8ef991f5f3decab4b1e88b0920b1fd6c4a6"
 
 
