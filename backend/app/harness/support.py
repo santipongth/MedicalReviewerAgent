@@ -44,7 +44,7 @@ _REF = re.compile(r"P\d+")
 # A sentence ends at . ! ? or a citation group before a capital letter (never before "[": a group after the full
 # stop belongs to the sentence before it), not after a common abbreviation or an initial.
 _CLAIM_END = re.compile(r"(?<=[.!?\]])\s+(?=[A-Z])")
-_ABSTRACT_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z(\[])|\s*\n+\s*")
+_ABSTRACT_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z(\[])|(?<![^\S\n])[^\S\n]*\n\s*")
 _ABBREVIATION = re.compile(r"(?:\b(?:vs|Vs|et al|approx|Approx|Figs?|No|Nos|cf|e\.g|i\.e)|(?<![\w.])[A-Z])\.$")
 _WORD = re.compile(r"[a-z][a-z0-9-]*")
 _STOP = """
@@ -232,12 +232,12 @@ def verdicts(value: Any, pairs: list[Pair]) -> dict[str, tuple[str, int | None]]
         return {}
     known = {p.id: len(p.candidates) for p in pairs}
     out: dict[str, tuple[str, int | None]] = {}
-    dropped: set[str] = set()
+    seen: set[str] = set()
     for v in value.verdicts:
-        if v.id not in known or v.id in out or v.id in dropped:
-            dropped.add(v.id)
+        if v.id not in known or v.id in seen:
             out.pop(v.id, None)
             continue
+        seen.add(v.id)
         if v.label == "unsupported":
             out[v.id] = (v.label, None)
         elif v.sentence is not None and 1 <= v.sentence <= known[v.id]:
@@ -250,9 +250,12 @@ def citation(pair: Pair | None, ref: str, verdict: tuple[str, int | None] | None
     """One cited paper of a claim, as stored in result.support. `evidence` is the supporting sentence (supported,
     partial) or else the closest sentence; `verified` is the badge rule."""
     label, index = verdict if verdict else (None, None)
+    if index is not None and (pair is None or not 0 <= index < len(pair.candidates)):
+        label, index = None, None  # a candidate that does not exist: unjudged, never the wrong sentence
     evidence = score_ = None
     if pair is not None and pair.candidates:
         evidence, score_ = pair.candidates[index if index is not None else 0]
+        evidence = _clip(evidence, MAX_SENTENCE_CHARS)  # exactly the text the judge read
     return {"ref": ref, "label": label, "evidence": evidence, "score": score_, "not_evidence": not_evidence,
             "verified": bool(label == "supported" and numbers_checked and not computed and not not_evidence)}
 

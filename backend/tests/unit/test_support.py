@@ -151,6 +151,37 @@ def test_usable_verdicts_drop_repeats_unknown_ids_and_missing_sentences():
     assert sp.verdicts(None, pairs) == {}
 
 
+def test_a_repeated_id_is_dropped_whatever_the_first_answer_was():
+    pairs = _pairs()
+    invalid_first = SupportBatch(verdicts=[SupportVerdict(id="c1", label="partial", sentence=3),
+                                           SupportVerdict(id="c1", label="supported", sentence=1),
+                                           SupportVerdict(id="c2", label="unsupported", sentence=None)])
+    assert sp.verdicts(invalid_first, pairs) == {"c2": ("unsupported", None)}
+    valid_twice = SupportBatch(verdicts=[SupportVerdict(id="c1", label="supported", sentence=1),
+                                         SupportVerdict(id="c1", label="unsupported", sentence=None)])
+    assert "c1" not in sp.verdicts(valid_twice, pairs)
+
+
+def test_a_missing_candidate_is_unjudged_and_evidence_is_what_the_judge_read():
+    pair = _pairs()[0]
+    one = sp.Pair(id=pair.id, claim=pair.claim, ref="P1", candidates=pair.candidates[:1])
+    kw = {"numbers_checked": True, "computed": False, "not_evidence": False}
+    for bad in (1, -1):
+        c = sp.citation(one, "P1", ("supported", bad), **kw)
+        assert c["label"] is None and c["verified"] is False and c["evidence"] == one.candidates[0][0]
+    long = "Metformin lowered colorectal cancer risk " + "x" * 600
+    big = sp.Pair(id="c1", claim=pair.claim, ref="P1", candidates=[(long, 0.5)])
+    c = sp.citation(big, "P1", ("supported", 0), **kw)
+    assert c["evidence"] == sp.judge_items([big])[0]["candidates"][0] and len(c["evidence"]) == sp.MAX_SENTENCE_CHARS
+
+
+def test_a_long_run_of_spaces_splits_in_linear_time():
+    import time
+    start = time.perf_counter()
+    sp.abstract_sentences("Methods: " + " " * 20000 + "We followed adults for years.")
+    assert time.perf_counter() - start < 0.5
+
+
 def test_the_badge_needs_supported_checked_numbers_no_pool_and_evidence():
     pair = _pairs()[0]
     first, second = pair.candidates[0][0], pair.candidates[1][0]
