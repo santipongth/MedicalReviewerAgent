@@ -353,6 +353,14 @@ def _analyse(sentence: str, ctx: ProseContext) -> _Issues:
     return issues
 
 
+def unverified_numbers(sentence: str, refs: list[str], ctx: ProseContext) -> list[str]:
+    """Plan 25: the numbers of `sentence` that trace to none of `refs`' verified card numbers, the review's own text,
+    a pooled value or a count (the rule `prose_problems` applies to the summary). An empty scope is every paper."""
+    scope = [r for r in refs if r in ctx.facts] or list(ctx.facts)
+    about_search = bool(_SEARCH.search(sentence))
+    return [t.text for t in _tokens(sentence) if not _admitted(t, sentence, scope, ctx, about_search)]
+
+
 def _sentences(text: str) -> list[str]:
     return _SENTENCE.split(text.strip()) if text and text.strip() else []
 
