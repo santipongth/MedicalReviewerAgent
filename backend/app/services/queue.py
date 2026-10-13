@@ -6,6 +6,8 @@ from typing import Protocol
 from arq.connections import ArqRedis
 from arq.jobs import Job
 
+HARNESS_QUEUE = "arq:harness"  # Plan 23c: harness runs have their own queue and worker (compose profile "harness")
+
 
 def review_job_id(review_id: uuid.UUID | str) -> str:
     return f"review:{review_id}"
@@ -34,6 +36,10 @@ class ArqJobQueue:
     async def enqueue_checkpoint_delete(self, review_id: uuid.UUID) -> bool:
         """A deleted review's LangGraph thread is dropped by a worker, which owns the checkpointer (Plan 23a)."""
         job = await self.pool.enqueue_job("delete_checkpoint", str(review_id), _job_id=f"checkpoint-delete:{review_id}")
+        return job is not None
+
+    async def enqueue_harness(self, run_pk: int) -> bool:
+        job = await self.pool.enqueue_job("run_harness", run_pk, _job_id=f"harness:{run_pk}", _queue_name=HARNESS_QUEUE)
         return job is not None
 
     async def abort_review(self, review_id: uuid.UUID) -> bool:

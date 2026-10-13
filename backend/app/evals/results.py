@@ -3,13 +3,15 @@ Paths are relative to models.EVAL_ROOT (backend/ in development, /app in the con
 from __future__ import annotations
 
 import json
+import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.evals import models
 from app.evals.freeze import _selected
 from app.evals.metrics import aggregate, review_metrics
-from app.evals.models import Manifest, RunRecord, read_model
-from app.evals.report import render_report
+from app.evals.models import Manifest, RunRecord, load_manifest, read_model
+from app.evals.report import EMPTY, render_report, summary_rows, verdict_changes
 
 
 def load_rows(prompt_version: str, run_id: str, manifest: Manifest) -> tuple[list, dict]:
@@ -70,3 +72,86 @@ def prior_spend(prompt_version: str, run_id: str) -> float:
         except (OSError, ValueError, AttributeError, TypeError):
             continue
     return total
+
+
+REPORT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,150}\.md$")
+LABEL_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+REPORT_MAX_BYTES = 1_000_000
+_REPORT_PARTS = re.compile(r"^(\d{4}-\d{2}-\d{2}\.\d+)-(.+)\.md$")
+
+
+def _stamp(path: Path) -> str:
+    return datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat(timespec="seconds")
+
+
+def list_reports() -> list[dict]:
+    folder = models.EVAL_ROOT / "reports"
+    if not folder.is_dir():
+        return []
+    out = []
+    for path in folder.glob("*.md"):
+        if not REPORT_NAME.match(path.name) or path.is_symlink() or not path.is_file():
+            continue
+        m = _REPORT_PARTS.match(path.name)
+        out.append({"name": path.name, "prompt_version": m.group(1) if m else None,
+                    "run_id": m.group(2) if m else None, "size": path.stat().st_size, "modified_at": _stamp(path)})
+    return sorted(out, key=lambda r: r["modified_at"], reverse=True)
+
+
+def read_report(name: str) -> str:
+    """A report's Markdown. FileNotFoundError for any name that is not a plain .md file directly in reports/ of at
+    most REPORT_MAX_BYTES."""
+    folder = (models.EVAL_ROOT / "reports").resolve()
+    if not REPORT_NAME.match(name):
+        raise FileNotFoundError(name)
+    path = folder / name
+    if path.is_symlink() or not path.is_file() or path.resolve().parent != folder:
+        raise FileNotFoundError(name)
+    if path.stat().st_size > REPORT_MAX_BYTES:
+        raise FileNotFoundError(name)
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def parse_label(label: str) -> tuple[str, str]:
+    pv, _, run = label.partition("/")
+    if not (LABEL_PART.match(pv) and LABEL_PART.match(run)):
+        raise ValueError("a run label looks like PROMPT_VERSION/RUN_ID")
+    return pv, run
+
+
+def list_results() -> list[dict]:
+    root = models.EVAL_ROOT / "runs"
+    if not root.is_dir():
+        return []
+    out = []
+    for pv_dir in root.iterdir():
+        if not pv_dir.is_dir() or pv_dir.is_symlink() or not LABEL_PART.match(pv_dir.name):
+            continue
+        for run_dir in pv_dir.iterdir():
+            if not run_dir.is_dir() or run_dir.is_symlink() or not LABEL_PART.match(run_dir.name):
+                continue
+            files = sum(1 for _ in run_dir.glob("*.json"))
+            if files:
+                out.append({"label": f"{pv_dir.name}/{run_dir.name}", "prompt_version": pv_dir.name,
+                            "run_id": run_dir.name, "files": files, "modified_at": _stamp(run_dir)})
+    return sorted(out, key=lambda r: r["modified_at"], reverse=True)
+
+
+def compare_results(a: str, b: str) -> dict:
+    """Two runs side by side with the report's summary rows. ValueError for a bad label, LookupError when a run has
+    no files, FileNotFoundError when the manifest is missing."""
+    manifest = load_manifest()
+    sides = []
+    for side, label in (("a", a), ("b", b)):
+        pv, run = parse_label(label)
+        rows, _ = load_rows(pv, run, manifest)
+        if not rows:
+            raise LookupError(f"no run files for run {side}")  # names the field, never the submitted label
+        sides.append((label, rows))
+    (label_a, rows_a), (label_b, rows_b) = sides
+    other = dict(summary_rows(aggregate(rows_b)))
+    return {"a": {"label": label_a, "runs": len(rows_a)}, "b": {"label": label_b, "runs": len(rows_b)},
+            "rows": [{"metric": name, "a": value, "b": other.get(name, EMPTY)}
+                     for name, value in summary_rows(aggregate(rows_a))],
+            "verdict_changes": [line.removeprefix("- ") for line in verdict_changes(rows_a, rows_b, label_b)
+                                if line != "- none"]}

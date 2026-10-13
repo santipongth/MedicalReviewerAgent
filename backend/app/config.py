@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     review_cost_per_paper_usd: float = 0.006
     review_cost_per_candidate_usd: float = 0.0005
     max_cost_per_review_usd: float = 0.60
+    # Plan 23c: the most a console harness run may be capped at. Env only: the admin console cannot raise it. $5 is the
+    # owner's eval budget cap of 2026-10-12.
+    harness_max_usd: float = 5.0
     # Cloudflare Turnstile for anonymous web submissions (empty secret = off; API keys and MCP never need it).
     turnstile_secret: str = ""
     turnstile_site_key: str = ""
