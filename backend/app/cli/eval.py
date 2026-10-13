@@ -11,12 +11,15 @@ admin console (database), else config/llm.yaml (LLM_PRESET applies to the file o
 or config file that cannot be read is an error (exit 2) that names this flag, never a silent fallback. report, --help
 and bad arguments never touch the database. Each run record stores the config label (`db:<id>`, `file`,
 `file:<path>`).
+
+Settings and glossary (Plan 23c): the same commands also run with the settings and the Thai glossary in force (the
+newest saved versions), and each run record stores the glossary it carried (label and text), which the glossary metric
+scores against. `--config-file` means "no DB": llm.yaml, env settings and the built-in glossary.
 """
 from __future__ import annotations
 
 import argparse
 import io
-import json
 import shutil
 import subprocess
 import sys
@@ -25,10 +28,9 @@ from typing import TYPE_CHECKING
 
 from app.evals import models
 from app.evals.batch import run_all
-from app.evals.freeze import _selected, freeze_all
-from app.evals.metrics import aggregate, review_metrics
-from app.evals.models import RunRecord, load_manifest, read_model, save_manifest
-from app.evals.report import render_report
+from app.evals.freeze import freeze_all
+from app.evals.models import load_manifest, save_manifest
+from app.evals.results import load_rows, write_report
 from app.evals.select import select
 
 if TYPE_CHECKING:
@@ -38,6 +40,7 @@ if TYPE_CHECKING:
 
     from app.config import Settings
     from app.services.llm_config import ResolvedLLMConfig
+    from app.services.runtime_config import Runtime
 
 LLM_COMMANDS = ("select", "freeze", "run")  # the commands that call an LLM; report only reads run files
 
@@ -80,6 +83,23 @@ async def eval_llm_config(
         raise EvalConfigError(f"the model config in use ({effective.label}) is not usable: {_why(exc)}") from exc
 
 
+async def eval_runtime(settings: Settings, config_file: str | None,
+                       session_factory_maker: Callable[[], async_sessionmaker[AsyncSession]]) -> Runtime:
+    """(Plan 23c) The settings in force and the glossary for an eval run: the DB's saved versions, or env values and
+    the built-in glossary when --config-file says not to use the DB. An unreachable DB is an EvalConfigError, never a
+    silent fallback."""
+    from app.harness.glossary import SEED_GLOSSARY
+    from app.services.runtime_config import Runtime, load_runtime
+
+    if config_file:
+        return Runtime(settings, "env", SEED_GLOSSARY)
+    try:
+        return await load_runtime(session_factory_maker(), settings)
+    except Exception as exc:
+        raise EvalConfigError(f"cannot read the runtime settings ({_why(exc)}); check that Postgres is running and "
+                              f"migrated, or pass --config-file PATH") from exc
+
+
 def split_config_file(argv: list[str]) -> tuple[str | None, list[str]]:
     """(the --config-file value, the other arguments); the flag may stand before or after the command."""
     pre = argparse.ArgumentParser(prog="python -m app.cli.eval", add_help=False, allow_abbrev=False)
@@ -120,31 +140,6 @@ def git_sha() -> str:
                               check=True).stdout.strip()
     except Exception:  # noqa: BLE001 - outside a checkout
         return "unknown"
-
-
-def _load_rows(prompt_version: str, run_id: str, manifest) -> tuple[list, dict]:
-    strata = {e.id: e.stratum for e in manifest.reviews}
-    folder = models.EVAL_ROOT / "runs" / prompt_version / run_id
-    recs = [read_model(p, RunRecord) for p in sorted(folder.glob("*.json"))]
-    meta: dict = {}
-    if recs:
-        meta = {"git_sha": recs[0].git_sha, "preset": recs[0].preset, "models": recs[0].models,
-                "pool_version": recs[0].pool_version}
-        # expected = every selected review x every repeat number seen in the folder (at least r1 and r2)
-        repeats = {1, 2} | {r.repeat for r in recs}
-        have = {(r.id, r.repeat) for r in recs}
-        meta["missing"] = [f"{e.id} r{n}" for e in _selected(manifest, None) for n in sorted(repeats)
-                           if (e.id, n) not in have]
-        meta["expected"] = len(_selected(manifest, None)) * len(repeats)
-        fields = {"models": [json.dumps(r.models, sort_keys=True) for r in recs],
-                  "git_sha": [r.git_sha for r in recs], "preset": [r.preset for r in recs],
-                  "prompt_version": [r.prompt_version for r in recs],
-                  "pool_version": [r.pool_version for r in recs],
-                  "llm_config": [r.llm_config for r in recs]}
-        # records of rejected/errored fixtures carry no models or pool version: they never make a batch "mixed"
-        distinct = {k: sorted(set(v) - {"{}", ""}) for k, v in fields.items()}
-        meta["mixed"] = {k: v for k, v in distinct.items() if len(v) > 1}
-    return [review_metrics(r, strata.get(r.id, "?")) for r in recs], meta
 
 
 async def run(argv: list[str], deps, http, base_url: str) -> int:
@@ -196,22 +191,15 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
     if args.compare_run and "/" not in args.compare_run:
         print("--compare-run must look like PROMPT_VERSION/RUN_ID")
         return 1
-    rows, meta = _load_rows(pv, args.run_id, manifest)
-    if not rows:
+    if not load_rows(pv, args.run_id, manifest)[0]:
         print(f"no run files for {pv}/{args.run_id}")
         return 1
-    compare = None
     if args.compare_run:
         other_pv, other_run = args.compare_run.split("/", 1)
-        other_rows, _ = _load_rows(other_pv, other_run, manifest)
-        if not other_rows:
+        if not load_rows(other_pv, other_run, manifest)[0]:
             print(f"no run files for {args.compare_run}")
             return 1
-        compare = {"label": args.compare_run, "aggregate": aggregate(other_rows), "rows": other_rows}
-    path = models.EVAL_ROOT / "reports" / f"{pv}-{args.run_id}.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_report(pv, args.run_id, manifest, rows, meta, compare), encoding="utf-8", newline="\n")
-    print(path)
+    print(write_report(pv, args.run_id, manifest, args.compare_run))
     return 0
 
 
@@ -224,21 +212,22 @@ async def eval_main(settings: Settings, config_file: str | None, rest: list[str]
     from app.graph.graph import GraphDeps
     from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 
-    resolved, label = None, "file"
+    resolved, label, runtime = None, "file", None
     if _parser().parse_args(rest).cmd in LLM_COMMANDS:
         try:
             resolved, label = await eval_llm_config(settings, config_file, session_factory_maker)
+            runtime = await eval_runtime(settings, config_file, session_factory_maker)
         except EvalConfigError as exc:
             print(exc)
             return 2
         finally:
             if release_db is not None:
                 await release_db()
-        print(f"llm config: {label}")
+        print(f"llm config: {label} · settings: {runtime.settings_version} · glossary: {runtime.glossary.label}")
     http = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)
     # report needs the settings (prompt version) and no models
-    deps = (build_graph_deps(settings, http, resolved=resolved, config_version=label) if resolved is not None
-            else GraphDeps(settings=settings))
+    deps = (build_graph_deps(runtime.settings, http, resolved=resolved, config_version=label,
+                             glossary=runtime.glossary) if runtime is not None else GraphDeps(settings=settings))
     deps.openalex, deps.mcp = None, None  # no citation network or external tools: replays stay deterministic
     try:
         return await run(rest, deps, http, settings.europepmc_url)
@@ -262,7 +251,8 @@ def main() -> None:
         nonlocal engine
         from app.db.session import make_engine, make_session_factory
 
-        engine = make_engine(settings.database_url)
+        if engine is None:  # eval_llm_config and eval_runtime share one engine; release_db disposes it
+            engine = make_engine(settings.database_url)
         return make_session_factory(engine)
 
     async def release_db() -> None:

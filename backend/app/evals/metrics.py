@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from app.evals.models import RunRecord
 from app.graph.nodes.synthesis import _synthesis_strings
-from app.harness.glossary_check import check_pair, default_terms
+from app.harness.glossary_check import check_pair, default_terms, parse_glossary
 from app.harness.localize import MIN_THAI_SHARE, thai_share
 
 
@@ -80,7 +80,7 @@ def review_metrics(rec: RunRecord, stratum: str) -> ReviewMetrics:
     shares = [thai_share(th[k], en[k]) for k in translated]
     if shares:
         m.thai_share_mean, m.thai_share_min = statistics.fmean(shares), min(shares)
-    terms = default_terms()
+    terms = parse_glossary(rec.glossary_text) if rec.glossary_text else default_terms()
     m.glossary = [hit for k in en if k in th for hit in check_pair(en[k], th[k], terms)]
     m.answer_present = bool(((result.get("synthesis_en") or {}).get("answer") or "").strip())
     m.papers_analysed = len(result.get("papers") or [])

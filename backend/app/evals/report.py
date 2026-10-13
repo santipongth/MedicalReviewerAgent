@@ -18,7 +18,7 @@ def _pct(v) -> str:
     return f"{v:.1%}"
 
 
-def _rows(a: dict) -> list[tuple[str, str]]:
+def summary_rows(a: dict) -> list[tuple[str, str]]:
     return [
         ("Runs (failed)", f"{a['n_runs']} ({a['n_failed']})"),
         ("Number verification rate (done runs)", _pct(a["verification_rate"])),
@@ -41,7 +41,7 @@ def _rows(a: dict) -> list[tuple[str, str]]:
     ]
 
 
-def _verdict_changes(rows: list[ReviewMetrics], other: list[ReviewMetrics], label: str) -> list[str]:
+def verdict_changes(rows: list[ReviewMetrics], other: list[ReviewMetrics], label: str) -> list[str]:
     old = {r.id: r.primary_direction for r in other if r.repeat == 1}
     out = []
     for r in rows:
@@ -65,18 +65,19 @@ def render_report(prompt_version: str, run_id: str, manifest: Manifest, rows: li
         banner += [f"**MIXED BATCH:** {field}: {', '.join(values)}", ""]
     out = [f"# Cochrane harness report: {prompt_version} (run {run_id})", "", *banner,
            (f"- git `{meta.get('git_sha', '')}` · preset `{meta.get('preset', '')}` · "
-            f"pool `{meta.get('pool_version') or manifest.pool_version}` · seed {manifest.seed}"),
+            f"pool `{meta.get('pool_version') or manifest.pool_version}` · seed {manifest.seed} · "
+            f"llm config `{meta.get('llm_config') or EMPTY}` · glossary `{meta.get('glossary') or 'file'}`"),
            f"- models: {models}",
            f"- runs {span} · batch cost ${a['cost_total']:.2f}",
            "", "## Summary", ""]
     head = "| Metric | This run |" + (f" {compare['label']} |" if compare else "")
     out += [head, "|---|---|" + ("---|" if compare else "")]
-    other = dict(_rows(compare["aggregate"])) if compare else {}
-    for name, value in _rows(a):
+    other = dict(summary_rows(compare["aggregate"])) if compare else {}
+    for name, value in summary_rows(a):
         out.append(f"| {name} | {value} |" + (f" {other.get(name, EMPTY)} |" if compare else ""))
     if compare:
         out += ["", f"## Primary-outcome verdict changed vs {compare['label']}", ""]
-        out += _verdict_changes(rows, compare.get("rows") or [], compare["label"])
+        out += verdict_changes(rows, compare.get("rows") or [], compare["label"])
     out += ["", "## By stratum", "",
             "| Stratum | Runs | Failed | Verification | Glossary | Answer | Thai share mean | Cost mean |",
             "|---|---|---|---|---|---|---|---|"]

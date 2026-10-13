@@ -13,6 +13,7 @@ from app.evals.models import Fixture, PrimaryMatch, RunRecord
 from app.graph.graph import build_eval_graph, initial_state
 from app.graph.nodes.intake import harness_runner
 from app.harness.citation_tally import CitationTally, use_tally
+from app.harness.glossary import glossary_of
 from app.harness.matrix import classify_row
 from app.schemas.review import ReviewOptions
 from app.services.budget import ReviewBudget, review_cost_cap, use_budget
@@ -63,11 +64,13 @@ async def replay(deps, fixture: Fixture, *, options: dict[str, Any], repeat: int
     t0 = time.monotonic()
     tally = CitationTally()
     budget = ReviewBudget(cap_usd=review_cost_cap(deps.settings, ReviewOptions.clamped(options)))
+    glossary = glossary_of(deps)
     common = {"id": fixture.id, "repeat": repeat, "run_id": run_id, "prompt_version": deps.settings.prompt_version,
               "git_sha": git_sha, "pool_version": fixture.pool_version,
               "fixture_frozen_at": fixture.frozen_at, "preset": getattr(deps.llms, "preset", ""),
               "models": dict(getattr(deps.llms, "models", {}) or {}),
-              "llm_config": getattr(deps.llms, "config_version", ""), "started_at": started_at}
+              "llm_config": getattr(deps.llms, "config_version", ""),
+              "glossary": glossary.label, "glossary_text": glossary.text, "started_at": started_at}
     try:
         with use_budget(budget), use_tally(tally):
             graph = build_eval_graph(deps)

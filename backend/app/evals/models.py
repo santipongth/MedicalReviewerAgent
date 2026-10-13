@@ -82,6 +82,8 @@ class RunRecord(BaseModel):
     preset: str
     models: dict[str, str]
     llm_config: str = ""  # the config the run used: db:<id>, file or file:<path> (Plan 23b)
+    glossary: str = ""  # "file" or the glossary version (Plan 23c)
+    glossary_text: str = ""  # the glossary text the run's localizer carried; the 22a metric scores against it
     started_at: str
     elapsed_s: float
     cost_usd: float
