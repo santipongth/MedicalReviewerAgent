@@ -140,9 +140,9 @@ export function QuickAnswer({ review }: { review: Review }) {
       </header>
 
       <div className="grid rounded-sm border border-rule bg-surface motion-safe:animate-[thought-in_250ms_ease-out] lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-        <section aria-labelledby="quick-answer-h" className="grid content-start gap-4 p-5 sm:p-8 lg:p-10">
+        <section aria-labelledby="quick-answer-h" className="flex flex-col gap-4 p-5 sm:p-8 lg:p-10">
           <h2 id="quick-answer-h" className="label">{Lw(lang, Q.answer)}</h2>
-          <p data-quick-text className="grid max-w-[62ch] gap-3 text-[clamp(1.2rem,1.6vw,1.375rem)] leading-[1.75]" lang={fieldLang(text, lang)}>
+          <p data-quick-text className="grid max-w-[62ch] gap-3 text-[clamp(1.2rem,1.6vw,1.375rem)] leading-[1.75] lg:gap-4 lg:text-[clamp(1.3rem,1.9vw,1.6rem)] lg:leading-[1.65]" lang={fieldLang(text, lang)}>
             {blocks.map((parts, b) => (
               <Fragment key={b}>
                 {b > 0 && " "}
@@ -154,7 +154,7 @@ export function QuickAnswer({ review }: { review: Review }) {
               </Fragment>
             ))}
           </p>
-          {anyChecked && <p className="max-w-[62ch] text-[0.85rem] text-muted">{L(lang, Q.checkedLegend)}</p>}
+          {anyChecked && <p className="mt-auto max-w-[62ch] pt-2 text-[0.85rem] text-muted">{L(lang, Q.checkedLegend)}</p>}
         </section>
         <div className="grid content-start gap-6 border-t border-rule p-5 sm:p-8 lg:border-t-0 lg:border-l">
           {showCertainty && (
