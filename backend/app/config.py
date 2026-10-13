@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     openalex_mailto: str = ""  # optional; never logged
     openalex_timeout_seconds: float = 6.0  # per request, no retries: the citation step has a small budget
     citations_timeout_seconds: float = 20.0  # whole citation step; a failure never fails the review
+    # ThaiJO (Plan 24): Thai journals through TCI's undocumented search API, off until the owner has TCI's answer to the
+    # permission letter. Env only (not a console setting). The share cap keeps Thai studies an addition to the
+    # international evidence: at most thaijo_max_candidates, and at most 1/8 of candidate_limit.
+    thaijo_enabled: bool = False
+    thaijo_url: str = "https://www.tci-thaijo.org/api/v1"
+    thaijo_max_candidates: int = 15
+    thaijo_timeout_seconds: float = 12.0  # the whole ThaiJO search (below searxng_timeout_seconds); the OAI step too
+    thaijo_request_timeout_seconds: float = 5.0  # per request, no retries (below every other source's timeout)
+    thaijo_cache_ttl_seconds: int = 604800  # abstracts and OAI records cached in Redis by article id (7 days)
     http_timeout_seconds: float = 30.0
     screen_batch_size: int = 10
 

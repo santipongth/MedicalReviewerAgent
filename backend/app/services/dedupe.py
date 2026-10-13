@@ -8,11 +8,11 @@ from rapidfuzz import fuzz
 from app.graph.schemas import Candidate
 from app.services.text import normalize_title
 
-SCALARS = ("title", "doi", "pmid", "pmcid", "arxiv_id", "year", "journal", "url", "pdf_url")
+SCALARS = ("title", "doi", "pmid", "pmcid", "arxiv_id", "year", "journal", "url", "pdf_url", "thaijo_url")
 
 
-# Curated Europe PMC records win, then full abstracts from an engine/arXiv, then search snippets.
-_SOURCE_RANK = {"europepmc": 2, "arxiv": 1, "engine": 1, "snippet": 0}
+# Curated Europe PMC records win, then full abstracts from an engine/arXiv/ThaiJO, then search snippets.
+_SOURCE_RANK = {"europepmc": 2, "arxiv": 1, "engine": 1, "thaijo": 1, "snippet": 0}
 
 
 def identifiers(c: Candidate) -> list[str]:

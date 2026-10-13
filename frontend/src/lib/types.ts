@@ -58,6 +58,16 @@ export interface Verification {
   design_mismatch?: boolean; // Plan 19: kept although its design is outside the ticked study types (relaxed)
 }
 
+/** Plan 24: bibliographic fields from the journal's OAI-PMH record (ThaiJO papers only); any of them can be null. */
+export interface PaperBib {
+  volume: string | null;
+  issue: string | null;
+  pages: string | null;
+  issn: string[];
+  license: string | null;
+  article_type: string | null;
+}
+
 export interface Paper {
   ref: string;
   title: string;
@@ -91,6 +101,10 @@ export interface Paper {
    * listed with its card, not evidence. Absent before it.
    */
   design_excluded?: boolean;
+  /** Plan 24: the ThaiJO article page (never a PDF); null for papers from other sources, absent before Plan 24. */
+  thaijo_url?: string | null;
+  /** Plan 24: OAI-PMH bibliographic fields of a ThaiJO paper; null when it has none, absent before Plan 24. */
+  bib?: PaperBib | null;
 }
 
 export interface ComparisonCell {

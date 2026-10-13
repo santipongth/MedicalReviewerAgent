@@ -13,6 +13,8 @@ The service reviews published papers automatically:
 - **Search:** the service's own SearXNG with eight engines: PubMed, Europe PMC (incl. medRxiv/bioRxiv preprints), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ and OpenAIRE. PLOS is available but opt-in (`SEARXNG_ENGINES`).
 - **Metadata enrichment:** Europe PMC (abstracts, identifiers, publication types, open-access flag, cited-by count).
 - **Citation metadata (reference lists, cited-by counts):** OpenAlex, with Europe PMC as the fallback.
+- **ThaiJO (Plan 24, off by default):** Thai health journals through TCI's search API, enabled only with
+  `THAIJO_ENABLED=true` (see "ThaiJO source (Plan 24)" below).
 - **Optional API keys** in `.env`: `NCBI_API_KEY`, `OPENALEX_API_KEY`, `S2_API_KEY` and `CORE_API_KEY`. Empty keys work at lower rate limits. They are never logged.
 - **Survey of other open sources:** `docs/superpowers/notes/2026-10-10-open-scholarly-sources-survey.md`.
 
@@ -55,6 +57,9 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 - **503** when the job could not be queued returns `{detail, review_id}`.
 
 **Cache hits are free.** The same topic (case and spaces ignored), language, options and pipeline version within 24 hours of finishing, or while still queued or running, returns that review with `cached: true`. Cache hits skip every limit, Turnstile and capacity check. The pipeline version is the prompt version plus the model configuration in use, written `<prompt_version>+llm<id>` (`id` is the saved configuration version, or `file` while `llm.yaml` is in use). A saved glossary starts a new cache generation too (`+g<version>` is added to the pipeline version while a glossary version exists, and results carry `glossary_version`); saved settings never do. A saved model configuration therefore starts a new cache generation: after any save, restore or reset in the admin console (see "Model management"), the same question runs again on the new models instead of returning a review made with the old ones. Deploying Plan 23b itself starts one new generation too: `<prompt_version>` becomes `<prompt_version>+llmfile`, so reviews cached before the deploy are not returned.
+
+**ThaiJO and the cache (Plan 24).** While `THAIJO_ENABLED` is true, `+thaijo` is added to the pipeline version, so
+turning ThaiJO on or off never returns a review that was searched the other way.
 
 **Turnstile.** This only applies when the deployment sets `TURNSTILE_SECRET`. An anonymous `POST /reviews` must then send the browser token in the `cf-turnstile-response` header:
 - A missing or rejected token gets **403**.
@@ -208,8 +213,9 @@ It is absent from results stored before Plan 20.
   neither is known).
 - `sources`: records identified per source before deduplication, `{engine: count}` (SearXNG engine names such as
   `pubmed`, `europe pmc`, `semantic scholar`, `arxiv`, `crossref`; `europe pmc (rct search)` for the meta-analysis
-  RCT search; `unknown` for a hit that names no engine). A hit that several engines returned counts once for each, so
-  the counts can sum to more than `stats.found`. null when not recorded.
+  RCT search; `thaijo` for ThaiJO (Plan 24: the ThaiJO records with an English abstract taken into the pool, at most
+  the share cap); `unknown` for a hit that names no engine). A hit that several engines returned counts once for each,
+  so the counts can sum to more than `stats.found`. null when not recorded.
 - `eligibility`: `{year_from, study_types[], inclusion_criteria[], exclusion_criteria[]}` (the criteria are the
   planner's, in English).
 - `limits`: `{candidate_limit, max_papers, min_abstract_chars}` (the values this review ran with: `max_papers` is the requested count, 5–50, default 30; `candidate_limit` is the pool size, 20–120, default 120).
@@ -224,10 +230,15 @@ It is absent from results stored before Plan 20.
 
 Models are `provider:model` strings as in `result.models` (null when not configured).
 
-**Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`.
-- No volume, issue or pages: the search sources do not give them, so references (report and Markdown, Plan 20 Task 6)
-  are Vancouver style from these fields only: `Authors (the first 6, then "et al."). Title. Journal. Year. doi: …
-  PMID: … PMCID: …`, a missing part left out, titles and journals as written (never translated). Authors are put in
+**Papers.** Each entry in `papers[]` has `ref, title, authors, year, journal, doi, pmid, pmcid, url, relevance, screen_reason, card, card_en, verification, error`, and since Plan 24 `thaijo_url` and `bib`.
+- `thaijo_url` (Plan 24): the ThaiJO article page (`https://<host>.tci-thaijo.org/index.php/<journal>/article/view/<id>`,
+  never the PDF) for a paper found in ThaiJO, else null. `bib`: `{volume, issue, pages, issn[], license, article_type}`
+  from the journal's OAI-PMH record for a ThaiJO paper that was read (any field can be null; `license` is a Creative
+  Commons URL), else null. Both are absent from results stored before Plan 24.
+- Volume, issue and pages appear only for ThaiJO papers (`bib`); the other search sources do not give them. References
+  (report and Markdown, Plan 20 Task 6) are Vancouver style from these fields only: `Authors (the first 6, then "et
+  al."). Title. Journal. Year;Volume(Issue):Pages. doi: … PMID: … PMCID: … ThaiJO: <page>`, a missing part left out
+  (`Year.` alone when there is no `bib`; an issue without a volume is dropped), titles and journals as written (never translated). Authors are put in
   "Surname Initials" form ("Smith, John A." and "John A. Smith" → "Smith JA"; particles such as "van der" stay with the
   surname; one initial per hyphenated part); an entry holding a ";"-separated list is split there, never at a comma; a
   single word, a non-Latin (e.g. Thai) name or one that does not parse is kept as written. DOI links encode each path
@@ -588,6 +599,12 @@ Plan 20 Task 10 adds:
 - `europepmc_failures`: Europe PMC requests that still failed after their retries (trial searches plus enrichment lookup batches); absent when none failed.
 - `off_focus_demoted`: candidates whose title and abstract name none of the question's key terms (term, MeSH heading or synonym, as a phrase; plurals and "SGLT-2"/"SGLT2" spellings match) and fewer than 2 of their topic words in any order; a title in another script is never demoted. Before the `candidate_limit` cut they move behind the on-topic candidates, in their search order; none is dropped. 0 without a refined question. Measured on the four re-run questions (2026-10-10), 3-55 hits were demoted (unrelated arXiv papers on network admission control, robotics, programming languages) and no paper the re-runs had selected.
 - `localize_templated`: Thai reviews only. The consensus and conflict strings rendered from fixed Thai templates in code instead of being translated.
+
+Plan 24 adds (absent while ThaiJO is off):
+- `thaijo`: `{hits, detailed, no_abstract, search_failed, detail_failed, cache_hits, cap, kept, seconds}` for the ThaiJO
+  search (`hits`: health-category hits across the queries, de-duplicated; `detailed`: abstracts looked up; `kept`: candidates taken),
+  plus `failed` (an error name) or `timed_out: true` when it failed or was cut, and `metadata: {asked, found, failed,
+  timed_out}` for the OAI-PMH step when a ThaiJO paper was read.
 
 ### Exports
 
@@ -1038,6 +1055,38 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
 - Cost cap: each review is capped at `review_cost_base_usd + review_cost_per_paper_usd * max_papers + review_cost_per_candidate_usd * candidate_limit` USD (defaults 0.04, 0.006 and 0.0005), never above `max_cost_per_review_usd` (default 0.60). These are settings and can be tuned per deployment. Admission reserves the worst-case cap for queued and running reviews and the request's own cap for the new one, so a large request can be refused while a small one is still accepted. The cap is checked before each LLM call and again once the call has its concurrency slot, so no call starts after the cap is spent. Calls already in flight finish and are charged, so a review (or a harness run) can end above its cap by the cost of at most `llm_concurrency` calls.
 - Limits for clients come from `GET /api/v1/status → limits`, never hard-code them.
 
+## ThaiJO source (Plan 24)
+
+- **Off by default.** `THAIJO_ENABLED=true` (env only, read by the API for the cache key and by the workers for the
+  search) adds Thai Journals Online (TCI) to every review's search. TCI's search API is undocumented and has no
+  published terms: the owner writes to TCI for permission or rate guidance before turning it on.
+- **What it asks.** Per review: one search per planner query (at most 3, `POST /api/v1/articles/search`, health
+  categories only), the English abstract of each hit it takes (`GET /api/v1/articles/{id}`, at most the cap plus 5),
+  and, for the ThaiJO papers that are read, the journal's OAI-PMH `GetRecord` (oai_dc) for volume, issue, pages, ISSN,
+  licence and article type. Never the PDF and never the HTML article page. Requests carry the User-Agent
+  `MedicalReviewerAgent/0.1 (research; contact via repository)`, are never retried or redirected, time out after
+  `THAIJO_REQUEST_TIMEOUT_SECONDS` (5) per read (not per request: the body is read in full, so the step as a whole is
+  bounded by the 12 s budget below), and the API host is spaced to at most 5 requests a second per process.
+  Abstracts and OAI records are cached in Redis by article for `THAIJO_CACHE_TTL_SECONDS` (7 days); a corrupt cache
+  entry counts as a miss.
+- **What it adds.** Candidates with an English abstract of at least 150 characters (mostly Latin script), at most
+  `THAIJO_MAX_CANDIDATES` (15) and at most 1/8 of `candidate_limit`, as their own list in the search round-robin
+  (ThaiJO results are trimmed to that share cap). Buddhist-era years (above 2400) become Gregorian. Screening and
+  reading use the English abstract like any other; the Thai abstract is not kept. De-duplication is the usual one (DOI
+  when present, else the fuzzy title match). ThaiJO hits are not used for the trial-name harvest. One malformed hit
+  on a search page is skipped and the other hits are kept.
+- **Soft.** The whole ThaiJO search has `THAIJO_TIMEOUT_SECONDS` (12, below SearXNG's 15); a failure or timeout keeps
+  what arrived, is listed in `errors` and in `quality.thaijo`, and never fails the review. Cancelling a review
+  cancels its in-flight ThaiJO search. The OAI step has the same budget and never fails a review either.
+- **Safety.** The OAI host comes from the hit's `article_url` and must be `https` on `*.tci-thaijo.org` with the
+  article-view path (a malformed host or an empty label is refused, never an error), resolving to public addresses
+  only. OAI XML with a DTD or entity declaration, over 512 KB, in UTF-16 or UTF-32, or declaring an unsupported
+  encoding is refused before parsing. Abstracts are third-party text: markup is stripped as for Europe PMC and they
+  are data in the prompts.
+- **Not included:** `/api/v1/papers/search` and the MCP `search_papers` tool (they stay on the SearXNG engines), and
+  Cochrane replays: pools frozen with the flag on include ThaiJO candidates and record `thaijo` in `engines`, but
+  `eval run` and the harness never call ThaiJO (replays start at screening, with ThaiJO unset).
+
 ## Event stream (SSE)
 
 `GET /api/v1/reviews/{id}/events` first replays the review's past events, then streams new ones.
@@ -1102,7 +1151,7 @@ The server name is `medical-reviewer-agent`, version 0.8.0. The `Host` header mu
 
 | Tool | Returns | Notes |
 |---|---|---|
-| `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | Searches the same eight engines as reviews. `limit` is clamped to 1–25. Shares the paper-search limit |
+| `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | Searches the same eight engines as reviews (never ThaiJO). `limit` is clamped to 1–25. Shares the paper-search limit |
 | `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None)` | `{review_id, status, cached, status_url}` | `topic`: up to 600 characters. `max_papers`: clamped into 5–50 (not rejected; default 30). `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. Capacity errors include the reason and the wait time |
 | `get_review_status(review_id)` | `{review_id, status, error, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled` |
 | `get_review_result(review_id)` | `{review_id, status, result}` | The `result` shape is the same as REST: `citations` and, for `meta_analysis`, `meta_analysis`. If the review is not done: `{…, result: null, message, error}` |

@@ -86,7 +86,7 @@ async def build_eval_deps(ctx: dict):
         raise UnpricedModels(unpriced)
     deps = build_graph_deps(runtime.settings, ctx["http"], catalog=catalog, resolved=resolved,
                             config_version=effective.label, glossary=runtime.glossary)
-    deps.openalex, deps.mcp = None, None
+    deps.openalex, deps.mcp, deps.thaijo = None, None, None  # a replay never calls TCI
     return deps, {"llm_config": effective.label, "settings_version": runtime.settings_version,
                   "glossary": runtime.glossary.label}
 

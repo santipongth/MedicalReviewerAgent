@@ -19,6 +19,7 @@ from app.graph.nodes import (
     screening,
     stubs,
     synthesis,
+    thaijo,
 )
 from app.graph.state import ReviewState
 
@@ -32,6 +33,7 @@ class GraphDeps:
     openalex: Any = None  # app.services.openalex.OpenAlexClient; None -> no citation step
     mcp: Any = None  # app.services.mcp_client.McpRegistry (external MCP tools); None → never consulted
     glossary: Any = None  # app.harness.glossary.ActiveGlossary; None → the built-in glossary (Plan 23c)
+    thaijo: Any = None  # app.services.thaijo.ThaiJoClient (Plan 24); None → ThaiJO is never searched
 
 
 def initial_state(
@@ -90,7 +92,7 @@ def build_stub_graph(checkpointer: BaseCheckpointSaver | None = None, delay_seco
     return builder.compile(checkpointer=checkpointer)
 
 def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
-    """screen_batch* → select_top → read_paper* (+ external_enrich, fetch_citations) → normalize_outcomes
+    """screen_batch* → select_top → read_paper* (+ external_enrich, fetch_citations, thaijo_metadata) → normalize_outcomes
     → [pool_effects] → explain_conflict* → write_synthesis → localize → finalize. Shared by build_graph and the
     Plan 22a eval graph."""
     b.add_node("screen_batch", screening.make_screen_batch(deps))
@@ -98,6 +100,7 @@ def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
     b.add_node("read_paper", reading.make_read_paper(deps))
     b.add_node("external_enrich", external.make_external_enrich(deps))
     b.add_node("fetch_citations", citations.make_fetch_citations(deps))
+    b.add_node("thaijo_metadata", thaijo.make_thaijo_metadata(deps))
     b.add_node("normalize_outcomes", synthesis.make_normalize_outcomes(deps))
     b.add_node("pool_effects", synthesis.make_pool_effects(deps))
     b.add_node("explain_conflict", synthesis.make_explain_conflict(deps))
@@ -108,12 +111,14 @@ def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
     b.add_conditional_edges(
         "select_top",
         partial(screening.route_to_reading, external_enabled=lambda: deps.mcp is not None and deps.mcp.enabled,
-                citations_enabled=lambda: deps.openalex is not None),
-        ["read_paper", "external_enrich", "fetch_citations", "normalize_outcomes"],
+                citations_enabled=lambda: deps.openalex is not None,
+                thaijo_enabled=lambda: getattr(deps, "thaijo", None) is not None),
+        ["read_paper", "external_enrich", "fetch_citations", "thaijo_metadata", "normalize_outcomes"],
     )
     b.add_edge("read_paper", "normalize_outcomes")
     b.add_edge("external_enrich", "normalize_outcomes")
     b.add_edge("fetch_citations", "normalize_outcomes")
+    b.add_edge("thaijo_metadata", "normalize_outcomes")
     # meta_analysis: normalize_outcomes → pool_effects → conflicts; every other type skips pool_effects
     b.add_conditional_edges("normalize_outcomes", synthesis.route_after_normalize,
                             ["pool_effects", "explain_conflict", "write_synthesis"])

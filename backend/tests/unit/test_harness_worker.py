@@ -474,3 +474,31 @@ async def test_unknown_spend_at_the_deadline_keeps_the_last_value_and_says_why(s
     await run_harness(ctx_for(session_factory, slow), pk)
     row = await get(session_factory, pk)
     assert (row.status, row.spent_usd, row.error) == ("error", 0.2, f"timed out; {SPEND_UNKNOWN}")
+
+
+async def test_eval_replays_never_reach_thaijo_but_freeze_keeps_it():
+    from types import SimpleNamespace
+
+    from app.cli.eval import offline_deps
+
+    for cmd, expected in [("run", None), ("select", None), ("freeze", "tci")]:
+        deps = SimpleNamespace(openalex="oa", mcp="mcp", thaijo="tci")
+        offline_deps(deps, cmd)
+        assert (deps.openalex, deps.mcp, deps.thaijo) == (None, None, expected), cmd
+
+
+async def test_harness_deps_drop_thaijo(tmp_path, session_factory, redis, monkeypatch):
+    settings = Settings(_env_file=None, openrouter_api_key="sk-or-x", thaijo_enabled=True,
+                        llm_config_path=str(write_yaml(tmp_path / "llm.yaml", MINIMAL)))
+
+    async def fake_cached(redis_client, loader):
+        return None
+
+    monkeypatch.setattr(harness_worker, "cached_catalog", fake_cached)
+    http = HttpClient(timeout=5)
+    try:
+        deps, _ = await build_eval_deps({"settings": settings, "session_factory": session_factory,
+                                         "redis_client": redis, "http": http})
+    finally:
+        await http.aclose()
+    assert deps.thaijo is None

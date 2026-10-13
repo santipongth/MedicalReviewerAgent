@@ -116,6 +116,7 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
                       else f"Simulated study {i + 1}: {topic}"),
             "authors": ["Stub A", "Stub B"],
             "year": year, "journal": "Journal of Simulated Evidence", "doi": None, "pmid": None, "pmcid": None,
+            "thaijo_url": None, "bib": None,  # Plan 24 (parity with finalize)
             "url": None, "relevance": round(0.95 - 0.05 * i, 2), "screen_reason": "Relevant to the question",
             "card": card, "card_en": card,
             "verification": _verification(card),

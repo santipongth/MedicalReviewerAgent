@@ -1443,6 +1443,7 @@ def make_finalize(deps):
             reports.setdefault(link["primary"], []).append(ref)
         out_papers = []
         left_out = set(design_excluded(state))  # Plan 20 Task 6: listed with a note, never used as evidence
+        bibs = state.get("thaijo_bib") or {}  # Plan 24: OAI-PMH metadata of the ThaiJO papers
         for p in papers:
             c = p["candidate"]
             link = linked.get(p["ref"]) or {}
@@ -1455,6 +1456,7 @@ def make_finalize(deps):
                 "related_to": link.get("primary"), "related_reason": link.get("reason"),
                 "related_reports": sorted(reports.get(p["ref"], []), key=_ref_num),
                 "design_excluded": p["ref"] in left_out,
+                "thaijo_url": c.get("thaijo_url"), "bib": bibs.get(p["ref"]),
             })
         stats = state.get("search_stats") or {}
         selection = state.get("selection_stats") or {}

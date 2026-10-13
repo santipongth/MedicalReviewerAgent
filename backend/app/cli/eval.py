@@ -24,11 +24,11 @@ import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.evals import models
 from app.evals.batch import run_all
-from app.evals.freeze import freeze_all
+from app.evals.freeze import freeze_all, freeze_engines
 from app.evals.models import load_manifest, save_manifest
 from app.evals.results import load_rows, write_report
 from app.evals.select import select
@@ -173,9 +173,8 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
             print(f"{len(unchecked)} eligible review(s) lack checked_by_owner: {', '.join(unchecked[:10])}")
             return 1
     if args.cmd == "freeze":
-        engines = [e.strip() for e in str(deps.settings.searxng_engines).split(",") if e.strip()]
         fixtures = await freeze_all(deps, manifest, ids=args.ids, force=args.force, git_sha=git_sha(),
-                                    engines=engines)
+                                    engines=freeze_engines(deps.settings))
         print(", ".join(f"{f.id}:{f.status}:{len(f.candidates)}" for f in fixtures))
         return 0
     if args.cmd == "run":
@@ -203,6 +202,13 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
     return 0
 
 
+def offline_deps(deps: Any, cmd: str) -> None:
+    """No citation network, external tools or ThaiJO: replays stay deterministic. `freeze` keeps ThaiJO (it searches)."""
+    deps.openalex, deps.mcp = None, None
+    if cmd != "freeze":
+        deps.thaijo = None
+
+
 async def eval_main(settings: Settings, config_file: str | None, rest: list[str],
                     session_factory_maker: Callable[[], async_sessionmaker[AsyncSession]],
                     release_db: Callable[[], Awaitable[None]] | None = None) -> int:
@@ -228,7 +234,7 @@ async def eval_main(settings: Settings, config_file: str | None, rest: list[str]
     # report needs the settings (prompt version) and no models
     deps = (build_graph_deps(runtime.settings, http, resolved=resolved, config_version=label,
                              glossary=runtime.glossary) if runtime is not None else GraphDeps(settings=settings))
-    deps.openalex, deps.mcp = None, None  # no citation network or external tools: replays stay deterministic
+    offline_deps(deps, _parser().parse_args(rest).cmd)
     try:
         return await run(rest, deps, http, settings.europepmc_url)
     finally:

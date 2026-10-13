@@ -15,12 +15,12 @@ import { L, Lw } from "./text";
 
 const R = RC.refs;
 
-const ID_NAME: Record<CitationId["label"], string> = { doi: "DOI", PMID: "PubMed", PMCID: "PubMed Central" };
+const ID_NAME: Record<CitationId["label"], string> = { doi: "DOI", PMID: "PubMed", PMCID: "PubMed Central", ThaiJO: "ThaiJO" };
 
 /** The anchor of a paper's reference (`#ref-P3`): the source rail links here. */
 export const referenceId = (ref: string): string => `ref-${ref}`;
 
-/** The reference text with its identifiers as links (doi.org, PubMed, PubMed Central); the text is never translated. */
+/** The reference text with its identifiers as links (doi.org, PubMed, PubMed Central, the ThaiJO page); the text is never translated. */
 function CitationText({ paper, lang }: { paper: Paper; lang: Lang }) {
   const { text, ids } = citationParts(paper);
   const opens = L(lang, R.newTab);

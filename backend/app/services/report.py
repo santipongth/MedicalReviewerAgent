@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 from app.harness.design import NON_QUANTITATIVE_CATEGORIES
 from app.harness.meta import DESIGN_GROUP_LABEL
+from app.services.thaijo import article_link
 
 DIRECTION = {"positive": "supports", "negative": "opposite/harm", "null": "no association",
              "mixed": "mixed", "unclear": "unclear"}
@@ -164,8 +165,9 @@ def author_names(authors: Any) -> list[str]:
 
 def _citation_parts(p: dict[str, Any]) -> tuple[list[str], list[tuple[str, str, str]]]:
     """The text parts of a Vancouver reference and its identifiers as (label, value, url). Only fields the result
-    carries (no volume, issue or pages: the search sources do not give them); a missing part is left out. The title
-    and journal stay in their own language. Mirrors frontend `src/lib/citation.ts`."""
+    carries: volume, issue and pages only for ThaiJO papers (`bib`, from OAI-PMH, Plan 24; the other sources do not
+    give them); a missing part is left out. The title and journal stay in their own language. Mirrors frontend
+    `src/lib/citation.ts`."""
     text: list[str] = []
     authors = author_names(p.get("authors"))
     if authors:
@@ -176,8 +178,15 @@ def _citation_parts(p: dict[str, Any]) -> tuple[list[str], list[tuple[str, str, 
         text.append(title if title[-1] in "?!" else f"{title}.")
     if _clean(p.get("journal")):
         text.append(f"{_clean(p.get('journal'))}.")
-    if p.get("year"):
-        text.append(f"{p['year']}.")
+    raw = p.get("bib")
+    bib = raw if isinstance(raw, dict) else {}
+    volume, issue, pages = (_clean(bib.get(k)) for k in ("volume", "issue", "pages"))
+    where = volume + (f"({issue})" if issue and volume else "")  # an issue without a volume is left out
+    date = _clean(p.get("year"))
+    date = f"{date};{where}" if date and where else date or where
+    date = f"{date}:{pages}" if date and pages else date or pages
+    if date:  # NLM: "2024;17(4):1048-1066.", "2024:e265234."
+        text.append(f"{date}.")
     ids: list[tuple[str, str, str]] = []
     if _doi(p.get("doi")):
         ids.append(("doi", _doi(p.get("doi")), doi_href(p.get("doi"))))
@@ -185,6 +194,8 @@ def _citation_parts(p: dict[str, Any]) -> tuple[list[str], list[tuple[str, str, 
         ids.append(("PMID", _clean(p.get("pmid")), f"https://pubmed.ncbi.nlm.nih.gov/{_clean(p.get('pmid'))}/"))
     if _pmcid(p.get("pmcid")):
         ids.append(("PMCID", _pmcid(p.get("pmcid")), f"https://pmc.ncbi.nlm.nih.gov/articles/{_pmcid(p.get('pmcid'))}/"))
+    if article_link(p.get("thaijo_url")):  # Plan 24: the ThaiJO article page (checked again; never the PDF)
+        ids.append(("ThaiJO", p["thaijo_url"], p["thaijo_url"]))
     return text, ids
 
 
