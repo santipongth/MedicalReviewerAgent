@@ -9,7 +9,8 @@ import { getServerStatus } from "@/lib/server-api";
 export default async function Home(props: PageProps<"/">) {
   // ?q= (a retry or an example) and, since Plan 27, the quick answer's "ทำรีวิวฉบับเต็ม" (?mode=full&lang=&year=&types=)
   const start = formStart(await props.searchParams);
-  const limits = (await getServerStatus())?.limits ?? null; // paper counts in copy come from /status (Plan 21)
+  const status = await getServerStatus();
+  const limits = status?.limits ?? null; // paper counts in copy come from /status (Plan 21)
   return (
     <div className="grid gap-16">
       <div className="grid gap-8 pt-12">
@@ -18,7 +19,7 @@ export default async function Home(props: PageProps<"/">) {
       </div>
       <SampleBench />
       <Intro />
-      <Capabilities />
+      <Capabilities sources={status?.sources ?? null} />
       <RecentReviews />
     </div>
   );

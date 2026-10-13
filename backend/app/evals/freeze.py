@@ -7,12 +7,15 @@ from app.evals import models
 from app.evals.leakage import drop_target
 from app.evals.models import Fixture, Manifest, ManifestEntry
 from app.graph.graph import build_freeze_graph, initial_state
+from app.services.sources import effective_sources
 
 
-def freeze_engines(settings) -> list[str]:
-    """The sources a frozen pool was searched with: the SearXNG engines, plus thaijo when it was on (Plan 24)."""
-    engines = [e.strip() for e in str(settings.searxng_engines).split(",") if e.strip()]
-    return engines + (["thaijo"] if settings.thaijo_enabled else [])
+def freeze_engines(deps) -> list[str]:
+    """The sources a frozen pool was searched with: the SearXNG engines, plus thaijo when it was on (Plan 24). Plan
+    23d: the deps' sources (the console's set from the DB; env with --config-file, or when the deps carry none)."""
+    sources = deps.sources if deps.sources is not None else effective_sources(deps.settings, {})
+    engines = [e.strip() for e in sources.engines.split(",") if e.strip()]
+    return engines + (["thaijo"] if sources.thaijo else [])
 
 
 def entry_options(entry: ManifestEntry) -> dict:

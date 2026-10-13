@@ -11,7 +11,9 @@ are no LLMs to rebuild; the stub graph is rebuilt with the new settings. A faile
 reports runtime_error; the next poll retries, and a poll that finds the worker already on the DB's versions clears a
 stale error. Anything that fails while reading a version, including a stored row nobody should have written (a hand
 edit that left the document or its values something other than a mapping), is such a failure: startup falls back to env
-and the built-in glossary and the poll that cannot read the versions reports it, so a bad row never stops the worker."""
+and the built-in glossary and the poll that cannot read the versions reports it, so a bad row never stops the worker. Plan 23d adds a third kind, the
+search sources, under the same rules: they are part of the graph deps (GraphDeps.sources), so a running review keeps
+the set it started with."""
 from __future__ import annotations
 
 import asyncio
@@ -25,6 +27,8 @@ from app.services.glossary_store import GLOSSARY_KIND
 from app.services.llm import build_llms
 from app.services.runtime_config import Runtime, load_runtime
 from app.services.runtime_settings import SETTINGS_KIND
+from app.services.sources import effective_sources
+from app.services.sources_store import SOURCES_KIND
 from app.worker.llm_reload import POLL_SECONDS, refresh_llms, report_state
 
 log = get_logger(__name__)
@@ -40,44 +44,47 @@ async def init_runtime(ctx: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         log.error("runtime_load_failed", error=str(exc))
         ctx.update(settings=base, glossary=SEED_GLOSSARY, settings_version="env", glossary_version="file",
-                   runtime_error=str(exc)[:300])
+                   sources=effective_sources(base, {}), sources_version="env", runtime_error=str(exc)[:300])
         return
     ctx.update(settings=runtime.settings, glossary=runtime.glossary, settings_version=runtime.settings_version,
-               glossary_version=runtime.glossary.label, runtime_error=None)
+               glossary_version=runtime.glossary.label, sources=runtime.sources, sources_version=runtime.sources.label,
+               runtime_error=None)
+
+
+_KINDS = ((SETTINGS_KIND, "env"), (GLOSSARY_KIND, "file"), (SOURCES_KIND, "env"))  # the label while a kind has none
 
 
 class _PartialRead(Exception):
-    """A poll that could read one kind's version but not the other's: carries what it read and the failure."""
+    """A poll that could read some kinds' versions but not all: carries what it read and the failure."""
 
-    def __init__(self, settings: str | None, glossary: str | None, cause: Exception) -> None:
+    def __init__(self, wanted: tuple[str | None, ...], cause: Exception) -> None:
         super().__init__(str(cause))
-        self.wanted, self.cause = (settings, glossary), cause
+        self.wanted, self.cause = wanted, cause
 
 
 def _label(version: int | None, empty: str) -> str:
     return empty if version is None else str(version)
 
 
-async def _wanted(ctx: dict, *, poll: bool) -> tuple[str | None, str | None]:
-    """The (settings, glossary) versions this worker should run; None for a kind with no news."""
+async def _wanted(ctx: dict, *, poll: bool) -> tuple[str | None, ...]:
+    """The (settings, glossary, sources) versions this worker should run; None for a kind with no news."""
     redis = ctx["events_redis"]
     if poll:  # the DB is the truth; the mirrors are repaired on the way
-        # Each kind in its own try, so one that cannot be read (a corrupt row, a failed query) never blocks the other
-        # kind's repair. A kind that failed is "no news"; the first failure is raised after both were tried.
+        # Each kind in its own try, so one that cannot be read (a corrupt row, a failed query) never blocks another
+        # kind's repair. A kind that failed is "no news"; the first failure is raised after all were tried.
         wanted: list[str | None] = []
         failure: Exception | None = None
-        for kind, empty in ((SETTINGS_KIND, "env"), (GLOSSARY_KIND, "file")):
+        for kind, empty in _KINDS:
             try:
                 wanted.append(_label(await reconcile_mirror(redis, ctx["session_factory"], kind), empty))
             except Exception as exc:  # noqa: BLE001
                 failure = failure or exc
                 wanted.append(None)
         if failure is not None:
-            raise _PartialRead(wanted[0], wanted[1], failure)
-        return wanted[0], wanted[1]
-    raw_settings, raw_glossary = await redis.mget(SETTINGS_KIND.redis_key, GLOSSARY_KIND.redis_key)
-    settings, glossary = mirror_version(raw_settings), mirror_version(raw_glossary)
-    return (None if settings is None else str(settings)), (None if glossary is None else str(glossary))
+            raise _PartialRead(tuple(wanted), failure)
+        return tuple(wanted)
+    raw = await redis.mget(*(kind.redis_key for kind, _ in _KINDS))
+    return tuple(None if (v := mirror_version(r)) is None else str(v) for r in raw)
 
 
 def _rebuild(ctx: dict, runtime: Runtime, build_graph_fn):
@@ -95,12 +102,13 @@ def _rebuild(ctx: dict, runtime: Runtime, build_graph_fn):
             sem, size = asyncio.Semaphore(want), want
             llms = build_llms(settings, ctx.get("catalog"), resolved=ctx["llm_resolved"], sem=sem,
                               config_version=getattr(llms, "config_version", "file"))
-    deps = dataclasses.replace(ctx["graph_deps"], settings=settings, llms=llms, glossary=runtime.glossary)
+    deps = dataclasses.replace(ctx["graph_deps"], settings=settings, llms=llms, glossary=runtime.glossary,
+                               sources=runtime.sources)
     return deps, build_graph_fn(deps, checkpointer=getattr(ctx["graph"], "checkpointer", None)), sem, size
 
 
 async def refresh_runtime(ctx: dict, *, build_graph_fn=None, poll: bool = False) -> bool:
-    """Rebuild the deps when a settings or glossary version moved. True when this call switched."""
+    """Rebuild the deps when a settings, glossary or sources version moved. True when this call switched."""
     build_graph_fn = build_graph_fn or build_graph
     read_error: str | None = None
     try:
@@ -113,7 +121,7 @@ async def refresh_runtime(ctx: dict, *, build_graph_fn=None, poll: bool = False)
             log.warning("runtime_poll_reconcile_failed", error=str(exc))
             ctx["runtime_error"] = f"could not read the saved versions: {exc}"[:300]
         return False
-    loaded = (ctx.get("settings_version"), ctx.get("glossary_version"))
+    loaded = (ctx.get("settings_version"), ctx.get("glossary_version"), ctx.get("sources_version"))
     moved = any(w is not None and w != have for w, have in zip(wanted, loaded, strict=True))
     if not moved:
         if poll:  # on the DB's versions: an old error is stale, unless a kind could not be read just now
@@ -122,8 +130,7 @@ async def refresh_runtime(ctx: dict, *, build_graph_fn=None, poll: bool = False)
     async with ctx["llm_lock"]:
         try:
             runtime = await load_runtime(ctx["session_factory"], ctx["base_settings"])
-            if (runtime.settings_version, runtime.glossary.label) == (ctx.get("settings_version"),
-                                                                      ctx.get("glossary_version")):
+            if (runtime.settings_version, runtime.glossary.label, runtime.sources.label) == loaded:
                 return False  # the mirror disagrees with the DB and this worker already runs what the DB says
             deps, graph, sem, size = _rebuild(ctx, runtime, build_graph_fn)
         except Exception as exc:  # noqa: BLE001 - keep serving with what is loaded
@@ -133,9 +140,11 @@ async def refresh_runtime(ctx: dict, *, build_graph_fn=None, poll: bool = False)
             return False
         ctx.update(settings=runtime.settings, glossary=runtime.glossary, graph_deps=deps, graph=graph, llm_sem=sem,
                    llm_sem_size=size, settings_version=runtime.settings_version,
-                   glossary_version=runtime.glossary.label, runtime_error=read_error)
+                   glossary_version=runtime.glossary.label, sources=runtime.sources,
+                   sources_version=runtime.sources.label, runtime_error=read_error)
         await report_state(ctx)
-        log.info("runtime_reloaded", settings=runtime.settings_version, glossary=runtime.glossary.label)
+        log.info("runtime_reloaded", settings=runtime.settings_version, glossary=runtime.glossary.label,
+                 sources=runtime.sources.label)
         return True
 
 

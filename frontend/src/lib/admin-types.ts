@@ -48,10 +48,11 @@ export interface LlmConfigDoc {
   overrides?: Record<string, Record<string, unknown>>;
 }
 /** `loaded_at` is when the worker last reported (it re-reports every 30 s), not when it loaded the version. Plan 23c adds
- * the settings and glossary versions it runs ("env" and "file" for the defaults) and a failed runtime reload. */
+ * the settings and glossary versions it runs ("env" and "file" for the defaults) and a failed runtime reload; Plan 23d
+ * the search-sources version ("env" for the default). */
 export interface LoadedWorker {
   worker: string; version: string; preset: string; loaded_at: string; error: string | null;
-  settings?: string | null; glossary?: string | null; runtime_error?: string | null;
+  settings?: string | null; glossary?: string | null; sources?: string | null; runtime_error?: string | null;
 }
 export interface LlmConfigState {
   source: "db" | "file"; version: number | null; config: LlmConfigDoc; active_preset: string; env_preset: string | null;
@@ -100,7 +101,19 @@ export interface GlossaryState {
   source: "db" | "file"; version: number | null; terms: GlossaryTerm[]; chars: number; max_chars: number; loaded: LoadedWorker[];
 }
 export interface GlossaryReport { ok: boolean; errors: FieldError[]; warnings: string[]; preview: string | null; chars: number | null }
-export type RuntimeKind = "settings" | "glossary";
+export type RuntimeKind = "settings" | "glossary" | "sources";
+/** Plan 23d: the search sources (/api/v1/admin/sources). Mirrors backend/app/api/admin_runtime.py. */
+export interface SourceRow {
+  id: string; label: string; kind: "searxng" | "direct"; env: boolean; enabled: boolean; overridden: boolean;
+}
+export interface SourcesState {
+  source: "db" | "env"; version: number | null; sources: SourceRow[]; extras: string[]; error: string | null;
+  loaded: LoadedWorker[];
+}
+export interface SourcesReport {
+  ok: boolean; errors: FieldError[]; warnings: string[]; document: { sources: Record<string, boolean> } | null;
+  enabled: string[] | null;
+}
 export interface RuntimeVersion {
   version: number; kind: RuntimeKind; created_at: string; created_by: string; note: string | null;
   source: "edit" | "restore" | "reset"; restored_from: number | null; changes: Record<string, unknown>;

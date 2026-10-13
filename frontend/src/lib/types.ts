@@ -466,6 +466,8 @@ export interface ServiceStatus {
   running: number;
   reviews_today: number | null;
   turnstile_site_key: string | null;
+  /** Plan 23d: the search sources in force (catalog order, then env-only engines); absent before it */
+  sources?: { id: string; label: string }[];
   limits: {
     review_rate_limit: string;
     api_key_rate_limit: string;

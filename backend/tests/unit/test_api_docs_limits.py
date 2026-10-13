@@ -58,6 +58,14 @@ def test_status_example_lists_the_quick_limits():
                                "review_type": QUICK_REVIEW_TYPE}
 
 
+def test_status_example_lists_the_sources_in_catalog_order():
+    # Plan 23d: the documented default (eight engines and ThaiJO) is the service's own catalog
+    from app.services.sources import BY_ID, SOURCE_IDS
+    sources = _status_example()["sources"]
+    assert [s["id"] for s in sources] == list(SOURCE_IDS)
+    assert all(s["label"] == BY_ID[s["id"]].label for s in sources)
+
+
 def test_the_docs_name_the_current_prompt_version():
     from app.config import Settings
     assert f"prompt_version {Settings(_env_file=None).prompt_version}`" in API_MD.read_text(encoding="utf-8")

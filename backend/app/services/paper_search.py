@@ -18,9 +18,11 @@ class PaperSearch:
         self.searxng = searxng
         self.europepmc = europepmc
 
-    async def search(self, query: str, limit: int = 10) -> list[Candidate]:
+    async def search(self, query: str, limit: int = 10, engines: str | None = None) -> list[Candidate]:
+        """`engines` (Plan 23d): the SearXNG engines in force (the REST route and the MCP tool pass the console's
+        set); the client's own when None."""
         try:
-            hits = await self.searxng.search(query)
+            hits = await (self.searxng.search(query, engines=engines) if engines else self.searxng.search(query))
         except Exception as exc:
             raise SearchUnavailable(f"literature search is unavailable: {type(exc).__name__}") from exc
         merged = merge_candidates(hits)

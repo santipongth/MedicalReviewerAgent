@@ -2,7 +2,7 @@ import type {
   AdminKey, AdminMe, AdminReview, AdminStatus, AuditEntry, CatalogModel, CatalogQuery, Dashboard, FieldError, GlossaryReport, GlossaryState,
   GlossaryTerm, HarnessCompare, HarnessReportItem, HarnessResultItem, HarnessRun, HarnessStartBody, HarnessState, LlmConfigDoc,
   LlmConfigState, LlmDraft, LlmSaveResult, LlmVersion, MintedKey, Page, ProbeResult, RuntimeKind, RuntimeVersion, SavedVersion,
-  SettingValue, SettingsReport, SettingsState, ValidateReport,
+  SettingValue, SettingsReport, SettingsState, SourcesReport, SourcesState, ValidateReport,
 } from "./admin-types";
 
 /** Admin calls are relative and same-origin: the session cookie (Path=/api/v1/admin) never leaves the site, and Caddy
@@ -134,6 +134,10 @@ export const adminApi = {
   validateGlossary: (terms: GlossaryTerm[]) => call<GlossaryReport>("/glossary/validate", send("POST", { terms })),
   saveGlossary: (body: { terms: GlossaryTerm[]; base_version: number | null; note?: string }) =>
     call<SavedVersion>("/glossary", send("POST", body)),
+  sources: () => call<SourcesState>("/sources"),
+  validateSources: (sources: Record<string, boolean>) => call<SourcesReport>("/sources/validate", send("POST", { sources })),
+  saveSources: (body: { sources: Record<string, boolean>; base_version: number | null; note?: string }) =>
+    call<SavedVersion>("/sources", send("POST", body)),
   runtimeVersions: (kind: RuntimeKind, before?: number | null) =>
     call<Page<RuntimeVersion>>(`/${kind}/versions${before ? `?before=${before}` : ""}`),
   restoreRuntime: (kind: RuntimeKind, version: number, base: number | null, note?: string) =>

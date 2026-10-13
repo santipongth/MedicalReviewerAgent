@@ -102,6 +102,8 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
     # Plan 24: what the ThaiJO search and the OAI-PMH step did; absent when ThaiJO is off
     if search and "thaijo" in search[-1]:
         extra["thaijo"] = dict(search[-1]["thaijo"])
+    if search and "sources" in search[-1]:  # Plan 23d: the search sources the review used (enabled ids)
+        extra["sources"] = list(search[-1]["sources"])
     oai = by_stage.get("thaijo_metadata") or []
     if oai:
         extra.setdefault("thaijo", {})["metadata"] = {k: oai[-1].get(k, 0) for k in ("asked", "found", "failed")} | {

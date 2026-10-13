@@ -36,6 +36,10 @@ class GraphDeps:
     mcp: Any = None  # app.services.mcp_client.McpRegistry (external MCP tools); None → never consulted
     glossary: Any = None  # app.harness.glossary.ActiveGlossary; None → the built-in glossary (Plan 23c)
     thaijo: Any = None  # app.services.thaijo.ThaiJoClient (Plan 24); None → ThaiJO is never searched
+    # app.services.sources.ActiveSources (Plan 23d): the search sources in force, fixed for the review (the worker
+    # rebuilds deps on a new version). None (deps built by hand) → every client present is asked, SearXNG with its own
+    # engines, as before Plan 23d; build_graph_deps always sets it.
+    sources: Any = None
 
 
 def initial_state(
@@ -117,7 +121,7 @@ def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
         "select_top",
         partial(screening.route_to_reading, external_enabled=lambda: deps.mcp is not None and deps.mcp.enabled,
                 citations_enabled=lambda: deps.openalex is not None,
-                thaijo_enabled=lambda: getattr(deps, "thaijo", None) is not None),
+                thaijo_enabled=lambda: retrieval.thaijo_on(deps)),
         ["read_paper", "external_enrich", "fetch_citations", "thaijo_metadata", "normalize_outcomes"],
     )
     b.add_edge("read_paper", "normalize_outcomes")

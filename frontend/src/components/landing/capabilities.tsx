@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { REVIEW_TYPE_LABEL } from "@/lib/review-type";
-import type { ReviewType } from "@/lib/types";
+import { hasThaiJo, sourceLabels } from "@/lib/search-sources";
+import type { ReviewType, ServiceStatus } from "@/lib/types";
 import { Gloss } from "../ui/gloss";
 import { TypeDescription } from "./type-description";
 
@@ -15,10 +16,10 @@ const VIEWS: { title: string; body: ReactNode }[] = [
   { title: "ค่ารวมจากการวิเคราะห์อภิมาน", body: <>รวมตัวเลขที่ตรวจแล้วจากหลายงานเป็นผลเดียวด้วยวิธี <Gloss k="randomEffects" /> ติดป้าย “คำนวณ” เสมอ แยกจากตัวเลขที่มาจากงานวิจัย</> },
 ];
 
-const SOURCES = ["PubMed", "Europe PMC", "OpenAlex", "Semantic Scholar", "Crossref", "arXiv", "DOAJ", "OpenAIRE"];
-
-/** What the service can do now (Plans 14–17): review types, report views and sources, in one band. */
-export function Capabilities() {
+/** What the service can do now (Plans 14–17): review types, report views and sources, in one band. `sources` is
+ * `/status` → `sources` (Plan 23d: the admin console turns each one on or off); without it the default eight show. */
+export function Capabilities({ sources = null }: { sources?: ServiceStatus["sources"] | null }) {
+  const labels = sourceLabels(sources);
   return (
     <section aria-labelledby="h-capabilities" className="grid gap-8 border-t border-rule pt-10">
       <div className="grid max-w-[65ch] gap-3">
@@ -49,12 +50,13 @@ export function Capabilities() {
         <div className="grid content-start gap-3">
           <h3 className="label">แหล่งข้อมูลที่ค้น</h3>
           <ul aria-label="แหล่งข้อมูลที่ค้น" className="flex flex-wrap gap-2">
-            {SOURCES.map((s) => (
+            {labels.map((s) => (
               <li key={s} className="rounded-sm border border-rule px-2.5 py-1 font-display text-[0.9rem]">{s}</li>
             ))}
           </ul>
           <p className="text-[0.92rem] leading-[1.7] text-muted">
-            ฐานข้อมูลงานวิจัยวิชาการแบบเปิด ค้นผ่าน <Gloss k="searxng" /> ตัดงานซ้ำด้วย <Gloss k="doiPmid" />{" "}
+            ฐานข้อมูลงานวิจัยวิชาการแบบเปิด ค้นผ่าน <Gloss k="searxng" />
+            {hasThaiJo(sources) && " และค้นวารสารไทยจาก ThaiJO โดยตรง"} ตัดงานซ้ำด้วย <Gloss k="doiPmid" />{" "}
             แล้วเติมข้อมูลจาก Europe PMC
           </p>
         </div>

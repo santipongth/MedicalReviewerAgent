@@ -35,7 +35,8 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 ## ThaiJO (Thai journals, on by default)
 Plan 24 adds Thai Journals Online (TCI) as a search source for Thai health studies: English abstracts only, at most
 15 candidates (and at most 1/8 of the pool), soft-failing, never PDFs or article pages. It is on by default since
-2026-10-13 (the owner's decision); set `THAIJO_ENABLED=false` in `.env` to turn it off. Writing to TCI about the use
+2026-10-13 (the owner's decision); set `THAIJO_ENABLED=false` in `.env` to turn it off, or turn it off at
+`/admin/sources` (a saved version there wins over the env value). Writing to TCI about the use
 is recommended (its search API is undocumented). Details: "ThaiJO source (Plan 24)" in `docs/api.md`.
 
 ## Integrations: REST, MCP, API keys, webhooks
@@ -60,6 +61,7 @@ is recommended (its search API is undocumented). Details: "ThaiJO source (Plan 2
   `docs/api.md` → Admin API.
   Models: change presets and per-role models at `/admin/models`; each save is a version you can restore; workers pick it up within 30 seconds.
   Settings, glossary and harness: change limits and the Thai glossary at `/admin/settings` and `/admin/glossary` (versioned, restorable, live within 30 seconds); read and compare Cochrane harness reports and start a capped run at `/admin/harness` (`docker compose --profile harness up -d harness`).
+  Search sources: turn each of the eight SearXNG engines and ThaiJO off or on at `/admin/sources` (versioned, restorable, live within 30 seconds; a running review keeps its sources; `GET /api/v1/status` lists the ones in use).
 - **Webhooks:** `POST /api/v1/reviews` with `"callback_url": "https://..."` (key required, HTTPS public host).
   When the review ends (done, error, rejected or cancelled) we POST `{"review_id","status","result_url"}` (up to 3
   tries, 10 s / 20 s apart, retried on network errors, 5xx and 429) with

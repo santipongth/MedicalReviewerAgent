@@ -104,10 +104,11 @@ async def test_enrich_keeps_thaijo_candidates_with_their_link():
     assert [c["abstract_source"] for c in kept] == ["thaijo"] and kept[0]["pdf_url"] is None
 
 
-def test_the_client_exists_only_when_enabled():
+def test_the_client_is_built_whatever_thaijo_enabled_says():
     http = HttpClient()
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    assert build_thaijo(Settings(_env_file=None), http, redis) is None
+    # Plan 23d: construction does no I/O; the sources in force decide whether it is asked (test_sources_propagation.py)
+    assert isinstance(build_thaijo(Settings(_env_file=None), http, redis), ThaiJoClient)
     client = build_thaijo(Settings(_env_file=None, thaijo_enabled=True, thaijo_request_timeout_seconds=4.0), http, redis)
     assert isinstance(client, ThaiJoClient) and client.cache is redis and client.timeout == 4.0
     assert client.base_url == "https://www.tci-thaijo.org/api/v1" and client.cache_ttl == 604800
@@ -125,8 +126,8 @@ def test_quality_reports_the_thaijo_block_and_the_metadata_step():
 
 
 def test_a_frozen_pool_names_thaijo_when_it_was_searched():
-    assert "thaijo" not in freeze_engines(Settings(_env_file=None))
-    assert freeze_engines(Settings(_env_file=None, thaijo_enabled=True))[-1] == "thaijo"
+    assert "thaijo" not in freeze_engines(GraphDeps(settings=Settings(_env_file=None)))
+    assert freeze_engines(GraphDeps(settings=Settings(_env_file=None, thaijo_enabled=True)))[-1] == "thaijo"
 
 
 async def test_turning_thaijo_on_starts_a_new_cache_generation(client, app):

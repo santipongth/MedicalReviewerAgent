@@ -90,9 +90,10 @@ async def eval_runtime(settings: Settings, config_file: str | None,
     silent fallback."""
     from app.harness.glossary import SEED_GLOSSARY
     from app.services.runtime_config import Runtime, load_runtime
+    from app.services.sources import effective_sources
 
     if config_file:
-        return Runtime(settings, "env", SEED_GLOSSARY)
+        return Runtime(settings, "env", SEED_GLOSSARY, effective_sources(settings, {}))
     try:
         return await load_runtime(session_factory_maker(), settings)
     except Exception as exc:
@@ -174,7 +175,7 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
             return 1
     if args.cmd == "freeze":
         fixtures = await freeze_all(deps, manifest, ids=args.ids, force=args.force, git_sha=git_sha(),
-                                    engines=freeze_engines(deps.settings))
+                                    engines=freeze_engines(deps))
         print(", ".join(f"{f.id}:{f.status}:{len(f.candidates)}" for f in fixtures))
         return 0
     if args.cmd == "run":
@@ -233,7 +234,8 @@ async def eval_main(settings: Settings, config_file: str | None, rest: list[str]
     http = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)
     # report needs the settings (prompt version) and no models
     deps = (build_graph_deps(runtime.settings, http, resolved=resolved, config_version=label,
-                             glossary=runtime.glossary) if runtime is not None else GraphDeps(settings=settings))
+                             glossary=runtime.glossary, sources=runtime.sources)
+            if runtime is not None else GraphDeps(settings=settings))
     offline_deps(deps, _parser().parse_args(rest).cmd)
     try:
         return await run(rest, deps, http, settings.europepmc_url)

@@ -28,7 +28,7 @@ describe("AdminGate", () => {
     mockAdminFetch();
     await renderAdmin(<p>เนื้อหา</p>);
     const links = within(screen.getByRole("navigation", { name: "ผู้ดูแลระบบ" })).getAllByRole("link").map((a) => a.textContent);
-    expect(links).toEqual(["Dashboard", "รีวิว", "API keys", "โมเดล", "ตั้งค่า", "อภิธานศัพท์", "Harness", "Audit log"]);
+    expect(links).toEqual(["Dashboard", "รีวิว", "API keys", "โมเดล", "ตั้งค่า", "แหล่งค้น", "อภิธานศัพท์", "Harness", "Audit log"]);
     expect(screen.getByRole("link", { name: "โมเดล" })).toHaveAttribute("href", "/admin/models");
     expect(screen.getByRole("link", { name: "อภิธานศัพท์" })).toHaveAttribute("href", "/admin/glossary");
   });

@@ -3,7 +3,7 @@
 This reference describes what the running service does, as of `prompt_version 2026-10-13.3`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
-- It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 120 candidate papers that have abstracts, and analyses the abstracts of the 5–50 you choose (default 30). It never fetches full text.
+- It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches the scholarly sources the service has on (eight engines and ThaiJO by default; `GET /api/v1/status` → `sources` lists them), screens about 120 candidate papers that have abstracts, and analyses the abstracts of the 5–50 you choose (default 30). It never fetches full text.
 - Four review types: systematic review (`slr`, default), meta-analysis (`meta_analysis`), scoping review (`scoping`) and narrative review (`narrative`).
 - Two modes (Plan 27): the full review (`full`, default) and the quick answer (`quick`, "ถามเร็ว"): a 2–4 sentence answer with numbered references from a small pool (see "Quick answer (Plan 27)").
 - Every number it shows is checked against the abstract it came from. A number that cannot be checked is left empty, never estimated. The only numbers the system computes itself are meta-analysis pooled estimates, and they are always labelled as computed.
@@ -11,11 +11,12 @@ The service reviews published papers automatically:
 - Results are not medical advice.
 
 **Data sources.**
-- **Search:** the service's own SearXNG with eight engines: PubMed, Europe PMC (incl. medRxiv/bioRxiv preprints), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ and OpenAIRE. PLOS is available but opt-in (`SEARXNG_ENGINES`).
+- **Search:** the service's own SearXNG with eight engines: PubMed, Europe PMC (incl. medRxiv/bioRxiv preprints), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ and OpenAIRE. PLOS is available but opt-in (`SEARXNG_ENGINES`). An admin can turn each engine (and ThaiJO) off or on in the console (Plan 23d, see "Search sources (Plan 23d)"); `GET /api/v1/status` → `sources` lists the ones in use.
 - **Metadata enrichment:** Europe PMC (abstracts, identifiers, publication types, open-access flag, cited-by count).
 - **Citation metadata (reference lists, cited-by counts):** OpenAlex, with Europe PMC as the fallback.
 - **ThaiJO (Plan 24, on by default since 2026-10-13):** Thai health journals through TCI's search API, turned off
-  with `THAIJO_ENABLED=false` (see "ThaiJO source (Plan 24)" below).
+  with `THAIJO_ENABLED=false` or in the admin console, whose saved version wins over the flag (see "ThaiJO source
+  (Plan 24)" below).
 - **Optional API keys** in `.env`: `NCBI_API_KEY`, `OPENALEX_API_KEY`, `S2_API_KEY` and `CORE_API_KEY`. Empty keys work at lower rate limits. They are never logged.
 - **Survey of other open sources:** `docs/superpowers/notes/2026-10-10-open-scholarly-sources-survey.md`.
 
@@ -64,6 +65,13 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 **ThaiJO and the cache (Plan 24).** While `THAIJO_ENABLED` is true, `+thaijo` is added to the pipeline version, so
 turning ThaiJO on or off never returns a review that was searched the other way. ThaiJO is on by default, so deploying
 the 2026-10-13 default starts a new cache generation: reviews cached before it (searched without ThaiJO) are not returned.
+
+**Search sources and the cache (Plan 23d).** While no sources version is saved in the admin console the pipeline
+version is unchanged (Plan 24's `+thaijo` rule). Once one is saved, `+thaijo` follows the ThaiJO state in force (so
+turning ThaiJO off in the console gives the same key as turning it off in env), and `+src<h>` is added when the
+SearXNG engines in use differ from `SEARXNG_ENGINES`, where `<h>` is the first 8 hex digits of the sha256 of the
+sorted engine names joined by `,`. A changed engine set therefore starts its own cache generation, and restoring an
+older set (or a reset) returns to that set's generation.
 
 **Turnstile.** This only applies when the deployment sets `TURNSTILE_SECRET`. An anonymous `POST /reviews` must then send the browser token in the `cf-turnstile-response` header:
 - A missing or rejected token gets **403**.
@@ -614,6 +622,10 @@ Plan 24 adds (absent while ThaiJO is off):
   plus `failed` (an error name) or `timed_out: true` when it failed or was cut, and `metadata: {asked, found, failed,
   timed_out}` for the OAI-PMH step when a ThaiJO paper was read.
 
+Plan 23d adds (absent in results stored before it):
+- `sources`: the ids of the search sources the review used (`pubmed`, `europepmc`, `openalex`, `semantic_scholar`,
+  `crossref`, `arxiv`, `doaj`, `openaire`, `thaijo`), fixed when the review started.
+
 Plan 25 adds (absent in results stored before it):
 - `support`: `{judge, seconds, claims, pairs, judged, over_cap, computed, supported, partial, unsupported, verified}`
   for the sentence-support check: `pairs` (claim, cited paper) were found, `judged` got a label, `over_cap` stayed
@@ -639,12 +651,20 @@ The web app also serves the whole interactive report as one HTML file that works
 ```json
 {"accepting": true, "reason": null, "retry_after": null, "queue_depth": 0, "running": 3, "reviews_today": 41,
  "turnstile_site_key": null,
+ "sources": [{"id": "pubmed", "label": "PubMed"}, {"id": "europepmc", "label": "Europe PMC"},
+             {"id": "openalex", "label": "OpenAlex"}, {"id": "semantic_scholar", "label": "Semantic Scholar"},
+             {"id": "crossref", "label": "Crossref"}, {"id": "arxiv", "label": "arXiv"}, {"id": "doaj", "label": "DOAJ"},
+             {"id": "openaire", "label": "OpenAIRE"}, {"id": "thaijo", "label": "ThaiJO"}],
  "limits": {"review_rate_limit": "5/hour", "api_key_rate_limit": "60/hour", "paper_search_rate_limit": "30/minute",
             "review_types": ["narrative", "slr", "scoping", "meta_analysis"],
             "max_papers": {"min": 5, "max": 50, "default": 30}, "candidate_limit": {"min": 20, "max": 120, "default": 120},
             "max_queued_reviews": 50, "sse_max_per_ip": 5,
             "modes": ["full", "quick"], "quick": {"max_papers": 8, "candidate_limit": 30, "review_type": "slr"}}}
 ```
+
+`sources` (Plan 23d) lists the search sources in use, in the order above, then any engine `SEARXNG_ENGINES` adds
+that the console does not know (`{"id": "plos", "label": "PLOS"}`). The example is the default (ThaiJO on). The web
+app's landing page and developers page read it and show the default eight engines when `/status` is unreachable.
 
 The daily budget figures are private. When the budget runs out, the status shows only `accepting: false` with `reason: "daily_budget"`. `accepting` assumes the largest allowed request, so near the end of the day it can read false while a smaller request would still be admitted.
 
@@ -1064,6 +1084,45 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
   fixed messages and never quote a file: **404** "no run files for run a" (or b), **404** "the harness manifest is
   missing", **422** "the run file could not be read" or "the manifest could not be read".
 
+### Search sources (Plan 23d)
+
+The console page `/admin/sources` turns each search source off or on. The sources are a third kind of the versioned
+documents above (`kind` `sources`, same table, rules, history, restore, reset, 409 and audit), so the routes are the
+settings ones with `sources` in place of `settings`:
+
+| Method and path | Success | Errors |
+|---|---|---|
+| `GET /admin/sources` | 200 `{source, version, sources: [{id, label, kind, env, enabled, overridden}], extras, error, loaded}` | 401, 403 |
+| `POST /admin/sources/validate` `{sources?}` | 200 `{ok, errors, warnings, document, enabled}`; nothing is saved | 401, 403, 422 |
+| `POST /admin/sources` `{sources, base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 409, 422 |
+| `GET /admin/sources/versions`, `GET /admin/sources/versions/{version}`, `POST /admin/sources/versions/{version}/restore`, `POST /admin/sources/reset` | as for settings | as for settings |
+
+- **The nine sources.** `pubmed`, `europepmc`, `openalex`, `semantic_scholar`, `crossref`, `arxiv`, `doaj` and
+  `openaire` (`kind` `searxng`, each one SearXNG engine) and `thaijo` (`kind` `direct`, the ThaiJO client). Their
+  default (`env`) comes from the environment: a SearXNG source is on when its engine is in `SEARXNG_ENGINES`, ThaiJO
+  when `THAIJO_ENABLED` is true. Engines in `SEARXNG_ENGINES` that are not in the list (an opted-in `plos`) are kept,
+  listed in `extras` and cannot be toggled.
+- **Document.** `{"sources": {id: true|false}}` holding only the sources that differ from the environment (entries
+  equal to it are dropped on save, so a later env change still applies to the others); reset appends
+  `{"sources": {}}`. A saved version wins over the environment in both directions: it can turn ThaiJO on while
+  `THAIJO_ENABLED=false`. The history's `changes` read `{id: "env → off"}`; audit actions are
+  `sources.save|restore|reset` with `target_type` `sources`.
+- **Rules.** An unknown id is a 422 with field `sources` ("unknown source"; the key is never repeated); a value that
+  is not `true` or `false` is a 422 with field `sources.<id>`. At least one SearXNG source must stay on (ThaiJO alone
+  gives at most 1/8 of the pool, and paper search uses SearXNG only). Warnings: PubMed and Europe PMC both off; Europe
+  PMC off (its RCT search for meta-analyses is off too); ThaiJO on while `THAIJO_ENABLED=false`.
+- **Europe PMC.** Its switch covers the SearXNG `europe pmc` engine and the direct Europe PMC RCT searches of
+  meta-analyses (they find candidates). The abstract and metadata enrichment, the citation network's reference lists
+  and the OpenAlex citation lookup are not searches and stay on.
+- **When a save takes effect.** As for settings: API processes within 5 seconds (`/status` → `sources`, the cache key,
+  paper search), workers at the next review start or within 30 seconds. A running review keeps the sources it started with (a review resumed after a worker restart uses that worker's
+  current set);
+  `mra:llm:loaded` entries gain `sources` (the version each worker runs, `"env"` while none is saved). The Redis mirror
+  is `mra:sources:active`.
+- `error` in `GET /admin/sources` is null unless the version in use leaves no SearXNG source on under the current
+  environment (an env change after the save); env's engines are then searched until a version that turns one on is
+  saved. A stored entry that no longer validates is skipped; neither ever answers 500.
+
 ## Paper count and pool (Plan 21)
 
 - The agent screens a pool of up to `candidate_limit` (default 120) candidates that have abstracts and analyses the `max_papers` (5–50, default 30) most relevant. Reading is on abstracts only.
@@ -1074,10 +1133,10 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
 
 ## ThaiJO source (Plan 24)
 
-- **On by default** since 2026-10-13 (the owner's decision). `THAIJO_ENABLED=false` (env only, read by the API for the
-  cache key and by the workers for the search) turns it off; otherwise Thai Journals Online (TCI) is added to every
-  review's search. TCI's search API is undocumented and has no published terms: writing to TCI for permission or rate
-  guidance is recommended, not a precondition.
+- **On by default** since 2026-10-13 (the owner's decision). While it is on, Thai Journals Online (TCI) is added to
+  every review's search. `THAIJO_ENABLED=false` turns it off; since Plan 23d a saved sources version
+  (`/admin/sources`) wins over the flag in both directions. TCI's search API is undocumented and has no published terms: writing to
+  TCI for permission or rate guidance is recommended, not a precondition.
 - **What it asks.** Per review: one search per planner query (at most 3, `POST /api/v1/articles/search`, health
   categories only), the English abstract of each hit it takes (`GET /api/v1/articles/{id}`, at most the cap plus 5),
   and, for the ThaiJO papers that are read, the journal's OAI-PMH `GetRecord` (oai_dc) for volume, issue, pages, ISSN,
@@ -1318,7 +1377,7 @@ The server name is `medical-reviewer-agent`, version 0.8.0. The `Host` header mu
 
 | Tool | Returns | Notes |
 |---|---|---|
-| `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | Searches the same eight engines as reviews (never ThaiJO). `limit` is clamped to 1–25. Shares the paper-search limit |
+| `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | Searches the SearXNG engines reviews use (`GET /api/v1/status` → `sources`; never ThaiJO). `limit` is clamped to 1–25. Shares the paper-search limit |
 | `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None, mode="full")` | `{review_id, status, cached, status_url}`; for a topic that reads as an emergency `{review_id: null, status: "refused", code: "emergency", kind, hotlines, message, message_th}` (Plan 26) | `topic`: up to 600 characters. `max_papers`: clamped into 5–50 (not rejected; default 30). `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. `mode` (Plan 27): `full` or `quick`; with `quick` the service sets the type and both sizes. Capacity errors include the reason and the wait time |
 | `quick_answer(topic, language="th", study_types=None, year_from=None, wait_seconds=60)` | `{review_id, status, cached, status_url}` plus, once done, `{answer, closing, certainty, papers_read, references: [{n, ref, citation, links: [{label, url}]}]}`; still running: `message`; ended otherwise: `error`, `refusal_code`; an emergency: the `refused` result of `start_review` | Plan 27. Starts (or reuses) a quick answer and waits up to `wait_seconds` (0–90) for it, checking every 2 s. `answer` has the `[Pn]` groups renumbered `[1]…[n]` by first citation; `references[n-1]` is reference `[n]`, with links to doi.org, PubMed, PubMed Central or ThaiJO. One review against the same limits as `start_review` |
 | `get_review_status(review_id)` | `{review_id, status, error, refusal_code, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled`; `refusal_code` as in REST (Plan 26) |
