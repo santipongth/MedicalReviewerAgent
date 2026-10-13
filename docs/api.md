@@ -1,10 +1,11 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-13.2`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-13.3`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 120 candidate papers that have abstracts, and analyses the abstracts of the 5–50 you choose (default 30). It never fetches full text.
 - Four review types: systematic review (`slr`, default), meta-analysis (`meta_analysis`), scoping review (`scoping`) and narrative review (`narrative`).
+- Two modes (Plan 27): the full review (`full`, default) and the quick answer (`quick`, "ถามเร็ว"): a 2–4 sentence answer with numbered references from a small pool (see "Quick answer (Plan 27)").
 - Every number it shows is checked against the abstract it came from. A number that cannot be checked is left empty, never estimated. The only numbers the system computes itself are meta-analysis pooled estimates, and they are always labelled as computed.
 - Borderline papers get a second screening vote, and every paper a second, independent extraction, from a model of a different family (`result.models`: `screener_secondary`, `extractor_secondary`). When a deployment configures the same model for both, that second pass is skipped rather than repeated, and an escalation never goes back to a model that already answered.
 - Results are not medical advice.
@@ -98,6 +99,7 @@ Field rules:
 - `topic`: 3–600 characters, with at least one letter or digit. A short topic ("metformin and colorectal cancer") or a full question or objective; the agent turns either into a structured question.
 - `language`: `th` (default) or `en`.
 - `review_type`: `slr` (default, systematic review), `narrative`, `scoping` or `meta_analysis` (Plan 14b: a systematic review plus pooled effects). Anything else gets 422. It is part of the cache key. The allowed values are in `GET /api/v1/status → limits.review_types`.
+- `mode` (Plan 27): `full` (default) or `quick`. Anything else gets 422. It is part of the cache key, so a quick answer and a full review of one topic are separate reviews. With `quick` the service sets `review_type`, `max_papers` and `candidate_limit` to `limits.quick` of `GET /api/v1/status` (whatever the request sends for them); `year_from` and `study_types` apply as below.
 - `max_papers`: 5–50, default 30. How many papers are analysed (see "Paper count and pool"). REST rejects 4 or 51 with 422; the MCP `start_review` tool clamps into 5–50 instead.
 - `candidate_limit`: 20–120, default 120. Must be at least `max_papers`.
 - `year_from`: 1950–2100.
@@ -131,7 +133,7 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `refusal_code` (Plan 26) says why a `rejected` review got no review: `personal_medical` or `declined`; it is `null`
   for every other status.
 
-`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`, and since Plan 25 `support` (see "Sentence support (Plan 25)").
+`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`, since Plan 25 `support` (see "Sentence support (Plan 25)"), and since Plan 27 `mode` (`full` or `quick`) and `quick` (null for a full review; see "Quick answer (Plan 27)").
 
 **Answer and key findings (Plan 20).** `synthesis` (and `synthesis_en`) also has:
 - `answer`: the bottom line, 1–2 sentences that answer the question directly. A graded answer (`slr`,
@@ -640,7 +642,8 @@ The web app also serves the whole interactive report as one HTML file that works
  "limits": {"review_rate_limit": "5/hour", "api_key_rate_limit": "60/hour", "paper_search_rate_limit": "30/minute",
             "review_types": ["narrative", "slr", "scoping", "meta_analysis"],
             "max_papers": {"min": 5, "max": 50, "default": 30}, "candidate_limit": {"min": 20, "max": 120, "default": 120},
-            "max_queued_reviews": 50, "sse_max_per_ip": 5}}
+            "max_queued_reviews": 50, "sse_max_per_ip": 5,
+            "modes": ["full", "quick"], "quick": {"max_papers": 8, "candidate_limit": 30, "review_type": "slr"}}}
 ```
 
 The daily budget figures are private. When the budget runs out, the status shows only `accepting: false` with `reason: "daily_budget"`. `accepting` assumes the largest allowed request, so near the end of the day it can read false while a smaller request would still be admitted.
@@ -1236,6 +1239,19 @@ call, and the report text is never rewritten.
 guard labels real questions `personal_medical` (and wrongly refuses research questions) needs a paid batch on the 22a
 harness, the owner's call.
 
+## Quick answer (Plan 27)
+
+"ถามเร็ว": a short, referenced answer for the public and the bedside, from the same engine on a small pool.
+- **Request.** `options.mode: "quick"` on `POST /api/v1/reviews`, `start_review(mode="quick")` or the `quick_answer` MCP tool. The service screens `limits.quick.candidate_limit` candidates (30) and reads the `limits.quick.max_papers` (8) most relevant as a systematic review (`review_type` `slr`, graded); `year_from` and `study_types` apply. While ThaiJO is on (Plan 24), it adds at most 3 of the 30 candidates (1/8 of the pool). The guard, the red-flag pass (Plan 26), screening with its second vote, dual extraction and number verification all run as in a full review.
+- **Skipped.** No external MCP tools, no citation network (`citations` null), no pooled analysis, no conflict explanations, no card translation (cards stay in English) and no narrative report.
+- **Writer.** One call writes 2–4 English sentences, each ending with its `[Pn]` citations, and one sentence on the main limitation. Code checks the answer sentence by sentence: it keeps only citations of papers read as evidence (a citation written after a full stop is moved inside it, "… [P1]."), removes a sentence with a number, measure or population that its own cited cards do not support (the full review's prose checks), drops a sentence without a citation, and keeps at most 4. When the answer is not graded, a sentence claiming a certainty level is dropped too. When nothing is left the answer is a fixed "withheld" notice; when the call fails, a fixed failure notice. At most one repair round, no escalation.
+- **Result.** `mode: "quick"`, `summary` = `synthesis.executive_summary` = the answer (shown language; `synthesis_en` holds the English), `synthesis.answer` = the closing line: the fixed certainty sentence of the GRADE-lite baseline (computed in code, never the model's; `evidence_strength` = `grade_baseline`) then the limits sentence, or "not graded" for qualitative studies only. `comparison`, `consensus`, `conflicts`, `key_findings` and `research_gaps` are empty. `quick: {refs, papers_read}`: the cited refs in order of first citation (reference `[k]` is `refs[k-1]`) and the number of evidence papers the answer was written from. `papers`, `stats`, `question`, `methods` and `support` (Plan 25, which checks the answer's sentences) are as in a full review.
+- **Numbers.** Only numbers verified against the abstracts (`app/harness/verify.py`) can stay in the answer; translation keeps them unchanged.
+- **Cost and limits.** One review against the same hourly rate limit, key quota, queue and daily counters as a full review. Its cost cap is the usual formula with the quick sizes: 0.04 + 0.006 × 8 + 0.0005 × 30 = $0.103 (defaults); expected spend about $0.02 on `budget`. Admission reserves that cap for a new quick answer; queued reviews are reserved at the worst case, as before.
+- **Time.** About 45–75 s on `budget` (an estimate, not measured live: search, screening 3 batches, reading 8 papers in one wave, writing and translating).
+- **Exports.** `export?format=md` and `review://{id}/report.md` give "# Quick answer: …", the answer with `[1]…[n]`, the closing line, a scope note and the numbered references. `csv` and `json` are as for any review.
+- **Web.** The home form starts as a quick answer; `/r/{id}` shows the answer, the numbered references (links to PubMed, DOI, PubMed Central or ThaiJO), the public safety notices (Plan 26) and "ทำรีวิวฉบับเต็ม", which opens the form as a full review with the same question, language, start year and study types.
+
 ## Event stream (SSE)
 
 `GET /api/v1/reviews/{id}/events` first replays the review's past events, then streams new ones.
@@ -1274,6 +1290,8 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 
 With `GRAPH_MODE=stub` and `STUB_DELAY_SECONDS>0` the stub emits the same sequence on a scaled timeline.
 
+A quick answer (Plan 27) sends the same events, with fewer `screening` and `reading` events, never `citations_fetched`, `external_lookup` or `pooled`.
+
 ## Webhooks
 
 If a request with an API key includes `callback_url`, the service POSTs to it when the review ends as `done`, `error`, `rejected` or `cancelled`. A cached answer returns `callback_scheduled: false` and no webhook is sent; poll the review instead.
@@ -1301,7 +1319,8 @@ The server name is `medical-reviewer-agent`, version 0.8.0. The `Host` header mu
 | Tool | Returns | Notes |
 |---|---|---|
 | `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | Searches the same eight engines as reviews (never ThaiJO). `limit` is clamped to 1–25. Shares the paper-search limit |
-| `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None)` | `{review_id, status, cached, status_url}`; for a topic that reads as an emergency `{review_id: null, status: "refused", code: "emergency", kind, hotlines, message, message_th}` (Plan 26) | `topic`: up to 600 characters. `max_papers`: clamped into 5–50 (not rejected; default 30). `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. Capacity errors include the reason and the wait time |
+| `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None, mode="full")` | `{review_id, status, cached, status_url}`; for a topic that reads as an emergency `{review_id: null, status: "refused", code: "emergency", kind, hotlines, message, message_th}` (Plan 26) | `topic`: up to 600 characters. `max_papers`: clamped into 5–50 (not rejected; default 30). `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. `mode` (Plan 27): `full` or `quick`; with `quick` the service sets the type and both sizes. Capacity errors include the reason and the wait time |
+| `quick_answer(topic, language="th", study_types=None, year_from=None, wait_seconds=60)` | `{review_id, status, cached, status_url}` plus, once done, `{answer, closing, certainty, papers_read, references: [{n, ref, citation, links: [{label, url}]}]}`; still running: `message`; ended otherwise: `error`, `refusal_code`; an emergency: the `refused` result of `start_review` | Plan 27. Starts (or reuses) a quick answer and waits up to `wait_seconds` (0–90) for it, checking every 2 s. `answer` has the `[Pn]` groups renumbered `[1]…[n]` by first citation; `references[n-1]` is reference `[n]`, with links to doi.org, PubMed, PubMed Central or ThaiJO. One review against the same limits as `start_review` |
 | `get_review_status(review_id)` | `{review_id, status, error, refusal_code, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled`; `refusal_code` as in REST (Plan 26) |
 | `get_review_result(review_id)` | `{review_id, status, result}` | The `result` shape is the same as REST: `citations` and, for `meta_analysis`, `meta_analysis`. If the review is not done: `{…, result: null, message, error, refusal_code}` |
 
