@@ -728,7 +728,7 @@ audit rules as the rest of the Admin API and are not in the public OpenAPI.
 - `keys_present` is `{ENV_NAME: bool}` for the key variable of each configured provider. Provider API keys never reach
   the database, the API or the console; the console sees only whether each one is set.
 - `loaded` lists the workers, see "Workers" below.
-- `error` is null normally. When the newest saved version, or `llm.yaml` while no version is saved, no longer passes validation, the route still answers **200** with the stored `config`, an empty `keys_present` and `error` set to the reason, and the console offers restore and reset.
+- `error` is null normally. When the newest saved version, or `llm.yaml` while no version is saved, no longer passes validation, the route still answers **200** with the stored `config`, an empty `keys_present` and `error` set to the reason, and the console offers restore and reset. The reason is one line: a schema error names the field path and the rule (plus a count of further errors), never the stored value or a YAML snippet.
 
 **Documents.** `config` is the document as an object and `yaml` is the same document as text (up to 200,000
 characters). Send exactly one of them; both, or neither where one is required, is 422. A note is up to 500 characters.
@@ -873,7 +873,8 @@ admin-only constants, not `/status` limits).
   "Runtime settings, glossary and harness"). `version` is the id as text or `"file"`, and `error` is null or the last error
   (up to 300 characters). A worker reports at start, after each reload and at every 30-second check, so `loaded_at`
   means **last seen**, not when the version was loaded. A worker that shuts down cleanly removes its entry.
-  `GET /admin/llm-config` returns the entries as `loaded: [{worker, version, preset, loaded_at, error}]`, leaving out
+  `GET /admin/llm-config` returns the entries as
+  `loaded: [{worker, version, preset, loaded_at, error, settings, glossary, runtime_error}]`, leaving out
   those not refreshed for a day, and the console calls a worker "not reporting" after 2 minutes.
 
 **Command line.** `python -m app.cli.models check [--source file|db]` validates `llm.yaml` (the default) or, with
@@ -934,7 +935,8 @@ built-in glossary (the seed) is in use.
 **Settings.** The console edits exactly 13 values. A document is `{"values": {name: value}}` holding only the values
 that differ from the environment (sparse overrides); reset is `{"values": {}}`. `GET /admin/settings` shows `values`
 (in force), `overrides` (the saved ones), `env` (what the environment gives), `specs` (the table below) and
-`worst_case_review_usd`.
+`worst_case_review_usd`. Its `source` is `"db"` (a saved version is in use; `version` is its number) or `"env"` (none
+is saved; `version` is null).
 
 | Name | Type | Bounds |
 |---|---|---|
@@ -967,7 +969,9 @@ is saved).
 - 1-200 terms. `en` up to 120 characters; aliases are separated by `/`, and an English alias may appear once
   (case-insensitive). `th` up to 120 characters, with Thai script and no brackets. `abbr` up to 24 characters, no
   brackets. `note` up to 300 characters and never shown to the model. No `;` or `=` in `en`, `th` or `abbr`, no control
-  characters. Blank optional values become null.
+  characters (C0, DEL, C1, and the Unicode line and paragraph separators). Blank optional values become null.
+- `GET /admin/glossary` has `source` `"db"` (a saved version is in use; `version` is its number) or `"file"` (none is
+  saved, so the built-in glossary is in use; `version` is null).
 - The rendered text (`en = th (ABBR)` joined by `; `) is at most 4000 characters; `chars` and `max_chars` report it.
 - Validate returns `preview`, the rendered text.
 - A saved glossary adds `+g{version}` to the result-cache key and every result carries `glossary_version`; with no saved
@@ -975,7 +979,9 @@ is saved).
 
 **Workers.** The `mra:llm:loaded` entries of Plan 23b gain `settings` and `glossary` (the version each worker runs) and
 `runtime_error` (null or the last reload error). `runtime_error` can also mean the worker could not read the saved
-versions; it clears at the next good poll. `loaded` in the state routes lists them.
+versions; it clears at the next good poll. The poll reads the two kinds separately, so a settings version that cannot
+be read never stops the glossary's mirror from being repaired (and the other way round). `loaded` in the state routes
+lists them.
 
 **Harness.** The harness page reads the Cochrane evaluation (`backend/evals/cochrane`, Plan 22a): reports, run results
 and comparisons, and starts a capped run. Fixtures and runs hold third-party abstracts and are mounted into the
@@ -993,10 +999,24 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
   `reasons` is not empty. A start that arq refuses to enqueue is **503** `{detail, reasons: []}` too, and the run ends
   as `error`.
 - **The cap.** `max_usd` must be at least the per-review cap of the selection and at most `HARNESS_MAX_USD` (default
-  5.0). A run never starts a review unless what it has spent plus that review's own cap fits in `max_usd`. A harness
-  run claims rows that are `queued` or `running` and holds the single active slot. An interrupted review counts at its
-  full per-review cap on a retry, through in-flight markers in the run folder; an unreadable marker stops the run.
-  Earlier spend is counted from the run files on a retry.
+  5.0). `per_review_cap_usd` in the state is that cap rounded **up** to 4 decimal places, and the start compares
+  `max_usd` with the same rounded value, so the lowest cap the page shows is always accepted. A run never starts a
+  review unless what it has spent plus that review's own cap fits in `max_usd`. Within a review the per-review cap
+  applies as for any review: calls already in flight when it is reached finish, so a review, and with it the run, can
+  end above its cap by the cost of at most `llm_concurrency` calls.
+- **Unpriced models.** Before anything runs, the worker checks that the review cap can count every role's calls: a
+  direct Anthropic model needs a known price, and an OpenRouter model must be in the catalog (skipped while the catalog
+  is unavailable). If a role fails, the run ends as `error` with the fixed text "models without a known price: " and the
+  role names (never a model id or a price), and nothing is spent.
+- **Accounting.** The worker claims a run that is queued, or running after a hard kill, and still holds the active
+  slot. Money is counted so that the run never shows less than it may have spent:
+  - a review's record stores the larger of what its budget was charged and the cost its graph reports;
+  - each review writes an in-flight marker before it starts and removes it once its record is written. On a retry,
+    earlier spend is counted from the run files: every record's cost plus the full per-review cap of every marker left
+    behind (a review that was interrupted). A retried review keeps the old marker and removes only its own;
+  - a run file or marker that cannot be read (or holds no usable cost) counts as unknown spend, which stops the run;
+  - a run that ends at its deadline or at its last interruption stores what the run files account for as its spend.
+    When that is unknown, the last stored spend is kept and the error says the spend is unknown.
 - **Run life.** `status` is `queued`, `running`, `done`, `stopped`, `cancelled` or `error`. `stopped` means the cap
   stopped it, and can carry an `error` text. Cancel is graceful: a running batch stops before its next review. A job
   that reaches its own deadline (12 hours minus 60 seconds), or is interrupted 3 times, ends as `error`. A worker that
@@ -1004,7 +1024,7 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
   `console-YYYYMMDD-HHMMSS-xxxx` (UTC and four hex digits). A worker whose `prompt_version` differs from the run's ends
   it as `error` before calling anything.
 - **Reports.** A report name must fully match `[A-Za-z0-9][A-Za-z0-9._-]{0,150}.md`, must sit directly in `reports/`,
-  must not be a symlink and must be at most 1,000,000 bytes. Anything else is 404.
+  must be a regular file (not a symlink, a folder or a pipe) and must be at most 1,000,000 bytes. Anything else is 404.
 - **Compare.** `a` and `b` are labels `prompt_version/run` (up to 129 characters). A bad label is 422. Other answers are
   fixed messages and never quote a file: **404** "no run files for run a" (or b), **404** "the harness manifest is
   missing", **422** "the run file could not be read" or "the manifest could not be read".
@@ -1014,7 +1034,7 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
 - The agent screens a pool of up to `candidate_limit` (default 120) candidates that have abstracts and analyses the `max_papers` (5–50, default 30) most relevant. Reading is on abstracts only.
 - Top-up: when fewer than `candidate_limit` candidates keep a usable abstract after the first search round, `enrich` runs one single top-up of the next SearXNG page (bounded by `searxng_pages_max`). The `searching` event's `found` counts the first round only; `stats.found` (PRISMA "identified") also counts the top-up hits.
 - Shortfall: when fewer than `max_papers` papers are eligible, all eligible papers are analysed and nothing is padded; `stats.excluded_selection.eligible` is then lower than `requested`. Both are informational, not exclusion counts. `eligible` can include papers kept by the study-design relaxation (`study_design_relaxed`).
-- Cost cap: each review is capped at `review_cost_base_usd + review_cost_per_paper_usd * max_papers + review_cost_per_candidate_usd * candidate_limit` USD (defaults 0.04, 0.006 and 0.0005), never above `max_cost_per_review_usd` (default 0.60). These are settings and can be tuned per deployment. Admission reserves the worst-case cap for queued and running reviews and the request's own cap for the new one, so a large request can be refused while a small one is still accepted.
+- Cost cap: each review is capped at `review_cost_base_usd + review_cost_per_paper_usd * max_papers + review_cost_per_candidate_usd * candidate_limit` USD (defaults 0.04, 0.006 and 0.0005), never above `max_cost_per_review_usd` (default 0.60). These are settings and can be tuned per deployment. Admission reserves the worst-case cap for queued and running reviews and the request's own cap for the new one, so a large request can be refused while a small one is still accepted. The cap is checked before each LLM call and again once the call has its concurrency slot, so no call starts after the cap is spent. Calls already in flight finish and are charged, so a review (or a harness run) can end above its cap by the cost of at most `llm_concurrency` calls.
 - Limits for clients come from `GET /api/v1/status → limits`, never hard-code them.
 
 ## Event stream (SSE)
