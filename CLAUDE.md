@@ -40,11 +40,6 @@ Frontend conventions and the design system (DESIGN.md) live in `frontend/CLAUDE.
   eval replays frozen pools from screening onward (`build_eval_graph`), so search changes need a new pool version;
   `eval_year_to` is eval-only state, never a `ReviewOptions` field. It measures Thai quality by harness engineering
   (Thai share, glossary consistency, numbers preserved) — no Thai-tuned or fine-tuned model.
-- Report (Plan 20, frontend): the section order comes from `SECTIONS_BY_TYPE` (answer first). Report chrome is in the
-  `frontend/src/lib/i18n-report.ts` string table (new strings go there) and `<html lang>` follows the report's language. Print: always light, controls
-  hidden, every disclosure open, verified numbers print with ✓ and blanked ones as "[unverified]". The offline file
-  (`/r/{id}/report.html`) makes no network request: it embeds Martian Mono (OFL) and nothing else, and has no links back
-  to the service.
 - Not evidence: a further report of a trial (`related_to`) and a paper read as a design outside the ticked study types
   (`design_excluded`) stay in `papers` but are out of comparison rows, key findings, SoF, pools and the grade; the
   report's tallies, RoB summary, study map and DTA table skip them too (`isNotEvidence`). The title block and PRISMA
