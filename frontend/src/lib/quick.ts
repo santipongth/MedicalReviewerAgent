@@ -1,0 +1,84 @@
+// Plan 27: the quick answer ("ถามเร็ว"). Pure, no React: whether a review is a quick answer, its references numbered
+// [1]…[n] in order of first citation (the engine stores them as `result.quick.refs`), the answer split into text and
+// citation groups, and the link that asks for a full review of the same question. The references are the screened
+// papers the answer cites; nothing here invents a number or a source.
+import type { Review, ReviewResult } from "./types";
+
+/** The citation groups the engine writes ("[P1]", "[P1, P3]"), the same pattern as `support.ts` and the backend. */
+const CITE = /\[(P\d+(?:\s*,\s*P\d+)*)\]/g;
+
+export function isQuickReview(review: Pick<Review, "options" | "result"> | null | undefined): boolean {
+  return review?.result?.mode === "quick" || review?.options?.mode === "quick";
+}
+
+/** The refs the answer cites, in order of first citation: `result.quick.refs`, else read from the shown answer. */
+export function quickRefs(result: ReviewResult): string[] {
+  if (result.quick?.refs?.length) return result.quick.refs;
+  const out: string[] = [];
+  for (const m of (result.summary ?? result.synthesis?.executive_summary ?? "").matchAll(CITE)) {
+    for (const ref of m[1].split(/\s*,\s*/)) if (!out.includes(ref)) out.push(ref);
+  }
+  return out;
+}
+
+export type QuickPart =
+  | { kind: "text"; text: string }
+  /** `marker`: the group's index in the text (Plan 25 ties marker k to its support claim) */
+  | { kind: "cite"; refs: string[]; numbers: number[]; marker: number };
+
+/** The answer as text and citation groups; each group's refs numbered by their place in `refs` (1-based). A ref that
+ * is not in `refs` is left out of its group; a group left empty keeps its marker index but shows nothing. */
+export function quickParts(text: string, refs: string[]): QuickPart[] {
+  const parts: QuickPart[] = [];
+  let at = 0;
+  let marker = 0;
+  for (const m of text.matchAll(CITE)) {
+    if (m.index > at) parts.push({ kind: "text", text: text.slice(at, m.index) });
+    const known = m[1].split(/\s*,\s*/).filter((r) => refs.includes(r));
+    parts.push({ kind: "cite", refs: known, numbers: known.map((r) => refs.indexOf(r) + 1), marker });
+    marker += 1;
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) parts.push({ kind: "text", text: text.slice(at) });
+  return parts;
+}
+
+/** The anchor of reference [n] in the quick answer's list. */
+export const quickRefId = (n: number): string => `qref-${n}`;
+
+/** "ทำรีวิวฉบับเต็ม": the request form with the same question, language, start year and study types, set to a full
+ * review. The person submits it there (Turnstile, the rate limit and the report view live in the form). */
+export function fullReviewHref(review: Pick<Review, "topic" | "language" | "options">): string {
+  const params = new URLSearchParams({ q: review.topic, mode: "full", lang: review.language });
+  const { year_from: year, study_types: types } = review.options ?? {};
+  if (typeof year === "number") params.set("year", String(year));
+  const list = Array.isArray(types) ? types.filter((t): t is string => typeof t === "string") : [];
+  if (list.length) params.set("types", list.join("|"));
+  return `/?${params.toString()}#request`;
+}
+
+/** The request form's starting values from the address (`?q=…&mode=…&lang=…&year=…&types=a|b`), each checked. */
+export interface FormStart {
+  topic?: string;
+  mode?: "quick" | "full";
+  language?: "th" | "en";
+  yearFrom?: string;
+  studyTypes?: string[];
+}
+
+const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
+
+export function formStart(params: Record<string, string | string[] | undefined>): FormStart {
+  const topic = one(params.q)?.trim().slice(0, 600) || undefined;
+  const mode = one(params.mode);
+  const lang = one(params.lang);
+  const year = one(params.year);
+  const types = (one(params.types) ?? "").split("|").map((t) => t.trim().slice(0, 80)).filter(Boolean).slice(0, 10);
+  return {
+    topic,
+    mode: mode === "quick" || mode === "full" ? mode : undefined,
+    language: lang === "th" || lang === "en" ? lang : undefined,
+    yearFrom: year && /^(19[5-9]\d|20\d\d)$/.test(year) ? year : undefined,
+    studyTypes: types.length ? types : undefined,
+  };
+}
