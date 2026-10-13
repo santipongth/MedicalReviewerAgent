@@ -485,6 +485,8 @@ export interface Review extends ReviewSummary {
   cost_usd: number;
   started_at: string | null;
   queue_position?: number | null;
+  /** Plan 26: why a rejected review got no review: "personal_medical" or "declined"; null otherwise (absent before it) */
+  refusal_code?: string | null;
 }
 
 export interface ReviewOptions {

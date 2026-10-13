@@ -1,6 +1,13 @@
 import { apiUrl } from "./config";
 import type { CreateReviewBody, Review, ReviewCreated, ReviewSummary, ServiceStatus } from "./types";
 
+/** Plan 26: a request that gets no review (422 with a code): an emergency, with the numbers to call. */
+export interface Refusal {
+  code: string;
+  kind?: string;
+  hotlines: string[];
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -8,6 +15,7 @@ export class ApiError extends Error {
     public retryAfter?: number,
     public reviewId?: string,
     public reason?: string,
+    public refusal?: Refusal,
   ) {
     super(message);
     this.name = "ApiError";
@@ -43,9 +51,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       body = undefined;
     }
     const retry = Number(res.headers.get("retry-after"));
-    const { review_id: reviewId, reason } = (body ?? {}) as { review_id?: string; reason?: string };
+    const { review_id: reviewId, reason, code, kind, hotlines } = (body ?? {}) as {
+      review_id?: string; reason?: string; code?: unknown; kind?: unknown; hotlines?: unknown;
+    };
+    const refusal = typeof code === "string" ? {
+      code, kind: typeof kind === "string" ? kind : undefined,
+      hotlines: Array.isArray(hotlines) ? hotlines.filter((h): h is string => typeof h === "string") : [],
+    } : undefined;
     throw new ApiError(res.status, detailMessage(body) ?? res.statusText, Number.isFinite(retry) && retry > 0 ? retry : undefined,
-      reviewId, reason);
+      reviewId, reason, refusal);
   }
   return (await res.json()) as T;
 }

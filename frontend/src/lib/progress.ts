@@ -35,6 +35,8 @@ export interface RunState {
   externalLookup: boolean;
   elapsed: number;
   message?: string;
+  /** Plan 26: a rejection's refusal code ("personal_medical", "declined"); absent on older events */
+  code?: string;
   lastSeq: number;
 }
 
@@ -137,6 +139,7 @@ export function reduceRun(state: RunState, ev: ReviewEvent): RunState {
       s.status = "rejected";
       s.terminal = true;
       s.message = str(p.reason);
+      s.code = str(p.code);
       break;
     case "cancelled":
       s.status = "cancelled";

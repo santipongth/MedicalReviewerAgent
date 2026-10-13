@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HOTLINE_LABEL, PERSONAL_MEDICAL_COPY } from "@/lib/refusal-copy";
 
 const COPY = {
   rejected: {
@@ -15,9 +16,31 @@ const COPY = {
   },
 } as const;
 
+const BUTTON = "w-fit rounded-sm border px-4 py-2 font-display font-semibold no-underline";
+
+/**
+ * Plan 26: a personal medical question (the topic guard's personal_medical) gets a fixed, kind message: no topic, no
+ * model reason, no "edit and resend" link that would send the same question again.
+ */
+function PersonalMedical() {
+  return (
+    <section className="grid max-w-[65ch] gap-4 pt-12" data-refusal="personal_medical">
+      <h1 className="text-[clamp(1.6rem,3vw,2.25rem)] font-bold">{PERSONAL_MEDICAL_COPY.title}</h1>
+      <p>{PERSONAL_MEDICAL_COPY.body}</p>
+      <p className="text-[0.95rem] text-muted">{PERSONAL_MEDICAL_COPY.askAgain}</p>
+      <div className="flex flex-wrap gap-3">
+        <a href="tel:1669" className={`${BUTTON} border-primary bg-primary text-on-primary hover:brightness-110`}>{HOTLINE_LABEL["1669"]}</a>
+        <Link href="/" className={`${BUTTON} border-rule hover:bg-rail`}>ถามคำถามใหม่</Link>
+      </div>
+    </section>
+  );
+}
+
 export function TerminalState({
-  status, message, topic,
-}: { status: "rejected" | "error" | "cancelled"; message?: string | null; topic: string }) {
+  status, message, topic, code,
+}: { status: "rejected" | "error" | "cancelled"; message?: string | null; topic: string; code?: string | null }) {
+  // the code from the event or the review; the stored error's prefix covers a client that missed both
+  if (status === "rejected" && (code === "personal_medical" || !!message?.startsWith("personal_medical: "))) return <PersonalMedical />;
   const copy = COPY[status];
   const retryHref = `/?q=${encodeURIComponent(topic)}#request`;
   const primary = status === "rejected" ? "แก้หัวข้อแล้วส่งใหม่" : "ลองอีกครั้ง";

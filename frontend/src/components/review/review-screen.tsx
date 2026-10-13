@@ -58,7 +58,8 @@ export function ReviewScreen({ id }: { id: string }) {
     );
   }
   if (phase === "terminal" && (run.status === "rejected" || run.status === "error" || run.status === "cancelled")) {
-    return <TerminalState status={run.status} message={run.message ?? review?.error} topic={topic} />;
+    return <TerminalState status={run.status} message={run.message ?? review?.error} topic={topic}
+      code={run.code ?? review?.refusal_code} />;
   }
   if (phase === "report" && review) {
     // Plan 26: the view comes from ?view= or the stored choice; a change is stored and put in the address

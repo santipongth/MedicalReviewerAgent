@@ -3,13 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, createReview, getStatus } from "@/lib/api";
+import { AUDIENCES, type Audience } from "@/lib/audience";
 import { TYPICAL_DURATION_TH } from "@/lib/copy";
 import { GLOSS } from "@/lib/glossary";
 import { usableLimits } from "@/lib/limits";
+import { emergencyKind, type EmergencyKind } from "@/lib/refusal-copy";
 import type { ReviewType, ServiceLimits, ServiceStatus } from "@/lib/types";
+import { storeAudience, useStoredAudience } from "@/lib/use-audience";
 import { DisclosureChevron } from "../ui/disclosure-chevron";
 import { Gloss } from "../ui/gloss";
 import { ThaiText } from "../ui/thai-text";
+import { EmergencyPanel } from "./emergency-panel";
 import { ReviewTypePicker } from "./review-type-picker";
 
 type Turnstile = { render: (el: HTMLElement, opts: Record<string, unknown>) => string; reset: (id?: string) => void };
@@ -48,6 +52,10 @@ const NON_QUANTITATIVE = ["Qualitative", "Mixed methods"];
 const OTHER_MAX = 60;
 const TOPIC_MAX = 600;
 const EXAMPLES = ["เมตฟอร์มินกับมะเร็งลำไส้ใหญ่", "statins and dementia", "SGLT2 inhibitors and heart failure"];
+/** Plan 26: who the report is for (lib/audience.ts); remembered in this browser, never sent to the API. */
+const AUDIENCE_NAME: Record<Audience, string> = {
+  public: "ประชาชนทั่วไป", bedside: "แพทย์ข้างเตียง", learner: "นักศึกษาและแพทย์ประจำบ้าน", committee: "คณะกรรมการยาและ HTA",
+};
 
 function waitText(seconds?: number): string {
   if (!seconds) return "สักครู่";
@@ -120,7 +128,10 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
   const [reviewType, setReviewType] = useState<ReviewType>("slr");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emergency, setEmergency] = useState<EmergencyKind | null>(null);
+  const [chosenAudience, setAudience] = useState<Audience | null>(null); // null: the stored choice or the default
   const [status, setStatus] = useState<ServiceStatus | null>(null);
+  const storedAudience = useStoredAudience();
   const [token, setToken] = useState<string | null>(null);
   const [widgetFailed, setWidgetFailed] = useState(false);
   const widget = useRef<HTMLDivElement>(null);
@@ -153,6 +164,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
     document.head.appendChild(script);
   }, [siteKey]);
 
+  const audience = chosenAudience ?? storedAudience;
   const tokenPending = !!siteKey && !token && !widgetFailed;
   const limits = usableLimits(status?.limits) ?? usableLimits(serverLimits);
   const range = limits?.max_papers;
@@ -172,6 +184,8 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setEmergency(null);
+    storeAudience(audience);
     try {
       const options: Record<string, unknown> = { ...(maxPapers != null ? { max_papers: maxPapers } : {}), review_type: reviewType };
       if (yearFrom) options.year_from = Number(yearFrom);
@@ -180,7 +194,9 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
       const created = token ? await createReview(body, { turnstileToken: token }) : await createReview(body);
       router.push(`/r/${created.review_id}`);
     } catch (err) {
-      setError(errorMessage(err));
+      // Plan 26: an emergency gets the numbers to call, never a review or an error line
+      if (err instanceof ApiError && err.refusal?.code === "emergency") setEmergency(emergencyKind(err.refusal.kind));
+      else setError(errorMessage(err));
       setBusy(false);
       if (siteKey && window.turnstile && widgetId.current) { // a token is single-use
         window.turnstile.reset(widgetId.current);
@@ -284,6 +300,16 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
                 </p>
               </div>
             )}
+            <fieldset className="grid gap-1">
+              <legend className="label p-0">รายงานนี้สำหรับ</legend>
+              <div className="grid gap-x-6 sm:grid-cols-2">
+                {AUDIENCES.map((a) => (
+                  <label key={a} className="flex min-h-11 items-center gap-2"><input type="radio" name="audience" checked={audience === a}
+                    onChange={() => setAudience(a)} className="size-4 accent-primary" />{AUDIENCE_NAME[a]}</label>
+                ))}
+              </div>
+              <p className="text-[0.88rem] leading-[1.7] text-muted">เปลี่ยนได้ภายหลังในหน้ารายงาน ผลการทบทวนเหมือนกันทุกมุมมอง</p>
+            </fieldset>
             <div className="grid gap-1">
               <label className="label" htmlFor={`${id}-year`}>ตั้งแต่ปี (ไม่บังคับ)</label>
               <input id={`${id}-year`} inputMode="numeric" pattern="(19[5-9][0-9]|20[0-9][0-9])" placeholder="เช่น 2015"
@@ -317,6 +343,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
             {capacityText(status?.reason, status?.retry_after)}
           </p>
         )}
+        {emergency && <EmergencyPanel kind={emergency} />}
         {error && (
           <p role="alert" className="border-t border-rule bg-err-bg px-4 py-3 text-[0.92rem] text-ink sm:px-6">{error}</p>
         )}
