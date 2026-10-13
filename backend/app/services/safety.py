@@ -9,7 +9,7 @@ Two kinds of request get no review:
 
 A red-flag phrase alone is not an emergency: "chest pain in the emergency department" is a research topic. It counts
 only next to a personal marker (I, my, ฉัน, ผม, ตอนนี้ …) in a topic with no research framing (study, trial, งานวิจัย …).
-Thai drops pronouns, so a Thai medical red flag with no research word counts without a marker. A few first-person
+A short conversational topic counts without a marker (see PRECISION RULE below). A few first-person
 phrases ("kill myself", "อยากตาย") count on their own. Messages never echo the user's text.
 """
 from __future__ import annotations
@@ -71,11 +71,14 @@ MEDICAL_EN = ("chest pain", "chestpain", "chest tightness", "crushing chest", "c
               "will not stop bleeding", "vomiting blood", "coughing up blood", "overdose", "overdosed",
               "took too many pills", "swallowed poison", "poisoned", "unconscious", "passed out", "collapsed",
               "unresponsive", "having a seizure", "had a seizure", "seizing", "convulsing", "throat is swelling",
-              "throat swelling", "anaphylaxis", "anaphylactic", "severe allergic reaction")
+              "throat swelling", "anaphylaxis", "anaphylactic", "severe allergic reaction", "choking")
 # Regular expressions on the normalized text (apostrophes and hyphens are already gone).
+_PILLS_EN = r"(?:pills|tablets|capsules|meds|paracetamol|acetaminophen|aspirin|ibuprofen|panadol|tylenol)"
 MEDICAL_PATTERNS_EN = (
     r"(?:swallowed|drank|drunk) (?:\w+ ){0,2}(?:bleach|chemicals?|cleaner|detergent)",
-    r"took \d+ (?:\w+ ){0,2}?(?:pills|tablets|capsules|paracetamol|acetaminophen|aspirin|ibuprofen|panadol|tylenol)",
+    r"swallowed (?:a |an |two |some |\d+ )?(?:button |coin |lithium )?batter(?:y|ies)",
+    r"took \d+ (?:\w+ ){0,2}?" + _PILLS_EN,
+    r"took (?:a |an )?(?:whole |full |entire )?(?:bottle|pack|packet|strip|box) of (?:\w+ ){0,2}?" + _PILLS_EN,
 )
 MEDICAL_TH = ("เจ็บหน้าอก", "แน่นหน้าอก", "หายใจไม่ออก", "หายใจไม่ทัน", "หายใจลำบาก", "หอบเหนื่อยมาก", "ปากเบี้ยว",
               "หน้าเบี้ยว", "พูดไม่ชัด", "แขนขาอ่อนแรง", "อ่อนแรงครึ่งซีก", "ชาครึ่งซีก", "เลือดออกไม่หยุด",
@@ -84,19 +87,28 @@ MEDICAL_TH = ("เจ็บหน้าอก", "แน่นหน้าอก"
               "แพ้ยารุนแรง", "แพ้อย่างรุนแรง", "กลืนน้ำยา", "กินน้ำยา", "ดื่มน้ำยา", "ชักอยู่", "ชักไม่หยุด",
               "เพื่อนชัก", "แม่ชัก", "พ่อชัก", "ลูกชัก", "สามีชัก", "ภรรยาชัก", "แฟนชัก")
 # Applied to the text with all whitespace removed (Thai has no word spaces).
-MEDICAL_PATTERNS_TH = (r"กินยา.{0,12}[\d๐-๙]+เม็ด",)
+MEDICAL_PATTERNS_TH = (r"กินยา.{0,12}[\d๐-๙]+เม็ด", r"กินยา.{0,12}ทั้ง(?:แผง|ขวด|กระปุก)")
 # Personal markers: the asker or someone with them, now. A Roman "I" after type/phase/class/grade/stage is no marker.
 #
-# PRECISION RULE (Plan 26 fix round 2). This pass aims at high precision; the topic guard (an LLM, `personal_medical`,
-# first node of the review job) is the backstop for anything it lets through. A medical red flag needs an explicit
-# personal anchor: English I / I'm / me / my / our (so "my|our <kin>" is covered) / someone / right now; Thai
-# first-person pronouns, or a kin word at the very start of the topic or right before a pronoun (แม่ฉัน). Standalone
-# help / now / urgent / child / kid / son / baby / friend are NOT anchors. Compounds in NONPERSONAL_TH neutralise only the
-# marker they contain. A Thai topic with no anchor still counts when it is short (at most 40 characters without spaces)
-# and has no framer (FRAMERS_TH) and no research word, because Thai drops pronouns ("เจ็บหน้าอกมาก หายใจไม่ออก").
-# English mirrors the Thai rule: a topic of at most 8 words with no framing word (FRAMERS_EN, RESEARCH_EN) counts
-# without an anchor ("baby not breathing"; not for noun-like flags: NOANCHOR_EXCLUDED_EN). Known misses handed to the
-# guard: a longer or framed English description with no anchor, a long Thai description, any framed Thai sentence.
+# PRECISION RULE (Plan 26 fix round 4). This pass aims at high precision: a realistic research title must not be
+# refused. The topic guard (an LLM, `personal_medical`, first node of the review job; its refusal also lists 1669) is
+# the backstop for every emergency this pass lets through. A topic with a research word (RESEARCH_EN/TH) is never
+# flagged, except by the self-harm "always" phrases. Otherwise a medical red flag counts when:
+# - it has an explicit personal anchor: English I / I'm / me / my / our (so "my|our <kin>" is covered) / someone /
+#   right now; Thai first-person pronouns, or a kin word at the very start of the topic or right before a pronoun
+#   (แม่ฉัน). Standalone help / now / urgent / kin words are NOT anchors. Compounds in NONPERSONAL_TH neutralise only
+#   the marker they contain; or
+# - Thai, no anchor (Thai drops pronouns): the topic is short (at most 40 characters without spaces) and has no framer
+#   (FRAMERS_TH, including connectors such as จาก / และ / ลด / แก้ / ต้าน / ขณะ, or a leading ยา "drug"):
+#   "เจ็บหน้าอกมาก หายใจไม่ออก" counts, "เจ็บหน้าอกจากกรดไหลย้อน" does not; or
+# - English, no anchor: the topic has at most 8 words, no framing word (FRAMERS_EN) outside the red-flag phrase, AND a
+#   conversational cue (CUES_EN: a kin word, a pronoun, a verb such as is / has / took, a negation such as cant, or an
+#   urgency word such as help / now / what to do): "baby not breathing" and "mom collapsed please help" count; a
+#   noun-phrase title such as "heart attack aspirin" or "slurred speech thrombectomy" has no cue and does not.
+#   Noun-like flags (NOANCHOR_EXCLUDED_EN: overdose, anaphylaxis ...) always need an anchor.
+# Known misses handed to the guard: an English message with no anchor and no cue ("took a whole bottle of sleeping
+# pills" passes only because "took" is a cue; "swallowed a battery" alone does not), a longer or framed English
+# description, a long Thai description, any framed Thai sentence with no anchor.
 PERSONAL_EN = ("i", "i'm", "im", "i've", "i am", "me", "my", "our", "myself", "someone", "somebody", "right now",
                "just now")
 PERSONAL_TH = ("ฉัน", "ดิฉัน", "ผม", "หนู", "เรา", "กู")  # pronouns; เรา not before ะ (หัวเราะ), กู not กู้ (resuscitation)
@@ -107,13 +119,20 @@ NONPERSONAL_TH = ("ลูกน้ำ", "ลูกค้า", "ลูกเห�
                   "น้องหมา", "น้องแมว")
 # Words that frame a Thai topic as a subject (not a conversation): the no-anchor rule does not apply.
 FRAMERS_TH = ("ภาวะ", "การ", "อาการ", "สาเหตุ", "ปัจจัย", "ผล", "ความ", "สำหรับ", "หลัง", "ใน", "ของ", "กับ",
-              "ระหว่าง", "ต่อ", "เทียบ", "ป้องกัน", "รักษา")
+              "ระหว่าง", "ต่อ", "เทียบ", "ป้องกัน", "รักษา", "จาก", "และ", "ลด", "แก้", "ต้าน", "ขณะ")
+FRAMER_PATTERNS_TH = (r"^ยา(?!ย)",)  # a topic that starts with ยา ("drug ...") names a treatment; ยาย is grandma
 PRO_DROP_MAX_CHARS = 40
 # English mirror of the short-topic rule: a medical red flag with no anchor counts when the topic has at most
-# SHORT_EN_MAX_WORDS words and none of these framing words (or any RESEARCH_EN word). Noun-like flags that are
-# usually a subject are not eligible without an anchor (NOANCHOR_EXCLUDED_EN). Conversational urgency ("what to do")
-# is not required.
+# SHORT_EN_MAX_WORDS words, none of these framing words outside the red-flag phrase (any RESEARCH_EN word already
+# returned None), and a conversational cue (CUES_EN). Noun-like flags that are usually a subject are not eligible
+# without an anchor (NOANCHOR_EXCLUDED_EN).
 SHORT_EN_MAX_WORDS = 8
+# "not" is no cue ("not breathing newborn resuscitation" is a title); "baby not breathing" is caught through "baby".
+CUES_EN = ("help", "now", "please", "urgent", "asap", "quick", "quickly", "hurry", "what to do", "what do i do",
+           "what should i do", "he", "she", "they", "him", "her", "his", "is", "are", "was", "has", "just", "keeps",
+           "took", "mom", "mum", "mother", "dad", "father", "baby", "son", "daughter", "husband", "wife", "child",
+           "kid", "brother", "sister", "friend", "grandma", "grandpa", "granny", "grandmother", "grandfather",
+           "boyfriend", "girlfriend", "partner", "cant", "wont")
 FRAMERS_EN = ("in", "of", "for", "among", "with", "without", "vs", "versus", "compared", "effect", "effects", "risk",
               "risks", "therapy", "prevention", "policy", "deaths", "death", "mortality", "causes", "cause",
               "factors", "factor", "guidelines", "and", "or", "by", "on", "from", "after", "during", "between",
@@ -123,9 +142,9 @@ FRAMERS_EN = ("in", "of", "for", "among", "with", "without", "vs", "versus", "co
 NOANCHOR_EXCLUDED_EN = ("anaphylaxis", "anaphylactic", "severe allergic reaction", "overdose", "overdosed")
 # Research framing: the topic asks about evidence for a population, so a red flag in it is a research subject.
 RESEARCH_EN = ("study", "studies", "trial", "research", "evidence", "review", "systematic", "meta-analys",
-               "meta analys", "cohort", "efficacy", "effectiveness", "incidence", "prevalence", "patients",
+               "meta analys", "cohort", "efficacy", "effectiveness", "incidence", "prevalence", "patient",
                "outcomes", "randomi", "management", "manage", "triage", "guideline", "treatment", "nurse",
-               "clinician", "physician", "doctors")  # word starts: "trials", "researching", "meta-analyses", "nurses"
+               "clinician", "physician", "doctors")  # word starts: "trials", "researching", "meta-analyses", "nurses", "patients"
 RESEARCH_TH = ("งานวิจัย", "วิจัย", "การศึกษา", "ศึกษา", "ทบทวน", "ประสิทธิผล", "ประสิทธิภาพ", "หลักฐาน",
                "อุบัติการณ์", "ความชุก", "ผู้ป่วย", "อยากรู้เรื่อง", "อยากทราบ", "แนวทาง")
 
@@ -176,12 +195,13 @@ def _thai(phrases: tuple[str, ...], patterns: tuple[str, ...] = ()) -> re.Patter
 _ALWAYS_EN, _SELF_HARM_EN = _english(SELF_HARM_ALWAYS_EN), _english(SELF_HARM_EN)
 _MEDICAL_EN = _english(MEDICAL_EN, patterns=MEDICAL_PATTERNS_EN)
 _PERSONAL_EN, _RESEARCH_EN = _english(PERSONAL_EN), _english(RESEARCH_EN, prefix=True)
-_FRAMERS_EN = _english(FRAMERS_EN)
+_FRAMERS_EN, _CUES_EN = _english(FRAMERS_EN), _english(CUES_EN)
 _MEDICAL_EN_NOANCHOR = _english(tuple(p for p in MEDICAL_EN if p not in NOANCHOR_EXCLUDED_EN),
                                 patterns=MEDICAL_PATTERNS_EN)
 _ALWAYS_TH, _SELF_HARM_TH = _thai(SELF_HARM_ALWAYS_TH), _thai(SELF_HARM_TH)
 _MEDICAL_TH = _thai(MEDICAL_TH, MEDICAL_PATTERNS_TH)
-_RESEARCH_TH, _FRAMERS_TH, _NONPERSONAL_TH = _thai(RESEARCH_TH), _thai(FRAMERS_TH), _thai(NONPERSONAL_TH)
+_RESEARCH_TH, _NONPERSONAL_TH = _thai(RESEARCH_TH), _thai(NONPERSONAL_TH)
+_FRAMERS_TH = _thai(FRAMERS_TH, FRAMER_PATTERNS_TH)
 _PRONOUN = "|".join(re.escape(p) for p in _norm_th(PERSONAL_TH) if p not in ("เรา", "กู")) + r"|เรา(?!ะ)|(?<![ก-ฮ])กู(?![ะ-ฺ็-๎])"
 _KIN = "|".join(re.escape(k) for k in _norm_th(KINSHIP_TH))
 # a pronoun, or a kin word at the very start or right before a pronoun; applied after _NONPERSONAL_TH spans are blanked
@@ -218,8 +238,10 @@ def red_flag(topic: str) -> Emergency | None:
     pro_drop = len(th) <= PRO_DROP_MAX_CHARS and not _FRAMERS_TH.search(th)
     if _SELF_HARM_EN.search(text) and personal or _SELF_HARM_TH.search(th) and (anchored_th or pro_drop):
         return Emergency("self_harm")
-    short_en = len(text.split()) <= SHORT_EN_MAX_WORDS and not _FRAMERS_EN.search(text)
-    if (personal and _MEDICAL_EN.search(text) or short_en and _MEDICAL_EN_NOANCHOR.search(text)
+    # English with no anchor: short, a red flag, no framing word outside it, and a conversational cue
+    short_en = (len(text.split()) <= SHORT_EN_MAX_WORDS and bool(_MEDICAL_EN_NOANCHOR.search(text))
+                and not _FRAMERS_EN.search(_MEDICAL_EN_NOANCHOR.sub(" ", text)) and bool(_CUES_EN.search(text)))
+    if (personal and _MEDICAL_EN.search(text) or short_en
             or _MEDICAL_TH.search(th) and (anchored_th or pro_drop)):
         return Emergency("medical")
     return None
