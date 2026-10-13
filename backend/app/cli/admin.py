@@ -5,6 +5,8 @@
     python -m app.cli.admin disable NAME                        # ends every session of NAME
     python -m app.cli.admin enable NAME
     python -m app.cli.admin list
+    python -m app.cli.admin llm-keys-secret                     # print a new LLM_KEYS_SECRET (Plan 23e; no DB)
+    python -m app.cli.admin rotate-llm-keys                     # re-encrypt stored provider keys with the first key
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ from app.services.admin_auth import (
 )
 from app.services.admin_sessions import AdminSessions
 from app.services.audit import record
+from app.services.llm_keys import cipher, generate_secret, rotate_keys
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -37,6 +40,9 @@ def _parser() -> argparse.ArgumentParser:
     for name, text in (("disable", "disable an admin and end their sessions"), ("enable", "enable an admin")):
         sub.add_parser(name, help=text).add_argument("username")
     sub.add_parser("list", help="list admins")
+    sub.add_parser("llm-keys-secret", help="print a new LLM_KEYS_SECRET value (a Fernet key) for .env")
+    sub.add_parser("rotate-llm-keys", help="re-encrypt the stored LLM provider keys with the first key of "
+                                           "LLM_KEYS_SECRET (after adding a new key in front of the old one)")
     return p
 
 
@@ -49,8 +55,31 @@ def _read_password(args, read_password, stdin) -> str:
     return first
 
 
-async def run(argv: list[str], session_factory, redis, *, read_password=getpass.getpass, stdin=None) -> int:
+async def _rotate(session_factory, settings) -> int:
+    """Plan 23e: LLM_KEYS_SECRET=new,old → every stored key re-encrypted with `new`, one transaction, audited."""
+    fernet = cipher(settings)
+    if fernet is None:
+        print("error: LLM_KEYS_SECRET is missing or not a list of Fernet keys", file=sys.stderr)
+        return 1
+    async with session_factory() as session, session.begin():
+        rotated, unreadable = await rotate_keys(session, fernet)
+        await record(session, CLI_ACTOR, "llm_key.rotate", target_type="llm_key",
+                     after={"rotated": rotated, "unreadable": unreadable})
+    note = f"; {unreadable} could not be read with any key and were left as they are" if unreadable else ""
+    print(f"rotate-llm-keys: {rotated} key(s) re-encrypted{note}")
+    return 0
+
+
+async def run(argv: list[str], session_factory, redis, *, read_password=getpass.getpass, stdin=None,
+              settings=None) -> int:
     args = _parser().parse_args(argv)
+    if args.cmd == "llm-keys-secret":
+        print(generate_secret())
+        return 0
+    if args.cmd == "rotate-llm-keys":
+        from app.config import get_settings
+
+        return await _rotate(session_factory, settings or get_settings())
     if args.cmd == "list":
         async with session_factory() as session:
             for u in await list_users(session):

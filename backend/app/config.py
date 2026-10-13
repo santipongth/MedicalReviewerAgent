@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -99,7 +100,10 @@ class Settings(BaseSettings):
     http_timeout_seconds: float = 30.0
     screen_batch_size: int = 10
 
-    # LLM models, presets and tuning live in config/llm.yaml; these hold only the path and keys.
+    # LLM models, presets and tuning live in config/llm.yaml; these hold only the path and keys. Plan 23e: provider keys
+    # may also be entered in the admin console, stored encrypted with LLM_KEYS_SECRET (one or more comma-separated
+    # Fernet keys, newest first; env only, read once per process). Without it the console cannot store keys.
+    llm_keys_secret: SecretStr = SecretStr("")
     llm_config_path: str = "config/llm.yaml"
     llm_preset: str | None = None  # overrides active_preset in llm.yaml
     llm_concurrency: int = 16  # max LLM requests in flight per worker process (all roles share it)
