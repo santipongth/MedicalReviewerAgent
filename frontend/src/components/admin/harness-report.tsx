@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { parseInline, parseReport } from "@/lib/report-markdown";
 import { TABLE_REGION, TD, TH } from "./ui";
 
@@ -12,16 +13,20 @@ function Text({ text }: { text: string }) {
   );
 }
 
-/** A 22a report as React elements (headings start at h3 inside the harness page). */
+/** A 22a report as React elements. The report's name is the page's h3, so its headings start at h4. */
 export function HarnessReport({ text }: { text: string }) {
-  const blocks = parseReport(text);
-  /** each block's running count of tables, so a table's region is named by its place in the report */
-  const tableNo = blocks.reduce<number[]>((acc, b, i) => { acc[i] = (i > 0 ? acc[i - 1] : 0) + (b.kind === "table" ? 1 : 0); return acc; }, []);
+  // parsed once per text: the page re-renders on every keystroke in the start form and on every poll
+  const { blocks, tableNo } = useMemo(() => {
+    const parsed = parseReport(text);
+    // each block's running count of tables, so a table's region is named by its place in the report
+    const numbers = parsed.reduce<number[]>((acc, b, i) => { acc[i] = (i > 0 ? acc[i - 1] : 0) + (b.kind === "table" ? 1 : 0); return acc; }, []);
+    return { blocks: parsed, tableNo: numbers };
+  }, [text]);
   return (
     <div className="mt-3 grid gap-3 text-sm [overflow-wrap:anywhere]">
       {blocks.map((block, i) => {
         if (block.kind === "heading") {
-          const Tag = (["h3", "h4", "h5"] as const)[block.level - 1];
+          const Tag = (["h4", "h5", "h6"] as const)[block.level - 1];
           return <Tag key={i} className="font-display font-semibold"><Text text={block.text} /></Tag>;
         }
         if (block.kind === "list") {

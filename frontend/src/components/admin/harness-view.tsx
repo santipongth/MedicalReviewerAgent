@@ -12,6 +12,7 @@ import { HarnessReport } from "./harness-report";
 import { BUTTON_GHOST, INPUT, TABLE_REGION, TD, TH } from "./ui";
 
 const POLL_MS = 5000;
+const MAX_REVIEWS = 1000; // StartBody.max_reviews: 1 to 1000
 
 /** The start form's fields, as the start route names them in an `errors` list. */
 const FORM_FIELDS = ["max_usd", "repeats", "strata", "max_reviews", "compare_run", "confirm"];
@@ -31,6 +32,9 @@ function backendDetail(e: unknown): string | null {
   const detail = typeof e.body === "object" && e.body !== null ? (e.body as { detail?: unknown }).detail : undefined;
   return typeof detail === "string" && detail !== "" ? detail : null;
 }
+
+/** The ids that describe a control, space-separated, or nothing. */
+const describedBy = (...ids: (string | false)[]) => ids.filter(Boolean).join(" ") || undefined;
 
 /** A form field's name in an error: the first part of `strata.2`. */
 const fieldKey = (e: FieldError) => (e.field ? e.field.split(".")[0] : null);
@@ -83,12 +87,20 @@ export function HarnessView() {
   const focusNotice = useRef(false);
   const reportRef = useRef<HTMLHeadingElement>(null);
   const compareRef = useRef<HTMLTableCaptionElement>(null);
+  /** Requests for the state are numbered as they start; an answer is shown only when no newer one has been shown, so a
+   * slow answer never puts an older state back over a newer load or poll. */
+  const order = useRef({ issued: 0, applied: 0 });
 
   useEffect(() => {
     let alive = true;
+    const mine = ++order.current.issued;
     Promise.all([adminApi.harness(), adminApi.harnessRuns(), adminApi.harnessReports(), adminApi.harnessResults()])
       .then(([s, r, rep, res]) => {
-        if (alive) { setState(s); setRuns(r.items); setReports(rep.items); setResults(res.items); }
+        if (!alive) return;
+        if (mine >= order.current.applied) { order.current.applied = mine; setState(s); }
+        setRuns(r.items);
+        setReports(rep.items);
+        setResults(res.items);
       })
       .catch((e: unknown) => { if (alive) setError(fail(e)); });
     return () => { alive = false; };
@@ -97,16 +109,24 @@ export function HarnessView() {
   const activeId = state?.active?.id ?? null;
   useEffect(() => {
     if (activeId === null) return undefined;
+    let alive = true;
     const timer = setInterval(() => {
+      const mine = ++order.current.issued;
       adminApi.harness()
         .then((s) => {
+          if (!alive || mine < order.current.applied) return; // gone, or older than what is already shown
+          order.current.applied = mine;
           setState(s);
           if (s.active === null) setReloads((n) => n + 1); // finished: refresh the runs and the reports
         })
-        .catch(() => { /* the next tick tries again */ });
+        .catch((e: unknown) => {
+          // a session that ended during a long run must not look like a run that is still going; any other failure
+          // is for the next tick to retry
+          if (alive && e instanceof AdminApiError && (e.status === 401 || e.status === 403)) setError(fail(e));
+        });
     }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [activeId]);
+    return () => { alive = false; clearInterval(timer); };
+  }, [activeId, fail]);
 
   useEffect(() => {
     if (notice && focusNotice.current) {
@@ -129,10 +149,12 @@ export function HarnessView() {
   const current = state;
   const capText = cap ?? current.default_usd.toFixed(2);
   const capValue = Number(capText);
-  const reviewsLimit = maxReviews ? Number(maxReviews) : null;
+  const reviewsText = maxReviews.trim();
+  const reviewsOk = reviewsText === "" || (/^[0-9]{1,4}$/.test(reviewsText) && Number(reviewsText) >= 1 && Number(reviewsText) <= 1000);
+  const reviewsLimit = reviewsText !== "" && reviewsOk ? Number(reviewsText) : null;
   const planned = plannedRuns(current, strata, reviewsLimit, repeats);
   const capOk = Number.isFinite(capValue) && capValue >= current.per_review_cap_usd && capValue <= current.ceiling_usd;
-  const canStart = current.available && planned > 0 && capOk && ack;
+  const canStart = current.available && planned > 0 && capOk && reviewsOk && ack;
 
   /** A refusal's message belongs to the values just sent: editing the form clears it. */
   function touched() {
@@ -143,6 +165,9 @@ export function HarnessView() {
   const beside = fieldErrors.length - otherErrors.length;
 
   async function start() {
+    // The confirm button is disabled with the form, but the guard is here too: unticking the acknowledgement after
+    // "ask" must never let a confirm through.
+    if (!canStart) return;
     setError(null);
     setNotice(null);
     setReasons(null);
@@ -270,10 +295,12 @@ export function HarnessView() {
           <div className="max-w-xs">
             <label className="block">
               <span className="text-sm">ไม่เกินกี่รีวิว (ไม่บังคับ)</span>
-              <input type="number" min={1} className={INPUT} value={maxReviews} aria-invalid={noteOf("max_reviews") ? true : undefined}
-                aria-describedby={noteOf("max_reviews") ? "harness-max-reviews-error" : undefined}
+              <input type="number" min={1} max={MAX_REVIEWS} step={1} className={INPUT} value={maxReviews}
+                aria-invalid={reviewsOk && !noteOf("max_reviews") ? undefined : true}
+                aria-describedby={describedBy(!reviewsOk && "harness-max-reviews-range", !!noteOf("max_reviews") && "harness-max-reviews-error")}
                 onChange={(e) => { touched(); setMaxReviews(e.target.value); }} />
             </label>
+            {!reviewsOk && <p id="harness-max-reviews-range" className="mt-1 text-sm text-err">{`ต้องเป็นจำนวนเต็ม 1 ถึง ${MAX_REVIEWS} หรือเว้นว่าง`}</p>}
             <FieldNote id="harness-max-reviews-error" text={noteOf("max_reviews")} />
           </div>
           <div className="max-w-md">
@@ -293,9 +320,14 @@ export function HarnessView() {
               <span className="text-sm">งบสูงสุด (USD)</span>
               <input type="number" step="0.01" min={current.per_review_cap_usd} max={current.ceiling_usd} className={INPUT}
                 value={capText} aria-invalid={capOk && !noteOf("max_usd") ? undefined : true}
-                aria-describedby={noteOf("max_usd") ? "harness-cap-error" : undefined}
+                aria-describedby={describedBy(!capOk && "harness-cap-range", !!noteOf("max_usd") && "harness-cap-error")}
                 onChange={(e) => { touched(); setCap(e.target.value); }} />
             </label>
+            {!capOk && (
+              <p id="harness-cap-range" className="mt-1 text-sm text-err">
+                {`งบต้องอยู่ระหว่าง ${formatUsd(current.per_review_cap_usd)} ถึง ${formatUsd(current.ceiling_usd)}`}
+              </p>
+            )}
             <FieldNote id="harness-cap-error" text={noteOf("max_usd")} />
           </div>
           <p className="text-sm">
@@ -303,9 +335,6 @@ export function HarnessView() {
             {current.typical_review_usd !== null ? ` · โดยทั่วไป ${formatUsd(planned * current.typical_review_usd)}` : ""}
             {` · งบต่อรีวิว ${formatUsd(current.per_review_cap_usd)} · เพดาน ${formatUsd(current.ceiling_usd)}`}
           </p>
-          {!capOk && (
-            <p className="text-sm text-err">{`งบต้องอยู่ระหว่าง ${formatUsd(current.per_review_cap_usd)} ถึง ${formatUsd(current.ceiling_usd)}`}</p>
-          )}
           <div>
             <label className="flex min-h-11 items-center gap-2">
               <input type="checkbox" checked={ack} aria-describedby={noteOf("confirm") ? "harness-confirm-error" : undefined}

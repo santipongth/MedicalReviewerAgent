@@ -9,7 +9,9 @@ export type Block =
   | { kind: "table"; head: string[]; rows: string[][] };
 
 const SEPARATOR = /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$/;
-const HEADING = /^(#{1,3})\s+(.*)$/;
+// `[\s\S]*` and not `.*`: `.` stops at a line separator (U+2028/9), and then `$` fails and `\s+` gives back one character at
+// a time, which is quadratic on a long run of whitespace (80k characters took seconds). The target is ES2017, so no `s` flag.
+const HEADING = /^(#{1,3})\s+([\s\S]*)$/;
 const BULLET = /^[-*]\s+/;
 
 function cells(line: string): string[] {
