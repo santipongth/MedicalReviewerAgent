@@ -19,12 +19,14 @@ from app.graph.nodes.synthesis import (
     NO_QUANTITATIVE_RATIONALE,
     _brief,
     _direction_papers,
+    _drop_wrong_labels,
     _drop_wrong_self_claims,
     _empty_synthesis,
     _narrative_papers,
     _prose_context,
     _review_type,
     _split_sentences,
+    _wrong_self_claim,
     empty_messages,
 )
 from app.graph.schemas import QuickAnswerDraft, Synthesis
@@ -51,10 +53,26 @@ QUICK_FAILED = ("The quick answer could not be written (a temporary model or ser
 NOT_GRADED = "The certainty of the evidence is not graded: the studies read report themes, not effects."
 
 
+def _sentences(items: list[str]) -> list[str]:
+    """The sentences of the draft's items (an item may hold several): every check below is per sentence, so a sentence
+    is judged by its own citations and never by those of its neighbour."""
+    return [t for item in items for t in _split_sentences(item.strip()) if t.strip()]
+
+
+def _claims_level(sentence: str, strength: str | None) -> bool:
+    """The sentence (read without its [Pn] groups) claims a certainty level for this review other than `strength`; an
+    ungraded answer has no level, so any claim, self-claim or label, counts (Plan 27 spec 2)."""
+    text = _CITE_GROUP.sub("", sentence)
+    if strength:
+        return _drop_wrong_self_claims(text, strength)[1] > 0
+    return _wrong_self_claim(text, "") or _drop_wrong_labels(text, "")[1] > 0
+
+
 def draft_problems(draft: QuickAnswerDraft, allowed: set[str], prose: ProseContext) -> list[str]:
     """Repair messages for a quick answer draft: 2-4 sentences, each citing a paper read; no unknown citation; no
-    number, measure or population the cited cards do not support; a limits sentence without citations or numbers."""
-    sentences = [s.strip() for s in draft.sentences if s.strip()]
+    number, measure or population the cited cards do not support (checked per sentence, against its own citations); a
+    limits sentence without citations or numbers."""
+    sentences = _sentences(draft.sentences)
     problems: list[str] = []
     if not MIN_SENTENCES <= len(sentences) <= MAX_SENTENCES:
         problems.append(f"sentences: write {MIN_SENTENCES}-{MAX_SENTENCES} sentences (got {len(sentences)})")
@@ -71,21 +89,18 @@ def draft_problems(draft: QuickAnswerDraft, allowed: set[str], prose: ProseConte
 
 def checked_answer(draft: QuickAnswerDraft, allowed: set[str], prose: ProseContext,
                    strength: str | None) -> tuple[str, int, int]:
-    """The shown answer, item by item: unknown citations stripped, measure names corrected, every sentence with an
-    untraceable number or population removed (fix_prose), a self-claim of another certainty level for this review
-    removed; an item left without a citation is dropped; at most MAX_SENTENCES items. Returns (answer, items kept,
-    items removed)."""
+    """The shown answer, sentence by sentence: unknown citations stripped; a sentence left without a citation is
+    dropped; measure names corrected and every sentence with an untraceable number or population removed (fix_prose,
+    scoped to the sentence's own citations); a sentence claiming another certainty level for this review (any level
+    when ungraded) removed; at most MAX_SENTENCES sentences. Returns (answer, sentences kept, sentences removed)."""
     kept: list[str] = []
     removed = 0
-    for raw in draft.sentences:
-        text = strip_unknown_citations(raw.strip(), allowed)
-        if not text:
+    for text in _sentences([strip_unknown_citations(raw.strip(), allowed) for raw in draft.sentences]):
+        if not _CITED.search(text):
+            removed += 1
             continue
         fixed, _counts = fix_prose(text, prose)
-        # a claim of another certainty level (or a wrong-level label) for this review takes its item with it; the
-        # patterns read the text without its [Pn] groups
-        wrong_level = _drop_wrong_self_claims(_CITE_GROUP.sub("", fixed), strength)[1] > 0
-        if fixed.strip() and _CITED.search(fixed) and not wrong_level:
+        if fixed.strip() and _CITED.search(fixed) and not _claims_level(fixed, strength):
             kept.append(fixed.strip())
         else:
             removed += 1
@@ -96,10 +111,10 @@ def checked_answer(draft: QuickAnswerDraft, allowed: set[str], prose: ProseConte
 
 def closing_line(limits: str, prose: ProseContext, strength: str | None) -> str:
     """The certainty sentence (the GRADE-lite baseline, or "not graded") and the model's limits sentence when it
-    passes the numberless check (its first sentence, without citations)."""
+    passes the numberless check (its first sentence that claims no certainty level, without citations)."""
     text, _counts = fix_statement(_CITE_GROUP.sub("", limits or "").strip(), prose)
     text, _n = _drop_wrong_self_claims(text, strength)
-    first = next(iter(_split_sentences(text)), "")
+    first = next((s for s in _split_sentences(text) if not _claims_level(s, strength)), "")
     certainty = ANSWER_CERTAINTY.get(strength or "", NOT_GRADED)
     return f"{certainty} {first}".strip()
 
@@ -129,8 +144,15 @@ def make_write_quick_answer(deps):
                                  "removed": 0, "withheld": False}
         cost, errors = 0.0, []
         try:
+            def validate(d: QuickAnswerDraft) -> list[str]:
+                try:
+                    return draft_problems(d, allowed, prose)
+                except Exception:  # a checker crash must not fail the review; checked_answer fails closed below
+                    log.exception("quick answer validation failed")
+                    return []
+
             res = await runner.call(llm, prompts.QUICK_SYSTEM, user, schema=QuickAnswerDraft,
-                                    validate=lambda d: draft_problems(d, allowed, prose), trigger="quick")
+                                    validate=validate, trigger="quick")
             cost, draft = res.cost, res.value
             entry["repaired"] = res.repaired
         except LLMError as exc:

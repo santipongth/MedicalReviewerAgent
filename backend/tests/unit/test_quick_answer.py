@@ -188,3 +188,96 @@ async def test_no_papers_gives_the_no_papers_message_without_a_writer_call():
     deps, writer = quick_deps(results=[])
     values, _events = await run(deps, options=QUICK, language="en")
     assert values["result"]["summary"] == NO_PAPERS["en"] and not writer.calls
+
+
+# ---- fix round 1: per-sentence checks, the ungraded path, the validator guard, the graph's evidence ------------------
+def two_cards():
+    """P1 reports HR 0.80, P2 HR 0.55."""
+    other = card().model_copy(deep=True)
+    other.outcomes[0].effect_value, other.outcomes[0].effect_size = 0.55, "HR 0.55 (0.40-0.75)"
+    other.outcomes[0].evidence_quote = QUOTE55
+    return prose_context([{"ref": "P1", "candidate": {"title": "Paper 1"}, "card": card().model_dump()},
+                          {"ref": "P2", "candidate": {"title": "Paper 2"}, "card": other.model_dump()}])
+
+
+QUOTE55 = "lower risk of colorectal cancer (HR 0.55, 95% CI 0.40-0.75; p = 0.001)"
+PROBE = QuickAnswerDraft(sentences=["Risk was lower (HR 0.55). This was seen in adults [P1].", "Cohorts agree [P2]."],
+                         limits="Few.")
+
+
+def test_an_item_of_several_sentences_is_checked_sentence_by_sentence():
+    problems = draft_problems(PROBE, {"P1", "P2"}, two_cards())
+    assert any("sentences[0] cites no paper" in p for p in problems)
+    answer, kept, removed = checked_answer(PROBE, {"P1", "P2"}, two_cards(), "low")
+    assert answer == "This was seen in adults [P1]. Cohorts agree [P2]."
+    assert (kept, removed) == (2, 1) and "0.55" not in answer
+
+
+def test_the_sentence_cap_counts_sentences_not_items():
+    items = QuickAnswerDraft(sentences=["One [P1]. Two [P1].", "Three [P2]. Four [P2]. Five [P1]."], limits="x")
+    assert any("2-4 sentences (got 5)" in p for p in draft_problems(items, {"P1", "P2"}, ctx()))
+    answer, kept, removed = checked_answer(items, {"P1", "P2"}, ctx(), "low")
+    assert answer == "One [P1]. Two [P1]. Three [P2]. Four [P2]." and (kept, removed) == (4, 1)
+
+
+def test_an_ungraded_answer_drops_any_certainty_claim():
+    draft = QuickAnswerDraft(sentences=["The certainty of the evidence is high [P1].", "Themes were mixed [P2]."],
+                             limits="x")
+    assert checked_answer(draft, {"P1", "P2"}, ctx(), None)[0] == "Themes were mixed [P2]."
+    assert closing_line("The certainty of the evidence is low. Samples were small.", ctx(), None) == \
+        f"{NOT_GRADED} Samples were small."
+    assert closing_line("The certainty of the evidence is low.", ctx(), None) == NOT_GRADED
+
+
+async def test_a_checker_crash_does_not_fail_the_review(monkeypatch):
+    from app.graph.nodes import quick
+
+    def boom(*a, **k):
+        raise RuntimeError("checker bug")
+    monkeypatch.setattr(quick, "draft_problems", boom)
+    deps, _writer = quick_deps()
+    values, _events = await run(deps, options=QUICK, language="en")
+    assert values["result"]["summary"] == " ".join(GOOD.sentences)  # the answer check still ran, on its own
+
+
+def _extractor(make):
+    return FakeStructuredLLM("ext", lambda s, u: make(u))
+
+
+async def test_a_not_evidence_paper_is_neither_cited_nor_counted():
+    def make(user):  # Paper 0 is read as a cohort; with RCT ticked it is outside the study types
+        c = card()
+        if "Paper 0 about" not in user:
+            c = c.model_copy(update={"study_design": "randomized controlled trial", "design_category": "rct"})
+        else:
+            c = c.model_copy(update={"design_category": "cohort"})
+        return c
+    seen = []
+
+    def write(system, user):
+        refs = sorted(set(__import__("re").findall(r'"ref": "(P\d+)"', user)))
+        seen.append(refs)
+        return QuickAnswerDraft(sentences=[f"Risk was lower [{refs[0]}].", f"Cohorts agree [{refs[1]}]."], limits="Few.")
+    deps, _w = quick_deps(writer=FakeStructuredLLM("syn:quick", write), extractor=_extractor(make))
+    values, _events = await run(deps, options={**QUICK, "study_types": ["RCT"]}, language="en")
+    r = values["result"]
+    excluded = [p["ref"] for p in r["papers"] if p["card_en"]["design_category"] == "cohort"]
+    assert excluded and all(e not in seen[0] and e not in r["quick"]["refs"] for e in excluded)
+    assert r["quick"]["papers_read"] == len(r["papers"]) - len(excluded)
+
+
+async def test_a_qualitative_only_quick_answer_is_not_graded():
+    def make(user):
+        return card().model_copy(update={"study_design": "qualitative interview study",
+                                         "design_category": "qualitative", "outcomes": []})
+    draft = QuickAnswerDraft(sentences=["Participants described barriers to adherence [P1].",
+                                        "The certainty of the evidence is high [P2].",
+                                        "Interviewees valued clear advice [P2]."],
+                             limits="The certainty of the evidence is low. Samples were small.")
+    deps, _w = quick_deps(writer=FakeStructuredLLM("syn:quick", lambda s, u: draft), extractor=_extractor(make))
+    values, _events = await run(deps, options={**QUICK, "study_types": ["Qualitative"]}, language="en")
+    en = values["result"]["synthesis_en"]
+    assert en["evidence_strength"] is None
+    assert en["executive_summary"] == ("Participants described barriers to adherence [P1]. "
+                                       "Interviewees valued clear advice [P2].")
+    assert en["answer"] == f"{NOT_GRADED} Samples were small."
