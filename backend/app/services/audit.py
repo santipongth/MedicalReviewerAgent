@@ -16,7 +16,7 @@ from app.services.admin_auth import AdminPrincipal
 # never do: their rows hold provider, kind, origin and revision only)
 SECRET_FIELDS = frozenset({"password", "password_hash", "key", "key_hash", "raw_key", "token", "api_key", "ciphertext",
                            "llm_keys_secret"})
-SECRET_SUFFIXES = ("password", "token", "secret", "_hash")
+SECRET_SUFFIXES = ("password", "token", "secret", "_hash", "api_key")
 
 
 def _is_secret(name: Any) -> bool:

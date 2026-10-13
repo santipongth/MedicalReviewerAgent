@@ -140,9 +140,32 @@ def _is_open_provider_url(url: str) -> bool:
     if parts.scheme != "https":
         return False
     try:
-        return ipaddress.ip_address(host).is_global
+        address = ipaddress.ip_address(host)
     except ValueError:
-        return True  # a host name
+        return _is_public_host_name(host)
+    if isinstance(address, ipaddress.IPv6Address) and any(address in net for net in _EMBEDDED_IPV4):
+        return False  # NAT64, 6to4 or IPv4-mapped: an IPv4 address in disguise
+    return address.is_global
+
+
+# IPv6 ranges that carry an IPv4 address inside (NAT64, local-use NAT64, 6to4, IPv4-mapped).
+_EMBEDDED_IPV4 = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "::ffff:0:0/96"))
+_HOST_LABEL = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?")
+_TOP_LABEL = re.compile(r"[a-z]([a-z0-9-]*[a-z0-9])?")  # never all digits, so no IPv4 spelling passes as a name
+# Names that only ever mean this machine or a private network (RFC 6761, 6762, 8375 and the docker/cloud internals).
+_PRIVATE_SUFFIXES = ("localhost", "local", "localdomain", "internal", "intranet", "lan", "home.arpa", "arpa")
+
+
+def _is_public_host_name(host: str) -> bool:
+    """A dotted DNS name that can only be a public host: at least two labels, a top label that is not numeric (so
+    "127.1", "0177.0.0.1" and "2130706433" are refused, which resolvers read as 127.0.0.1), no trailing dot, and no
+    private-use suffix. The name is not resolved (DNS can change between this check and the call)."""
+    labels = host.split(".")
+    if len(labels) < 2 or not all(_HOST_LABEL.fullmatch(label) for label in labels):
+        return False
+    if not _TOP_LABEL.fullmatch(labels[-1]):
+        return False
+    return not any(host == suffix or host.endswith("." + suffix) for suffix in _PRIVATE_SUFFIXES)
 
 
 def url_origin(url: str) -> str:

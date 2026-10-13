@@ -134,6 +134,13 @@ def test_a_free_name_may_use_https_or_local_http(url):
     "https://user@api.deepseek.com/v1", "https://api.deepseek.com@evil.example/v1", "https://api.deepseek.com/v1?x=1",
     "https://api.deepseek.com/v1#frag", "ftp://api.deepseek.com", "https://api.deepseek.com\\@evil.example/",
     "https://api.deepseek.com:99999/v1", "https:///v1", "api.deepseek.com/v1",
+    # other spellings of 127.0.0.1 that resolvers accept, local or private names over https, IPv4 inside IPv6
+    "https://2130706433/v1", "https://0x7f000001/v1", "https://127.1/v1", "https://0177.0.0.1/v1",
+    "https://0x7f.0.0.1/v1", "https://localhost/v1", "https://localhost./v1", "https://api.localhost/v1",
+    "https://host.docker.internal/v1", "https://metadata.google.internal/v1", "https://api.deepseek.com./v1",
+    "https://printer.local/v1", "https://router.home.arpa/v1", "https://ollama/v1",
+    "https://[64:ff9b::a9fe:a9fe]/v1", "https://[::ffff:127.0.0.1]/v1", "https://[2002:7f00:1::]/v1",
+    "https://[64:ff9b:1::a9fe:a9fe]/v1", "https://api_x.example.com/v1", "https://-bad.example.com/v1",
 ])
 def test_a_free_name_cannot_point_at_an_internal_or_disguised_address(url):
     with pytest.raises(LLMConfigError, match="base_url"):

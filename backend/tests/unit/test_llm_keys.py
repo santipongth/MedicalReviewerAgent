@@ -186,8 +186,8 @@ def test_a_legacy_name_reads_its_setting_then_the_environment_as_before():
 def test_the_audit_log_drops_key_fields_at_every_depth():
     assert {"api_key", "ciphertext", "llm_keys_secret"} <= SECRET_FIELDS
     scrubbed = _scrub({"provider": "deepseek", "api_key": KEY, "nested": [{"ciphertext": "gAAA", "origin": "x"}],
-                       "LLM_KEYS_SECRET": SECRET_A})
-    assert scrubbed == {"provider": "deepseek", "nested": [{"origin": "x"}]}
+                       "LLM_KEYS_SECRET": SECRET_A, "openrouter_api_key": KEY, "api_key_env": "LLM_KEY_DEEPSEEK"})
+    assert scrubbed == {"provider": "deepseek", "nested": [{"origin": "x"}], "api_key_env": "LLM_KEY_DEEPSEEK"}
 
 
 async def test_the_cli_prints_a_fresh_secret_and_rotates_without_printing_keys(session_factory, redis, capsys):
