@@ -74,7 +74,7 @@ async def _body_key(request: Request) -> str:
             raise ValueError(BODY_ERROR)
     try:
         body = json.loads(bytes(data) or b"null")
-    except ValueError:
+    except (ValueError, RecursionError):  # RecursionError: a few KB of nested brackets
         raise ValueError(BODY_ERROR) from None
     if not isinstance(body, dict) or "key" not in body:
         raise ValueError(BODY_ERROR)

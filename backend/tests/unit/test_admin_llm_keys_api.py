@@ -142,7 +142,8 @@ async def test_a_refused_key_is_never_quoted(client, session_factory, secret, pa
     assert str(payload["key"]) not in r.text
 
 
-@pytest.mark.parametrize("content", [b"not json", b"[]", b'{"nokey": 1}', b'{"key": "' + b"a" * 5000 + b'"}'])
+@pytest.mark.parametrize("content", [b"not json", b"[]", b'{"nokey": 1}', b'{"key": "' + b"a" * 5000 + b'"}',
+                                     b"[" * 4000])
 async def test_a_body_that_is_not_a_small_key_object_is_a_fixed_422(client, session_factory, secret, content):
     h = await admin_headers(client, session_factory)
     r = await client.put(f"{BASE}/llm-keys/openrouter", content=content,
