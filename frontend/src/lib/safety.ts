@@ -7,15 +7,19 @@ import { isNotEvidence } from "./trial-reports";
 import type { Paper, PaperCard, ReviewResult, Synthesis } from "./types";
 
 /** An outcome about harms: English (the card before translation) or Thai (a Thai card without its English copy). */
-export const HARM_EN = /(?<![a-z])(?:adverse|side[- ]?effects?|harms?(?![a-z])|harmful|safety|tolerab|toxicit|complications?|withdrawals? due to|discontinu\w* due to)/i;
+export const HARM_EN = /(?:(?<![a-z])(?:adverse|side[- ]?effects?|harms?(?![a-z])|harmful|safety|tolerab|(?<!diabetic |diabetes )complications?|withdrawals? due to|discontinu\w* due to)|toxicit)/i;
 export const HARM_TH = /ไม่พึงประสงค์|ผลข้างเคียง|อาการข้างเคียง|ความปลอดภัย|อันตราย|ภาวะแทรกซ้อน|ความเป็นพิษ/;
+
+/** Efficacy composites that contain "adverse" but are benefit endpoints (MACE, adverse pregnancy outcomes): not harms. */
+const EFFICACY_COMPOSITE_EN = /major adverse (?:cardiovascular|cardiac|cerebrovascular|kidney|renal|limb)[\w\s-]*events?|adverse (?:pregnancy|perinatal|neonatal|birth) outcomes?/gi;
+const EFFICACY_COMPOSITE_TH = /เหตุการณ์ไม่พึงประสงค์ทาง(?:หัวใจ|ไต|หลอดเลือด)/g;
 
 /** Question types whose answer is a treatment or prevention effect, where missing harms data matters. */
 const HARMS_QUESTIONS = new Set(["therapy", "prevention"]);
 
 export function reportsHarms(card: PaperCard | null | undefined): boolean {
   return (card?.outcomes ?? []).some((o) => {
-    const text = `${o.outcome ?? ""} ${o.result ?? ""}`;
+    const text = `${o.outcome ?? ""} ${o.result ?? ""}`.replace(EFFICACY_COMPOSITE_EN, " ").replace(EFFICACY_COMPOSITE_TH, " ");
     return HARM_EN.test(text) || HARM_TH.test(text);
   });
 }
@@ -51,14 +55,21 @@ const UNIT_EN = String.raw`\d+(?:[.,]\d+)?\s?(?:mg|mcg|µg|μg|g|ml|iu|units?|ta
  * to take 20 mg…", "the use of 500 mg…") is not advice.
  */
 export const DOSE_ADVICE_EN = new RegExp(
-  String.raw`(?:(?<!who |that |which |to )\b(?:take|give|administer|prescribe)\b|\bshould (?:take|receive|use|be given|be taken)\b|\brecommended (?:daily )?dose\b)[^.;]{0,40}?`
+  String.raw`(?:(?<!who |that |which |to |the |did not )\b(?:take|give|administer|prescribe|consider|start|use|titrate)\b|\bshould (?:take|receive|use|start|be given|be taken|be started on|not exceed)\b|\brecommended (?:daily )?dose\b|\brecommended to (?:take|use|give)\b)[^.;]{0,40}?`
     + UNIT_EN, "i");
+/** "A dose of 1 g every 6 hours is recommended": the dose first, the recommendation after. */
+const DOSE_RECOMMENDED_EN = new RegExp(UNIT_EN + String.raw`[^.;]{0,40}?\b(?:is|are) recommended\b`, "i");
+/** A recommendation to researchers ("future trials", "ควรศึกษา…") is not advice to the reader, whatever dose it names. */
+const RESEARCH_RECOMMENDATION = /future (?:trials|studies|research)|(?:trials|studies) should|ควรศึกษา|ควรเปรียบเทียบ|งานวิจัยในอนาคต/i;
 const UNIT_TH = String.raw`\d+(?:[.,]\d+)?\s?(?:มก|มิลลิกรัม|ไมโครกรัม|กรัม|มล|มิลลิลิตร|ยูนิต|หน่วย|เม็ด|แคปซูล)`;
 /** Thai advice: ควร / แนะนำให้ / โปรด with a dose or a schedule (ครั้งละ, วันละ) in the same sentence. */
 export const DOSE_ADVICE_TH = new RegExp(String.raw`(?:ควร|แนะนำให้|โปรด)[^.;]{0,30}?(?:${UNIT_TH}|ครั้งละ|วันละ)`);
 
 export function hasDosingAdvice(text: string | null | undefined): boolean {
-  return !!text && (DOSE_ADVICE_EN.test(text) || DOSE_ADVICE_TH.test(text));
+  if (!text) return false;
+  // sentence by sentence (a "." inside a number such as 2.5 is not a break): research recommendations are skipped
+  return text.split(/(?<=[.;])\s+|\n/).some((s) => !RESEARCH_RECOMMENDATION.test(s)
+    && (DOSE_ADVICE_EN.test(s) || DOSE_RECOMMENDED_EN.test(s) || DOSE_ADVICE_TH.test(s)));
 }
 
 function synthesisTexts(s: Synthesis | null | undefined): string[] {

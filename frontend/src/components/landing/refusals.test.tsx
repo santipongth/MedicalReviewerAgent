@@ -62,6 +62,23 @@ describe("Plan 26: an emergency topic gets the numbers to call, not a review", (
     expect(screen.getByRole("alert")).toHaveTextContent(EMERGENCY_COPY.self_harm.body);
   });
 
+  it("offers the numbers the server sent, in its order, and falls back to the built-in list when it sent none", async () => {
+    createReview.mockRejectedValueOnce(refused("medical", ["1323", "1669"]));
+    const first = render(<RequestSlip />);
+    await submit("urgent topic");
+    await screen.findByRole("alert");
+    expect(screen.getAllByRole("link").filter((a) => a.getAttribute("href")?.startsWith("tel:")).map((a) => a.getAttribute("href")))
+      .toEqual(["tel:1323", "tel:1669"]);
+    first.unmount();
+
+    createReview.mockRejectedValueOnce(refused("self_harm", []));
+    render(<RequestSlip />);
+    await submit("urgent topic");
+    await screen.findByRole("alert");
+    expect(screen.getAllByRole("link").filter((a) => a.getAttribute("href")?.startsWith("tel:")).map((a) => a.getAttribute("href")))
+      .toEqual(["tel:1323", "tel:1669"]);
+  });
+
   it("a plain validation error is still an error line", async () => {
     createReview.mockRejectedValue(new ApiError(422, "topic too short"));
     render(<RequestSlip />);
@@ -100,6 +117,7 @@ describe("Plan 26: a personal medical question", () => {
     expect(screen.queryByText(/This service/)).toBeNull();
     expect(screen.queryByRole("link", { name: "แก้หัวข้อแล้วส่งใหม่" })).toBeNull();
     expect(screen.getByRole("link", { name: "โทร 1669 บริการการแพทย์ฉุกเฉิน" })).toHaveAttribute("href", "tel:1669");
+    expect(screen.getByRole("link", { name: "โทร 1323 สายด่วนสุขภาพจิต" })).toHaveAttribute("href", "tel:1323");
     expect(screen.getByRole("link", { name: "ถามคำถามใหม่" })).toHaveAttribute("href", "/");
   });
 

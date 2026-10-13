@@ -6,6 +6,7 @@ import { ApiError, createReview, getStatus } from "@/lib/api";
 import { AUDIENCES, type Audience } from "@/lib/audience";
 import { TYPICAL_DURATION_TH } from "@/lib/copy";
 import { GLOSS } from "@/lib/glossary";
+import { RC } from "@/lib/i18n-report";
 import { usableLimits } from "@/lib/limits";
 import { emergencyKind, type EmergencyKind } from "@/lib/refusal-copy";
 import type { ReviewType, ServiceLimits, ServiceStatus } from "@/lib/types";
@@ -53,9 +54,7 @@ const OTHER_MAX = 60;
 const TOPIC_MAX = 600;
 const EXAMPLES = ["เมตฟอร์มินกับมะเร็งลำไส้ใหญ่", "statins and dementia", "SGLT2 inhibitors and heart failure"];
 /** Plan 26: who the report is for (lib/audience.ts); remembered in this browser, never sent to the API. */
-const AUDIENCE_NAME: Record<Audience, string> = {
-  public: "ประชาชนทั่วไป", bedside: "แพทย์ข้างเตียง", learner: "นักศึกษาและแพทย์ประจำบ้าน", committee: "คณะกรรมการยาและ HTA",
-};
+const audienceName = (a: Audience): string => RC.audience.name[a][0];
 
 function waitText(seconds?: number): string {
   if (!seconds) return "สักครู่";
@@ -128,7 +127,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
   const [reviewType, setReviewType] = useState<ReviewType>("slr");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [emergency, setEmergency] = useState<EmergencyKind | null>(null);
+  const [emergency, setEmergency] = useState<{ kind: EmergencyKind; hotlines: string[] } | null>(null);
   const [chosenAudience, setAudience] = useState<Audience | null>(null); // null: the stored choice or the default
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const storedAudience = useStoredAudience();
@@ -195,7 +194,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
       router.push(`/r/${created.review_id}`);
     } catch (err) {
       // Plan 26: an emergency gets the numbers to call, never a review or an error line
-      if (err instanceof ApiError && err.refusal?.code === "emergency") setEmergency(emergencyKind(err.refusal.kind));
+      if (err instanceof ApiError && err.refusal?.code === "emergency") setEmergency({ kind: emergencyKind(err.refusal.kind), hotlines: err.refusal.hotlines });
       else setError(errorMessage(err));
       setBusy(false);
       if (siteKey && window.turnstile && widgetId.current) { // a token is single-use
@@ -304,8 +303,8 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
               <legend className="label p-0">รายงานนี้สำหรับ</legend>
               <div className="grid gap-x-6 sm:grid-cols-2">
                 {AUDIENCES.map((a) => (
-                  <label key={a} className="flex min-h-11 items-center gap-2"><input type="radio" name="audience" checked={audience === a}
-                    onChange={() => setAudience(a)} className="size-4 accent-primary" />{AUDIENCE_NAME[a]}</label>
+                  <label key={a} className="flex min-h-11 items-center gap-2"><input type="radio" name={`${id}-audience`} checked={audience === a}
+                    onChange={() => setAudience(a)} className="size-4 accent-primary" />{audienceName(a)}</label>
                 ))}
               </div>
               <p className="text-[0.88rem] leading-[1.7] text-muted">เปลี่ยนได้ภายหลังในหน้ารายงาน ผลการทบทวนเหมือนกันทุกมุมมอง</p>
@@ -343,7 +342,7 @@ export function RequestSlip({ initialTopic, limits: serverLimits }: { initialTop
             {capacityText(status?.reason, status?.retry_after)}
           </p>
         )}
-        {emergency && <EmergencyPanel kind={emergency} />}
+        {emergency && <EmergencyPanel kind={emergency.kind} hotlines={emergency.hotlines} />}
         {error && (
           <p role="alert" className="border-t border-rule bg-err-bg px-4 py-3 text-[0.92rem] text-ink sm:px-6">{error}</p>
         )}

@@ -16,7 +16,7 @@ const COPY = {
   },
 } as const;
 
-const BUTTON = "w-fit rounded-sm border px-4 py-2 font-display font-semibold no-underline";
+const BUTTON = "inline-flex min-h-11 w-fit items-center rounded-sm border px-4 py-2 font-display font-semibold no-underline";
 
 /**
  * Plan 26: a personal medical question (the topic guard's personal_medical) gets a fixed, kind message: no topic, no
@@ -30,6 +30,7 @@ function PersonalMedical() {
       <p className="text-[0.95rem] text-muted">{PERSONAL_MEDICAL_COPY.askAgain}</p>
       <div className="flex flex-wrap gap-3">
         <a href="tel:1669" className={`${BUTTON} border-primary bg-primary text-on-primary hover:brightness-110`}>{HOTLINE_LABEL["1669"]}</a>
+        <a href="tel:1323" className={`${BUTTON} border-primary bg-primary text-on-primary hover:brightness-110`}>{HOTLINE_LABEL["1323"]}</a>
         <Link href="/" className={`${BUTTON} border-rule hover:bg-rail`}>ถามคำถามใหม่</Link>
       </div>
     </section>

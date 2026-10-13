@@ -12,7 +12,7 @@ const A = RC.audience;
 const S = RC.safety;
 const BOX = "grid max-w-[70ch] gap-1.5 rounded-sm px-4 py-3 text-[0.92rem] leading-[1.7]";
 const CHIP =
-  "flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-rule bg-ground px-3 py-1.5 font-display text-[0.9rem] hover:border-ink md:min-h-9 has-[:checked]:border-primary has-[:checked]:bg-rail";
+  "flex min-h-11 cursor-pointer items-center gap-2 rounded-sm border border-rule bg-ground px-3 py-1.5 font-display text-[0.9rem] hover:border-ink has-[:checked]:border-primary has-[:checked]:bg-rail";
 
 /** Plan 26: who the report is laid out for. Only the presentation changes (lib/audience.ts); not printed. */
 export function AudienceSwitch({ value, onChange, lang }: { value: Audience; onChange: (a: Audience) => void; lang: Lang }) {
@@ -88,7 +88,7 @@ export function ReportNotices({ result, audience, lang, hasPapers }: {
 /** A learning note after a section (learner view): what the section shows and how to read it. */
 export function LearnerNote({ id, lang }: { id: LearnerNoteId; lang: Lang }) {
   return (
-    <Notice label={L(lang, A.learnLabel)} tone="bg-rail" kind={`learn-${id}`}>
+    <Notice label={`${L(lang, A.learnLabel)}: ${L(lang, A.learnTopic[id])}`} tone="bg-rail" kind={`learn-${id}`}>
       <p>{L(lang, A.learn[id])}</p>
     </Notice>
   );

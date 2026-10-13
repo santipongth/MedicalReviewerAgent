@@ -831,6 +831,13 @@ export const RC = {
     applicability: ["งานวิจัยเหล่านี้ศึกษาในประชากร ระบบสุขภาพ และบริบทที่อาจต่างจากเวชปฏิบัติในประเทศไทย ใช้เป็นบริบทประกอบการตัดสินใจ ไม่ใช่หลักฐานว่าผลจะเหมือนกันในผู้ป่วยไทย",
       "These studies come from populations, health systems and settings that may differ from Thai practice. This is context for a decision, not evidence that the results carry over to Thai patients."],
     learnLabel: ["อ่านเพื่อเรียนรู้", "Learning note"],
+    /** names each learning note by its section, so the four landmarks are told apart */
+    learnTopic: {
+      sof: ["ระดับหลักฐาน GRADE", "GRADE"],
+      selection: ["แผนภาพ PRISMA", "PRISMA"],
+      rob: ["ความเสี่ยงอคติ", "Risk of bias"],
+      consistency: ["ผลที่ขัดกัน", "Conflicting results"],
+    },
     learn: {
       sof: ["ตารางสรุปผลวางผลแต่ละผลลัพธ์คู่กับความเชื่อมั่นของหลักฐานตามแนวคิด GRADE ซึ่งเริ่มจากรูปแบบงานวิจัย (RCT เริ่มที่สูง งานเชิงสังเกตเริ่มที่ต่ำ) แล้วลดระดับเมื่อมีความเสี่ยงอคติ ผลไม่สอดคล้องกัน ไม่ตรงคำถาม ไม่แม่นยำ หรือสงสัยอคติการตีพิมพ์",
         "The summary table pairs each outcome with the certainty of its evidence, in the spirit of GRADE: it starts from the study design (trials high, observational studies low) and goes down for risk of bias, inconsistency, indirectness, imprecision or suspected publication bias."],

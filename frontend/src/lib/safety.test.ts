@@ -28,6 +28,21 @@ describe("harmsGap: abstracts often leave harms out", () => {
     expect(reportsHarms({ ...slr.papers![0].card!, outcomes: [{ outcome: "CRC incidence", result: "lower", direction: "positive" }] })).toBe(false);
   });
 
+  it("efficacy composites (MACE and the like) are not harms reporting", () => {
+    for (const outcome of ["Major adverse cardiovascular events", "Major adverse kidney events", "Adverse pregnancy outcomes",
+      "Diabetic complications", "เหตุการณ์ไม่พึงประสงค์ทางหัวใจ"]) {
+      expect(reportsHarms({ ...slr.papers![0].card!, outcomes: [{ outcome, result: "lower", direction: "positive" }] })).toBe(false);
+    }
+    const papers = slr.papers!.map((p) => withOutcome(p, "Major adverse cardiovascular events"));
+    expect(harmsGap({ ...slr, papers })).toMatchObject({ reporting: 0 });
+  });
+
+  it("organ toxicity counts as harms", () => {
+    for (const outcome of ["Hepatotoxicity", "Nephrotoxicity", "Cardiotoxicity"]) {
+      expect(reportsHarms({ ...slr.papers![0].card!, outcomes: [{ outcome, result: "x", direction: "null" }] })).toBe(true);
+    }
+  });
+
   it("no notice when every study reports harms", () => {
     const papers = slr.papers!.map((p) => withOutcome(p, "Adverse events"));
     expect(harmsGap({ ...slr, papers })).toBeNull();
@@ -57,6 +72,12 @@ describe("dosing advice: a notice, never a rewrite", () => {
     "The recommended dose is 5 mg once daily.",
     "ควรรับประทาน 500 มก. วันละ 2 ครั้ง",
     "แนะนำให้กินครั้งละ 1 เม็ด",
+    "Consider 500 mg metformin twice daily.",
+    "Start with 2.5 mg and titrate to 10 mg.",
+    "Use 2 puffs as needed.",
+    "Patients should be started on 10 mg daily.",
+    "A dose of 1 g every 6 hours is recommended.",
+    "It is recommended to take 1000 IU of vitamin D daily.",
   ])("flags advice: %s", (text) => {
     expect(hasDosingAdvice(text)).toBe(true);
   });
@@ -70,6 +91,14 @@ describe("dosing advice: a notice, never a rewrite", () => {
     "Higher doses (over 2 g) were not studied; take these results with caution.",
     "ผู้ที่ได้รับเมตฟอร์มิน 500 มก. วันละ 2 ครั้งมีความเสี่ยงต่ำลง",
     "ควรตีความผลอย่างระมัดระวัง เพราะงานส่วนใหญ่เป็นงานเชิงสังเกต",
+    "Participants were given 500 mg",
+    "Patients took 20 mg",
+    "Patients were asked to take 2 tablets",
+    "Investigators administered 0.5 mg/kg",
+    "Those who did not take 100 mg aspirin had more events.",
+    "The trials should use 500 mg doses in future work.",
+    "ควรศึกษาเพิ่มเติมในขนาดยา 10 มก.",
+    "งานวิจัยในอนาคตควรเปรียบเทียบขนาด 5 มก. กับ 10 มก.",
     "",
   ])("leaves study conditions alone: %s", (text) => {
     expect(hasDosingAdvice(text)).toBe(false);
