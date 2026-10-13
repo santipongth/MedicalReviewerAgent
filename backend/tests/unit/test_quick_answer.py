@@ -281,3 +281,20 @@ async def test_a_qualitative_only_quick_answer_is_not_graded():
     assert en["executive_summary"] == ("Participants described barriers to adherence [P1]. "
                                        "Interviewees valued clear advice [P2].")
     assert en["answer"] == f"{NOT_GRADED} Samples were small."
+
+
+# ---- fix round 2: a citation after the final stop belongs to its sentence ---------------------------------------------
+def test_a_citation_after_the_full_stop_stays_with_its_sentence():
+    draft = QuickAnswerDraft(sentences=["Metformin is associated with lower risk. [P1]", "Cohorts agree. [P2]"],
+                             limits="x")
+    assert checked_answer(draft, {"P1", "P2"}, ctx(), "low") == (
+        "Metformin is associated with lower risk. [P1] Cohorts agree. [P2]", 2, 0)
+    assert draft_problems(draft, {"P1", "P2"}, ctx()) == []
+    two = QuickAnswerDraft(sentences=["Risk fell. [P1] Cohorts agree. [P2]"], limits="x")
+    assert draft_problems(two, {"P1", "P2"}, ctx()) == []  # two sentences, none flagged uncited
+    assert checked_answer(two, {"P1", "P2"}, ctx(), "low")[1:] == (2, 0)
+
+
+def test_marker_fragments_alone_are_withheld_not_shown():
+    draft = QuickAnswerDraft(sentences=["[P1]", "[P2]"], limits="x")
+    assert checked_answer(draft, {"P1", "P2"}, ctx(), "low")[0] == ""

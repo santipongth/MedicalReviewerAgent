@@ -7,6 +7,7 @@ certainty-and-limits line), so localize, check_support and finalize run unchange
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -53,10 +54,27 @@ QUICK_FAILED = ("The quick answer could not be written (a temporary model or ser
 NOT_GRADED = "The certainty of the evidence is not graded: the studies read report themes, not effects."
 
 
+_LEADING_CITES = re.compile(r"^(?:\s*\[\s*P\d+[^\]]*\])+")
+
+
 def _sentences(items: list[str]) -> list[str]:
     """The sentences of the draft's items (an item may hold several): every check below is per sentence, so a sentence
-    is judged by its own citations and never by those of its neighbour."""
-    return [t for item in items for t in _split_sentences(item.strip()) if t.strip()]
+    is judged by its own citations and never by those of its neighbour. A citation after the final stop ("... risk.
+    [P1]") belongs to the sentence before it; a piece with nothing but citations is no sentence."""
+    out: list[str] = []
+    for item in items:
+        mine: list[str] = []
+        for piece in _split_sentences(item.strip()):
+            lead = _LEADING_CITES.match(piece)
+            if lead and mine:
+                mine[-1] = f"{mine[-1]} {lead.group(0).strip()}"
+                piece = piece[lead.end():]
+            if re.sub(r"[\W_]+", "", _CITE_GROUP.sub("", piece)):
+                mine.append(piece.strip())
+            elif piece.strip() and mine:
+                mine[-1] = f"{mine[-1]} {piece.strip()}"
+        out += mine
+    return out
 
 
 def _claims_level(sentence: str, strength: str | None) -> bool:
