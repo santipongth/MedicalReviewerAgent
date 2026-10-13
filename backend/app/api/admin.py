@@ -77,7 +77,8 @@ async def _record_sign_in(deps: AppDeps, user_id: uuid.UUID, verified_hash: str,
     """The success write, in its own short transaction. The account is read again, so one that was disabled, removed
     or given a new password while its password was being checked does not get in (None)."""
     async with deps.session_factory() as session, session.begin():
-        user = await session.get(AdminUser, user_id)
+        # Plan 30: locked until the commit, so a password set meanwhile (the CLI) is never overwritten by the rehash
+        user = await session.get(AdminUser, user_id, with_for_update=True)
         if user is None or user.disabled_at is not None or user.password_hash != verified_hash:
             return None
         if new_hash:

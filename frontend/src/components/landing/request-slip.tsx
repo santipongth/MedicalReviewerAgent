@@ -126,15 +126,15 @@ function Tile({ id, checked, onChange, name, term, plain }: {
  * year) and a full-width submit row. One column below 1024px; the DOM order (and so the keyboard order) is unchanged.
  * The paper-count slider's range and start come from /status (`limits`: server-rendered, then the browser's own read);
  * with no usable limits it is not shown and the request leaves the count to the API. */
-export function RequestSlip({ initialTopic, limits: serverLimits, start }: {
-  initialTopic?: string; limits?: ServiceLimits | null;
+export function RequestSlip({ limits: serverLimits, start }: {
+  limits?: ServiceLimits | null;
   /** Plan 27: starting values from the address (`?mode=full&…`, the quick answer's "ทำรีวิวฉบับเต็ม") */
   start?: FormStart;
 }) {
   const router = useRouter();
   const id = useId();
   const startOther = start?.studyTypes?.find((t) => t.startsWith("Other: "))?.slice("Other: ".length) ?? "";
-  const [topic, setTopic] = useState(initialTopic ?? start?.topic ?? "");
+  const [topic, setTopic] = useState(start?.topic ?? "");
   const [mode, setMode] = useState<ReviewMode>(start?.mode ?? "quick"); // Plan 27: the public default
   const [language, setLanguage] = useState<"th" | "en">(start?.language ?? "th");
   const [chosenPapers, setChosenPapers] = useState<number | null>(null); // null: the service default

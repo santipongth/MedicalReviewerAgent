@@ -81,6 +81,10 @@ MEDICAL_PATTERNS_EN = (
     r"swallowed (?:a |an |two |some |\d+ )?(?:button |coin |lithium )?batter(?:y|ies)",
     r"took \d+ (?:\w+ ){0,2}?" + _PILLS_EN,
     r"took (?:a |an )?(?:whole |full |entire )?(?:bottle|pack|packet|strip|box) of (?:\w+ ){0,2}?" + _PILLS_EN,
+    # Plan 30: two misses of the Plan 26 held-out check; a verb is required, so "coin ingestion" or "rat poison
+    # exposure" stay titles, and the anchor or cue rule applies as to every red flag
+    r"swallowed (?:a |an |two |some |\d+ )?coins?",
+    r"(?:ate|eaten|swallowed|drank|drunk) (?:some )?(?:rat|mouse|rodent) (?:poison|bait)",
 )
 MEDICAL_TH = ("เจ็บหน้าอก", "แน่นหน้าอก", "หายใจไม่ออก", "หายใจไม่ทัน", "หายใจลำบาก", "หอบเหนื่อยมาก", "ปากเบี้ยว",
               "หน้าเบี้ยว", "พูดไม่ชัด", "แขนขาอ่อนแรง", "อ่อนแรงครึ่งซีก", "ชาครึ่งซีก", "เลือดออกไม่หยุด",
@@ -271,3 +275,9 @@ def refusal_code_of(status: str | None, error: str | None) -> str | None:
     if status != "rejected":
         return None
     return "personal_medical" if (error or "").startswith("personal_medical: ") else "declined"
+
+
+def shown_topic(status: str | None, error: str | None, topic: str | None) -> str | None:
+    """The topic as answers about a stored review may show it (Plan 30): None for a personal medical refusal, whose
+    question is the person's own case and is never echoed (REST, MCP, the Markdown report, the event replay)."""
+    return None if refusal_code_of(status, error) == "personal_medical" else topic

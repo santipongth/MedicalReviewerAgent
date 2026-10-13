@@ -361,8 +361,37 @@ def unverified_numbers(sentence: str, refs: list[str], ctx: ProseContext) -> lis
     return [t.text for t in _tokens(sentence) if not _admitted(t, sentence, scope, ctx, about_search)]
 
 
+_LEADING_CITES = re.compile(r"^(?:\s*\[\s*P\d+[^\]]*\])+")
+_CITES_AFTER_STOP = re.compile(r"^(?P<body>.*?)(?P<stop>[.!?])\s*(?P<cites>(?:\s*\[\s*P\d+[^\]]*\])+)\s*$", re.DOTALL)
+
+
+def lead_belongs_to_previous(previous: str, rest: str) -> bool:
+    """A citation group that opens a piece ("... risk. [P1] Next sentence.") belongs to the sentence before it only when
+    that sentence cites nothing itself and the rest of the piece is empty or punctuation only, or starts a new sentence
+    (an uppercase letter). Otherwise ("Risk fell [P1]. [P2] showed harm.") the group is the next sentence's own."""
+    if not re.search(r"\w", rest):
+        return True
+    return not _REF.search(previous) and rest[:1].isupper()
+
+
 def _sentences(text: str) -> list[str]:
-    return _SENTENCE.split(text.strip()) if text and text.strip() else []
+    """The sentences of `text`. A citation group written after the stop ("... (HR 0.55). [P1]") belongs to the sentence
+    before it when that sentence cites nothing else, and is moved inside its stop ("... (HR 0.55) [P1].") so the
+    sentence is checked against its own papers, not every paper (Plan 30; as the quick writer does)."""
+    if not text or not text.strip():
+        return []
+    out: list[str] = []
+    for piece in _SENTENCE.split(text.strip()):
+        lead = _LEADING_CITES.match(piece)
+        rest = piece[lead.end():].strip() if lead else ""
+        bare = not re.search(r"\w", rest)  # nothing left, or only punctuation
+        if lead and out and lead_belongs_to_previous(out[-1], rest):
+            m = _CITES_AFTER_STOP.match(f"{out[-1]} {lead.group(0).strip()}")
+            out[-1] = f"{m['body'].rstrip()} {m['cites'].strip()}{m['stop']}" if m else f"{out[-1]} {lead.group(0).strip()}"
+            piece = "" if bare else rest
+        if piece:
+            out.append(piece)
+    return out
 
 
 def _short(sentence: str) -> str:

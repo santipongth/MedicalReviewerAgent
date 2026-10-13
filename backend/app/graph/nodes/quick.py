@@ -33,9 +33,12 @@ from app.graph.nodes.synthesis import (
 from app.graph.schemas import QuickAnswerDraft, Synthesis
 from app.graph.state import ReviewState
 from app.harness.prose import (
+    _CITES_AFTER_STOP,
+    _LEADING_CITES,
     ProseContext,
     fix_prose,
     fix_statement,
+    lead_belongs_to_previous,
     prose_problems,
     statement_problems,
 )
@@ -54,17 +57,11 @@ QUICK_FAILED = ("The quick answer could not be written (a temporary model or ser
 NOT_GRADED = "The certainty of the evidence is not graded: the studies read report themes, not effects."
 
 
-_CITES_AFTER_STOP = re.compile(r"^(?P<body>.*?)(?P<stop>[.!?])\s*(?P<cites>(?:\s*\[\s*P\d+[^\]]*\])+)\s*$", re.DOTALL)
-
-
 def _cite_inside_stop(sentence: str) -> str:
     """"Risk was lower (HR 0.55). [P1]" -> "Risk was lower (HR 0.55) [P1].": the prose checks split a text before every
     "[", so a citation after the stop would leave its claim looking uncited (and in scope of every paper)."""
     m = _CITES_AFTER_STOP.match(sentence)
     return f"{m['body'].rstrip()} {m['cites'].strip()}{m['stop']}" if m else sentence
-
-
-_LEADING_CITES = re.compile(r"^(?:\s*\[\s*P\d+[^\]]*\])+")
 
 
 def _sentences(items: list[str]) -> list[str]:
@@ -76,7 +73,7 @@ def _sentences(items: list[str]) -> list[str]:
         mine: list[str] = []
         for piece in _split_sentences(item.strip()):
             lead = _LEADING_CITES.match(piece)
-            if lead and mine:
+            if lead and mine and lead_belongs_to_previous(mine[-1], piece[lead.end():].strip()):
                 mine[-1] = f"{mine[-1]} {lead.group(0).strip()}"
                 piece = piece[lead.end():]
             if re.sub(r"[\W_]+", "", _CITE_GROUP.sub("", piece)):
@@ -104,6 +101,21 @@ _GRADE_LABEL = re.compile(r"\bGRADE\b")  # case-sensitive: "grade 3 toxicity" is
 _CERTAINTY_TALK = re.compile(
     r"(?i)\bcertainty\b|\bconfidence\s+(?:in|level)\b|\b(?:evidence|body of evidence)\s+quality\b"
     r"|\bquality\s+of\s+(?:the\s+|this\s+)?(?:body\s+of\s+)?evidence\b|\bstrength\s+of\s+(?:the\s+)?evidence\b")
+
+
+# Plan 30: direct advice to a person ("Patients should stop…", "Take X…", "you should…") is never a limits sentence;
+# such a sentence is dropped like a certainty claim (fail-safe: the next clean sentence, else none). Research wording
+# ("patients should be followed up longer in future trials") is not advice: the verbs are the ones a person acts on.
+_ACT = r"(?:stop|start|take|avoid|switch|use|ask|consult|see|seek|speak|talk|discuss|continue|keep|try|reduce|increase|consider)"
+# An imperative opens the sentence only as a verb phrase: "Use was self-reported", "Stop rules were...", "Increase in
+# dose was rare", "Never users served..." are ordinary limitations (the verb is followed by a was/were/rules/in/of).
+_ADVICE = re.compile(
+    rf"(?i)^\W*(?:please\s+)?(?:(?:{_ACT})\b(?!-|\s+(?:of|in|was|were|is|are|rules?|had|has|did)\b)"
+    rf"|(?:do\s+not|don'?t)\b|always\s+{_ACT}\b|never\s+(?:{_ACT}|take|use)\b)"
+    rf"|\b(?:you|yourself)\b"
+    rf"|\byour\s+(?:doctor|physician|pharmacist|nurse|clinician|health|medic)"
+    rf"|\b(?:patients?|people|readers?|anyone|everyone|adults|parents|women|men|clinicians|doctors|those)\s+"
+    rf"(?:should|must|need\s+to|ought\s+to)\s+(?:not\s+)?{_ACT}\b")
 
 
 def _claims_level(sentence: str, strength: str | None) -> bool:
@@ -162,11 +174,11 @@ def checked_answer(draft: QuickAnswerDraft, allowed: set[str], prose: ProseConte
 def closing_line(limits: str, prose: ProseContext, strength: str | None) -> str:
     """The certainty sentence (the GRADE-lite baseline, or "not graded") and the model's limits sentence when it
     passes the numberless check (its first sentence that says nothing about certainty or evidence quality, without
-    citations)."""
+    citations, and (Plan 30) no direct advice to a person)."""
     text, _counts = fix_statement(_CITE_GROUP.sub("", limits or "").strip(), prose)
     text, _n = _drop_wrong_self_claims(text, strength)
     first = next((s for s in _split_sentences(text)
-                  if not _claims_level(s, strength) and not _CERTAINTY_TALK.search(s)), "")
+                  if not _claims_level(s, strength) and not _CERTAINTY_TALK.search(s) and not _ADVICE.search(s)), "")
     certainty = ANSWER_CERTAINTY.get(strength or "", NOT_GRADED)
     return f"{certainty} {first}".strip()
 

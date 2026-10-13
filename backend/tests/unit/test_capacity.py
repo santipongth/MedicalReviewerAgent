@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.config import Settings
 from app.db.repositories import ReviewRepository
@@ -65,6 +65,10 @@ async def test_status_reports_limits_and_queue(client, app):
 async def test_queue_position(client, session_factory):
     ids = [(await client.post("/api/v1/reviews", json={"topic": f"topic number {i} about statins",
                                                          "language": "en"})).json()["review_id"] for i in range(3)]
+    async with session_factory() as s, s.begin():  # Plan 30: distinct times; one clock tick on Windows made this flaky
+        start = datetime.now(UTC)
+        for n, rid in enumerate(ids):
+            await ReviewRepository(s).update(uuid.UUID(rid), created_at=start + timedelta(seconds=n))
     positions = [(await client.get(f"/api/v1/reviews/{i}")).json()["queue_position"] for i in ids]
     assert positions == [1, 2, 3]
     async with session_factory() as s, s.begin():

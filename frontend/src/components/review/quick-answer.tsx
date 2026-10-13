@@ -79,7 +79,16 @@ function Sentence({ parts, claims, byRef, lang }: {
         // a group with no text before it (at the start, or right after another group) is drawn alone
         if (p.kind === "cite") return i === 0 || parts[i - 1].kind !== "text" ? cite(p, `c${i}`) : null;
         const group = cite(parts[i + 1]);
-        if (!group) return <ThaiText key={i}>{p.text}</ThaiText>;
+        if (!group) {
+          // Plan 30: a group with no numberable ref is left out, and so is the space before it when punctuation or
+          // another space follows (no "risk . Next" or double space)
+          // (a dropped group followed directly by a valid group keeps its space: "risk [P9][P1]." -> "risk [1].")
+          let j = i + 2;
+          while (parts[j]?.kind === "cite" && !cite(parts[j])) j++;
+          const next = parts[j];
+          const trim = parts[i + 1]?.kind === "cite" && (!next || (next.kind === "text" && /^[\s.,;:!?)]/.test(next.text)));
+          return <ThaiText key={i}>{trim ? p.text.replace(/\s+$/, "") : p.text}</ThaiText>;
+        }
         const [head, tail] = splitLastWord(p.text);
         return (
           <Fragment key={i}>
@@ -253,7 +262,7 @@ export function QuickAnswer({ review }: { review: Review }) {
                         <CitationText paper={paper} lang={lang} />
                         <QuickRefFacts paper={paper} lang={lang} />
                       </div>
-                    ) : <span className="text-muted">{ref}</span>}
+                    ) : <span className="text-muted">{L(lang, Q.missingPaper)}</span>}
                   </li>
                 );
               })}

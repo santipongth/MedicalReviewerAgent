@@ -37,6 +37,8 @@ export interface RunState {
   message?: string;
   /** Plan 26: a rejection's refusal code ("personal_medical", "declined"); absent on older events */
   code?: string;
+  /** Plan 30: an event after the topic check arrived (refining onward, or done): the topic was not refused */
+  guardPassed?: boolean;
   lastSeq: number;
 }
 
@@ -73,6 +75,7 @@ export function reduceRun(state: RunState, ev: ReviewEvent): RunState {
     s.step = step;
     s.status = "running";
   }
+  if ((step && ev.type !== "checking_topic") || ev.type === "done") s.guardPassed = true;
   switch (ev.type) {
     case "queued":
       s.status = "queued";

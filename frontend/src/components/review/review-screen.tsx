@@ -29,12 +29,14 @@ export function ReviewScreen({ id }: { id: string }) {
   }, [id, waiting]);
   // Name the tab after the question once it is known (effect only: no hydration mismatch).
   // Plan 26: not for a personal medical refusal, whose page shows no topic (nor the tab, history or previews).
+  // Plan 30: nor before the topic check has passed, since such a refusal can only be known after it.
   const personalRefusal = phase === "terminal" && run.status === "rejected"
     && isPersonalRefusal(run.code ?? review?.refusal_code, run.message ?? review?.error);
+  const topicShown = !personalRefusal && (phase === "report" || phase === "terminal" || !!run.guardPassed);
   useEffect(() => {
-    if (personalRefusal) document.title = FALLBACK_TITLE;
-    else if (knownTopic) document.title = knownTopic;
-  }, [knownTopic, personalRefusal]);
+    if (topicShown && knownTopic) document.title = knownTopic;
+    else document.title = FALLBACK_TITLE;
+  }, [knownTopic, topicShown]);
   const queuePosition = polledPosition === undefined ? review?.queue_position : polledPosition;
 
   if (phase === "loading") {

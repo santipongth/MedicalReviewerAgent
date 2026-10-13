@@ -9,6 +9,8 @@ from app.config import get_settings
 from app.db.models import ApiKey
 from app.db.repositories import ReviewRepository
 from app.logging import get_logger
+from app.services.pipeline_version import pipeline_version
+from app.services.sources import effective_sources
 from app.services.urlsafety import is_public_http_url
 from app.services.webhook import DeliveryOutcome, deliver, sign
 from app.worker.llm_reload import refresh_llms
@@ -18,16 +20,30 @@ from app.worker.runtime_reload import refresh_runtime
 log = get_logger(__name__)
 
 
+def run_version(ctx: dict) -> str | None:
+    """The pipeline version of what this worker runs now (Plan 30): its loaded LLM config, glossary and sources, the
+    labels the API reads at admission. None outside a reloading worker (tests, the harness job): the key is kept."""
+    if "llm_lock" not in ctx:
+        return None
+    base = ctx.get("base_settings") or ctx["settings"]
+    sources = ctx.get("sources") or effective_sources(base, {})
+    return pipeline_version(base.prompt_version, llm=ctx.get("llm_version") or "file",
+                            glossary=ctx.get("glossary_version") or "file", sources=sources, base=base)
+
+
 def _runner(ctx: dict) -> ReviewRunner:
     queue = ctx.get("queue")
     notify = queue.enqueue_webhook if queue is not None else None
+    # The graph and the version are read together, with no await between them: the version names that graph.
     return ReviewRunner(ctx["session_factory"], ctx["event_sink"], ctx["graph"], notify=notify,
-                        capacity=ctx.get("capacity"), settings=ctx.get("settings") or get_settings())
+                        capacity=ctx.get("capacity"), settings=ctx.get("settings") or get_settings(),
+                        pipeline_version=run_version(ctx))
 
 
 async def run_review(ctx: dict, review_id: str) -> dict:
     """Start or resume a review (the runner resumes when a checkpoint exists). Saved settings and glossary (Plan 23c),
-    then a saved LLM configuration (Plan 23b), are picked up first, so the review runs on the newest of each."""
+    then a saved LLM configuration (Plan 23b), are picked up first, so the review runs on the newest of each; the
+    result is cached under the version that ran (Plan 30)."""
     if "llm_lock" in ctx:
         await refresh_runtime(ctx)
         await refresh_llms(ctx)

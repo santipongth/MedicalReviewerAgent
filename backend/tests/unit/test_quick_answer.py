@@ -295,6 +295,14 @@ def test_a_citation_after_the_full_stop_stays_with_its_sentence():
     assert checked_answer(two, {"P1", "P2"}, ctx(), "low")[1:] == (2, 0)
 
 
+def test_a_leading_group_of_the_next_sentence_is_not_lifted_onto_the_previous_one():
+    from app.graph.nodes.quick import _sentences
+    assert _sentences(["Risk fell [P1]. [P2] showed harm."]) == ["Risk fell [P1].", "[P2] showed harm."]
+    assert _sentences(["Statins lowered risk. [P2] reported no effect."]) == [
+        "Statins lowered risk.", "[P2] reported no effect."]
+    assert _sentences(["Risk fell. [P1] Cohorts agree. [P2]"]) == ["Risk fell [P1].", "Cohorts agree [P2]."]
+
+
 def test_marker_fragments_alone_are_withheld_not_shown():
     draft = QuickAnswerDraft(sentences=["[P1]", "[P2]"], limits="x")
     assert checked_answer(draft, {"P1", "P2"}, ctx(), "low")[0] == ""

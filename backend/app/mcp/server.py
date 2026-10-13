@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -26,9 +27,11 @@ from app.schemas.review import (
 )
 from app.services.report import quick_view, render_markdown
 from app.services.review_service import Identity, RateLimited, Refused, ServiceError, Unavailable
-from app.services.safety import refusal_code_of
+from app.services.safety import refusal_code_of, shown_topic
+from app.services.sse_slots import SseSlots
 
 _MIN_PAPERS, _MAX_PAPERS = ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le")
+log = logging.getLogger(__name__)
 _DEFAULT_PAPERS = ReviewOptions.model_fields["max_papers"].default
 _POOL = ReviewOptions.model_fields["candidate_limit"].default
 _QUICK_PAPERS, _QUICK_POOL = QUICK_MAX_PAPERS, QUICK_CANDIDATE_LIMIT
@@ -85,8 +88,9 @@ default {QUICK_WAIT_DEFAULT}) for the answer. Returns review_id, status, cached 
 `answer` (the [1]..[n] numbers point into `references`), `closing`, `certainty`, `papers_read` and `references`
 (n, ref, citation, links to PubMed, DOI, PubMed Central or ThaiJO). When still running, poll get_review_status and
 call get_review_result. It counts as one review against the same limits as start_review. `study_types` and `year_from`
-work as in start_review. A topic that reads as an emergency returns status "refused" as in start_review. Not
-medical advice."""
+work as in start_review. A topic that reads as an emergency returns status "refused" as in start_review. A client
+waits in at most `sse_max_per_ip` (see /status) quick_answer calls at once; one more returns at once, as with
+wait_seconds 0. Not medical advice."""
 
 
 
@@ -114,6 +118,12 @@ def _paper(c) -> dict[str, Any]:
     return {"title": c.title, "authors": c.authors[:6], "year": c.year, "journal": c.journal, "doi": c.doi,
             "pmid": c.pmid, "pmcid": c.pmcid, "url": c.url, "is_open_access": c.is_open_access,
             "abstract": abstract + ("…" if c.abstract and len(c.abstract) > 600 else "")}
+
+
+def waiter_key(ident: Identity, deps: AppDeps) -> str:
+    """The client a quick_answer wait counts against (Plan 30): the API key, else the hashed address (raw addresses
+    never reach Redis)."""
+    return f"mcpwait:key:{ident.api_key.id}" if ident.api_key else f"mcpwait:ip:{deps.service.sse_key(ident.ip)}"
 
 
 def transport_security(settings: Settings) -> TransportSecuritySettings:
@@ -196,10 +206,26 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
             return started
         rid = uuid.UUID(started["review_id"])
         deadline = time.monotonic() + max(0, min(wait_seconds, QUICK_WAIT_MAX))
-        review = await get_deps().service.get(rid)
-        while review is not None and review.status not in TERMINAL_STATUSES and time.monotonic() < deadline:
-            await _sleep(QUICK_POLL_SECONDS)
-            review = await get_deps().service.get(rid)
+        deps = get_deps()
+        review = await deps.service.get(rid)
+        if review is not None and review.status not in TERMINAL_STATUSES and time.monotonic() < deadline:
+            # Plan 30: a client holds at most sse_max_per_ip waits at once (shared with nothing else; Redis-backed so
+            # every API process counts them); one over the cap gets the answer at once, as with wait_seconds=0
+            try:
+                waits = SseSlots(deps.redis, limit=(await deps.service.effective()).sse_max_per_ip)
+                waiter = waiter_key(await identity(ctx), deps)
+                got = await waits.acquire(waiter)
+            except Exception:  # the review exists already: treat an unavailable slot store as "at cap", never fail
+                log.exception("quick_answer wait slot unavailable; returning without waiting")
+                got = False
+            if got:
+                try:
+                    while (review is not None and review.status not in TERMINAL_STATUSES
+                           and time.monotonic() < deadline):
+                        await _sleep(QUICK_POLL_SECONDS)
+                        review = await deps.service.get(rid)
+                finally:
+                    await waits.release(waiter)
         if review is None:
             raise ToolError(f"review {rid} not found")
         out = {**started, "status": review.status}
@@ -234,8 +260,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
     @mcp.resource("review://{review_id}", mime_type="application/json", description="Review status and result")
     async def review_resource(review_id: str) -> dict[str, Any]:
         r = await review_or_error(review_id)
-        return {"review_id": review_id, "topic": r.topic, "status": r.status, "result": r.result, "error": r.error,
-                "refusal_code": refusal_code_of(r.status, r.error)}
+        return {"review_id": review_id, "topic": shown_topic(r.status, r.error, r.topic), "status": r.status,
+                "result": r.result, "error": r.error, "refusal_code": refusal_code_of(r.status, r.error)}
 
     @mcp.resource("review://{review_id}/report.md", mime_type="text/markdown",
                   description="Review as a Markdown report")

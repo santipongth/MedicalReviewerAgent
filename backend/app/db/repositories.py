@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Review, ReviewEvent, ReviewStatus
@@ -76,8 +76,11 @@ class ReviewRepository:
         """1-based position among queued reviews (oldest first); None once it left the queue."""
         if review.status != "queued":
             return None
+        # Plan 30: reviews created in the same clock tick are ordered by id, so no two share a position
         ahead = await self.session.scalar(select(func.count()).select_from(Review).where(
-            Review.status == "queued", Review.created_at < review.created_at))
+            Review.status == "queued",
+            or_(Review.created_at < review.created_at,
+                and_(Review.created_at == review.created_at, Review.id < review.id))))
         return int(ahead or 0) + 1
 
     async def list_recent(self, limit: int = 20) -> list[Review]:

@@ -8,7 +8,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("generateMetadata", () => {
   it("uses the review topic as the title", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ topic: "metformin และไต" }), { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ topic: "metformin และไต", status: "done" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     expect(await generateMetadata(props)).toEqual({ title: "metformin และไต", openGraph: { title: "metformin และไต" } });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -19,7 +19,7 @@ describe("generateMetadata", () => {
 
   it("clamps a long topic to 120 characters with an ellipsis", async () => {
     const topic = "ก".repeat(600);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ topic }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ topic, status: "done" }), { status: 200 })));
     const meta = await generateMetadata(props);
     const title = meta.title as string;
     expect(Array.from(title)).toHaveLength(120);
@@ -36,8 +36,15 @@ describe("generateMetadata", () => {
   });
 
   it("keeps the topic for another refusal code", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ topic: "pizza", refusal_code: "declined" }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ topic: "pizza", status: "done", refusal_code: "declined" }), { status: 200 })));
     expect(await generateMetadata(props)).toEqual({ title: "pizza", openGraph: { title: "pizza" } });
+  });
+
+  it("keeps the topic out of the title while the review is queued or running", async () => {
+    for (const status of ["queued", "running"]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ topic: "ฉันปวดหัว", status }), { status: 200 })));
+      expect(await generateMetadata(props)).toEqual({ title: FALLBACK });
+    }
   });
 
   it("falls back on a network error", async () => {

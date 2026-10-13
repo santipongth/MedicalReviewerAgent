@@ -15,6 +15,7 @@ from app.logging import get_logger
 from app.schemas.review import ReviewOptions
 from app.services.budget import ReviewBudget, review_cost_cap, use_budget
 from app.services.events import EventSink
+from app.services.pipeline_version import finished_cache_key
 from app.services.safety import refusal_code_of
 
 log = get_logger(__name__)
@@ -29,13 +30,15 @@ class ReviewRunner:
     """
 
     def __init__(self, session_factory: async_sessionmaker, event_sink: EventSink, graph, notify=None,
-                 capacity=None, settings: Settings | None = None) -> None:
+                 capacity=None, settings: Settings | None = None, pipeline_version: str | None = None) -> None:
         self.settings = settings  # sizes each review's LLM spend cap from its options (None → uncapped)
         self.capacity = capacity  # app.services.capacity.Capacity: finished reviews count toward the daily spend
         self.session_factory = session_factory
         self.event_sink = event_sink
         self.graph = graph
         self.notify = notify  # async (review_id) -> None: enqueue the webhook for reviews with a callback_url
+        # Plan 30: the version of the configuration this runner's graph was built with (None: keep the admission key)
+        self.pipeline_version = pipeline_version
 
     async def _notify(self, review_id: uuid.UUID, has_callback: bool) -> None:
         if has_callback and self.notify is not None:
@@ -64,7 +67,7 @@ class ReviewRunner:
                 first_start = first_start.replace(tzinfo=UTC)
             await repo.update(review_id, status="running", started_at=first_start or now, error=None)
             topic, language, options = review.topic, review.language, dict(review.options or {})
-            has_callback = bool(review.callback_url)
+            has_callback, cache_key = bool(review.callback_url), review.cache_key
         t0 = time.monotonic() - ((now - first_start).total_seconds() if first_start else 0.0)
 
         async def emit(event_type: str, payload: dict) -> None:
@@ -117,8 +120,14 @@ class ReviewRunner:
             await self._notify(review_id, has_callback)
             return "rejected"
         result = values.get("result") or {}
+        keyed = {}
+        if self.pipeline_version is not None:  # Plan 30: cached under the version that ran, not the admission's
+            result = {**result, "pipeline_version": self.pipeline_version}
+            keyed["cache_key"] = finished_cache_key(cache_key, topic, language, options, self.pipeline_version,
+                                                    resumed=resume, review_id=str(review_id))
         if not await self._finish(review_id, "done", result=result, cost_usd=cost,
-                                  prompt_version=result.get("prompt_version"), model_versions=result.get("models")):
+                                  prompt_version=result.get("prompt_version"), model_versions=result.get("models"),
+                                  **keyed):
             return ReviewStatus.cancelled.value
         await emit("done", {"cost_usd": cost})
         await self._notify(review_id, has_callback)

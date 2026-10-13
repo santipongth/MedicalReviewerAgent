@@ -28,9 +28,10 @@ from app.services.admin_auth import AdminPrincipal
 from app.services.api_keys import ApiKeyInfo, reviews_since
 from app.services.budget import review_cost_cap
 from app.services.capacity import AdmissionBusy
+from app.services.pipeline_version import pipeline_version
 from app.services.ratelimits import RateLimits
 from app.services.safety import red_flag
-from app.services.sources import ActiveSources, cache_part, effective_sources, public_list
+from app.services.sources import ActiveSources, effective_sources, public_list
 from app.services.turnstile import TurnstileUnavailable, verify_turnstile
 from app.services.urlsafety import is_public_http_url
 from app.services.webhook import callback_url_problem
@@ -142,15 +143,13 @@ class ReviewService:
     async def _version(self) -> str:
         """The cache key's pipeline version: prompt, LLM config (23b), once one is saved the glossary (23c), and the
         search sources (Plan 24's `+thaijo`; Plan 23d's `+src` fingerprint once a sources version changes the
-        SearXNG engines)."""
-        version = self.settings.prompt_version
-        if self.llm_version is not None:
-            version = f"{version}+llm{await self.llm_version()}"
-        if self.runtime is not None and (glossary := await self.runtime.glossary_label()) != "file":
-            version = f"{version}+g{glossary}"
+        SearXNG engines). Plan 30: built by `pipeline_version`, which the worker uses for what it actually ran."""
+        llm = await self.llm_version() if self.llm_version is not None else None
+        glossary = await self.runtime.glossary_label() if self.runtime is not None else "file"
         # Plan 24: a pool with ThaiJO is a different search; Plan 23d: so is one from another engine set. While no
         # sources version exists this is Plan 24's `+thaijo` rule, so the key is unchanged.
-        return version + cache_part(await self.sources(), self.settings)
+        return pipeline_version(self.settings.prompt_version, llm=llm, glossary=glossary,
+                                sources=await self.sources(), base=self.settings)
 
     async def _reuse(self, cache_key: str, settings: Settings | None = None) -> ReviewCreated | None:
         ttl = (settings or self.settings).result_cache_ttl_seconds
@@ -241,7 +240,7 @@ class ReviewService:
             return outcome
         review_id = outcome
         try:
-            await self.event_sink.emit(review_id, "queued", {"topic": req.topic})
+            await self.event_sink.emit(review_id, "queued", {})  # Plan 30: no topic in the event log
             await self.queue.enqueue_review(review_id)
         except Exception as exc:
             log.exception("enqueue_failed", review_id=str(review_id))

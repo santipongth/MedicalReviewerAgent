@@ -197,8 +197,8 @@ describe("RequestSlip", () => {
     expect(topic.getAttribute("placeholder")).toContain("ต้องการทบทวนเรื่องใด");
   });
 
-  it("pre-fills the topic from initialTopic", () => {
-    render(<RequestSlip initialTopic="vitamin D and fractures" />);
+  it("pre-fills the topic from the start values", () => {
+    render(<RequestSlip start={{ topic: "vitamin D and fractures" }} />);
     expect(screen.getByLabelText(/คำถามหรือวัตถุประสงค์/)).toHaveValue("vitamin D and fractures");
   });
 

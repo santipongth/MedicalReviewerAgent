@@ -31,7 +31,9 @@ log = get_logger(__name__)
 
 LLM_VERSION_KEY = "mra:llm:config_version"
 LOADED_KEY = "mra:llm:loaded"
-LOADED_MAX_AGE = timedelta(days=1)
+# Plan 30: workers re-report every 30 s, so an entry not refreshed for 3 minutes (six missed heartbeats) is a worker that
+# is gone (a rebuild, a crash): it is no longer listed, and loaded_workers removes it from the hash
+LOADED_MAX_AGE = timedelta(minutes=3)
 NOTE_MAX = 500
 PUBLISH_ATTEMPTS = 3
 # Postgres advisory-lock key that serialises saves ("MRALLMSV"); the transaction-scoped lock is held until the
@@ -278,14 +280,26 @@ async def report_loaded(redis, worker: str, version: str, preset: str, error: st
 
 
 async def loaded_workers(redis, now: datetime | None = None) -> list[dict[str, Any]]:
+    """The workers seen within LOADED_MAX_AGE. Older or unreadable entries (a worker replaced by a rebuild never says
+    goodbye) are removed from the hash, best effort: the admin pages never show a ghost worker (Plan 30)."""
     now = now or datetime.now(UTC)
     out: list[dict[str, Any]] = []
+    gone: list[str] = []
     for worker, raw in sorted((await redis.hgetall(LOADED_KEY)).items()):
         try:
             item = json.loads(raw)
             loaded_at = datetime.fromisoformat(item["loaded_at"])
-        except (ValueError, KeyError, TypeError):
+            fresh = now - loaded_at <= LOADED_MAX_AGE
+        except (ValueError, KeyError, TypeError, AttributeError):
+            gone.append(worker)
             continue
-        if now - loaded_at <= LOADED_MAX_AGE:
+        if fresh:
             out.append({"worker": worker, **item})
+        else:
+            gone.append(worker)
+    if gone:
+        try:
+            await redis.hdel(LOADED_KEY, *gone)
+        except Exception:  # noqa: BLE001 - listing never fails on the clean-up
+            log.warning("llm_loaded_prune_failed", workers=len(gone))
     return out

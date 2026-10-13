@@ -77,8 +77,10 @@ export function exportUrl(id: string, format: "md" | "csv" | "json"): string {
   return `${apiUrl()}/api/v1/reviews/${encodeURIComponent(id)}/export?format=${format}`;
 }
 
-export function getReview(id: string): Promise<Review> {
-  return request<Review>(`/api/v1/reviews/${encodeURIComponent(id)}`);
+/** Plan 30: the API sends `topic: null` for a personal medical refusal (its question is never echoed); pages read "". */
+export async function getReview(id: string): Promise<Review> {
+  const review = await request<Omit<Review, "topic"> & { topic: string | null }>(`/api/v1/reviews/${encodeURIComponent(id)}`);
+  return { ...review, topic: review.topic ?? "" };
 }
 
 export function listRecent(limit = 10): Promise<ReviewSummary[]> {

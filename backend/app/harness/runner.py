@@ -30,6 +30,7 @@ class HarnessResult:
     escalated: bool = False
     problems: list[str] = field(default_factory=list)
     ok: bool = False
+    refused: bool = False  # Plan 30: the escalation model declined (a provider refusal), not a malformed answer
 
 
 class HarnessRunner:
@@ -73,7 +74,7 @@ class HarnessRunner:
                 if escalated.ok or escalated.value is not None:
                     return escalated
                 return HarnessResult(last_value, escalated.cost, escalated.attempts, True, True,
-                                     escalated.problems or problems, False)
+                                     escalated.problems or problems, False, escalated.refused)
         return HarnessResult(last_value, cost, attempts, attempts > 1, False, problems, False)
 
     async def escalate(self, system: str, user: str, *, schema: type[BaseModel],
@@ -98,6 +99,6 @@ class HarnessRunner:
             res = await esc.ainvoke(system, user)
         except LLMError as exc:  # incl. refusal: the caller keeps its own answer and flags it
             return HarnessResult(None, 0.0, 1, False, True, [f"escalation failed: {type(exc).__name__}: {exc}"],
-                                 False)
+                                 False, isinstance(exc, LLMRefusal))
         problems = validate(res.value) if validate else []
         return HarnessResult(res.value, res.cost_usd, 1, False, True, problems, not problems)

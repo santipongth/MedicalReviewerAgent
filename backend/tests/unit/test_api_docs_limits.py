@@ -69,3 +69,10 @@ def test_status_example_lists_the_sources_in_catalog_order():
 def test_the_docs_name_the_current_prompt_version():
     from app.config import Settings
     assert f"prompt_version {Settings(_env_file=None).prompt_version}`" in API_MD.read_text(encoding="utf-8")
+
+
+def test_the_quick_answer_cost_cap_is_read_from_status_not_quoted():
+    """Plan 30: public limits come from /status; the docs never quote the quick answer's computed cap."""
+    text = API_MD.read_text(encoding="utf-8")
+    assert "$0.103" not in text and "= $0." not in text
+    assert "`limits.quick` in `GET /api/v1/status`" in text

@@ -21,6 +21,12 @@ from app.services.sse_slots import SseSlots
 router = APIRouter()
 
 
+def _data(payload: dict) -> str:
+    """An event's JSON, without the `topic` that `queued` events stored before Plan 30: a stream never echoes the
+    question (a personal medical refusal's question in particular)."""
+    return json.dumps({k: v for k, v in (payload or {}).items() if k != "topic"}, default=str)
+
+
 def parse_since(value: str | None) -> int:
     if not value:
         return 0
@@ -71,7 +77,7 @@ async def review_events(
             last = after_seq
             for ev in replay:
                 last = ev.seq
-                yield {"id": str(ev.seq), "event": ev.type, "data": json.dumps(ev.payload, default=str)}
+                yield {"id": str(ev.seq), "event": ev.type, "data": _data(ev.payload)}
                 if ev.type in TERMINAL_EVENT_TYPES:
                     return
             if review_status in TERMINAL_STATUSES:
@@ -85,7 +91,7 @@ async def review_events(
                 yield {
                     "id": str(ev["seq"]),
                     "event": ev["type"],
-                    "data": json.dumps(ev["payload"], default=str),
+                    "data": _data(ev["payload"]),
                 }
                 if ev["type"] in TERMINAL_EVENT_TYPES:
                     return
