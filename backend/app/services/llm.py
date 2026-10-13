@@ -163,10 +163,13 @@ class AnthropicStructuredLLM[T: BaseModel]:
         )
 
     async def ainvoke(self, system: str, user: str) -> LLMResult[T]:
+        failed = None
         try:
             out = await self._runnable.ainvoke([SystemMessage(system), HumanMessage(user)])
-        except anthropic.APIError as exc:  # not chained: the original text is not redacted
-            raise LLMError(redact(f"{self.model}: provider error: {exc}", self._key)) from None
+        except anthropic.APIError as exc:
+            failed = redact(f"{self.model}: provider error: {exc}", self._key)
+        if failed is not None:  # raised outside the except: the unredacted error is neither cause nor context
+            raise LLMError(failed)
         raw = out["raw"]
         stop = (raw.response_metadata or {}).get("stop_reason")
         if stop == "refusal":
@@ -259,6 +262,7 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
         )
 
     async def ainvoke(self, system: str, user: str) -> LLMResult[T]:
+        failed = None
         try:
             out = await self._runnable.ainvoke([SystemMessage(system + self._json_hint), HumanMessage(user)])
         except (ValidationError, json.JSONDecodeError) as exc:
@@ -267,9 +271,11 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
             raise LLMRefusal(f"{self.model} declined the request (content filter)") from exc
         except openai.LengthFinishReasonError as exc:
             raise LLMOutputError(f"{self.model} hit max_tokens before finishing the JSON output") from exc
-        except openai.APIError as exc:  # not chained: the original text is not redacted
+        except openai.APIError as exc:
             status = getattr(exc, "status_code", "")
-            raise LLMError(redact(f"{self.model}: provider error {status}: {exc}", self._key)) from None
+            failed = redact(f"{self.model}: provider error {status}: {exc}", self._key)
+        if failed is not None:  # raised outside the except: the unredacted error is neither cause nor context
+            raise LLMError(failed)
         raw = out["raw"]
         meta = raw.response_metadata or {}
         if (raw.additional_kwargs or {}).get("refusal") or meta.get("finish_reason") == "content_filter":
@@ -386,6 +392,18 @@ def missing_key_reason(role: ResolvedRole, choice: KeyChoice) -> str | None:
     return None
 
 
+def unpriced_reason(role: ResolvedRole) -> str | None:
+    """Why a review must not call this role: a provider with a free name on a public host and no price would be
+    charged $0, so the per-review cost cap would never count it. Save and validate refuse such a document; this stops
+    a hand-edited llm.yaml too. A local server (price 0 is right) and the legacy names keep their old behaviour."""
+    if role.provider in (role.kind, "openai_compatible") or role_price(role) is not None:
+        return None
+    if is_local_origin(provider_origin(role.provider, role.provider_spec)):
+        return None
+    return (f"no price for model {role.spec.model} on provider {role.provider}: set price_in and price_out "
+            "(USD per 1M tokens) in the admin console so the cost cap counts its calls")
+
+
 def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, ModelInfo] | None = None,
                    schema: type[BaseModel] | None = None, keys: KeyRing | None = None):
     """`keys` is the console's key ring (Plan 23e); None means env keys only (tests, CLIs without a DB)."""
@@ -438,14 +456,19 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None, 
     key ring (Plan 23e); None means env keys only."""
     config = resolved or load_llm_config(settings.llm_config_path, settings.llm_preset)
     sem = sem or asyncio.Semaphore(max(1, settings.llm_concurrency))
-    built = {role: LimitedLLM(build_role_llm(r, settings, catalog, keys=keys), sem) for role, r in config.roles.items()
-             if role in SCHEMAS}
+
+    def build(r: ResolvedRole, schema: type[BaseModel] | None = None):
+        reason = unpriced_reason(r)
+        if reason:
+            return MissingKeyLLM(r.spec.model, key_env(r.provider), reason)
+        return build_role_llm(r, settings, catalog, schema=schema, keys=keys)
+
+    built = {role: LimitedLLM(build(r), sem) for role, r in config.roles.items() if role in SCHEMAS}
     if "refiner" in config.roles:
         refiner_role = config.roles["refiner"]
         if refiner_role.spec.reasoning_effort not in (None, "none", "minimal", "low"):
             refiner_role = refiner_role.with_spec(reasoning_effort="low")
-        built["refiner_critic"] = LimitedLLM(
-            build_role_llm(refiner_role, settings, catalog, schema=QuestionCritique, keys=keys), sem)
+        built["refiner_critic"] = LimitedLLM(build(refiner_role, QuestionCritique), sem)
     escalation = None
     if "escalation" in config.roles:
         esc_role = config.roles["escalation"]
@@ -453,7 +476,7 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None, 
 
         def escalation(schema: type[BaseModel]) -> StructuredLLM:
             if schema not in cache:
-                cache[schema] = LimitedLLM(build_role_llm(esc_role, settings, catalog, schema=schema, keys=keys), sem)
+                cache[schema] = LimitedLLM(build(esc_role, schema), sem)
             return cache[schema]
 
     bound: dict[tuple[str, type[BaseModel]], StructuredLLM] = {}
@@ -462,8 +485,7 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None, 
         if role not in config.roles:
             raise LLMError(f"preset {config.preset} has no {role} role to bind to {schema.__name__}")
         if (role, schema) not in bound:
-            bound[role, schema] = LimitedLLM(build_role_llm(config.roles[role], settings, catalog, schema=schema,
-                                                            keys=keys), sem)
+            bound[role, schema] = LimitedLLM(build(config.roles[role], schema), sem)
         return bound[role, schema]
 
     return LLMs(**built, escalation=escalation, for_schema=for_schema, harness=config.harness, preset=config.preset,

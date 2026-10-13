@@ -48,13 +48,16 @@ async def probe(role: ResolvedRole, settings: Settings, catalog=None, *, build=b
     # The clients' own timeout is per HTTP attempt and they retry (honouring Retry-After), so bound the whole call.
     deadline = asyncio.timeout(PROBE_TIMEOUT_SECONDS)
     built = {"keys": keys} if keys is not None else {}
+    try:  # the key the call will use, read before it so the error path cannot fail on its own
+        used = resolve_key(role.provider, role.provider_spec, keys, settings).value
+    except Exception:  # noqa: BLE001 - a draft the build will refuse anyway; nothing to redact with
+        used = None
     try:
         llm = LimitedLLM(build(capped, settings, catalog, schema=ProbeAnswer, **built), asyncio.Semaphore(1))
         with use_budget(budget):
             async with deadline:
                 res = await llm.ainvoke(PROBE_SYSTEM, PROBE_USER)
     except Exception as exc:  # noqa: BLE001 - the console shows the reason; nothing else depends on it
-        used = resolve_key(role.provider, role.provider_spec, keys, settings).value
         error = (f"timed out after {PROBE_TIMEOUT_SECONDS:g} s" if deadline.expired()
                  else redact(f"{type(exc).__name__}: {exc}", used)[:300])
         return {"ok": False, "latency_ms": elapsed(), "cost_usd": round(budget.spent, 6), "model": role.spec.model,

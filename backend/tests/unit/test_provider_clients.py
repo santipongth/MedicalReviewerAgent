@@ -119,6 +119,23 @@ async def test_a_public_server_never_gets_an_anonymous_call_but_a_local_one_may(
     assert build_role_llm(guard(legacy), SETTINGS, None)._key == "not-needed"  # the legacy entry as before
 
 
+async def test_a_review_never_calls_an_unpriced_public_server_but_a_test_call_may():
+    unpriced = config("deepseek", "https://api.deepseek.com/v1")
+    del unpriced["presets"]["cheap"]["guard"]["price_in"], unpriced["presets"]["cheap"]["guard"]["price_out"]
+    console = ring(deepseek=(KEY, "https://api.deepseek.com"))
+    resolved = resolve_llm_config(parse_llm_config(unpriced))  # a hand-edited llm.yaml: loading never checks prices
+    llms = build_llms(SETTINGS, None, resolved=resolved, keys=console)
+    assert isinstance(llms.guard.inner, MissingKeyLLM)
+    with pytest.raises(LLMError, match="no price for model deepseek-chat on provider deepseek"):
+        await llms.guard.ainvoke("s", "u")
+    assert isinstance(llms.with_schema("guard", QueryPlan).inner, MissingKeyLLM)
+    assert build_role_llm(guard(unpriced), SETTINGS, None, keys=console)._key == KEY  # the console's capped probe
+    local = config("ollama", "http://localhost:11434/v1")
+    del local["presets"]["cheap"]["guard"]["price_in"], local["presets"]["cheap"]["guard"]["price_out"]
+    built = build_llms(SETTINGS, None, resolved=resolve_llm_config(parse_llm_config(local)))
+    assert isinstance(built.guard.inner, OpenAICompatibleStructuredLLM)  # a local server costs nothing
+
+
 def test_missing_key_messages_name_the_problem(monkeypatch):
     unreadable = KeyRing(unreadable=frozenset({"deepseek"}), state="bad_secret")
     llm = build_role_llm(guard(config("deepseek", "https://api.deepseek.com/v1")), SETTINGS, None, keys=unreadable)
@@ -149,7 +166,7 @@ async def test_a_provider_error_that_echoes_the_key_is_redacted(fake_openai):
     with pytest.raises(LLMError) as caught:
         await llm.ainvoke("s", "u")
     assert KEY not in str(caught.value) and "[redacted]" in str(caught.value)
-    assert caught.value.__cause__ is None and caught.value.__suppress_context__
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
 
 
 async def test_the_probe_uses_the_ring_and_redacts_what_it_reports():
