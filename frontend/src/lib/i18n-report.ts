@@ -878,6 +878,7 @@ export const RC = {
     cite: (n: number): Pair => [`อ้างอิง ${n}`, `Reference ${n}`],
     citeChecked: (n: number): Pair => [`อ้างอิง ${n} ตรวจแล้ว: บทคัดย่อรองรับประโยคนี้`, `Reference ${n} checked: the abstract supports this sentence`],
     noRefs: ["คำตอบนี้ไม่ได้อ้างอิงงานวิจัยใด", "This answer cites no study."],
+    missingPaper: ["ไม่พบรายละเอียดของงานวิจัยนี้ในผลลัพธ์", "This study's details are missing from the result."],
     certaintyTitle: ["ความเชื่อมั่นของหลักฐาน", "Certainty of the evidence"],
     notGraded: ["ไม่ได้ประเมินความเชื่อมั่นของหลักฐาน", "The certainty of the evidence was not assessed"],
     evidenceTitle: ["หลักฐานที่ใช้", "Evidence used"],

@@ -1,3 +1,4 @@
+import { isQuickReview } from "@/lib/quick";
 import { serverApiUrl } from "@/lib/server-api";
 import { loadStandaloneAssets } from "@/lib/standalone-assets";
 import { buildStandaloneHtml } from "@/lib/standalone-html";
@@ -27,6 +28,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
   if (review.status !== "done") {
     return new Response(`review is ${review.status}; the offline report is available once it is done`, { status: 409 });
+  }
+  if (isQuickReview(review)) {
+    // Plan 30: a quick answer has no full report; its page is the answer (a relative Location: the proxy's host)
+    return new Response(null, { status: 303, headers: { location: `/r/${encodeURIComponent(id)}`, "cache-control": "no-store" } });
   }
   const html = buildStandaloneHtml(review, await loadStandaloneAssets());
   return new Response(html, {
