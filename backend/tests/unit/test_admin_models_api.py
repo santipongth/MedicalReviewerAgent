@@ -165,7 +165,7 @@ async def test_test_call_resolves_the_draft_rate_limits_and_audits(client, sessi
     h = await admin_headers(client, session_factory)
     seen = []
 
-    async def fake_probe(role, settings, catalog=None):
+    async def fake_probe(role, settings, catalog=None, keys=None):
         seen.append((role.role, role.spec.model))
         return {"ok": True, "latency_ms": 5, "cost_usd": 0.0001, "model": role.spec.model, "error": None}
 
@@ -218,7 +218,7 @@ def nested(depth):
 def probe_calls(monkeypatch):
     calls = []
 
-    async def fake_probe(role, settings, catalog=None):
+    async def fake_probe(role, settings, catalog=None, keys=None):
         calls.append((role.role, role.spec.model))
         return {"ok": True, "latency_ms": 5, "cost_usd": 0.0001, "model": role.spec.model, "error": None}
 

@@ -17,6 +17,7 @@ from app.api import (
     admin_dashboard,
     admin_harness,
     admin_keys,
+    admin_keys_llm,
     admin_models,
     admin_reviews,
     admin_runtime,
@@ -158,6 +159,7 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     app.include_router(admin_keys.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     app.include_router(admin_dashboard.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     app.include_router(admin_models.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
+    app.include_router(admin_keys_llm.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     app.include_router(admin_runtime.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     app.include_router(admin_harness.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     mcp = build_mcp(lambda: app.state.deps, settings)

@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 
 from app.config import Settings
-from app.services.llm import PRICES_PER_MTOK, _api_key
+from app.services.llm import PRICES_PER_MTOK
 from app.services.llm_config import (
     CONFIG_ERRORS,
     FALLBACK_ROLES,
@@ -25,6 +25,7 @@ from app.services.llm_config import (
     resolve_llm_config,
 )
 from app.services.llm_cost import estimate_review_cost
+from app.services.llm_keys import KeyRing, resolve_key
 from app.services.model_catalog import ModelInfo, validate_role
 
 MAX_SAVE_ERRORS = 3
@@ -34,9 +35,12 @@ def to_yaml(raw: dict[str, Any]) -> str:
     return yaml.safe_dump(raw, sort_keys=False, allow_unicode=True)
 
 
-def validate_document(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None) -> dict[str, Any]:
+def validate_document(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None,
+                      keys: KeyRing | None = None) -> dict[str, Any]:
+    """`keys` (Plan 23e): the console's key ring, so the missing-key warnings follow the keys the workers would use and
+    a draft that moves a provider with a stored key to another origin is warned about before it is saved."""
     try:
-        return _validate(raw, settings, catalog)
+        return _validate(raw, settings, catalog, keys)
     except CONFIG_ERRORS as exc:  # a bad document is a result to show, never a server error
         return {"ok": False, "errors": [config_error_text(exc)], "warnings": [], "cost": {}, "config": None,
                 "yaml": None}
@@ -89,7 +93,25 @@ def save_error_text(errors: list[str]) -> str:
     return "; ".join(errors[:MAX_SAVE_ERRORS]) + more
 
 
-def _validate(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None) -> dict[str, Any]:
+def is_keyless(name: str, spec) -> bool:
+    """A provider that needs no key: the legacy local server, or an openai_compatible one on a local http origin."""
+    return provider_kind(name, spec) == "openai_compatible" and (
+        name == "openai_compatible" or is_local_origin(provider_origin(name, spec)))
+
+
+def key_status(name: str, spec, keys: KeyRing | None, settings: Settings) -> str:
+    """One word for a provider's key (Plan 23e): console, env, not_needed (a keyless local server), or the problem
+    (origin_mismatch, unreadable, env_origin_missing), else none."""
+    choice = resolve_key(name, spec, keys, settings)
+    if choice.value:
+        return choice.source
+    if choice.problem is None and is_keyless(name, spec):
+        return "not_needed"
+    return choice.problem or "none"
+
+
+def _validate(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None,
+              keys: KeyRing | None = None) -> dict[str, Any]:
     config = parse_llm_config(raw, where="config")
     resolve_llm_config(config, None, where="config")
     normalized = config.model_dump(mode="json", exclude_unset=True)
@@ -115,12 +137,16 @@ def _validate(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None
         if unpriced := unpriced_roles(resolved, catalog):
             warnings.append(f"{preset}: no known price for {', '.join(unpriced)}: the review cost cap cannot count "
                             "their calls")
-    for name in sorted(used_providers):
-        spec = config.providers[name]
-        local = provider_kind(name, spec) == "openai_compatible" and (
-            name == "openai_compatible" or is_local_origin(provider_origin(name, spec)))
-        env_name = key_env(name)
-        if not local and not _api_key(settings, env_name):
-            warnings.append(f"{env_name} is not set: the {name} roles cannot run")
+    for name, spec in config.providers.items():
+        choice = resolve_key(name, spec, keys, settings)
+        if choice.problem == "origin_mismatch":
+            warnings.append(f"providers.{name}: the stored key belongs to {choice.bound_origin}; after saving, {name} "
+                            f"gets no key until one is entered for {provider_origin(name, spec)}")
+        if name not in used_providers or is_keyless(name, spec) or choice.value:
+            continue
+        if choice.problem in ("unreadable", "env_origin_missing"):
+            warnings.append(f"{name}: no usable key ({choice.problem}): the {name} roles cannot run")
+        elif choice.problem is None:
+            warnings.append(f"{key_env(name)} is not set: the {name} roles cannot run")
     return {"ok": True, "errors": [], "warnings": warnings, "cost": cost, "config": normalized,
             "yaml": to_yaml(normalized)}
