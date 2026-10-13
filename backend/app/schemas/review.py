@@ -16,6 +16,20 @@ REVIEW_TYPES: tuple[str, ...] = ("narrative", "slr", "scoping", "meta_analysis")
 # PICO, conflicts, grading, PRISMA) unless a step says otherwise.
 SLR_LIKE: frozenset[str] = frozenset({"slr", "meta_analysis"})
 
+# Plan 27: a quick answer ("ถามเร็ว") runs the same engine on a small pool and writes a 2-4 sentence answer instead of
+# the report. Its sizes and review type are fixed by the service (what a caller sends for them is replaced); they are
+# the single source for /status, the stub, the docs and the web form.
+ReviewMode = Literal["full", "quick"]
+REVIEW_MODES: tuple[str, ...] = ("full", "quick")
+QUICK_MAX_PAPERS = 8
+QUICK_CANDIDATE_LIMIT = 30
+QUICK_REVIEW_TYPE = "slr"
+
+
+def is_quick(options: dict[str, Any] | None) -> bool:
+    """True for a quick answer (Plan 27); options stored before Plan 27 have no mode and are full reviews."""
+    return (options or {}).get("mode") == "quick"
+
 # Study designs the user can ask for (the scope form's step 3). Aliases map older or differently spelled values onto
 # these; anything else becomes one "Other: ..." entry (data for the prompts, never an instruction).
 STUDY_TYPES: tuple[str, ...] = ("RCT", "Cohort", "Case-control", "Cross-sectional", "Non-randomized trial",
@@ -83,6 +97,18 @@ class ReviewOptions(BaseModel):
     candidate_limit: int = Field(120, ge=20, le=120)
     year_from: int | None = Field(None, ge=1950, le=2100)
     study_types: list[str] = Field(default_factory=list, max_length=10)
+    # Plan 27: "quick" = a short answer from QUICK_MAX_PAPERS of QUICK_CANDIDATE_LIMIT candidates; part of the cache key
+    mode: ReviewMode = "full"
+
+    @model_validator(mode="before")
+    @classmethod
+    def quick_sizes(cls, data: Any) -> Any:
+        """A quick answer always screens QUICK_CANDIDATE_LIMIT candidates and reads QUICK_MAX_PAPERS as a graded
+        systematic review: the review type and both sizes a caller sends are replaced, never rejected."""
+        if isinstance(data, dict) and data.get("mode") == "quick":
+            return {**data, "review_type": QUICK_REVIEW_TYPE, "max_papers": QUICK_MAX_PAPERS,
+                    "candidate_limit": QUICK_CANDIDATE_LIMIT}
+        return data
 
     @classmethod
     def bound(cls, name: str, which: str = "le") -> int:
@@ -107,6 +133,8 @@ class ReviewOptions(BaseModel):
         data = dict(raw or {})
         if data.get("review_type") not in REVIEW_TYPES:
             data["review_type"] = "slr"  # missing/unknown (older state) never crashes a resumed review
+        if data.get("mode") not in REVIEW_MODES:
+            data["mode"] = "full"  # state from before Plan 27
         bounds = {name: (f.metadata) for name, f in cls.model_fields.items()}
         for name in ("max_papers", "candidate_limit"):
             if isinstance(data.get(name), int):

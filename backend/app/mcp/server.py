@@ -15,7 +15,12 @@ from app.api.auth import identity_from
 from app.api.ratelimit import ip_from
 from app.config import Settings
 from app.runtime import AppDeps
-from app.schemas.review import CreateReviewRequest, ReviewOptions
+from app.schemas.review import (
+    QUICK_CANDIDATE_LIMIT,
+    QUICK_MAX_PAPERS,
+    CreateReviewRequest,
+    ReviewOptions,
+)
 from app.services.report import render_markdown
 from app.services.review_service import Identity, RateLimited, Refused, ServiceError, Unavailable
 from app.services.safety import refusal_code_of
@@ -23,6 +28,7 @@ from app.services.safety import refusal_code_of
 _MIN_PAPERS, _MAX_PAPERS = ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le")
 _DEFAULT_PAPERS = ReviewOptions.model_fields["max_papers"].default
 _POOL = ReviewOptions.model_fields["candidate_limit"].default
+_QUICK_PAPERS, _QUICK_POOL = QUICK_MAX_PAPERS, QUICK_CANDIDATE_LIMIT
 
 INSTRUCTIONS = f"""Medical literature review agent (abstracts only). It turns a topic or question into a structured
 question (PICO, or PCC for scoping reviews), searches PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv,
@@ -52,6 +58,9 @@ are clamped into it) and compares their findings.
 - "scoping": maps what research exists (types, years) with a PCC question; no quality or effect judgement.
 - "meta_analysis": a systematic review plus DerSimonian-Laird random-effects pools of the verified effect
   estimates (result.meta_analysis); pooled numbers are computed by the system, not reported by any study.
+`mode` "quick" (Plan 27) asks for a quick answer instead: about {_QUICK_POOL} candidates, the {_QUICK_PAPERS} most relevant
+read, and a 2-4 sentence answer with numbered references (result.mode "quick"); review_type and max_papers are then
+set by the service. "full" (default) is the review described above.
 `study_types` (optional) limits the designs: RCT, Cohort, Case-control, Cross-sectional, Non-randomized trial,
 Qualitative, Mixed methods (qualitative/mixed are summarised as themes, never with numbers), Systematic
 review, Meta-analysis, or one "Other: <text>" (60 characters). `year_from` keeps studies from that year on.
@@ -138,14 +147,14 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
     async def start_review(topic: str, ctx: Context, language: Literal["th", "en"] = "th",
                            max_papers: int = _DEFAULT_PAPERS,
                            review_type: Literal["narrative", "slr", "scoping", "meta_analysis"] = "slr",
-                           study_types: list[str] | None = None, year_from: int | None = None
-                           ) -> dict[str, Any]:
+                           study_types: list[str] | None = None, year_from: int | None = None,
+                           mode: Literal["full", "quick"] = "full") -> dict[str, Any]:
         try:
             req = CreateReviewRequest(topic=topic, language=language,
                                       options=ReviewOptions.clamped({"max_papers": max_papers,
                                                                              "review_type": review_type,
                                                                              "study_types": study_types or [],
-                                                                             "year_from": year_from}))
+                                                                             "year_from": year_from, "mode": mode}))
             created = await get_deps().service.create(req, identity=await identity(ctx), human_check=False)
         except Refused as exc:  # Plan 26: an emergency gets the hotlines, not a review
             return {"review_id": None, "status": "refused", "message": exc.detail, **exc.body()}
