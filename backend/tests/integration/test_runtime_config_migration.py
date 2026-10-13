@@ -43,7 +43,11 @@ def test_runtime_tables_migration_constraints_and_round_trip(monkeypatch):
         with pytest.raises(IntegrityError), engine.begin() as conn:
             conn.execute(text(INSERT_RUN), {"r": "b"})  # a second active run
         command.downgrade(cfg, BEFORE_RUNTIME)  # pinned, so a later migration cannot change what this undoes
-        assert not {"config_versions", "harness_runs"} & set(inspect(engine).get_table_names())
+        tables = set(inspect(engine).get_table_names())
+        assert not {"config_versions", "harness_runs"} & tables
+        assert "llm_config_versions" in tables  # 23b's table: the downgrade stopped at BEFORE_RUNTIME
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == BEFORE_RUNTIME
         command.upgrade(cfg, "head")
     finally:
         get_settings.cache_clear()

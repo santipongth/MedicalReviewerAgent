@@ -47,6 +47,24 @@ def config_error_text(exc: BaseException) -> str:
     return str(exc) or type(exc).__name__
 
 
+def config_error_summary(exc: BaseException) -> str:
+    """One line for a stored configuration that no longer loads (the state route's `error`): a pydantic error is
+    rendered from its errors without the input values (field path and message only), and only the first line is kept,
+    so no YAML snippet or stored value is echoed back."""
+    text = config_error_text(exc)
+    cause = exc.__cause__
+    if isinstance(cause, ValidationError):
+        detail = str(cause)
+        prefix = text[:-len(detail)] if detail and text.endswith(detail) else ""
+        errors = cause.errors(include_input=False, include_url=False, include_context=False)
+        first = errors[0] if errors else {"loc": (), "msg": "invalid"}
+        where = ".".join(str(part) for part in first["loc"]) or "config"
+        more = f" (+{len(errors) - 1} more)" if len(errors) > 1 else ""
+        text = f"{prefix}{where}: {first['msg']}{more}"
+    lines = text.splitlines()
+    return (lines[0] if lines else type(exc).__name__)[:300]
+
+
 # A provider's key is read from the server's settings or environment by name, so a provider may only name its own
 # variable: a draft cannot make the server send DATABASE_URL, or one provider's key to another's host. OpenRouter and
 # Anthropic keys are only ever sent to those providers' own hosts; a local model server (openai_compatible) may be

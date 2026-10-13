@@ -18,6 +18,7 @@ from app.services.llm import _api_key
 from app.services.llm_config import (
     CONFIG_ERRORS,
     LLMConfigError,
+    config_error_summary,
     config_error_text,
     has_bad_text,
     parse_llm_config,
@@ -112,7 +113,8 @@ def _unreadable(settings, row, exc: BaseException, loaded: list) -> dict:
     preset = raw.get("active_preset")
     return {"source": "db" if row is not None else "file", "version": row.id if row is not None else None,
             "config": raw, "active_preset": preset if isinstance(preset, str) else "",
-            "env_preset": settings.llm_preset, "keys_present": {}, "loaded": loaded, "error": config_error_text(exc)}
+            "env_preset": settings.llm_preset, "keys_present": {}, "loaded": loaded,
+            "error": config_error_summary(exc)}
 
 
 @router.get("/admin/llm-config")

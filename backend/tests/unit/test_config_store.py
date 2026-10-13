@@ -46,6 +46,14 @@ async def save(session_factory, kind, n, base, **kw):
         return await save_version(s, OWNER, kind, {"n": n}, settings=SETTINGS, base_version=base, **kw)
 
 
+async def test_an_unknown_source_is_refused_before_anything_is_written(session_factory):
+    with pytest.raises(ValueError, match="unknown source"):
+        await save(session_factory, DEMO, 1, None, source="import")
+    async with session_factory() as s:
+        assert await newest(s, DEMO) is None
+        assert (await s.execute(select(AdminAudit))).scalars().all() == []
+
+
 async def test_versions_count_per_kind_and_a_stale_base_is_a_conflict(session_factory):
     a1 = await save(session_factory, DEMO, 1, None)
     b1 = await save(session_factory, OTHER, 5, None)

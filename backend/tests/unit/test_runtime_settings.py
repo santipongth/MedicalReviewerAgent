@@ -275,7 +275,7 @@ async def test_a_hung_read_is_bounded_and_keeps_the_last_values(session_factory,
     stall them: it counts as a failed read (last values kept, the TTL advances, nothing raised)."""
     from app.services import runtime_config
 
-    monkeypatch.setattr(runtime_config, "RUNTIME_READ_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(runtime_config, "RUNTIME_READ_TIMEOUT_SECONDS", 0.25)  # room for a slow but live read
     clock = Clock()
     hang = {"on": False, "calls": 0}
 

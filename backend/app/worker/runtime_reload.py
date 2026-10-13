@@ -46,6 +46,14 @@ async def init_runtime(ctx: dict) -> None:
                glossary_version=runtime.glossary.label, runtime_error=None)
 
 
+class _PartialRead(Exception):
+    """A poll that could read one kind's version but not the other's: carries what it read and the failure."""
+
+    def __init__(self, settings: str | None, glossary: str | None, cause: Exception) -> None:
+        super().__init__(str(cause))
+        self.wanted, self.cause = (settings, glossary), cause
+
+
 def _label(version: int | None, empty: str) -> str:
     return empty if version is None else str(version)
 
@@ -54,9 +62,19 @@ async def _wanted(ctx: dict, *, poll: bool) -> tuple[str | None, str | None]:
     """The (settings, glossary) versions this worker should run; None for a kind with no news."""
     redis = ctx["events_redis"]
     if poll:  # the DB is the truth; the mirrors are repaired on the way
-        settings = await reconcile_mirror(redis, ctx["session_factory"], SETTINGS_KIND)
-        glossary = await reconcile_mirror(redis, ctx["session_factory"], GLOSSARY_KIND)
-        return _label(settings, "env"), _label(glossary, "file")
+        # Each kind in its own try, so one that cannot be read (a corrupt row, a failed query) never blocks the other
+        # kind's repair. A kind that failed is "no news"; the first failure is raised after both were tried.
+        wanted: list[str | None] = []
+        failure: Exception | None = None
+        for kind, empty in ((SETTINGS_KIND, "env"), (GLOSSARY_KIND, "file")):
+            try:
+                wanted.append(_label(await reconcile_mirror(redis, ctx["session_factory"], kind), empty))
+            except Exception as exc:  # noqa: BLE001
+                failure = failure or exc
+                wanted.append(None)
+        if failure is not None:
+            raise _PartialRead(wanted[0], wanted[1], failure)
+        return wanted[0], wanted[1]
     raw_settings, raw_glossary = await redis.mget(SETTINGS_KIND.redis_key, GLOSSARY_KIND.redis_key)
     settings, glossary = mirror_version(raw_settings), mirror_version(raw_glossary)
     return (None if settings is None else str(settings)), (None if glossary is None else str(glossary))
@@ -84,8 +102,12 @@ def _rebuild(ctx: dict, runtime: Runtime, build_graph_fn):
 async def refresh_runtime(ctx: dict, *, build_graph_fn=None, poll: bool = False) -> bool:
     """Rebuild the deps when a settings or glossary version moved. True when this call switched."""
     build_graph_fn = build_graph_fn or build_graph
+    read_error: str | None = None
     try:
         wanted = await _wanted(ctx, poll=poll)
+    except _PartialRead as partial:  # the other kind was still reconciled; the failure is reported below
+        log.warning("runtime_poll_reconcile_failed", error=str(partial.cause))
+        wanted, read_error = partial.wanted, f"could not read the saved versions: {partial.cause}"[:300]
     except Exception as exc:  # noqa: BLE001 - keep the current state while Redis or the DB is unreachable
         if poll:  # a job start only trusts Redis; the poll is the check that says "I could not tell"
             log.warning("runtime_poll_reconcile_failed", error=str(exc))
@@ -94,8 +116,8 @@ async def refresh_runtime(ctx: dict, *, build_graph_fn=None, poll: bool = False)
     loaded = (ctx.get("settings_version"), ctx.get("glossary_version"))
     moved = any(w is not None and w != have for w, have in zip(wanted, loaded, strict=True))
     if not moved:
-        if poll:
-            ctx["runtime_error"] = None  # this worker already runs what the DB says: an old error is stale
+        if poll:  # on the DB's versions: an old error is stale, unless a kind could not be read just now
+            ctx["runtime_error"] = read_error
         return False
     async with ctx["llm_lock"]:
         try:
@@ -111,7 +133,7 @@ async def refresh_runtime(ctx: dict, *, build_graph_fn=None, poll: bool = False)
             return False
         ctx.update(settings=runtime.settings, glossary=runtime.glossary, graph_deps=deps, graph=graph, llm_sem=sem,
                    llm_sem_size=size, settings_version=runtime.settings_version,
-                   glossary_version=runtime.glossary.label, runtime_error=None)
+                   glossary_version=runtime.glossary.label, runtime_error=read_error)
         await report_state(ctx)
         log.info("runtime_reloaded", settings=runtime.settings_version, glossary=runtime.glossary.label)
         return True

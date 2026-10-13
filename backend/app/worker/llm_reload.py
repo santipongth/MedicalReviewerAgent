@@ -1,7 +1,8 @@
 """Workers pick up a saved LLM configuration without a restart (Plan 23b). Each worker compares the Redis key
 LLM_VERSION_KEY with the version it loaded when a review job starts, and the DB's newest version every 30 seconds; the
 poll also repairs the key (a lost publish, a key above the DB's newest) and treats the DB as the truth. On a change it
-rebuilds its LLMs (same per-process semaphore, the catalog the API sees) and graph (same checkpointer). Runners already
+rebuilds its LLMs (on the worker's current semaphore, ctx["llm_sem"], which a Plan 23c llm_concurrency change replaces
+for reviews that start afterwards; the catalog the API sees) and graph (same checkpointer). Runners already
 holding the old graph keep it, so a review never switches models mid-way. A configuration that fails to build keeps the
 old models and is reported. Each worker also re-reports its state on every poll (a heartbeat), so `loaded_at` in
 LOADED_KEY means "last seen"."""
@@ -117,7 +118,10 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph, poll: bool = Fa
 
 async def report_state(ctx: dict) -> None:
     """Report this worker's current state to LOADED_KEY: the version it runs, its preset and the last load error
-    (ctx["llm_error"], cleared by the next successful load). `loaded_at` therefore means "last seen", not "loaded at"."""
+    (ctx["llm_error"], cleared by the next successful load), plus (Plan 23c, through `extra`) the settings version
+    ("env" when none), the glossary version ("file" when none) and runtime_error (the last failed settings/glossary
+    reload, cleared by the next one that succeeds or by a poll that finds the worker on the DB's versions).
+    `loaded_at` therefore means "last seen", not "loaded at"."""
     preset = ctx.get("llm_preset") or getattr(getattr(ctx.get("graph_deps"), "llms", None), "preset", "") or ""
     extra = {"settings": ctx.get("settings_version") or "env", "glossary": ctx.get("glossary_version") or "file",
              "runtime_error": ctx.get("runtime_error")}

@@ -383,3 +383,14 @@ async def test_a_concurrency_change_rebuilds_the_models_of_the_version_in_use(tm
     assert await refresh_runtime(ctx, build_graph_fn=build_graph_fn) is True
     llms = ctx["graph_deps"].llms
     assert llms.preset == "better" and llms.config_version == f"db:{row.id}" and llms.synthesizer.sem is ctx["llm_sem"]
+
+
+async def test_a_corrupt_settings_row_never_blocks_the_glossary_mirror_repair(tmp_path, session_factory, redis):
+    ctx = await make_ctx(tmp_path, session_factory, redis)
+    await insert_raw(session_factory, SETTINGS_KIND, 1, ["not", "a", "mapping"])  # its mirror cannot be written
+    await save(session_factory, GLOSSARY_KIND, {"terms": [{"en": "placebo", "th": "ยาหลอก"}]})  # publish lost
+    assert await redis.get(GLOSSARY_KIND.redis_key) is None
+    assert await refresh_runtime(ctx, build_graph_fn=build_graph_fn, poll=True) is False
+    assert json.loads(await redis.get(GLOSSARY_KIND.redis_key))["version"] == 1  # repaired all the same
+    assert ctx["runtime_error"]  # and the failure is still reported
+    assert (ctx["settings_version"], ctx["glossary_version"]) == ("env", "file")  # load_runtime cannot read both

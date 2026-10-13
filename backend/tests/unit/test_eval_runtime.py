@@ -156,6 +156,27 @@ async def test_a_strict_review_marks_itself_until_its_record_is_written(root, mo
     assert markers(pv) == [] and prior_spend(pv, "r") == pytest.approx(0.30)
 
 
+async def test_a_retried_review_keeps_the_old_marker_and_removes_only_its_own(root, monkeypatch):
+    pv = S.prompt_version
+    m = manifest(2)
+    write_fixtures(m)
+    models.write_json_atomic(models.run_path(pv, "r", "CD0", 1), record("CD0", 0.1, pv=pv))
+    old = models.run_path(pv, "r", "CD1", 1).parent / "CD1.0a1b2c3d.inflight"  # an earlier attempt was killed
+    old.write_text(json.dumps({"cap": 0.28}), encoding="utf-8")
+    inner, during = fake_replay(0.10), []
+
+    async def replay(deps, fixture, **kw):
+        during.append(sorted(p.name for p in markers(pv)))
+        return await inner(deps, fixture, **kw)
+
+    monkeypatch.setattr(batch, "replay", replay)
+    s = await run_all(GraphDeps(settings=S), m, run_id="r", repeats=1, max_usd=5, ids=None, git_sha="s",
+                      strict_cap=True, spent_before=prior_spend(pv, "r"))
+    assert s.done == 1 and len(during) == 1 and len(during[0]) == 2 and old.name in during[0]  # its own new one
+    assert markers(pv) == [old]  # the retry removed only its own marker: the killed attempt's spend stays counted
+    assert prior_spend(pv, "r") == pytest.approx(0.1 + 0.1 + 0.28)
+
+
 async def test_a_non_strict_run_writes_no_markers(root, monkeypatch):
     pv, seen = S.prompt_version, []
     m = manifest(2)
@@ -251,6 +272,15 @@ def test_prior_spend_load_rows_and_the_report(root):
     broken.parent.mkdir(parents=True, exist_ok=True)
     broken.write_text("not json", encoding="utf-8")
     assert math.isinf(prior_spend("pv", "b"))  # an unreadable record is unknown spend, never zero (A5)
+
+
+@pytest.mark.parametrize(("glossaries", "mixed"), [(["", "3"], ["3", "file"]), (["", "file"], None)])
+def test_a_legacy_record_without_a_glossary_counts_as_the_file_glossary(root, glossaries, mixed):
+    m = manifest(2)
+    for i, g in enumerate(glossaries):
+        models.write_json_atomic(models.run_path("pv", "r", f"CD{i}", 1), record(f"CD{i}", 0.1, glossary=g))
+    _, meta = load_rows("pv", "r", m)
+    assert meta["mixed"].get("glossary") == mixed and meta["glossary"] == "file"
 
 
 async def test_eval_runtime_uses_the_db_unless_a_config_file_is_given(session_factory):

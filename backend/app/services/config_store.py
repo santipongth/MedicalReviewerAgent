@@ -79,6 +79,8 @@ async def save_version(session: AsyncSession, actor: AdminPrincipal, kind: DocKi
                        base_version: int | None, note: str | None = None, source: str = "edit",
                        restored_from: int | None = None, ip_hash: str | None = None) -> ConfigVersion:
     """Validate, refuse a stale base, append the next version of the kind and its audit row."""
+    if source not in _VERB:  # a caller's bug: refused before anything is written (the audit verb needs it)
+        raise ValueError(f"unknown source {source!r}: use one of {', '.join(_VERB)}")
     document, _ = kind.validate(raw, settings)
     _storable(document)
     if session.get_bind().dialect.name == "postgresql":  # READ COMMITTED would let two saves pass the same check

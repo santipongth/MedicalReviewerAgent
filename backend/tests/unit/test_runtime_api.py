@@ -59,7 +59,11 @@ async def test_the_cache_key_is_unchanged_until_a_glossary_is_saved(app, client)
                                                  f"{deps.service.settings.prompt_version}+llmfile")
     assert (await client.post("/api/v1/reviews", json=TOPIC)).json()["review_id"] == first["review_id"]
     await apply(app, GLOSSARY_KIND, {"terms": [{"en": "placebo", "th": "ยาหลอก"}]})
-    assert (await client.post("/api/v1/reviews", json=TOPIC)).json()["review_id"] != first["review_id"]
+    second = (await client.post("/api/v1/reviews", json=TOPIC)).json()
+    assert second["review_id"] != first["review_id"]
+    review = await deps.service.get(uuid.UUID(second["review_id"]))
+    assert review.cache_key == compute_cache_key(review.topic, review.language, review.options,
+                                                 f"{deps.service.settings.prompt_version}+llmfile+g1")
 
 
 async def test_event_streams_use_the_live_limit(app, client):

@@ -321,6 +321,27 @@ def test_a_report_is_read_through_one_bounded_read(root, monkeypatch):
             read_report("exact.md")
 
 
+def test_a_report_that_is_not_a_regular_file_is_refused_before_it_is_opened(root, monkeypatch):
+    (root / "reports").mkdir()
+    (root / "reports" / "folder.md").mkdir()
+    (root / "reports" / "ok.md").write_text("y", encoding="utf-8")
+    opened = []
+    real_open = os.open
+    monkeypatch.setattr(os, "open", lambda *a, **k: opened.append(a[0]) or real_open(*a, **k))
+    with pytest.raises(FileNotFoundError):
+        read_report("folder.md")
+    assert opened == []  # refused by the is_file() check: a FIFO would never reach the blocking open
+    assert read_report("ok.md") == "y" and len(opened) == 1
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no FIFOs on this platform")
+def test_a_fifo_named_like_a_report_never_blocks(root):
+    (root / "reports").mkdir()
+    os.mkfifo(root / "reports" / "pipe.md")
+    with pytest.raises(FileNotFoundError):
+        read_report("pipe.md")  # without the checks this open would wait for a writer forever
+
+
 def test_a_name_that_resolves_outside_reports_is_refused(root, monkeypatch):
     (root / "reports").mkdir()
     (root / "reports" / "esc.md").write_text("x", encoding="utf-8")

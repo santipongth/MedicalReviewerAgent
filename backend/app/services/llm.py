@@ -348,7 +348,9 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
 def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None, *,
                resolved: ResolvedLLMConfig | None = None, sem: asyncio.Semaphore | None = None,
                config_version: str = "file") -> LLMs:
-    """`resolved` defaults to config/llm.yaml; `sem` lets a reload keep the process's one LLM semaphore (Plan 23b)."""
+    """`resolved` defaults to config/llm.yaml. `sem` is the semaphore every role (and escalation) shares: a reload
+    passes the worker's current one (Plan 23b), and an llm_concurrency change passes a new one for the reviews that
+    start afterwards (Plan 23c); without it a new semaphore of settings.llm_concurrency is made."""
     config = resolved or load_llm_config(settings.llm_config_path, settings.llm_preset)
     sem = sem or asyncio.Semaphore(max(1, settings.llm_concurrency))
     built = {role: LimitedLLM(build_role_llm(r, settings, catalog), sem) for role, r in config.roles.items()

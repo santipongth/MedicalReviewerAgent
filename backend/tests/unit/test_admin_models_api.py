@@ -692,6 +692,16 @@ async def test_state_shows_a_saved_version_that_no_longer_parses_and_restore_sti
     assert (await client.get(f"{BASE}/llm-config", headers=h)).json()["error"] is None
 
 
+async def test_the_state_error_is_one_line_and_never_echoes_stored_values(client, session_factory):
+    h = await admin_headers(client, session_factory)
+    stale = {**MINIMAL, "harness": {"screen_borderline": ["s3cr3t-value", 20], "max_repairs": "other-s3cr3t"}}
+    async with session_factory() as s, s.begin():
+        s.add(LlmConfigVersion(created_by="owner", source="edit", config=stale, changes={}))
+    error = (await client.get(f"{BASE}/llm-config", headers=h)).json()["error"]
+    assert error and "\n" not in error and "s3cr3t" not in error
+    assert "harness." in error  # the field path is still named
+
+
 async def test_state_with_a_broken_llm_yaml_and_no_version_answers_with_the_error(client, app, session_factory,
                                                                                  tmp_path, monkeypatch):
     h = await admin_headers(client, session_factory)

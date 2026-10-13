@@ -20,7 +20,7 @@ TERM_NOTE_MAX = 300
 RENDERED_MAX = 4000
 FIELDS = ("en", "th", "abbr", "note")
 _THAI = re.compile(r"[ก-๛]")
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f  ]")  # C0, DEL, C1 and the Unicode line/paragraph separators
 
 
 def _text(value: Any, path: str, *, required: bool, max_len: int, errors: list[dict[str, Any]]) -> str | None:

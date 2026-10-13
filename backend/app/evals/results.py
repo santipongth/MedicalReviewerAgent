@@ -29,7 +29,7 @@ def load_rows(prompt_version: str, run_id: str, manifest: Manifest) -> tuple[lis
     if recs:
         meta = {"git_sha": recs[0].git_sha, "preset": recs[0].preset, "models": recs[0].models,
                 "pool_version": recs[0].pool_version, "llm_config": recs[0].llm_config,
-                "glossary": recs[0].glossary}
+                "glossary": recs[0].glossary or "file"}
         # expected = every selected review x every repeat number seen in the folder (at least r1 and r2)
         repeats = {1, 2} | {r.repeat for r in recs}
         have = {(r.id, r.repeat) for r in recs}
@@ -40,9 +40,11 @@ def load_rows(prompt_version: str, run_id: str, manifest: Manifest) -> tuple[lis
                   "git_sha": [r.git_sha for r in recs], "preset": [r.preset for r in recs],
                   "prompt_version": [r.prompt_version for r in recs],
                   "pool_version": [r.pool_version for r in recs],
-                  "llm_config": [r.llm_config for r in recs], "glossary": [r.glossary for r in recs]}
+                  "llm_config": [r.llm_config for r in recs],
+                  # a record from before Plan 23c carries "" and ran the built-in glossary: that is "file"
+                  "glossary": [r.glossary or "file" for r in recs]}
         # records of rejected/errored fixtures carry no models or pool version, and records from before a field
-        # existed carry "": neither ever makes a batch "mixed"
+        # existed carry "": neither ever makes a batch "mixed" (except the glossary, whose "" means "file")
         distinct = {k: sorted(set(v) - {"{}", ""}) for k, v in fields.items()}
         meta["mixed"] = {k: v for k, v in distinct.items() if len(v) > 1}
     return [review_metrics(r, strata.get(r.id, "?")) for r in recs], meta
@@ -165,12 +167,15 @@ def read_report(name: str) -> str:
         raise FileNotFoundError(name)
     path = folder / name
     try:
-        if path.is_symlink() or path.resolve().parent != folder:
+        # is_file() first: opening a FIFO named *.md for reading would block the thread until a writer appears
+        if path.is_symlink() or path.resolve().parent != folder or not path.is_file():
             raise FileNotFoundError(name)
     except (OSError, RuntimeError) as exc:  # a path that cannot be resolved is not a report
         raise FileNotFoundError(name) from exc
     try:
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+        # O_NONBLOCK: one swapped for a FIFO after the check still cannot block the open (fstat then refuses it)
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+                     | getattr(os, "O_NONBLOCK", 0))
     except OSError as exc:  # missing, a symlink (ELOOP), a directory on Windows, no permission
         raise FileNotFoundError(name) from exc
     try:
