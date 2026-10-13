@@ -7,7 +7,7 @@ from typing import Any
 from app.harness.design import POOLED_CATEGORIES
 from app.harness.grade import analyse_meta
 from app.harness.meta import with_display
-from app.harness.support import claim_record, finding_claims
+from app.harness.support import build_pairs, citation, claim_record, finding_claims
 from app.schemas.review import SLR_LIKE, ReviewOptions
 
 # (design_category, study_design, year, direction, risk_of_bias, sample_size, effect_value, ci)
@@ -238,19 +238,35 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
     }
 
 
-_STUB_LABEL = {"P2": "partial", "P4": "unsupported"}  # every other cited stub paper is "supported"
+# Fixed verdict by (claim, ref); a ref not listed is "supported". Together they show every state: supported with the
+# badge (k0), partial, unsupported, unjudged (None), and supported without the badge (k1: its numbers are not checked).
+_STUB_VERDICT: dict[tuple[str, str], str | None] = {
+    ("k0", "P2"): "partial", ("k0", "P4"): "unsupported", ("k1", "P5"): None}
+_STUB_UNCHECKED = {"k1"}  # claims whose numbers are not checked, so a supported citation gets no badge
+
+
+def _stub_abstract(paper: dict[str, Any]) -> str:
+    """A fixed 3-sentence abstract of the simulated paper. Used only to pick the evidence; never stored."""
+    return (f"This simulated study {paper['ref'][1:]} examined {paper['title'].split(': ', 1)[-1]} in an illustrative "
+            f"sample. {paper['card']['key_findings'][0]} The authors note that these data are illustrative only.")
 
 
 def _stub_support(synthesis: dict[str, Any], papers: list[dict[str, Any]]) -> dict[str, Any]:
-    """result.support (Plan 25) in the engine's shape, for the key findings (the stub summary cites nothing). Labels
-    are fixed by ref so every state renders (supported with the badge, partial, unsupported); the evidence is the
-    simulated card's finding. No judge runs."""
-    finding = {p["ref"]: p["card"]["key_findings"][0] for p in papers}
+    """result.support (Plan 25) for the key findings (the stub summary cites nothing), built with the engine's own
+    `build_pairs` / `citation` / `claim_record` so the shape and the badge rule cannot drift. Verdicts are fixed (no
+    judge runs); the evidence is a sentence of each paper's fixed stub abstract."""
+    abstracts = {p["ref"]: _stub_abstract(p) for p in papers}
     claims = []
     for c in finding_claims(synthesis["key_findings"]):
-        cites = [{"ref": r, "label": _STUB_LABEL.get(r, "supported"), "evidence": finding.get(r), "score": None,
-                  "not_evidence": False, "verified": r not in _STUB_LABEL} for r in c.refs]
-        claims.append(claim_record(c, cites, numbers_checked=True, computed=False))
+        checked = c.id not in _STUB_UNCHECKED
+        pairs = {p.ref: p for p in build_pairs([c], abstracts, set())}
+        cites = []
+        for r in c.refs:
+            label = _STUB_VERDICT.get((c.id, r), "supported")
+            verdict = None if label is None else (label, None if label == "unsupported" else 0)
+            cites.append(citation(pairs.get(r), r, verdict, numbers_checked=checked, computed=False,
+                                  not_evidence=False))
+        claims.append(claim_record(c, cites, numbers_checked=checked, computed=False))
     return {"judge": "ok", "markers": [], "claims": claims, "display_aligned": True}
 
 
