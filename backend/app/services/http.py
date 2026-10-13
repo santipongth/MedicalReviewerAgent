@@ -8,7 +8,8 @@ from typing import Any
 import httpx
 
 RETRY_STATUSES = {429, 500, 502, 503, 504}
-DEFAULT_MIN_INTERVAL = {"www.ebi.ac.uk": 0.2}
+# ThaiJO (Plan 24): at most 5 requests a second per process to its undocumented API (politeness; no published limit).
+DEFAULT_MIN_INTERVAL = {"www.ebi.ac.uk": 0.2, "www.tci-thaijo.org": 0.2}
 
 
 class HttpClient:
@@ -51,17 +52,39 @@ class HttpClient:
 
     async def get(
         self, url: str, *, params: dict[str, Any] | None = None, headers: dict[str, str] | None = None,
-        timeout: float | None = None, retries: int | None = None,
+        timeout: float | None = None, retries: int | None = None, follow_redirects: bool | None = None,
     ) -> httpx.Response:
+        return await self._send("GET", url, params=params, headers=headers, timeout=timeout, retries=retries,
+                                follow_redirects=follow_redirects)
+
+    async def post(
+        self, url: str, *, json: Any = None, headers: dict[str, str] | None = None, timeout: float | None = None,
+        retries: int | None = None, follow_redirects: bool | None = None,
+    ) -> httpx.Response:
+        """POST with a JSON body, under the same per-host spacing and retry rules as `get`."""
+        return await self._send("POST", url, json=json, headers=headers, timeout=timeout, retries=retries,
+                                follow_redirects=follow_redirects)
+
+    async def _send(
+        self, method: str, url: str, *, params: dict[str, Any] | None = None, json: Any = None,
+        headers: dict[str, str] | None = None, timeout: float | None = None, retries: int | None = None,
+        follow_redirects: bool | None = None,
+    ) -> httpx.Response:
+        """`follow_redirects=False` refuses to leave the asked host (a 3xx comes back as the response); None keeps
+        the client's default (follow)."""
         host = httpx.URL(url).host
         retries = self.retries if retries is None else retries
         for attempt in range(retries + 1):
             await self._throttle(host)
             try:
                 kwargs: dict[str, Any] = {"params": params, "headers": headers}
+                if json is not None:
+                    kwargs["json"] = json
                 if timeout is not None:
                     kwargs["timeout"] = timeout
-                resp = await self._client.get(url, **kwargs)
+                if follow_redirects is not None:
+                    kwargs["follow_redirects"] = follow_redirects
+                resp = await self._client.request(method, url, **kwargs)
             except httpx.TransportError:
                 if attempt == retries:
                     raise

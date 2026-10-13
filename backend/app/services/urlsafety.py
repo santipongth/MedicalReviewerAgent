@@ -30,3 +30,17 @@ async def is_public_http_url(url: str, resolver: Resolver | None = None) -> bool
     except OSError:
         return False
     return bool(addresses) and all(ipaddress.ip_address(a.split("%")[0]).is_global for a in addresses)
+
+
+def is_allowed_host(url: str, domain: str) -> bool:
+    """True only for an https URL on `domain` or one of its subdomains, with no user info and the default port.
+
+    Guards outbound calls whose URL comes from a third-party response (ThaiJO's article_url, Plan 24): such a URL
+    must not make the server call any other host."""
+    try:
+        parsed = httpx.URL(url)
+    except Exception:  # noqa: BLE001 - an unparsable URL is never allowed
+        return False
+    host = (parsed.host or "").lower().rstrip(".")
+    return (parsed.scheme == "https" and not parsed.userinfo and parsed.port in (None, 443)
+            and (host == domain or host.endswith(f".{domain}")))
