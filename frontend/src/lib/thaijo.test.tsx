@@ -24,6 +24,8 @@ describe("ThaiJO references", () => {
   it("leaves partial fields out and never invents them", () => {
     const ref = (bib: Partial<PaperBib>) => vancouver({ title: "T", year: 2024, bib: bib as PaperBib });
     expect(ref({ volume: "11", issue: "2" })).toBe("T. 2024;11(2).");
+    expect(ref({ issue: "2" })).toBe("T. 2024."); // an issue without a volume is dropped
+    expect(ref({ issue: "2", pages: "45-58" })).toBe("T. 2024:45-58.");
     expect(ref({ pages: "e265234" })).toBe("T. 2024:e265234.");
     expect(vancouver({ title: "T", bib: { volume: "11", pages: "45-58" } as PaperBib })).toBe("T. 11:45-58.");
     expect(vancouver({ title: "T", year: 2024, bib: null })).toBe("T. 2024.");
@@ -31,7 +33,16 @@ describe("ThaiJO references", () => {
 
   it("links only a ThaiJO article page, never a PDF or another host", () => {
     expect(thaijoHref(URL)).toBe(URL);
-    for (const bad of [`${URL}/555`, "https://evil.example/index.php/demo/article/view/1",
+    // the backend's article_link agrees on each of these (test_article_links_refuse_hosts_and_encodings_...)
+    const upper = "https://HE01.TCI-THAIJO.ORG/index.php/demo/article/view/900001/";
+    expect(thaijoHref(upper)).toBe(upper);
+    for (const bad of [
+      "https://evil.com\\.tci-thaijo.org/index.php/demo/article/view/900001",
+      "https://evil.com%2f.tci-thaijo.org/index.php/demo/article/view/900001",
+      "https://evil_x.tci-thaijo.org/index.php/demo/article/view/900001",
+      "https://he01.tci-thaijo.org./index.php/demo/article/view/900001",
+      "https://he01.tci-thaijo.org/index.php/de%6Dmo/article/view/900001",
+      "https://he01.tci-thaijo.org:443/index.php/demo/article/view/900001",`${URL}/555`, "https://evil.example/index.php/demo/article/view/1",
       "https://tci-thaijo.org.evil.example/index.php/demo/article/view/1", "http://he01.tci-thaijo.org/index.php/demo/article/view/1",
       "javascript:alert(1)", null, undefined]) {
       expect(thaijoHref(bad)).toBeNull();

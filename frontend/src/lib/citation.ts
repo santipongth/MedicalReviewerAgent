@@ -148,7 +148,7 @@ export function citationParts(p: CitationInput): { text: string[]; ids: Citation
   const volume = clean(p.bib?.volume);
   const issue = clean(p.bib?.issue);
   const pages = clean(p.bib?.pages);
-  const where = volume + (issue ? `(${issue})` : "");
+  const where = volume + (issue && volume ? `(${issue})` : ""); // an issue without a volume is left out
   let date = clean(p.year);
   date = date && where ? `${date};${where}` : date || where;
   date = date && pages ? `${date}:${pages}` : date || pages;

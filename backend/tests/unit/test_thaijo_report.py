@@ -20,6 +20,8 @@ def test_partial_bibliographic_fields_are_left_out_never_invented():
 
     assert ref(volume="11", issue="2") == "T. 2024;11(2)."
     assert ref(pages="e265234") == "T. 2024:e265234."
+    assert ref(issue="2") == "T. 2024."  # an issue without a volume is dropped (no "2024;(2).")
+    assert ref(issue="2", pages="45-58") == "T. 2024:45-58."
     assert vancouver({"title": "T", "bib": {"volume": "11", "pages": "45-58"}}) == "T. 11:45-58."
     assert vancouver({"title": "T", "year": 2024, "bib": None}) == "T. 2024."
 
@@ -29,7 +31,8 @@ def test_other_papers_keep_their_reference():
 
 
 def test_a_page_outside_thaijo_is_never_linked():
-    for url in ["https://evil.example/index.php/demo/article/view/1", f"{URL}/555", "javascript:alert(1)"]:
+    for url in ["https://evil.example/index.php/demo/article/view/1", f"{URL}/555", "javascript:alert(1)",
+                r"https://evil.com\.tci-thaijo.org/index.php/j/article/view/276255"]:
         assert "ThaiJO" not in vancouver({**THAI, "thaijo_url": url})
 
 

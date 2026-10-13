@@ -178,9 +178,10 @@ def _citation_parts(p: dict[str, Any]) -> tuple[list[str], list[tuple[str, str, 
         text.append(title if title[-1] in "?!" else f"{title}.")
     if _clean(p.get("journal")):
         text.append(f"{_clean(p.get('journal'))}.")
-    bib = p.get("bib") if isinstance(p.get("bib"), dict) else {}
+    raw = p.get("bib")
+    bib = raw if isinstance(raw, dict) else {}
     volume, issue, pages = (_clean(bib.get(k)) for k in ("volume", "issue", "pages"))
-    where = volume + (f"({issue})" if issue else "")
+    where = volume + (f"({issue})" if issue and volume else "")  # an issue without a volume is left out
     date = _clean(p.get("year"))
     date = f"{date};{where}" if date and where else date or where
     date = f"{date}:{pages}" if date and pages else date or pages

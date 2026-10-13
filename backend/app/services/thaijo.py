@@ -14,8 +14,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
 
-import httpx
-
 from app.graph.schemas import Candidate
 from app.services.http import HttpClient
 from app.services.text import normalize_doi, strip_markup, truncate
@@ -24,7 +22,10 @@ from app.services.urlsafety import is_allowed_host, is_public_http_url
 DOMAIN = "tci-thaijo.org"
 _HEALTH = re.compile(r"health\d{2}", re.ASCII)  # health01-health05 seen 2026-10-13
 _ARTICLE_ID = re.compile(r"(health\d{2})-(\d{1,10})", re.ASCII)
-_ARTICLE_PATH = re.compile(r"/index\.php/([A-Za-z0-9_-]{1,64})/article/view/(\d{1,10})/?", re.ASCII)
+# The whole raw string, as the frontend's thaijoHref reads it: no trailing-dot host, no percent-encoding, no query
+_ARTICLE_URL = re.compile(
+    r"https://((?:[a-z0-9-]+\.)*tci-thaijo\.org)/index\.php/([A-Za-z0-9_-]{1,64})/article/view/(\d{1,10})/?",
+    re.ASCII | re.IGNORECASE)
 MIN_ABSTRACT_CHARS = 150  # as retrieval.MIN_ABSTRACT_CHARS
 MIN_LATIN_SHARE = 0.9  # an "English" abstract that is mostly Thai script is not one
 MAX_ABSTRACT_CHARS = 6000  # bounds what an untrusted source can put into a prompt (seen: 800-2,600)
@@ -50,17 +51,14 @@ def gregorian_year(value: Any) -> int | None:
 def article_link(url: Any, article_id: str | None = None) -> tuple[str, str, str] | None:
     """(host, journal path, submission id) of a ThaiJO article page, or None. Only https on *.tci-thaijo.org, with the
     article-view path and no query; when `article_id` is given its number must be the page's submission id."""
-    if not isinstance(url, str) or len(url) > 300 or not is_allowed_host(url, DOMAIN):
-        return None
-    parsed = httpx.URL(url)
-    match = _ARTICLE_PATH.fullmatch(parsed.path)
-    if not match or parsed.query or parsed.fragment:
+    match = _ARTICLE_URL.fullmatch(url) if isinstance(url, str) and len(url) <= 300 else None
+    if not match or not is_allowed_host(url, DOMAIN):
         return None
     if article_id is not None:
         id_match = _ARTICLE_ID.fullmatch(article_id)
-        if not id_match or id_match.group(2) != match.group(2):
+        if not id_match or id_match.group(2) != match.group(3):
             return None
-    return parsed.host.lower(), match.group(1), match.group(2)
+    return match.group(1).lower(), match.group(2), match.group(3)
 
 
 def _text(value: Any, limit: int = 600) -> str:

@@ -65,6 +65,18 @@ def test_article_links_are_checked_against_the_host_the_path_and_the_id():
         assert article_link(bad) is None, bad
 
 
+def test_article_links_refuse_hosts_and_encodings_the_frontend_refuses_too():
+    path = "/index.php/demo/article/view/900001"
+    for bad in [r"https://evil.com\.tci-thaijo.org" + path, "https://evil.com%2f.tci-thaijo.org" + path,
+                'https://evil.com".tci-thaijo.org' + path, "https://evil_x.tci-thaijo.org" + path,
+                "https://evil.com;.tci-thaijo.org" + path, "https://evil.com,.tci-thaijo.org" + path,
+                "https://he01.tci-thaijo.org." + path,  # trailing-dot host
+                "https://he01.tci-thaijo.org/index.php/de%6Dmo/article/view/900001",  # percent-encoded path
+                "https://he01.tci-thaijo.org:443" + path]:
+        assert article_link(bad) is None, bad
+    assert article_link("https://HE01.TCI-THAIJO.ORG" + path + "/") == ("he01.tci-thaijo.org", "demo", "900001")
+
+
 def test_parse_hit_keeps_health_hits_with_a_valid_page_only():
     parsed = [parse_hit(h) for h in HITS]
     assert [p.id if p else None for p in parsed] == ["health01-900001", "health02-900002", None, None,

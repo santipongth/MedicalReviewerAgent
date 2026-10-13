@@ -52,6 +52,13 @@ def test_allowed_host_normalises_the_domain_and_one_trailing_dot():
     assert is_allowed_host("https://www.tci-thaijo.org./a", "tci-thaijo.org")
 
 
+def test_allowed_host_refuses_hosts_with_characters_a_browser_reads_differently():
+    for bad in [r"https://evil.com\.tci-thaijo.org/a", "https://evil.com%2f.tci-thaijo.org/a",
+                'https://evil.com".tci-thaijo.org/a', "https://evil_x.tci-thaijo.org/a",
+                "https://evil.com;.tci-thaijo.org/a", "https://evil.com,.tci-thaijo.org/a"]:
+        assert not is_allowed_host(bad, "tci-thaijo.org"), bad
+
+
 @respx.mock
 async def test_get_follows_redirects_by_default():
     respx.get("https://a.example.org/x").mock(

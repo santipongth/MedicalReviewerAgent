@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import re
 import socket
 from collections.abc import Awaitable, Callable
 
 import httpx
+
+_HOST = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*", re.ASCII)
 
 Resolver = Callable[[str], Awaitable[list[str]]]
 
@@ -45,7 +48,7 @@ def is_allowed_host(url: str, domain: str) -> bool:
     except Exception:  # noqa: BLE001 - an unparsable URL is never allowed
         return False
     domain = domain.lower().removesuffix(".")
-    if not host or "" in host.split("."):
+    if not host or not _HOST.fullmatch(host):
         return False
     return (scheme == "https" and not userinfo and port in (None, 443)
             and (host == domain or host.endswith(f".{domain}")))
