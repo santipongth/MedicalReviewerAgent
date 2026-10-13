@@ -9,9 +9,10 @@ import { ConfirmButton } from "./confirm-button";
 import type { WriteTracker } from "./models-save-bar";
 import { BUTTON_GHOST } from "./ui";
 
-function changeLines(changes: Record<string, unknown>): string[] {
+/** One [key, change] pair per changed key. For settings the key is a setting name (shown in the code face). */
+function changeLines(changes: Record<string, unknown>): [string, string][] {
   return Object.entries(changes).map(([k, v]) =>
-    `${k}: ${Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : JSON.stringify(v)}`);
+    [k, Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : JSON.stringify(v)]);
 }
 
 interface Notice { text: string; workersNotified: boolean }
@@ -123,7 +124,15 @@ export function VersionHistory({ kind, base, resetLabel, resetHint, emptyText, o
                   {v.note && <p className="mb-1 break-words">{v.note}</p>}
                   {lines.length === 0
                     ? <p className="text-muted">ไม่มีการเปลี่ยนแปลง</p>
-                    : <ul>{lines.map((line) => <li key={line} className="break-words">{line}</li>)}</ul>}
+                    : (
+                      <ul>
+                        {lines.map(([key, change]) => (
+                          <li key={key} className="break-words">
+                            {kind === "settings" ? <span className="font-code">{key}</span> : key}{`: ${change}`}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                 </div>
                 <div className="flex flex-wrap items-start gap-2">
                   {v.version !== base && (

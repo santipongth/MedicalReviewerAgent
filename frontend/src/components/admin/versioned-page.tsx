@@ -134,13 +134,19 @@ export function useVersionedPage<S extends VersionedState, D>(spec: VersionedSpe
 }
 
 /** The "server moved on" note and the answer to its buttons (ModelsView's, Plan 23b). `note` appears only after
- * "discard" or "build on the latest", whose buttons are then gone, so focus moves to it. */
+ * "discard" or "build on the latest", whose buttons are then gone, so focus moves to it. Only a note that appears
+ * while this is mounted takes focus: one already shown when it mounts (the admin came back to the tab) does not. */
 export function DraftStatus({ moved, base, current, note, onDiscard, onRebase, versionName }: {
   moved: boolean; base: number | null; current: number | null; note: string | null;
   onDiscard: () => void; onRebase: () => void; versionName: (version: number | null) => string;
 }) {
   const noteRef = useRef<HTMLParagraphElement>(null);
-  useEffect(() => { if (note) noteRef.current?.focus(); }, [note]);
+  /** The note last seen, starting with the one shown at mount. */
+  const seen = useRef(note);
+  useEffect(() => {
+    if (note && note !== seen.current) noteRef.current?.focus();
+    seen.current = note;
+  }, [note]);
   return (
     <>
       {moved && (

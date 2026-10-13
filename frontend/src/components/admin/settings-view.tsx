@@ -159,6 +159,9 @@ export function SettingsView() {
       if (e instanceof AdminApiError && e.status === 409) {
         setActionError(STALE_TEXT);
         page.reload(); // the header moves on; the draft keeps its base and the page offers both ways forward
+      } else if (e instanceof AdminApiError && e.status === 422 && e.errors && e.errors.length > 0) {
+        // The save's own check refused the draft: every error goes beside its row, as after "ตรวจ"
+        setChecked({ doc: sent, report: { ok: false, errors: e.errors, warnings: [], values: null, worst_case_review_usd: null } });
       } else {
         setActionError(fail(e));
       }
@@ -223,17 +226,27 @@ export function SettingsView() {
           })}
           <DraftStatus moved={page.moved} base={draft.base} current={current.version} note={page.draftNote}
             onDiscard={page.discard} onRebase={page.rebase} versionName={settingsName} />
-          {report && (
-            <div className={`mt-6 rounded-sm px-4 py-3 ${report.ok ? "bg-info-bg" : "bg-err-bg"}`}>
-              <p className="font-display font-semibold">{report.ok ? "ผ่านการตรวจ" : "ยังบันทึกไม่ได้"}</p>
-              <ul className="mt-1 list-disc pl-5 text-sm">
-                {otherErrors.map((e) => <li key={e.message}>{e.message}</li>)}
-                {report.warnings.map((w) => <li key={w}>{w}</li>)}
-              </ul>
-              {report.ok && report.values && report.worst_case_review_usd !== null && (
-                <p className="mt-1 text-sm">
-                  {`งบต่อรีวิวกรณีมากที่สุด ${formatUsd(report.worst_case_review_usd)} · งบต่อวัน ${formatUsd(Number(report.values.max_usd_per_day ?? 0))}`}
-                </p>
+          {report && !report.ok && (
+            <div role="alert" className="mt-6 rounded-sm bg-err-bg px-4 py-3">
+              <p className="font-display font-semibold">ยังบันทึกไม่ได้</p>
+              {fieldErrors.size > 0 && <p className="mt-1 text-sm">{`ค่าที่ต้องแก้ ${fieldErrors.size} ค่า: ดูข้อความใต้ค่านั้นในตาราง`}</p>}
+              {otherErrors.length > 0 && (
+                <ul className="mt-1 list-disc pl-5 text-sm">{otherErrors.map((e) => <li key={e.message}>{e.message}</li>)}</ul>
+              )}
+            </div>
+          )}
+          {report && report.ok && (
+            <div role="status" className="mt-6 grid gap-2">
+              <div className="rounded-sm bg-info-bg px-4 py-3">
+                <p className="font-display font-semibold">ผ่านการตรวจ</p>
+                {report.values && report.worst_case_review_usd !== null && (
+                  <p className="mt-1 text-sm">
+                    {`งบต่อรีวิวกรณีมากที่สุด ${formatUsd(report.worst_case_review_usd)} · งบต่อวัน ${formatUsd(Number(report.values.max_usd_per_day ?? 0))}`}
+                  </p>
+                )}
+              </div>
+              {report.warnings.length > 0 && (
+                <ul className="list-disc rounded-sm bg-warn-bg py-2 pr-4 pl-9 text-sm">{report.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
               )}
             </div>
           )}

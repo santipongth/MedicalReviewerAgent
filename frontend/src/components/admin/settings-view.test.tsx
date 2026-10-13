@@ -75,16 +75,40 @@ describe("SettingsView", () => {
     fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
     expect(await screen.findByText("max_queued_reviews: must be between 1 and 1000")).toBeInTheDocument();
     expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("ยังบันทึกไม่ได้"); // the refused check is announced
     fireEvent.change(input, { target: { value: "90" } });
     expect(screen.queryByText("max_queued_reviews: must be between 1 and 1000")).toBeNull(); // the check was of another draft
     fireEvent.click(screen.getByRole("checkbox", { name: "ตั้งค่าเอง: LLM call พร้อมกันต่อ worker" }));
     fireEvent.change(screen.getByLabelText("ค่าใหม่: LLM call พร้อมกันต่อ worker"), { target: { value: "8" } });
     fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
-    expect(await screen.findByText(/llm_concurrency applies/)).toBeInTheDocument();
+    const warning = await screen.findByText(/llm_concurrency applies/);
+    expect(warning.closest("ul")).toHaveClass("bg-warn-bg"); // warnings are a warning tint, as on the models page
+    expect(screen.getByText("ผ่านการตรวจ").closest('[role="status"]')).toContainElement(warning);
     fireEvent.change(screen.getByLabelText("หมายเหตุ (ไม่บังคับ)"), { target: { value: "more workers" } });
     fireEvent.click(screen.getByRole("button", SAVE));
     expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 3 แล้ว")).toBeInTheDocument();
     expect(posted).toEqual([{ values: { max_queued_reviews: 90, llm_concurrency: 8 }, base_version: 2, note: "more workers" }]);
+  });
+
+  it("a save the server refuses marks every field it names beside its input, as a check does", async () => {
+    const MAX = "max_queued_reviews: must be between 1 and 1000";
+    const CONC = "llm_concurrency: must be between 1 and 64";
+    mockAdminFetch((m, p) => (m === "POST" && p === "/settings"
+      ? [422, { detail: MAX, errors: [{ field: "max_queued_reviews", message: MAX }, { field: "llm_concurrency", message: CONC }] }]
+      : routes()(m, p)));
+    await renderAdmin(<SettingsView />);
+    const queue = await screen.findByLabelText(`ค่าใหม่: ${QUEUE}`);
+    fireEvent.change(queue, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "ตั้งค่าเอง: LLM call พร้อมกันต่อ worker" }));
+    const concurrency = screen.getByLabelText("ค่าใหม่: LLM call พร้อมกันต่อ worker");
+    fireEvent.change(concurrency, { target: { value: "99" } });
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ยังบันทึกไม่ได้");
+    expect(queue).toHaveAttribute("aria-invalid", "true");
+    expect(concurrency).toHaveAttribute("aria-invalid", "true");
+    expect(queue).toHaveAccessibleDescription(MAX);
+    expect(concurrency).toHaveAccessibleDescription(CONC);
+    expect(screen.queryByText(/บันทึกเป็นเวอร์ชัน \d+ แล้ว/)).toBeNull();
   });
 
   it("turning off ตั้งค่าเอง drops the override", async () => {
@@ -146,6 +170,23 @@ describe("SettingsView", () => {
     expect(input).toHaveValue("99");
     fireEvent.click(screen.getByRole("button", { name: "ยืนยันยกเลิกการแก้ไข" }));
     expect(await screen.findByLabelText(`ค่าใหม่: ${QUEUE}`)).toHaveValue("80");
+  });
+
+  it("moves focus to the draft note when it appears, not when the edit tab comes back", async () => {
+    mockAdminFetch(routes());
+    await renderAdmin(<SettingsView />);
+    fireEvent.change(await screen.findByLabelText(`ค่าใหม่: ${QUEUE}`), { target: { value: "99" } });
+    fireEvent.click(screen.getByRole("button", { name: "ยกเลิกการแก้ไข" }));
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยันยกเลิกการแก้ไข" }));
+    const NOTE = "ทิ้งการแก้ไขแล้ว: ร่างตรงกับเวอร์ชัน 2";
+    await waitFor(() => expect(screen.getByText(NOTE)).toHaveFocus());
+    fireEvent.click(screen.getByRole("button", { name: "ประวัติ" }));
+    await screen.findByRole("listitem", { name: "เวอร์ชัน 2" });
+    const editTab = screen.getByRole("button", { name: "แก้ไข" });
+    editTab.focus();
+    fireEvent.click(editTab);
+    expect(await screen.findByText(NOTE)).toBeInTheDocument();
+    expect(editTab).toHaveFocus();
   });
 });
 

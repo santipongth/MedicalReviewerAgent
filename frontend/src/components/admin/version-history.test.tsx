@@ -19,6 +19,7 @@ describe("VersionHistory", () => {
     const v2 = await screen.findByRole("listitem", { name: "เวอร์ชัน 2" });
     expect(v2).toHaveTextContent("ใช้งานอยู่");
     expect(v2).toHaveTextContent("max_queued_reviews: 50 → 80");
+    expect(within(v2).getByText("max_queued_reviews")).toHaveClass("font-code"); // a setting name, as on the edit tab
     expect(v2).toHaveTextContent("busier");
     expect(within(v2).queryByRole("button", { name: /ย้อนกลับ/ })).toBeNull();
   });
