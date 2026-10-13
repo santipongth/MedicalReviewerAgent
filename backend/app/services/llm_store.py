@@ -67,6 +67,11 @@ async def _newest(session: AsyncSession) -> LlmConfigVersion | None:
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+async def newest_row(session: AsyncSession) -> LlmConfigVersion | None:
+    """The newest saved version as stored, unparsed: the console shows one that no longer passes validation."""
+    return await _newest(session)
+
+
 async def load_effective(session: AsyncSession, settings: Settings) -> EffectiveConfig:
     row = await _newest(session)
     if row is not None:

@@ -56,6 +56,9 @@ export interface LoadedWorker {
 export interface LlmConfigState {
   source: "db" | "file"; version: number | null; config: LlmConfigDoc; active_preset: string; env_preset: string | null;
   keys_present: Record<string, boolean>; loaded: LoadedWorker[];
+  /** Plan 23c: set when the configuration in use no longer passes validation (a version saved under older rules, or a
+   * broken llm.yaml while no version exists). `config` is then as stored and `keys_present` is empty. */
+  error?: string | null;
 }
 export interface LlmVersion {
   id: number; created_at: string; created_by: string; note: string | null; source: "edit" | "restore" | "file";

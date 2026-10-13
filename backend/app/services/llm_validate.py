@@ -7,9 +7,10 @@ from typing import Any
 import yaml
 
 from app.config import Settings
-from app.services.llm import _api_key
+from app.services.llm import PRICES_PER_MTOK, _api_key
 from app.services.llm_config import (
     CONFIG_ERRORS,
+    ResolvedLLMConfig,
     config_error_text,
     ensure_storable,
     parse_llm_config,
@@ -31,6 +32,16 @@ def validate_document(raw: Any, settings: Settings, catalog: dict[str, ModelInfo
                 "yaml": None}
 
 
+def unpriced_roles(resolved: ResolvedLLMConfig, catalog: dict[str, ModelInfo] | None) -> list[str]:
+    """Roles whose calls the review cost cap cannot count (Plan 23c, carried from the 23b review): a direct Anthropic
+    model missing from PRICES_PER_MTOK, or an OpenRouter model the catalog does not list (counted only when OpenRouter
+    reports the call's cost). Without a catalog the OpenRouter check is skipped (validate already says so), and a
+    local server (openai_compatible) is never flagged: it usually costs nothing."""
+    return [name for name, role in resolved.roles.items()
+            if (role.provider == "anthropic" and role.spec.model not in PRICES_PER_MTOK)
+            or (role.provider == "openrouter" and catalog is not None and role.spec.model not in catalog)]
+
+
 def _validate(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None) -> dict[str, Any]:
     config = parse_llm_config(raw, where="config")
     resolve_llm_config(config, None, where="config")
@@ -49,6 +60,9 @@ def _validate(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None
                 warnings += [f"{preset}: {p}" for p in validate_role(role, catalog)]
         if catalog is not None:
             cost[preset] = estimate_review_cost(resolved, catalog)
+        if unpriced := unpriced_roles(resolved, catalog):
+            warnings.append(f"{preset}: no known price for {', '.join(unpriced)}: the review cost cap cannot count "
+                            "their calls")
     for name in sorted(used_providers):
         env_name = config.providers[name].api_key_env
         if not _api_key(settings, env_name) and name != "openai_compatible":

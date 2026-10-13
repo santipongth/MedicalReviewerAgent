@@ -32,6 +32,7 @@ from app.services.llm_store import (
     list_versions,
     load_effective,
     loaded_workers,
+    newest_row,
     publish_version,
     reset_to_file,
     restore_version,
@@ -102,11 +103,27 @@ async def _catalog(deps: AppDeps):
     return await cached_catalog(deps.redis, load_live_catalog)
 
 
+def _unreadable(settings, row, exc: BaseException, loaded: list) -> dict:
+    """The state when the configuration in use no longer passes validation: the newest version was saved under older
+    rules, or llm.yaml is broken while no version exists. It is shown as stored, with the error, and never as a 500,
+    so the console can still restore an older version or build a new one from llm.yaml. Workers keep the models they
+    loaded and report the same error."""
+    raw = row.config if row is not None and isinstance(row.config, dict) else {}
+    preset = raw.get("active_preset")
+    return {"source": "db" if row is not None else "file", "version": row.id if row is not None else None,
+            "config": raw, "active_preset": preset if isinstance(preset, str) else "",
+            "env_preset": settings.llm_preset, "keys_present": {}, "loaded": loaded, "error": config_error_text(exc)}
+
+
 @router.get("/admin/llm-config")
 async def llm_config_state(deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)) -> dict:
     settings = deps.service.settings
     async with deps.session_factory() as session:
-        effective = await load_effective(session, settings)
+        try:
+            effective = await load_effective(session, settings)
+        except CONFIG_ERRORS as exc:
+            row = await newest_row(session)
+            return _unreadable(settings, row, exc, await loaded_workers(deps.redis))
     keys = {p.api_key_env: bool(_api_key(settings, p.api_key_env)) for p in effective.config.providers.values()}
     # The preset the workers run: LLM_PRESET replaces the file's own active_preset while llm.yaml is the source, and a
     # DB version ignores it. Computed directly, not with effective.resolve(): an LLM_PRESET that names no preset must
@@ -114,7 +131,7 @@ async def llm_config_state(deps: AppDeps = Depends(get_deps), _: Identity = Depe
     running = settings.llm_preset if effective.source == "file" and settings.llm_preset else effective.config.active_preset
     return {"source": effective.source, "version": effective.version, "config": effective.raw,
             "active_preset": running, "env_preset": settings.llm_preset,
-            "keys_present": keys, "loaded": await loaded_workers(deps.redis)}
+            "keys_present": keys, "loaded": await loaded_workers(deps.redis), "error": None}
 
 
 @router.get("/admin/llm-config/versions")

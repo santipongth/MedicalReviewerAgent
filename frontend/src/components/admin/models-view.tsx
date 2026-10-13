@@ -110,6 +110,14 @@ function reconcile(draft: Draft | null, server: LlmConfigState, saved?: LlmConfi
   return isDirty(draft) ? draft : fresh(server);
 }
 
+/** The configuration in use no longer passes the checks (Plan 23c, carried from 23b): a version saved under older
+ * rules, or a broken llm.yaml while no version exists. The page shows why and the history, never an editor. */
+function unreadableText(s: LlmConfigState): string {
+  return s.source === "db"
+    ? `เวอร์ชัน ${s.version} ที่ใช้อยู่ไม่ผ่านการตรวจตามกฎปัจจุบันแล้ว (${s.error}) worker ใช้โมเดลที่โหลดไว้ก่อนหน้าต่อ ย้อนกลับไปเวอร์ชันอื่นหรือสร้างเวอร์ชันใหม่จาก llm.yaml ได้ที่ประวัติด้านล่าง`
+    : `อ่าน llm.yaml ไม่ได้ (${s.error}) แก้ไฟล์แล้วโหลดหน้านี้ใหม่`;
+}
+
 export function ModelsView() {
   const { fail } = useAdmin();
   const [state, setState] = useState<LlmConfigState | null>(null);
@@ -150,7 +158,7 @@ export function ModelsView() {
         setState(s);
         setReadAt(Date.now());
         setError(null);
-        setEdit((e) => reconcile(e, s, saved, savedId));
+        setEdit((e) => (s.error ? e : reconcile(e, s, saved, savedId)));
       })
       .catch((e: unknown) => {
         if (mounted.current && seq >= requests.current.applied && (!accept || accept())) setError(fail(e));
@@ -214,7 +222,13 @@ export function ModelsView() {
       <h1 id="models-title" className="font-display text-2xl font-semibold">โมเดล</h1>
       {error && <p role="alert" className="mt-4 rounded-sm bg-err-bg px-4 py-3">{error}</p>}
       {!state && !error && <p role="status" className="mt-4 text-muted">กำลังโหลด…</p>}
-      {state && edit && (
+      {state?.error && (
+        <>
+          <p role="alert" className="mt-4 rounded-sm bg-err-bg px-4 py-3">{unreadableText(state)}</p>
+          <ModelsHistory base={state.version} onChanged={reload} writes={track} />
+        </>
+      )}
+      {state && !state.error && edit && (
         <>
           <ModelsHeader state={state} now={readAt} settling={settling} />
           <div role="group" aria-label="ส่วนของหน้า" className="mt-6 flex flex-wrap gap-1 border-b border-rule pb-2">

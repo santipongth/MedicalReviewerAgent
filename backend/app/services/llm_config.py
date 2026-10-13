@@ -238,6 +238,15 @@ class HarnessSpec(BaseModel):
     localize: bool = True
     extraction_chars: int = Field(30_000, ge=2_000, le=200_000)
 
+    @field_validator("screen_borderline")
+    @classmethod
+    def _borderline_band(cls, value: tuple[int, int]) -> tuple[int, int]:
+        # relevance scores run 0-100; the band's low end is also the screening relevance floor
+        low, high = value
+        if not 0 <= low <= high <= 100:
+            raise ValueError("screen_borderline must be [low, high] with 0 <= low <= high <= 100")
+        return value
+
 
 class LLMConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)

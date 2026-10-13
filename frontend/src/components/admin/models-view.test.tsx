@@ -1083,3 +1083,18 @@ describe("ModelsView re-reads while a worker is catching up", () => {
     expect(worker()).not.toHaveTextContent("กำลังเปลี่ยน");
   });
 });
+
+describe("ModelsView with a configuration that no longer passes the checks", () => {
+  it("says why and offers the history to restore or rebuild, with no editor", async () => {
+    const unreadable = { ...STATE, version: 4, config: { active_preset: "cheap" } as LlmConfigDoc, keys_present: {},
+      error: "version 4: harness.screen_borderline must be [low, high] with 0 <= low <= high <= 100" };
+    mockAdminFetch(routes(unreadable));
+    await renderAdmin(<ModelsView />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("เวอร์ชัน 4 ที่ใช้อยู่ไม่ผ่านการตรวจตามกฎปัจจุบันแล้ว");
+    expect(screen.getByRole("alert")).toHaveTextContent("screen_borderline");
+    expect(screen.queryByRole("button", { name: "Presets" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "บันทึกเป็นเวอร์ชันใหม่" })).toBeNull();
+    expect(await screen.findByRole("listitem", { name: /เวอร์ชัน 3/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "สร้างเวอร์ชันใหม่จาก llm.yaml" })).toBeInTheDocument();
+  });
+});
