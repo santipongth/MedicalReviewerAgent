@@ -83,6 +83,22 @@ async def eval_llm_config(
         raise EvalConfigError(f"the model config in use ({effective.label}) is not usable: {_why(exc)}") from exc
 
 
+async def eval_keys(settings: Settings, config_file: str | None,
+                    session_factory_maker: Callable[[], async_sessionmaker[AsyncSession]]):
+    """(Plan 23e) The console's provider keys for an eval run that reads the DB config (None with --config-file: env
+    keys only, as before). An unreadable DB is an EvalConfigError."""
+    from app.services.llm_keys import load_keyring
+
+    if config_file:
+        return None
+    try:
+        async with session_factory_maker()() as session:
+            return await load_keyring(session, settings)
+    except Exception as exc:
+        raise EvalConfigError(f"cannot read the provider keys ({_why(exc)}); check that Postgres is running and "
+                              f"migrated, or pass --config-file PATH") from exc
+
+
 async def eval_runtime(settings: Settings, config_file: str | None,
                        session_factory_maker: Callable[[], async_sessionmaker[AsyncSession]]) -> Runtime:
     """(Plan 23c) The settings in force and the glossary for an eval run: the DB's saved versions, or env values and
@@ -219,10 +235,11 @@ async def eval_main(settings: Settings, config_file: str | None, rest: list[str]
     from app.graph.graph import GraphDeps
     from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 
-    resolved, label, runtime = None, "file", None
+    resolved, label, runtime, keys = None, "file", None, None
     if _parser().parse_args(rest).cmd in LLM_COMMANDS:
         try:
             resolved, label = await eval_llm_config(settings, config_file, session_factory_maker)
+            keys = await eval_keys(settings, config_file, session_factory_maker)
             runtime = await eval_runtime(settings, config_file, session_factory_maker)
         except EvalConfigError as exc:
             print(exc)
@@ -234,7 +251,7 @@ async def eval_main(settings: Settings, config_file: str | None, rest: list[str]
     http = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)
     # report needs the settings (prompt version) and no models
     deps = (build_graph_deps(runtime.settings, http, resolved=resolved, config_version=label,
-                             glossary=runtime.glossary, sources=runtime.sources)
+                             glossary=runtime.glossary, sources=runtime.sources, keys=keys)
             if runtime is not None else GraphDeps(settings=settings))
     offline_deps(deps, _parser().parse_args(rest).cmd)
     try:

@@ -2,7 +2,9 @@
 
 - openrouter / openai_compatible → langchain-openai ChatOpenAI (OpenAI chat-completions API)
 - anthropic                      → langchain-anthropic ChatAnthropic (json_schema output_config)
-Every call returns an LLMResult (parsed value + cost) or raises an LLMError subclass."""
+Every call returns an LLMResult (parsed value + cost) or raises an LLMError subclass. Plan 23e: a provider's key comes
+from resolve_key (a console key bound to the provider's origin, else env); a provider error's text is redacted with the
+key before it leaves this module."""
 from __future__ import annotations
 
 import asyncio
@@ -35,13 +37,16 @@ from app.graph.schemas import (
 )
 from app.services.budget import current_budget
 from app.services.llm_config import (
-    PROVIDER_KEYS,
     HarnessSpec,
     ResolvedLLMConfig,
     ResolvedRole,
+    is_local_origin,
+    key_env,
     load_llm_config,
+    provider_origin,
 )
-from app.services.model_catalog import ModelInfo, choose_structured_method
+from app.services.llm_keys import KeyChoice, KeyRing, resolve_key
+from app.services.model_catalog import FixedPrice, ModelInfo, choose_structured_method, role_price
 
 # USD per million tokens (input, output) for direct Anthropic calls. Source: claude-api skill, 2026-09.
 PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
@@ -58,9 +63,41 @@ SCHEMAS: dict[str, type[BaseModel]] = {
 }
 
 
-def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+REDACTED = "[redacted]"
+REDACT_MIN = 12  # any slice of the key this long or longer is redacted
+
+
+def estimate_cost(model: str, input_tokens: int, output_tokens: int, price: FixedPrice | None = None) -> float:
+    """A direct Anthropic call's cost: the role's own price (Plan 23e), else PRICES_PER_MTOK, else 0."""
+    if price is not None:
+        return price.cost(input_tokens, output_tokens)
     price_in, price_out = PRICES_PER_MTOK.get(model, (0.0, 0.0))
     return (input_tokens * price_in + output_tokens * price_out) / 1_000_000
+
+
+def redact(text: str, key: str | None) -> str:
+    """text with the key, and every slice of it of REDACT_MIN or more characters, replaced by [redacted] (Plan 23e): a
+    provider may echo the Authorization header, whole or cut, in its error text."""
+    if not key or not text:
+        return text
+    if len(key) < REDACT_MIN:
+        return text.replace(key, REDACTED)
+    grams = {key[i:i + REDACT_MIN] for i in range(len(key) - REDACT_MIN + 1)}
+    covered = [False] * len(text)
+    for i in range(len(text) - REDACT_MIN + 1):
+        if text[i:i + REDACT_MIN] in grams:
+            covered[i:i + REDACT_MIN] = [True] * REDACT_MIN
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        if covered[i]:
+            while i < len(text) and covered[i]:
+                i += 1
+            out.append(REDACTED)
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
 
 
 class LLMError(Exception):
@@ -106,10 +143,13 @@ class AnthropicStructuredLLM[T: BaseModel]:
         base_url: str | None = None,
         timeout: float = 300.0,
         max_retries: int = 2,
+        price: FixedPrice | None = None,
     ) -> None:
         self.model = model
         self.effort = effort
         self.max_tokens = max_tokens
+        self.price = price
+        self._key = api_key  # kept only to redact provider errors
         kwargs: dict[str, Any] = {
             "model": model, "api_key": api_key, "max_tokens": max_tokens,
             "timeout": timeout, "max_retries": max_retries,
@@ -125,8 +165,8 @@ class AnthropicStructuredLLM[T: BaseModel]:
     async def ainvoke(self, system: str, user: str) -> LLMResult[T]:
         try:
             out = await self._runnable.ainvoke([SystemMessage(system), HumanMessage(user)])
-        except anthropic.APIError as exc:
-            raise LLMError(f"{self.model}: provider error: {exc}") from exc
+        except anthropic.APIError as exc:  # not chained: the original text is not redacted
+            raise LLMError(redact(f"{self.model}: provider error: {exc}", self._key)) from None
         raw = out["raw"]
         stop = (raw.response_metadata or {}).get("stop_reason")
         if stop == "refusal":
@@ -138,7 +178,7 @@ class AnthropicStructuredLLM[T: BaseModel]:
         usage = raw.usage_metadata or {}
         in_tok, out_tok = int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0))
         return LLMResult(
-            value=out["parsed"], cost_usd=estimate_cost(self.model, in_tok, out_tok),
+            value=out["parsed"], cost_usd=estimate_cost(self.model, in_tok, out_tok, self.price),
             model=self.model, input_tokens=in_tok, output_tokens=out_tok,
         )
 
@@ -169,16 +209,23 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
         require_parameters: bool = False,
         fallback_models: list[str] | tuple[str, ...] = (),
         extra_body: dict[str, Any] | None = None,
-        price: ModelInfo | None = None,
+        price: ModelInfo | FixedPrice | None = None,
+        reported_cost: bool = True,
+        effort_field: str = "reasoning",
     ) -> None:
+        """`price` charges a call whose cost the provider does not report, or (reported_cost=False, Plan 23e: any
+        server that is not OpenRouter) every call. `effort_field` "reasoning" sends OpenRouter's reasoning object;
+        "reasoning_effort" sends OpenAI's top-level field."""
         self.model = model
         self.schema = schema
         self.max_tokens = max_tokens
         self.reasoning_effort = reasoning_effort
         self.method = "tool_calling" if method == "function_calling" else method
         self.price = price
+        self.reported_cost = reported_cost
+        self._key = api_key  # kept only to redact provider errors
         body: dict[str, Any] = dict(extra_body or {})
-        if reasoning_effort:
+        if reasoning_effort and effort_field == "reasoning":
             body["reasoning"] = {**body.get("reasoning", {}), "effort": reasoning_effort}
         if require_parameters:
             body["provider"] = {**body.get("provider", {}), "require_parameters": True}
@@ -192,6 +239,8 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
             kwargs["temperature"] = temperature
         if top_p is not None:
             kwargs["top_p"] = top_p
+        if reasoning_effort and effort_field == "reasoning_effort":
+            kwargs["reasoning_effort"] = reasoning_effort
         if headers:
             kwargs["default_headers"] = headers
         if body:
@@ -218,9 +267,9 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
             raise LLMRefusal(f"{self.model} declined the request (content filter)") from exc
         except openai.LengthFinishReasonError as exc:
             raise LLMOutputError(f"{self.model} hit max_tokens before finishing the JSON output") from exc
-        except openai.APIError as exc:
+        except openai.APIError as exc:  # not chained: the original text is not redacted
             status = getattr(exc, "status_code", "")
-            raise LLMError(f"{self.model}: provider error {status}: {exc}") from exc
+            raise LLMError(redact(f"{self.model}: provider error {status}: {exc}", self._key)) from None
         raw = out["raw"]
         meta = raw.response_metadata or {}
         if (raw.additional_kwargs or {}).get("refusal") or meta.get("finish_reason") == "content_filter":
@@ -233,7 +282,7 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
         usage = meta.get("token_usage") or {}
         in_tok = int(usage.get("prompt_tokens") or (raw.usage_metadata or {}).get("input_tokens", 0))
         out_tok = int(usage.get("completion_tokens") or (raw.usage_metadata or {}).get("output_tokens", 0))
-        cost = usage.get("cost")
+        cost = usage.get("cost") if self.reported_cost else None  # an arbitrary server's own figure is not trusted
         if cost is None:
             cost = self.price.cost(in_tok, out_tok) if self.price else 0.0
         return LLMResult(value=out["parsed"], cost_usd=float(cost), model=self.model,
@@ -246,12 +295,13 @@ class MissingKeyLLM:
     max_tokens = 0
     method = None
 
-    def __init__(self, model: str, env_name: str = "ANTHROPIC_API_KEY") -> None:
+    def __init__(self, model: str, env_name: str = "ANTHROPIC_API_KEY", reason: str | None = None) -> None:
         self.model = model
         self.env_name = env_name
+        self.reason = reason
 
     async def ainvoke(self, system: str, user: str) -> LLMResult:
-        raise LLMError(f"{self.env_name} is not configured on the worker (needed for model {self.model})")
+        raise LLMError(self.reason or f"{self.env_name} is not configured on the worker (needed for model {self.model})")
 
 
 class LimitedLLM:
@@ -320,21 +370,44 @@ def _api_key(settings: Settings, env_name: str) -> str:
     return str(getattr(settings, env_name.lower(), "") or os.environ.get(env_name, ""))
 
 
+def missing_key_reason(role: ResolvedRole, choice: KeyChoice) -> str | None:
+    """Why a provider has no key (Plan 23e), naming the provider and the problem; None for the plain "variable not
+    set" of a legacy name, whose message stays as before."""
+    name, env_name, origin = role.provider, key_env(role.provider), provider_origin(role.provider, role.provider_spec)
+    if choice.problem == "origin_mismatch":
+        return f"no key for provider {name} (the stored key belongs to {choice.bound_origin}; enter one for {origin})"
+    if choice.problem == "unreadable":
+        return (f"no key for provider {name} (the stored key cannot be read: LLM_KEYS_SECRET is missing or changed; "
+                "enter the key again)")
+    if choice.problem == "env_origin_missing":
+        return f"no key for provider {name} ({env_name} is set, but {env_name}_ORIGIN is not {origin})"
+    if role.provider != role.kind and role.provider != "openai_compatible":
+        return f"no key for provider {name}: enter one in the admin console, or set {env_name} and {env_name}_ORIGIN"
+    return None
+
+
 def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, ModelInfo] | None = None,
-                   schema: type[BaseModel] | None = None):
+                   schema: type[BaseModel] | None = None, keys: KeyRing | None = None):
+    """`keys` is the console's key ring (Plan 23e); None means env keys only (tests, CLIs without a DB)."""
     schema = schema or SCHEMAS[role.role]
     spec, ps = role.spec, role.provider_spec
-    env_name = PROVIDER_KEYS.get(role.provider, "")  # a provider with a free name has no env key before Plan 23e Task 3
-    key = _api_key(settings, env_name) if env_name else ""
+    env_name = key_env(role.provider)
+    choice = resolve_key(role.provider, ps, keys, settings)
+    key = choice.value or ""
     effort = None if spec.reasoning_effort in (None, "none") else spec.reasoning_effort
     if role.kind == "anthropic":
         if not key:
-            return MissingKeyLLM(spec.model, env_name)
+            return MissingKeyLLM(spec.model, env_name, missing_key_reason(role, choice))
         return AnthropicStructuredLLM(schema, model=spec.model, api_key=key, max_tokens=spec.max_tokens,
-                                      effort=effort, base_url=ps.base_url, timeout=spec.timeout_seconds)
+                                      effort=effort, base_url=ps.base_url, timeout=spec.timeout_seconds,
+                                      price=role_price(role))
     if not key and role.kind == "openrouter":
-        return MissingKeyLLM(spec.model, env_name)
-    info = (catalog or {}).get(spec.model) if role.kind == "openrouter" else None
+        return MissingKeyLLM(spec.model, env_name, missing_key_reason(role, choice))
+    if not key and role.provider != "openai_compatible" and not is_local_origin(provider_origin(role.provider, ps)):
+        # a free name on a public host: never an anonymous call (the legacy local server keeps "not-needed")
+        return MissingKeyLLM(spec.model, env_name, missing_key_reason(role, choice))
+    openrouter = role.kind == "openrouter"
+    info = (catalog or {}).get(spec.model) if openrouter else None
     if spec.reasoning_effort == "none" and role.kind == "openrouter" and (info is None or info.supports("reasoning")):
         # Some models reason by default (Qwen3.5 Flash on Alibaba) and then break structured output; an explicit
         # "none" turns that off. Never sent to models without reasoning support (require_parameters would 404).
@@ -347,27 +420,32 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
         schema, model=spec.model, api_key=key or "not-needed", base_url=base_url,
         max_tokens=spec.max_tokens, temperature=spec.temperature, top_p=spec.top_p, reasoning_effort=effort,
         method=choose_structured_method(spec.structured_output, info), timeout=spec.timeout_seconds,
-        headers=headers or None, require_parameters=ps.require_parameters and role.kind == "openrouter",
-        fallback_models=spec.fallback_models, extra_body=spec.extra_body, price=info,
+        headers=headers or None, require_parameters=ps.require_parameters and openrouter,
+        # fallback models are OpenRouter's `models` field: another server would refuse the request
+        fallback_models=spec.fallback_models if openrouter else (), extra_body=spec.extra_body,
+        # OpenRouter: its reported cost, else the catalog, else the role's price; any other server: the role's price
+        price=(info or role_price(role)) if openrouter else role_price(role), reported_cost=openrouter,
+        effort_field="reasoning" if openrouter else "reasoning_effort",
     )
 
 
 def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None, *,
                resolved: ResolvedLLMConfig | None = None, sem: asyncio.Semaphore | None = None,
-               config_version: str = "file") -> LLMs:
+               config_version: str = "file", keys: KeyRing | None = None) -> LLMs:
     """`resolved` defaults to config/llm.yaml. `sem` is the semaphore every role (and escalation) shares: a reload
     passes the worker's current one (Plan 23b), and an llm_concurrency change passes a new one for the reviews that
-    start afterwards (Plan 23c); without it a new semaphore of settings.llm_concurrency is made."""
+    start afterwards (Plan 23c); without it a new semaphore of settings.llm_concurrency is made. `keys` is the console's
+    key ring (Plan 23e); None means env keys only."""
     config = resolved or load_llm_config(settings.llm_config_path, settings.llm_preset)
     sem = sem or asyncio.Semaphore(max(1, settings.llm_concurrency))
-    built = {role: LimitedLLM(build_role_llm(r, settings, catalog), sem) for role, r in config.roles.items()
+    built = {role: LimitedLLM(build_role_llm(r, settings, catalog, keys=keys), sem) for role, r in config.roles.items()
              if role in SCHEMAS}
     if "refiner" in config.roles:
         refiner_role = config.roles["refiner"]
         if refiner_role.spec.reasoning_effort not in (None, "none", "minimal", "low"):
             refiner_role = refiner_role.with_spec(reasoning_effort="low")
         built["refiner_critic"] = LimitedLLM(
-            build_role_llm(refiner_role, settings, catalog, schema=QuestionCritique), sem)
+            build_role_llm(refiner_role, settings, catalog, schema=QuestionCritique, keys=keys), sem)
     escalation = None
     if "escalation" in config.roles:
         esc_role = config.roles["escalation"]
@@ -375,7 +453,7 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None, 
 
         def escalation(schema: type[BaseModel]) -> StructuredLLM:
             if schema not in cache:
-                cache[schema] = LimitedLLM(build_role_llm(esc_role, settings, catalog, schema=schema), sem)
+                cache[schema] = LimitedLLM(build_role_llm(esc_role, settings, catalog, schema=schema, keys=keys), sem)
             return cache[schema]
 
     bound: dict[tuple[str, type[BaseModel]], StructuredLLM] = {}
@@ -384,7 +462,8 @@ def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None, 
         if role not in config.roles:
             raise LLMError(f"preset {config.preset} has no {role} role to bind to {schema.__name__}")
         if (role, schema) not in bound:
-            bound[role, schema] = LimitedLLM(build_role_llm(config.roles[role], settings, catalog, schema=schema), sem)
+            bound[role, schema] = LimitedLLM(build_role_llm(config.roles[role], settings, catalog, schema=schema,
+                                                            keys=keys), sem)
         return bound[role, schema]
 
     return LLMs(**built, escalation=escalation, for_schema=for_schema, harness=config.harness, preset=config.preset,

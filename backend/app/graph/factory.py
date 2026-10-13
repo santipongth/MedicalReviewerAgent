@@ -14,9 +14,11 @@ from app.services.thaijo import ThaiJoClient
 
 
 def build_graph_deps(settings: Settings, http: HttpClient, redis=None, catalog=None, *, resolved=None, sem=None,
-                     config_version: str = "file", glossary=None, sources: ActiveSources | None = None) -> GraphDeps:
+                     config_version: str = "file", glossary=None, sources: ActiveSources | None = None,
+                     keys=None) -> GraphDeps:
     """Stub deps when graph_mode == "stub". Papers are read from their abstracts only (no full-text fetching).
-    `sources` (Plan 23d): the search sources in force; env's when None."""
+    `sources` (Plan 23d): the search sources in force; env's when None. `keys` (Plan 23e): the console's key ring
+    (app.services.llm_keys.KeyRing); None means env keys only."""
     sources = sources if sources is not None else effective_sources(settings, {})
     if settings.graph_mode == "stub":
         return GraphDeps(settings=settings, glossary=glossary, sources=sources)
@@ -24,7 +26,8 @@ def build_graph_deps(settings: Settings, http: HttpClient, redis=None, catalog=N
         settings=settings,
         glossary=glossary,
         sources=sources,
-        llms=build_llms(settings, catalog=catalog, resolved=resolved, sem=sem, config_version=config_version),
+        llms=build_llms(settings, catalog=catalog, resolved=resolved, sem=sem, config_version=config_version,
+                        keys=keys),
         mcp=McpRegistry(settings.mcp_servers_path),
         searxng=SearxngClient(http, settings.searxng_url, settings.searxng_engines,
                               timeout=settings.searxng_timeout_seconds),
