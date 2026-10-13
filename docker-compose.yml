@@ -13,7 +13,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mra -d mra"]
       interval: 5s
@@ -27,7 +27,7 @@ services:
     volumes:
       - redisdata:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -61,7 +61,7 @@ services:
       - ./infra/searxng/engines/plos.py:/usr/local/searxng/searx/engines/plos.py:ro
       - ./infra/searxng/engines/mra_markup.py:/usr/local/searxng/searx/engines/mra_markup.py:ro  # shared helper
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5).status == 200 else 1)\""]
       interval: 10s
@@ -90,7 +90,7 @@ services:
     # (or replicas behind a proxy) behave like one.
     command: ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers --workers ${API_WORKERS:-2}"]
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -160,7 +160,7 @@ services:
       # Server-side calls from the web app (offline HTML report) go straight to the API inside the network.
       INTERNAL_API_URL: http://api:8000
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       api:
         condition: service_healthy
@@ -175,7 +175,7 @@ services:
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
-      - "${PUBLIC_PORT:-8088}:80"
+      - "${PUBLIC_PORT:-8088}:80"  # the only port other machines can reach; the rest are bound to 127.0.0.1
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data
