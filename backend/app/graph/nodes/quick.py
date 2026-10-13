@@ -54,6 +54,16 @@ QUICK_FAILED = ("The quick answer could not be written (a temporary model or ser
 NOT_GRADED = "The certainty of the evidence is not graded: the studies read report themes, not effects."
 
 
+_CITES_AFTER_STOP = re.compile(r"^(?P<body>.*?)(?P<stop>[.!?])\s*(?P<cites>(?:\s*\[\s*P\d+[^\]]*\])+)\s*$", re.DOTALL)
+
+
+def _cite_inside_stop(sentence: str) -> str:
+    """"Risk was lower (HR 0.55). [P1]" -> "Risk was lower (HR 0.55) [P1].": the prose checks split a text before every
+    "[", so a citation after the stop would leave its claim looking uncited (and in scope of every paper)."""
+    m = _CITES_AFTER_STOP.match(sentence)
+    return f"{m['body'].rstrip()} {m['cites'].strip()}{m['stop']}" if m else sentence
+
+
 _LEADING_CITES = re.compile(r"^(?:\s*\[\s*P\d+[^\]]*\])+")
 
 
@@ -73,7 +83,7 @@ def _sentences(items: list[str]) -> list[str]:
                 mine.append(piece.strip())
             elif piece.strip() and mine:
                 mine[-1] = f"{mine[-1]} {piece.strip()}"
-        out += mine
+        out += [_cite_inside_stop(m) for m in mine]
     return out
 
 

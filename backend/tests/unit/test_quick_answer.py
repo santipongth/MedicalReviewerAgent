@@ -288,7 +288,7 @@ def test_a_citation_after_the_full_stop_stays_with_its_sentence():
     draft = QuickAnswerDraft(sentences=["Metformin is associated with lower risk. [P1]", "Cohorts agree. [P2]"],
                              limits="x")
     assert checked_answer(draft, {"P1", "P2"}, ctx(), "low") == (
-        "Metformin is associated with lower risk. [P1] Cohorts agree. [P2]", 2, 0)
+        "Metformin is associated with lower risk [P1]. Cohorts agree [P2].", 2, 0)
     assert draft_problems(draft, {"P1", "P2"}, ctx()) == []
     two = QuickAnswerDraft(sentences=["Risk fell. [P1] Cohorts agree. [P2]"], limits="x")
     assert draft_problems(two, {"P1", "P2"}, ctx()) == []  # two sentences, none flagged uncited
@@ -298,3 +298,14 @@ def test_a_citation_after_the_full_stop_stays_with_its_sentence():
 def test_marker_fragments_alone_are_withheld_not_shown():
     draft = QuickAnswerDraft(sentences=["[P1]", "[P2]"], limits="x")
     assert checked_answer(draft, {"P1", "P2"}, ctx(), "low")[0] == ""
+
+
+def test_a_citation_after_the_stop_scopes_its_number_to_the_cited_paper():
+    wrong = QuickAnswerDraft(sentences=["Risk was lower (HR 0.55). [P1]", "Cohorts agree [P2]."], limits="x")
+    right = QuickAnswerDraft(sentences=["Risk was lower (HR 0.80). [P1]", "Cohorts agree [P2]."], limits="x")
+    assert any("0.55" in p for p in draft_problems(wrong, {"P1", "P2"}, two_cards()))
+    assert checked_answer(wrong, {"P1", "P2"}, two_cards(), "low") == ("Cohorts agree [P2].", 1, 1)
+    assert checked_answer(right, {"P1", "P2"}, two_cards(), "low") == (
+        "Risk was lower (HR 0.80) [P1]. Cohorts agree [P2].", 2, 0)
+    multi = QuickAnswerDraft(sentences=["Risk was lower! [P1] [P2]", "Is it so? [P1]"], limits="x")
+    assert checked_answer(multi, {"P1", "P2"}, ctx(), "low")[0] == "Risk was lower [P1] [P2]! Is it so [P1]?"
