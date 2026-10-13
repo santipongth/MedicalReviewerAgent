@@ -10,6 +10,7 @@ from langgraph.types import Send
 
 from app.graph import prompts
 from app.graph.nodes.intake import harness_runner, harness_spec, review_question
+from app.graph.nodes.thaijo import thaijo_papers
 from app.graph.progress import progress_writer
 from app.graph.schemas import ScreenBatch
 from app.graph.state import ReviewState
@@ -241,8 +242,10 @@ def make_select_top(deps):
     return select_top
 
 
-def route_to_reading(state: ReviewState, external_enabled=None, citations_enabled=None) -> list[Send] | str:
-    """One read_paper per selected paper, plus one external_enrich when external MCP tools are configured
+def route_to_reading(state: ReviewState, external_enabled=None, citations_enabled=None,
+                     thaijo_enabled=None) -> list[Send] | str:
+    """One read_paper per selected paper, plus one external_enrich when external MCP tools are configured, one
+    fetch_citations, and (Plan 24) one thaijo_metadata when ThaiJO is on and a selected paper came from it
     (same superstep, so it adds no latency)."""
     selected = state.get("selected") or []
     if not selected:
@@ -257,5 +260,7 @@ def route_to_reading(state: ReviewState, external_enabled=None, citations_enable
     if citations_enabled is not None and citations_enabled():
         sends.append(Send("fetch_citations", {"papers": [{"ref": s["ref"], "candidate": s.get("candidate") or {}}
                                                           for s in selected]}))
+    if thaijo_enabled is not None and thaijo_enabled() and (thai := thaijo_papers(selected)):
+        sends.append(Send("thaijo_metadata", {"papers": thai}))
     return sends
 

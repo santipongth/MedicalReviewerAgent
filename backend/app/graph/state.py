@@ -26,6 +26,7 @@ class ReviewState(TypedDict, total=False):
     selection_stats: dict[str, Any]  # {excluded_screening: {reason: n}, narrative_excluded, over_limit, requested, eligible}
     external_context: Annotated[list[dict[str, Any]], operator.add]  # results of external MCP tool calls
     citations: dict[str, Any] | None  # {edges, cited_by, coverage, source_note}; soft-fails to null coverage
+    thaijo_bib: dict[str, Any] | None  # Plan 24: ref -> OAI-PMH {volume, issue, pages, issn, license, article_type}
     papers: Annotated[list[dict[str, Any]], operator.add]  # {ref, candidate, relevance, card, error}
     started_at: float  # epoch seconds when the review started (total time in quality.timings)
     matrix: dict[str, Any] | None  # {rows, consensus, conflicts, grade} built by code from the cards
