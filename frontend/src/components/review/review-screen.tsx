@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getReview } from "@/lib/api";
+import { readAudience, saveAudience } from "@/lib/use-audience";
 import { useReview } from "@/lib/use-review";
 import { LiveRun } from "./live-run";
 import { Report } from "./report";
@@ -60,7 +61,8 @@ export function ReviewScreen({ id }: { id: string }) {
     return <TerminalState status={run.status} message={run.message ?? review?.error} topic={topic} />;
   }
   if (phase === "report" && review) {
-    return <Report review={review} />;
+    // Plan 26: the view comes from ?view= or the stored choice; a change is stored and put in the address
+    return <Report review={review} initialAudience={readAudience()} onAudience={saveAudience} />;
   }
   return <LiveRun run={run} scene={scene} topic={topic} connection={connection} queuePosition={queuePosition} startedAt={review?.started_at}
     reviewType={review?.options?.review_type} />;

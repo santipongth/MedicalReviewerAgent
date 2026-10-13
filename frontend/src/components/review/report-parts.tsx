@@ -169,10 +169,12 @@ const FIXED_NOTE: Record<"replaced" | "appended" | "trimmed", Pair> = {
   trimmed: P.fixedTrimmed, appended: P.fixedAppended, replaced: P.fixedReplaced,
 };
 
-export function StrengthLine({ synthesis, lang, quality, type = "legacy", bar = true }: {
+export function StrengthLine({ synthesis, lang, quality, type = "legacy", bar = true, openRationale = false }: {
   synthesis: Synthesis; lang: Lang; quality?: Quality; type?: ReviewTypeOrLegacy;
   /** false for a meta-analysis without a pooled estimate: the grade rests on single studies, so no graded bar */
   bar?: boolean;
+  /** Plan 26: the rationale disclosure starts open (learner and committee views) */
+  openRationale?: boolean;
 }) {
   // A typed result with no grade must never read as "very low": only legacy results keep that fallback.
   const ungraded = type !== "legacy" && (!isGraded(type) || synthesis.evidence_strength == null);
@@ -204,7 +206,7 @@ export function StrengthLine({ synthesis, lang, quality, type = "legacy", bar = 
       {/* A grade's rationale sits behind a disclosure (Plan 20: the answer comes first); a graded type left ungraded
           (no quantitative studies) says why in the open. Narrative and scoping need no reason. */}
       {rationale && (ungraded ? <p className="max-w-[65ch] text-[0.88rem] text-muted" lang={fieldLang(rationale, lang)}>{rationale}</p> : (
-        <details className="group text-[0.9rem]">
+        <details className="group text-[0.9rem]" open={openRationale || undefined}>
           <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 font-display font-semibold text-primary md:min-h-0">
             <DisclosureChevron />
             {L(lang, P.whyCertainty)}

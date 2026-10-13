@@ -809,4 +809,50 @@ export const RC = {
     legacyType: ["รูปแบบเดิม (ก่อนมีประเภทรีวิว)", "Earlier format (before review types)"],
     details: ["ข้อมูลไฟล์รายงาน", "Report file details"],
   },
+
+  /** Plan 26: the audience switch and each audience's notes (components/review/audience.tsx). */
+  audience: {
+    legend: ["มุมมองของรายงาน", "Report view"],
+    hint: ["เปลี่ยนเฉพาะการจัดวางและคำอธิบาย ผลการทบทวนเหมือนเดิม", "Changes only the layout and the notes; the review's results stay the same."],
+    name: {
+      public: ["ประชาชนทั่วไป", "General public"],
+      bedside: ["แพทย์ข้างเตียง", "Bedside clinician"],
+      learner: ["นักศึกษาและแพทย์ประจำบ้าน", "Students and residents"],
+      committee: ["คณะกรรมการยาและ HTA", "Drug committee and HTA"],
+    },
+    guideLabel: ["ก่อนอ่านรายงานนี้", "Before you read"],
+    guideGroups: ["รายงานนี้สรุปงานวิจัยเกี่ยวกับกลุ่มคน ไม่ใช่คำแนะนำสำหรับอาการ การวินิจฉัย ขนาดยา หรือการรักษาของคุณเอง",
+      "This report summarises research about groups of people. It is not advice on your own symptoms, diagnosis, dose or treatment."],
+    guideCertainty: ["ความเชื่อมั่นของหลักฐานบอกว่าผลน่าเชื่อเพียงใด ระดับสูงคือผลไม่น่าจะเปลี่ยน ระดับต่ำหรือต่ำมากคือผลอาจเปลี่ยนได้มากเมื่อมีงานวิจัยใหม่",
+      "The certainty of the evidence says how far to trust a result: high means it is unlikely to change; low or very low means new research may change it a lot."],
+    guideDoctor: ["ก่อนเริ่ม หยุด หรือเปลี่ยนยาหรือการรักษา ปรึกษาแพทย์หรือเภสัชกร หากเป็นภาวะฉุกเฉิน โทร 1669",
+      "Before starting, stopping or changing a medicine or treatment, talk to a doctor or pharmacist. In an emergency in Thailand, call 1669."],
+    applicabilityLabel: ["บริบทของประเทศไทย", "Thai practice"],
+    applicability: ["งานวิจัยเหล่านี้ศึกษาในประชากร ระบบสุขภาพ และบริบทที่อาจต่างจากเวชปฏิบัติในประเทศไทย ใช้เป็นบริบทประกอบการตัดสินใจ ไม่ใช่หลักฐานว่าผลจะเหมือนกันในผู้ป่วยไทย",
+      "These studies come from populations, health systems and settings that may differ from Thai practice. This is context for a decision, not evidence that the results carry over to Thai patients."],
+    learnLabel: ["อ่านเพื่อเรียนรู้", "Learning note"],
+    learn: {
+      sof: ["ตารางสรุปผลวางผลแต่ละผลลัพธ์คู่กับความเชื่อมั่นของหลักฐานตามแนวคิด GRADE ซึ่งเริ่มจากรูปแบบงานวิจัย (RCT เริ่มที่สูง งานเชิงสังเกตเริ่มที่ต่ำ) แล้วลดระดับเมื่อมีความเสี่ยงอคติ ผลไม่สอดคล้องกัน ไม่ตรงคำถาม ไม่แม่นยำ หรือสงสัยอคติการตีพิมพ์",
+        "The summary table pairs each outcome with the certainty of its evidence, in the spirit of GRADE: it starts from the study design (trials high, observational studies low) and goes down for risk of bias, inconsistency, indirectness, imprecision or suspected publication bias."],
+      selection: ["แผนภาพ PRISMA แสดงว่าค้นพบกี่รายการ คัดออกกี่รายการ และด้วยเหตุผลใด ก่อนเหลืองานที่วิเคราะห์ ใช้ดูว่าการคัดเลือกโปร่งใสหรือไม่ และงานที่ถูกคัดออกอาจทำให้ผลเอนเอียงได้อย่างไร",
+        "The PRISMA flow shows how many records were found, how many were excluded and why, before the studies analysed. Use it to judge whether the selection is transparent and whether what was left out could bias the result."],
+      rob: ["ความเสี่ยงอคติประเมินว่าวิธีการของแต่ละงานอาจทำให้ผลคลาดจากความจริงเพียงใด เช่น การสุ่ม การปกปิด หรือการสูญหายของผู้เข้าร่วม รายงานนี้ประเมินจากบทคัดย่อเท่านั้น จึงหยาบกว่าการประเมินจากบทความฉบับเต็ม",
+        "Risk of bias asks how far a study's methods could pull its result away from the truth: randomisation, blinding, participants lost to follow-up. This report judges it from abstracts only, so it is coarser than an appraisal of the full paper."],
+      consistency: ["เมื่องานวิจัยให้ผลขัดกัน ให้ดูความต่างของประชากร ขนาดยาหรือระยะเวลา รูปแบบงานวิจัย และขนาดตัวอย่าง ก่อนสรุปว่าการรักษาได้ผลหรือไม่",
+        "When studies disagree, compare their populations, doses or durations, designs and sizes before concluding whether a treatment works."],
+    },
+  },
+
+  /** Plan 26: safety notices shown in every audience view (components/review/audience.tsx). */
+  safety: {
+    dosingLabel: ["ไม่ใช่คำแนะนำเรื่องขนาดยา", "Not dosing advice"],
+    dosing: ["ขนาดยาที่กล่าวถึงในรายงานนี้มาจากงานวิจัยที่อ่าน ไม่ใช่ขนาดที่เหมาะกับคนใดคนหนึ่ง ปรึกษาแพทย์หรือเภสัชกรก่อนเริ่ม หยุด หรือเปลี่ยนยาทุกครั้ง",
+      "Doses mentioned in this report come from the studies read, not from what suits any one person. Ask a doctor or pharmacist before starting, stopping or changing a medicine."],
+    harmsLabel: ["ข้อมูลด้านอันตรายไม่ครบ", "Harms data incomplete"],
+    harms: (reporting: number, studies: number): Pair => [
+      `บทคัดย่อของงานที่รวมไว้ ${reporting} จาก ${studies} งานรายงานผลด้านอันตรายหรือเหตุการณ์ไม่พึงประสงค์ บทคัดย่อมักไม่รายงานอันตราย การไม่พบข้อมูลจึงไม่ได้แปลว่าปลอดภัย`,
+      `${reporting} of ${studies} included ${pl(studies, "study reports", "studies report")} harms or adverse events in the abstract. Abstracts often leave harms out, so missing data is not evidence of safety.`],
+    harmsNone: ["ไม่มีบทคัดย่อของงานที่รวมไว้รายงานผลด้านอันตรายหรือเหตุการณ์ไม่พึงประสงค์ บทคัดย่อมักไม่รายงานอันตราย การไม่พบข้อมูลจึงไม่ได้แปลว่าปลอดภัย",
+      "No included study reports harms or adverse events in its abstract. Abstracts often leave harms out, so missing data is not evidence of safety."],
+  },
 } as const;
