@@ -75,7 +75,7 @@ from app.harness.study_types import allowed_designs, design_allowed
 from app.harness.support import markers as support_markers
 from app.harness.trials import related_reports
 from app.harness.verify import check_citations, strip_unknown_citations
-from app.schemas.review import NON_QUANTITATIVE_TYPES, SLR_LIKE, ReviewOptions
+from app.schemas.review import NON_QUANTITATIVE_TYPES, SLR_LIKE, ReviewOptions, is_quick
 from app.services.llm import LLMError
 
 log = logging.getLogger(__name__)
@@ -292,6 +292,18 @@ def _empty_synthesis(summary: str, review_type: str = "slr") -> dict[str, Any]:
                      grade_baseline="very_low" if graded else None, answer=summary, key_findings=[]).model_dump()
 
 
+def empty_messages(state: ReviewState) -> dict[str, str]:
+    """Why there are no papers to write from ({"th", "en"}): every card outside the ticked study types, every read
+    failed, screening failed, or nothing relevant was found (write_synthesis and Plan 27's write_quick_answer)."""
+    if design_excluded(state):  # every card read as a design outside the ticked study types
+        return NO_PAPERS
+    if state.get("selected"):
+        return EXTRACTION_FAILED
+    if state.get("candidates") and any(e.startswith("screening batch failed") for e in state.get("errors") or []):
+        return SCREENING_FAILED
+    return NO_PAPERS
+
+
 def _not_graded_rationale(review_type: str) -> str:
     return f"Certainty of evidence is not graded in a {'scoping' if review_type == 'scoping' else 'narrative'} review."
 
@@ -370,7 +382,10 @@ def make_normalize_outcomes(deps):
 
 # ---- S2b: pooled effects (meta-analysis only) ----------------------------------------------------
 def route_after_normalize(state: ReviewState) -> list[Send] | str:
-    """Meta-analysis goes through pool_effects; every other type keeps its path unchanged."""
+    """Meta-analysis goes through pool_effects; a quick answer (Plan 27) goes straight to its writer (no pools, no
+    conflict explanations); every other type keeps its path unchanged."""
+    if is_quick(state.get("options")):
+        return "write_quick_answer"
     if _review_type(state) == "meta_analysis":
         return "pool_effects"
     return route_conflicts(state)
@@ -1020,15 +1035,7 @@ def make_write_synthesis(deps):
         # Qualitative/mixed-methods themes reach every narrative, graded or not (never the matrix or the grade).
         papers = _narrative_papers(state)
         if not papers:
-            if design_excluded(state):  # every card read as a design outside the ticked study types
-                messages = NO_PAPERS
-            elif state.get("selected"):
-                messages = EXTRACTION_FAILED
-            elif state.get("candidates") and any(e.startswith("screening batch failed")
-                                                 for e in state.get("errors") or []):
-                messages = SCREENING_FAILED
-            else:
-                messages = NO_PAPERS
+            messages = empty_messages(state)
             english = _empty_synthesis(messages["en"], review_type)
             display = _empty_synthesis(messages.get(language, messages["en"]), review_type)
             return {"synthesis": english, "synthesis_display": display, "localized_cards": None,
@@ -1392,6 +1399,23 @@ def _support_result(support: dict[str, Any] | None, display: dict[str, Any]) -> 
     return {**support, "display_aligned": support_markers(display.get("executive_summary")) == support.get("markers")}
 
 
+def quick_refs(summary: str | None) -> list[str]:
+    """Plan 27: the refs a quick answer cites, in the order they first appear in its English text: reference [k] of
+    the answer is quick_refs[k - 1] (the translation keeps the [Pn] groups)."""
+    out: list[str] = []
+    for group in support_markers(summary):
+        out += [ref for ref in group if ref not in out]
+    return out
+
+
+def _quick_result(state: ReviewState, synthesis_en: dict[str, Any]) -> dict[str, Any] | None:
+    """result.quick (Plan 27): null for a full review."""
+    if not is_quick(state.get("options")):
+        return None
+    # papers_read: the evidence the answer was written from (not-evidence papers stay in `papers`, uncounted)
+    return {"refs": quick_refs(synthesis_en.get("executive_summary")), "papers_read": len(_narrative_papers(state))}
+
+
 def _iso(epoch: Any) -> str | None:
     if not isinstance(epoch, int | float):
         return None
@@ -1476,6 +1500,9 @@ def make_finalize(deps):
         result = {
             "topic": state["topic"], "english_topic": state.get("english_topic"), "language": language,
             "review_type": ReviewOptions.clamped(state.get("options")).review_type,
+            # Plan 27: "quick" = a short answer (summary) with numbered references (quick.refs), not a full report
+            "mode": ReviewOptions.clamped(state.get("options")).mode,
+            "quick": _quick_result(state, synthesis_en),
             "question": _question_block(state),
             "summary": synthesis["executive_summary"], "synthesis": synthesis, "synthesis_en": synthesis_en,
             "papers": out_papers, "queries": (state.get("plan") or {}).get("queries", []),

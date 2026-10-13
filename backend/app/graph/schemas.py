@@ -342,6 +342,14 @@ class NarrativeNoGrade(BaseModel):
     key_findings: list[NarrativeFinding] = Field(default_factory=list)
 
 
+class QuickAnswerDraft(BaseModel):
+    """Plan 27: the quick answer as the model writes it: 2-4 English sentences, each citing the papers that support it
+    ([P1] or [P1, P3]), and one sentence on the main limitation of the evidence (no citation, no number). Code checks
+    both and adds the certainty sentence (the GRADE-lite baseline, never the model's)."""
+    sentences: list[str]
+    limits: str
+
+
 class TranslationItem(BaseModel):
     id: str
     text: str

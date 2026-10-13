@@ -457,6 +457,40 @@ def narrative_user(*, question: str, sub_questions: list[str], papers: list[dict
                if review_type == "meta_analysis" else ""))
 
 
+QUICK_SYSTEM = """You write a quick answer to a health question from the cards of a few studies whose abstracts were
+read and checked already. Readers include the public and clinicians at the bedside; the answer is shown with numbered
+references to the cited studies.
+- sentences: 2-4 short, plain English sentences that answer the question directly: what the studies found, in whom,
+  and whether they agree. Each sentence ends with the papers that support it, like [P2] or [P1, P3]; cite only refs
+  that appear in the evidence, and only for what that paper's card says.
+- limits: one plain English sentence on the main limitation of this evidence (for example few or small studies,
+  observational designs, short follow-up, a population unlike the question's, or results from abstracts only). No
+  [Pn] citations and no numbers.
+- Numbers: state only numbers shown on the cited cards, exactly as given, with the card's effect_measure; never
+  compute, convert, round or combine numbers. Leave a number out when unsure.
+- Populations: describe each cited paper's population exactly as its card states.
+- Certainty wording (GRADE): word the conclusions to match the certainty given with the evidence. high: "reduces";
+  moderate: "probably reduces"; low: "may reduce"; very_low: "the evidence is very uncertain about ...". For
+  observational evidence say "is associated with", never a causal verb. Do not state the certainty level itself: it
+  is added after your answer.
+- Never give advice to a person: no doses, no instructions to start, stop or change a treatment.
+- Card outcomes with matches_question false compare something else; they are never evidence for the question.
+Use only the information given; never invent papers, numbers or citations."""
+
+
+def quick_user(*, question: str, papers: list[dict[str, Any]], baseline: dict[str, Any] | None) -> str:
+    """Plan 27: the quick writer's evidence: the cards of the papers read (no matrix, conflicts or pools) and the
+    certainty computed in code (null when the papers are not graded, e.g. qualitative studies only)."""
+    level = (baseline or {}).get("level")
+    certainty = (f"{level} ({'; '.join((baseline or {}).get('factors', []))})" if level
+                 else "not graded (no quantitative studies; report themes, not effects)")
+    return (f"{DATA_NOTICE}\n<evidence>\n{json.dumps({'papers': papers}, ensure_ascii=False)}\n</evidence>\n\n"
+            f"Question: {question}\nCertainty of the evidence (computed): {certainty}\n\n"
+            "Checklist before answering:\n- 2-4 sentences, each ending with its [Pn] citations from the evidence\n"
+            "- limits is one sentence without citations or numbers\n"
+            "- numbers only as written on the cited cards; all text is in English")
+
+
 SUPPORT_SYSTEM = """You check whether sentences of a medical literature review are supported by the abstract of the
 paper they cite. Each item gives a claim (one sentence of the review), the paper it cites (its [Pn] in the claim)
 and up to two candidate sentences copied from that paper's abstract.

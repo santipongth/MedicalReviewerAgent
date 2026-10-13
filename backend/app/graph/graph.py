@@ -14,6 +14,7 @@ from app.graph.nodes import (
     citations,
     external,
     intake,
+    quick,
     reading,
     retrieval,
     screening,
@@ -94,8 +95,9 @@ def build_stub_graph(checkpointer: BaseCheckpointSaver | None = None, delay_seco
 
 def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
     """screen_batch* → select_top → read_paper* (+ external_enrich, fetch_citations, thaijo_metadata) → normalize_outcomes
-    → [pool_effects] → explain_conflict* → write_synthesis → localize ∥ check_support → finalize. Shared by
-    build_graph and the Plan 22a eval graph."""
+    → [pool_effects] → explain_conflict* → write_synthesis → localize ∥ check_support → finalize. A quick answer
+    (Plan 27) reads without external_enrich and fetch_citations and goes normalize_outcomes → write_quick_answer →
+    localize ∥ check_support → finalize. Shared by build_graph and the Plan 22a eval graph."""
     b.add_node("screen_batch", screening.make_screen_batch(deps))
     b.add_node("select_top", screening.make_select_top(deps))
     b.add_node("read_paper", reading.make_read_paper(deps))
@@ -106,6 +108,7 @@ def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
     b.add_node("pool_effects", synthesis.make_pool_effects(deps))
     b.add_node("explain_conflict", synthesis.make_explain_conflict(deps))
     b.add_node("write_synthesis", synthesis.make_write_synthesis(deps))
+    b.add_node("write_quick_answer", quick.make_write_quick_answer(deps))
     b.add_node("localize", synthesis.make_localize(deps))
     b.add_node("check_support", support.make_check_support(deps))
     b.add_node("finalize", synthesis.make_finalize(deps))
@@ -121,14 +124,17 @@ def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
     b.add_edge("external_enrich", "normalize_outcomes")
     b.add_edge("fetch_citations", "normalize_outcomes")
     b.add_edge("thaijo_metadata", "normalize_outcomes")
-    # meta_analysis: normalize_outcomes → pool_effects → conflicts; every other type skips pool_effects
+    # meta_analysis: normalize_outcomes → pool_effects → conflicts; every other type skips pool_effects; a quick
+    # answer (Plan 27) goes straight to its own writer
     b.add_conditional_edges("normalize_outcomes", synthesis.route_after_normalize,
-                            ["pool_effects", "explain_conflict", "write_synthesis"])
+                            ["pool_effects", "explain_conflict", "write_synthesis", "write_quick_answer"])
     b.add_conditional_edges("pool_effects", synthesis.route_conflicts, ["explain_conflict", "write_synthesis"])
     b.add_edge("explain_conflict", "write_synthesis")
     # Plan 25: the support check reads the English synthesis, so it runs beside localize; finalize waits for both
     b.add_edge("write_synthesis", "localize")
     b.add_edge("write_synthesis", "check_support")
+    b.add_edge("write_quick_answer", "localize")  # only one of the two writers runs in a review
+    b.add_edge("write_quick_answer", "check_support")
     b.add_edge(["localize", "check_support"], "finalize")  # an explicit join: finalize runs once, after both
     b.add_edge("finalize", END)
 
