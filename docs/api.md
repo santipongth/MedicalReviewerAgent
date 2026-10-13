@@ -35,7 +35,7 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 - Keys are minted with `python -m app.cli.keys mint --name "lab" [--quota N] [--admin]`. Only SHA-256 hashes are stored.
 - Keys can also be minted, edited and revoked in the admin console (see Admin API).
 
-**Limits.** Defaults are below. The current values are always in `GET /api/v1/status → limits`.
+**Limits.** Defaults are below. The admin console can change several of these values at runtime (see "Runtime settings, glossary and harness"), and `GET /api/v1/status → limits` always shows the values in force (within 5 seconds of a save).
 
 | Limit | Default | Scope | When exceeded |
 |---|---|---|---|
@@ -54,7 +54,7 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 - **503** from a capacity check returns `{detail, reason}` and a `Retry-After` header. `reason` is one of `queue_full`, `daily_reviews`, `daily_budget` or `verification_unavailable`.
 - **503** when the job could not be queued returns `{detail, review_id}`.
 
-**Cache hits are free.** The same topic (case and spaces ignored), language, options and pipeline version within 24 hours of finishing, or while still queued or running, returns that review with `cached: true`. Cache hits skip every limit, Turnstile and capacity check. The pipeline version is the prompt version plus the model configuration in use, written `<prompt_version>+llm<id>` (`id` is the saved configuration version, or `file` while `llm.yaml` is in use). A saved model configuration therefore starts a new cache generation: after any save, restore or reset in the admin console (see "Model management"), the same question runs again on the new models instead of returning a review made with the old ones. Deploying Plan 23b itself starts one new generation too: `<prompt_version>` becomes `<prompt_version>+llmfile`, so reviews cached before the deploy are not returned.
+**Cache hits are free.** The same topic (case and spaces ignored), language, options and pipeline version within 24 hours of finishing, or while still queued or running, returns that review with `cached: true`. Cache hits skip every limit, Turnstile and capacity check. The pipeline version is the prompt version plus the model configuration in use, written `<prompt_version>+llm<id>` (`id` is the saved configuration version, or `file` while `llm.yaml` is in use). A saved glossary starts a new cache generation too (`+g<version>` is added to the pipeline version while a glossary version exists, and results carry `glossary_version`); saved settings never do. A saved model configuration therefore starts a new cache generation: after any save, restore or reset in the admin console (see "Model management"), the same question runs again on the new models instead of returning a review made with the old ones. Deploying Plan 23b itself starts one new generation too: `<prompt_version>` becomes `<prompt_version>+llmfile`, so reviews cached before the deploy are not returned.
 
 **Turnstile.** This only applies when the deployment sets `TURNSTILE_SECRET`. An anonymous `POST /reviews` must then send the browser token in the `cf-turnstile-response` header:
 - A missing or rejected token gets **403**.
@@ -697,7 +697,7 @@ The payloads in more detail:
   `actor_kind` is `"user" | "key" | "cli"`. `actor_label` is the username, the key prefix, or `cli`. `action` is one of
   `review.cancel`, `review.hide`, `review.show`, `review.delete`, `key.mint`, `key.update`, `key.revoke`,
   `admin.login`, `admin.logout`, `admin.lockout`, `admin.create`, `admin.passwd`, `admin.disable`, `admin.enable`,
-  `llm_config.save`, `llm_config.restore`, `llm_config.reset`, `llm.test` (Plan 23b, see below).
+  `llm_config.save`, `llm_config.restore`, `llm_config.reset`, `llm.test` (Plan 23b, see below), `settings.save`, `settings.restore`, `settings.reset`, `glossary.save`, `glossary.restore`, `glossary.reset`, `harness.start` and `harness.cancel` (Plan 23c, see "Runtime settings, glossary and harness").
 
 ### Model management (Plan 23b)
 
@@ -710,8 +710,8 @@ audit rules as the rest of the Admin API and are not in the public OpenAPI.
 | Method and path | Success | Errors |
 |---|---|---|
 | `GET /admin/llm-config` | 200 the state, see "State" | 401, 403 |
-| `GET /admin/llm-config/versions?before=&limit=50` (1–100) | 200 `{items, next}`, newest first. An item is `{id, created_at, created_by, note, source, restored_from, active_preset, changes}`. `before` is the previous page's `next` | 401, 403, 422 |
-| `GET /admin/llm-config/versions/{id}` | 200 the item above plus `config`, the stored document | 401, 403, 404, 422 (id not an integer) |
+| `GET /admin/llm-config/versions?before=&limit=50` (1–100) | 200 `{items, next}`, newest first. An item is `{id, created_at, created_by, note, source, restored_from, active_preset, changes}`. `before` is the previous page's `next` (1-2147483647) | 401, 403, 422 |
+| `GET /admin/llm-config/versions/{id}` | 200 the item above plus `config`, the stored document | 401, 403, 404, 422 (id outside 1-2147483647, or not an integer) |
 | `GET /admin/llm-config/versions/{id}/yaml` | 200 `text/yaml` attachment `llm-config-v{id}.yaml` | 401, 403, 404, 422 |
 | `POST /admin/llm-config/validate` `{config \| yaml}` | 200 `{ok, errors, warnings, cost, config, yaml}`; nothing is saved | 401, 403, 422 |
 | `POST /admin/llm-config` `{config \| yaml, base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 409, 422 |
@@ -720,7 +720,7 @@ audit rules as the rest of the Admin API and are not in the public OpenAPI.
 | `GET /admin/llm-models?q=&structured=&reasoning=&max_price=&limit=100` (1–500) | 200 `{items, available}`, the OpenRouter catalog | 401, 403, 422 |
 | `POST /admin/llm-models/test` `{config \| yaml, preset?, role}` (the document is optional) | 200 `{ok, latency_ms, cost_usd, model, error}` | 401, 403, 422, 429 |
 
-**State.** `GET /admin/llm-config` answers `{source, version, config, active_preset, env_preset, keys_present, loaded}`:
+**State.** `GET /admin/llm-config` answers `{source, version, config, active_preset, env_preset, keys_present, loaded, error}`:
 - `source` is `"db"` (a saved version is in use) or `"file"` (none is saved, so `llm.yaml` is in use). `version` is
   that version's id, or null for `"file"`. `config` is the document in use.
 - `active_preset` is the preset the workers run: `LLM_PRESET` while `llm.yaml` is the source, otherwise the version's
@@ -728,11 +728,12 @@ audit rules as the rest of the Admin API and are not in the public OpenAPI.
 - `keys_present` is `{ENV_NAME: bool}` for the key variable of each configured provider. Provider API keys never reach
   the database, the API or the console; the console sees only whether each one is set.
 - `loaded` lists the workers, see "Workers" below.
+- `error` is null normally. When the newest saved version, or `llm.yaml` while no version is saved, no longer passes validation, the route still answers **200** with the stored `config`, an empty `keys_present` and `error` set to the reason, and the console offers restore and reset.
 
 **Documents.** `config` is the document as an object and `yaml` is the same document as text (up to 200,000
 characters). Send exactly one of them; both, or neither where one is required, is 422. A note is up to 500 characters.
 - A document has the shape of `llm.yaml`: `active_preset`, `default_provider`, `providers`, `presets`, `harness` and
-  `overrides`. Unknown fields are refused. The fields of a role are listed in the header of `backend/config/llm.yaml`.
+  `overrides`. Unknown fields are refused. `harness.screen_borderline` is `[low, high]` and must satisfy `0 <= low <= high <= 100`. The fields of a role are listed in the header of `backend/config/llm.yaml`.
 - Every preset defines the roles `guard`, `planner`, `screener`, `extractor` and `synthesizer`, a role's provider must
   be configured, and `active_preset` must name a preset in the document. A document whose active preset is missing, or
   that deletes the active preset, is refused at save and never reaches a worker.
@@ -769,8 +770,10 @@ too deep), and a body with both or neither of `config` and `yaml`, are 422. For 
   editor can share one draft.
 - `warnings` never block a save. They cover a model OpenRouter does not list, a setting the model does not support
   (`reasoning_effort`, `structured_output`), `max_tokens` above the model's context, an unknown fallback model, a
-  provider key variable that is not set (`openai_compatible` is exempt), and "catalog unavailable" when the model checks
-  were skipped.
+  provider key variable that is not set (`openai_compatible` is exempt), "catalog unavailable" when the model checks
+  were skipped, and "`<preset>`: no known price for `<roles>`" for a model with no known price (a direct Anthropic model
+  that is not in the price table, or an OpenRouter model the catalog does not list; local servers are not flagged),
+  because the review cost cap cannot count it.
 - `cost` is `{preset: {total_usd, per_role, unknown_models}}`: a rough USD estimate of one default review for every
   preset. A model the catalog does not know (and any non-OpenRouter provider) is listed in `unknown_models` and not
   priced. `cost` is empty while the catalog is unavailable.
@@ -866,7 +869,8 @@ admin-only constants, not `/status` limits).
   runs the database's active version (or `llm.yaml` while the table is empty), is cleared at the next check.
 - A worker started with `GRAPH_MODE=stub` records the version it sees without building any LLM.
 - Each worker reports itself in the Redis hash `mra:llm:loaded`. The field is `<hostname>:<pid>` and the value is JSON
-  `{version, preset, loaded_at, error}`. `version` is the id as text or `"file"`, and `error` is null or the last error
+  `{version, preset, loaded_at, error, settings, glossary, runtime_error}` (the last three came with Plan 23c, see
+  "Runtime settings, glossary and harness"). `version` is the id as text or `"file"`, and `error` is null or the last error
   (up to 300 characters). A worker reports at start, after each reload and at every 30-second check, so `loaded_at`
   means **last seen**, not when the version was loaded. A worker that shuts down cleanly removes its entry.
   `GET /admin/llm-config` returns the entries as `loaded: [{worker, version, preset, loaded_at, error}]`, leaving out
@@ -875,6 +879,135 @@ admin-only constants, not `/status` limits).
 **Command line.** `python -m app.cli.models check [--source file|db]` validates `llm.yaml` (the default) or, with
 `--source db`, the configuration in use (the newest version, else `llm.yaml`; `--config` and `--preset` apply to
 `--source file`). The eval commands use the configuration in use too; see `backend/evals/cochrane/PROTOCOL.md`.
+
+### Runtime settings, glossary and harness (Plan 23c)
+
+Three more console pages sit on the same sign-in, CSRF and audit rules (not in the public OpenAPI). The settings and
+the glossary are **versioned documents** in the `config_versions` table: numbered per kind from 1, never updated or
+deleted, and the newest version is the one in use. While a kind has no version, the environment (settings) or the
+built-in glossary (the seed) is in use.
+
+| Method and path | Success | Errors |
+|---|---|---|
+| `GET /admin/settings` | 200 `{source, version, values, worst_case_review_usd, overrides, env, specs, loaded}` | 401, 403 |
+| `POST /admin/settings/validate` `{values?}` | 200 `{ok, errors, warnings, values, worst_case_review_usd}`; nothing is saved | 401, 403, 422 |
+| `POST /admin/settings` `{values, base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 409, 422 |
+| `GET /admin/glossary` | 200 `{source, version, terms, chars, max_chars, loaded}` | 401, 403 |
+| `POST /admin/glossary/validate` `{terms}` | 200 `{ok, errors, warnings, preview, chars}`; nothing is saved | 401, 403, 422 |
+| `POST /admin/glossary` `{terms, base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 409, 422 |
+| `GET /admin/{settings\|glossary}/versions?before=&limit=50` (1-100) | 200 `{items, next}`, newest first. An item is `{version, kind, created_at, created_by, note, source, restored_from, changes}`. `before` is the previous page's `next` | 401, 403, 422 |
+| `GET /admin/{settings\|glossary}/versions/{version}` | 200 the item plus `document` | 401, 403, 404, 422 |
+| `POST /admin/{settings\|glossary}/versions/{version}/restore` `{base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 404, 409, 422 |
+| `POST /admin/{settings\|glossary}/reset` `{base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 409, 422 |
+| `GET /admin/harness` | 200 the state, see "Harness" | 401, 403 |
+| `GET /admin/harness/runs?before=&limit=20` (1-100) | 200 `{items, next}`, newest first | 401, 403, 422 |
+| `GET /admin/harness/runs/{id}` | 200 the run | 401, 403, 404, 422 |
+| `POST /admin/harness/runs` `{max_usd, repeats?, strata?, max_reviews?, compare_run?, confirm}` | 201 the run | 401, 403, 409, 422, 503 |
+| `POST /admin/harness/runs/{id}/cancel` | 200 the run | 401, 403, 404, 409, 422 |
+| `GET /admin/harness/reports` | 200 `{items}` | 401, 403 |
+| `GET /admin/harness/reports/{name}` | 200 `{name, text}` | 401, 403, 404 |
+| `GET /admin/harness/results` | 200 `{items}`, the runs that have result files | 401, 403 |
+| `GET /admin/harness/compare?a=&b=` | 200 the comparison | 401, 403, 404, 422 |
+
+**Versions (both kinds).** `source` of a version is `edit`, `restore` or `reset`; the note is up to 500 characters.
+- **`base_version`** is required on save, restore and reset, and may be null while the kind has no version. It names
+  the version the caller edited from. If another save has landed since, the answer is **409** and nothing is stored.
+  Saves are serialised in the database (one advisory lock for all kinds). `POST /admin/settings` requires `values`
+  (a body without it is 422, so it can never save "env everywhere" by accident); the validate body defaults it to `{}`.
+- Version ids in the path (`{version}`) and `before` accept 1 to 2147483647. Anything else (zero, negative, larger, not
+  an integer) is **422**, never a 500. An unknown version is 404. The same holds for the harness run id.
+- Restore saves an old version again, so it must still pass today's rules (422 if it no longer does). Reset appends a
+  version holding the seed (settings: no overrides, so every value reads from the environment; glossary: the built-in
+  text). After a reset the source is still `"db"`.
+- A document that breaks a rule answers **422** `{detail, errors}` on save, restore and reset, where `errors` is a list
+  of `{field, message}`. Validate answers **200** `{ok: false, errors, ...}` instead. Messages name the field or the
+  cell (`terms.3.th`) and never repeat submitted text. A request body that fails the route's own schema is 422 with
+  `detail` a list of `{type, loc, msg}`; when the body has a key the route does not take, `loc` carries the fixed
+  token `"<extra>"` in place of the key. Lone surrogates, NUL characters and over-deep bodies are 422 too.
+- `workers_notified` is true when the Redis mirror (`mra:settings:active`, `mra:glossary:active`) now holds this
+  version or a newer one. When it is false the version is stored and the answer is still 201: every worker's DB poll
+  picks it up within 30 seconds and repairs the mirror that the API reads.
+- **Audit.** `settings.save|restore|reset` and `glossary.save|restore|reset` with `target_type` `settings` or
+  `glossary` and `target_id` the version; `harness.start` and `harness.cancel` with `target_type` `harness_run` and
+  `target_id` the run's row id. Each row is written in the same transaction as the change.
+
+**Settings.** The console edits exactly 13 values. A document is `{"values": {name: value}}` holding only the values
+that differ from the environment (sparse overrides); reset is `{"values": {}}`. `GET /admin/settings` shows `values`
+(in force), `overrides` (the saved ones), `env` (what the environment gives), `specs` (the table below) and
+`worst_case_review_usd`.
+
+| Name | Type | Bounds |
+|---|---|---|
+| `review_rate_limit`, `api_key_rate_limit`, `paper_search_rate_limit` | rate, `N/second\|minute\|hour\|day` | N 1-99999 |
+| `sse_max_per_ip` | int | 1-50 |
+| `max_queued_reviews` | int | 1-1000 |
+| `max_reviews_per_day` | int | 1-100000 |
+| `max_usd_per_day` | float | 0.1-1000 |
+| `review_cost_base_usd` | float | 0-1 |
+| `review_cost_per_paper_usd` | float | 0-0.1 |
+| `review_cost_per_candidate_usd` | float | 0-0.01 |
+| `max_cost_per_review_usd` | float | 0.05-5 |
+| `llm_concurrency` | int | 1-64 |
+| `result_cache_ttl_seconds` | int | 0-2592000 |
+
+- `max_usd_per_day` must be at least the worst-case review cap under the same document (`worst_case_review_usd`).
+- Every other setting stays env-only (secrets, URLs, and `HARNESS_MAX_USD`, which defaults to 5.0).
+- Defaults are not listed here: the values in force are always in `GET /api/v1/status` → `limits`.
+- **When a save takes effect.** API processes read settings through a cache of 5 seconds (each read is bounded at 2
+  seconds); the saving process drops its cache at once. With Redis and the database both down, the API keeps the last
+  values it knew, or the environment when it has none; it never answers 500 for this. A stored value that no longer
+  validates is skipped. Workers apply a saved version at the start of the next review, or within 30 seconds through
+  their poll. An `llm_concurrency` change applies to reviews that start after the reload (a running review keeps its
+  semaphore and graph). A changed rate limit starts counting afresh.
+- Settings never enter the result-cache key.
+
+**Glossary.** The Thai glossary is a list of terms `{en, th, abbr?, note?}` that the localization prompt shows to the
+model. The seed is the built-in text and is used verbatim (the localization prompt is byte-identical until a glossary
+is saved).
+- 1-200 terms. `en` up to 120 characters; aliases are separated by `/`, and an English alias may appear once
+  (case-insensitive). `th` up to 120 characters, with Thai script and no brackets. `abbr` up to 24 characters, no
+  brackets. `note` up to 300 characters and never shown to the model. No `;` or `=` in `en`, `th` or `abbr`, no control
+  characters. Blank optional values become null.
+- The rendered text (`en = th (ABBR)` joined by `; `) is at most 4000 characters; `chars` and `max_chars` report it.
+- Validate returns `preview`, the rendered text.
+- A saved glossary adds `+g{version}` to the result-cache key and every result carries `glossary_version`; with no saved
+  version the key is unchanged. Workers read the terms from the database when they reload.
+
+**Workers.** The `mra:llm:loaded` entries of Plan 23b gain `settings` and `glossary` (the version each worker runs) and
+`runtime_error` (null or the last reload error). `runtime_error` can also mean the worker could not read the saved
+versions; it clears at the next good poll. `loaded` in the state routes lists them.
+
+**Harness.** The harness page reads the Cochrane evaluation (`backend/evals/cochrane`, Plan 22a): reports, run results
+and comparisons, and starts a capped run. Fixtures and runs hold third-party abstracts and are mounted into the
+containers (`./backend/evals/cochrane`, read-only for the API), never baked into the image.
+- **Worker.** Runs go to the `arq:harness` queue, served by the `harness` compose service, which is opt-in:
+  `docker compose --profile harness up -d harness`. It runs one job at a time and reports itself in the Redis key
+  `mra:harness:worker` every 30 seconds.
+- **State.** `GET /admin/harness` answers `{available, reasons, prompt_version, pool_version, strata, fixtures, worker,
+  ceiling_usd, default_usd, per_review_cap_usd, typical_review_usd, active}`. `reasons` is a list of `no_manifest`,
+  `no_fixtures`, `stub_mode` (`GRAPH_MODE=stub`), `no_worker` and `active_run`.
+- **Start.** The body is `{max_usd, repeats, strata, max_reviews, compare_run, confirm}`; extra fields are refused.
+  `confirm: true` is required (anything else is 422). `repeats` is 1-2, `max_reviews` 1-1000, `strata` up to 20 names of
+  up to 64 characters, and `compare_run` a label `prompt_version/run`. Answers: **201** the run; **409** when a run is
+  already queued or running (one at a time); **422** for a cap or selection rule; **503** `{detail, reasons}` when
+  `reasons` is not empty. A start that arq refuses to enqueue is **503** `{detail, reasons: []}` too, and the run ends
+  as `error`.
+- **The cap.** `max_usd` must be at least the per-review cap of the selection and at most `HARNESS_MAX_USD` (default
+  5.0). A run never starts a review unless what it has spent plus that review's own cap fits in `max_usd`. A harness
+  run claims rows that are `queued` or `running` and holds the single active slot. An interrupted review counts at its
+  full per-review cap on a retry, through in-flight markers in the run folder; an unreadable marker stops the run.
+  Earlier spend is counted from the run files on a retry.
+- **Run life.** `status` is `queued`, `running`, `done`, `stopped`, `cancelled` or `error`. `stopped` means the cap
+  stopped it, and can carry an `error` text. Cancel is graceful: a running batch stops before its next review. A job
+  that reaches its own deadline (12 hours minus 60 seconds), or is interrupted 3 times, ends as `error`. A worker that
+  is killed hard resumes its job only after arq's in-progress key expires, about 12 hours. `run_id` is
+  `console-YYYYMMDD-HHMMSS-xxxx` (UTC and four hex digits). A worker whose `prompt_version` differs from the run's ends
+  it as `error` before calling anything.
+- **Reports.** A report name must fully match `[A-Za-z0-9][A-Za-z0-9._-]{0,150}.md`, must sit directly in `reports/`,
+  must not be a symlink and must be at most 1,000,000 bytes. Anything else is 404.
+- **Compare.** `a` and `b` are labels `prompt_version/run` (up to 129 characters). A bad label is 422. Other answers are
+  fixed messages and never quote a file: **404** "no run files for run a" (or b), **404** "the harness manifest is
+  missing", **422** "the run file could not be read" or "the manifest could not be read".
 
 ## Paper count and pool (Plan 21)
 
