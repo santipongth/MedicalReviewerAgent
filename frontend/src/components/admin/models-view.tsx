@@ -261,7 +261,7 @@ export function ModelsView() {
           </div>
           {tab === "history" && <ModelsHistory base={state.version} onChanged={reload} writes={track} />}
           {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} knownPrices={state.known_prices} />}
-          {tab === "providers" && <ModelsProviders draft={edit.doc} setDraft={setDraft} fail={fail} />}
+          {tab === "providers" && <ModelsProviders draft={edit.doc} setDraft={setDraft} fail={fail} version={state.version} />}
           {(tab === "yaml" || yamlPending) && (
             <div hidden={tab !== "yaml"}>
               <ModelsYaml key={yamlKey} draft={edit.doc} setDraft={setDraft} initialText={edit.refused}

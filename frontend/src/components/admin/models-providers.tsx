@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useId, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { WORKERS_NOT_NOTIFIED, formatWhen } from "@/lib/admin-copy";
 import { KIND_LABEL, MAX_PROVIDERS, PROVIDER_NAME, addProvider, providerOrigin, providersInUse, removeProvider } from "@/lib/admin-models";
@@ -8,6 +8,7 @@ import type { LlmConfigDoc, LlmKeysState, LlmKeysWrite, OrphanKey, ProbeResult, 
 import { PROVIDER_TEMPLATES } from "@/lib/provider-templates";
 import { ConfirmButton } from "./confirm-button";
 import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT } from "./ui";
+import { useWorkerFollowUp } from "./use-worker-follow-up";
 import { WorkerVersions } from "./worker-versions";
 
 /** Why the tab cannot store keys (Plan 23e): the server has no usable LLM_KEYS_SECRET. Deleting still works. */
@@ -48,9 +49,22 @@ function ProviderRow({ row, draftSpec, writable, onWrite, fail }: {
   const [probe, setProbe] = useState<ProbeResult | "running" | null>(null);
   const keyId = useId();
   const modelId = useId();
+  const fieldRef = useRef<HTMLInputElement>(null);
+  const openRef = useRef<HTMLButtonElement>(null);
+  const giveBack = useRef(false); // the form was open: put focus back on the button that opened it
   const stored = row.key.updated_at !== null;
   const moved = stored && draftSpec !== undefined && providerOrigin(row.name, draftSpec) !== row.origin;
   const problem = row.key.problem !== null || (row.key.source === "none" && !row.keyless);
+
+  useEffect(() => {
+    if (open) {
+      giveBack.current = true;
+      fieldRef.current?.focus();
+    } else if (giveBack.current) {
+      giveBack.current = false;
+      openRef.current?.focus();
+    }
+  }, [open]);
 
   function close() {
     setOpen(false);
@@ -112,8 +126,8 @@ function ProviderRow({ row, draftSpec, writable, onWrite, fail }: {
         {open ? (
           <form onSubmit={save} className="grid gap-2">
             <label htmlFor={keyId} className="label">{`คีย์ของ ${row.name}`}</label>
-            <input id={keyId} type="password" autoComplete="off" spellCheck={false} value={text} className={INPUT}
-              onChange={(e) => setText(e.target.value)} />
+            <input id={keyId} ref={fieldRef} type="password" autoComplete="new-password" spellCheck={false} value={text}
+              className={INPUT} data-1p-ignore data-lpignore="true" data-bwignore onChange={(e) => setText(e.target.value)} />
             <div className="flex flex-wrap gap-2">
               <button type="submit" className={BUTTON_PRIMARY} disabled={busy || text.trim() === ""}>บันทึกคีย์</button>
               <button type="button" className={BUTTON_GHOST} onClick={close}>ยกเลิก</button>
@@ -122,7 +136,7 @@ function ProviderRow({ row, draftSpec, writable, onWrite, fail }: {
         ) : (
           <div className="flex flex-wrap gap-2">
             {writable && !row.keyless && (
-              <button type="button" className={BUTTON_GHOST} aria-label={`${stored ? "เปลี่ยนคีย์" : "ใส่คีย์"}ของ ${row.name}`}
+              <button type="button" ref={openRef} className={BUTTON_GHOST} aria-label={`${stored ? "เปลี่ยนคีย์" : "ใส่คีย์"}ของ ${row.name}`}
                 onClick={() => setOpen(true)}>{stored ? "เปลี่ยนคีย์" : "ใส่คีย์"}</button>
             )}
             {stored && (
@@ -229,8 +243,10 @@ function AddProvider({ draft, setDraft }: { draft: LlmConfigDoc; setDraft: (d: L
 /** The "ผู้ให้บริการและคีย์" tab (Plan 23e): each provider's key status, write-only key entry, delete and a test call;
  * providers that exist only in the unsaved draft; adding a provider from a template; and which key revision each
  * worker runs. A key typed here is sent once and never shown again. */
-export function ModelsProviders({ draft, setDraft, fail }: {
+export function ModelsProviders({ draft, setDraft, fail, version }: {
   draft: LlmConfigDoc; setDraft: (d: LlmConfigDoc) => void; fail: (e: unknown) => string;
+  /** The saved config version the page shows: when it moves (a save), the providers and their roles are read again. */
+  version?: number | null;
 }) {
   const [state, setState] = useState<LlmKeysState | null>(null);
   const [readAt, setReadAt] = useState(0);
@@ -240,13 +256,19 @@ export function ModelsProviders({ draft, setDraft, fail }: {
   const load = useCallback(() => adminApi.llmKeys()
     .then((s) => { setState(s); setReadAt(Date.now()); setError(null); })
     .catch((e: unknown) => setError(fail(e))), [fail]);
-  useEffect(() => { void load(); }, [load]);
+  // `version` is a trigger: a new saved version means a new read
+  useEffect(() => { void load(); }, [load, version]);
+  const poll = useCallback(() => { void load(); }, [load]);
+  const expected = state ? (state.keys_version === null ? "none" : String(state.keys_version)) : "none";
+  const lagging = state !== null && state.loaded.some((w) => (w.keys ?? "none") !== expected);
+  const { settling, wrote: followUp } = useWorkerFollowUp(lagging, poll);
 
   const wrote = useCallback((s: LlmKeysWrite) => {
+    followUp();
     setState(s);
     setReadAt(Date.now());
     setNote(s.workers_notified ? "บันทึกแล้ว: worker ใช้คีย์ชุดนี้ตั้งแต่งานถัดไป (ภายใน 30 วินาที) รีวิวที่กำลังทำอยู่ใช้คีย์เดิมจนจบ" : WORKERS_NOT_NOTIFIED);
-  }, []);
+  }, [followUp]);
 
   if (!state) {
     return error ? <p role="alert" className="mt-6 rounded-sm bg-err-bg px-4 py-3">{error}</p>
@@ -255,7 +277,6 @@ export function ModelsProviders({ draft, setDraft, fail }: {
   const saved = new Set(state.providers.map((p) => p.name));
   const draftOnly = Object.keys(draft.providers).filter((n) => !saved.has(n));
   const inUse = providersInUse(draft);
-  const expected = state.keys_version === null ? "none" : String(state.keys_version);
 
   return (
     <section aria-label="ผู้ให้บริการและคีย์" className="mt-6">
@@ -303,7 +324,7 @@ export function ModelsProviders({ draft, setDraft, fail }: {
       <AddProvider draft={draft} setDraft={setDraft} />
       <section className="mt-8">
         <h2 className="font-display text-xl font-semibold">คีย์ที่ worker ใช้</h2>
-        <WorkerVersions loaded={state.loaded} field="keys" expected={expected} now={readAt} />
+        <WorkerVersions loaded={state.loaded} field="keys" expected={expected} now={readAt} settling={settling} />
       </section>
     </section>
   );

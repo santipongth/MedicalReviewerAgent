@@ -138,8 +138,6 @@ test("add DeepSeek from a template, save it, then set, replace and delete its ke
   await page.getByRole("button", { name: "บันทึกเป็นเวอร์ชันใหม่" }).click();
   await expect(page.getByText("ใช้เวอร์ชัน 4 จาก DB")).toBeVisible();
   expect(calls.saves[0].providers.deepseek).toEqual({ kind: "openai_compatible", base_url: "https://api.deepseek.com/v1", require_parameters: false });
-  await page.reload();
-  await tab(page, "ผู้ให้บริการและคีย์").click();
   const deepseek = providerItem(page, "deepseek");
   await expect(deepseek).toContainText("ยังไม่มีคีย์");
 

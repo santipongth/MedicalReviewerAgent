@@ -62,7 +62,7 @@ describe("ModelsProviders", () => {
     fireEvent.click(within(await item("openrouter")).getByRole("button", { name: "ใส่คีย์ของ openrouter" }));
     const field = screen.getByLabelText("คีย์ของ openrouter");
     expect(field).toHaveAttribute("type", "password");
-    expect(field).toHaveAttribute("autocomplete", "off");
+    expect(field).toHaveAttribute("autocomplete", "new-password");
     expect(field).toHaveAttribute("spellcheck", "false");
     fireEvent.change(field, { target: { value: KEY } });
     fireEvent.click(screen.getByRole("button", { name: "บันทึกคีย์" }));
