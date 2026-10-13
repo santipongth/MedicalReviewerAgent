@@ -55,6 +55,8 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 - **429** returns `{detail}` and a `Retry-After` header.
 - **503** from a capacity check returns `{detail, reason}` and a `Retry-After` header. `reason` is one of `queue_full`, `daily_reviews`, `daily_budget` or `verification_unavailable`.
 - **503** when the job could not be queued returns `{detail, review_id}`.
+- **422** with `code: "emergency"` (Plan 26) returns `{detail, code, kind, hotlines, message_th}`: the topic reads as an
+  emergency, so no review is created (see "Public safety rails and audience modes (Plan 26)").
 
 **Cache hits are free.** The same topic (case and spaces ignored), language, options and pipeline version within 24 hours of finishing, or while still queued or running, returns that review with `cached: true`. Cache hits skip every limit, Turnstile and capacity check. The pipeline version is the prompt version plus the model configuration in use, written `<prompt_version>+llm<id>` (`id` is the saved configuration version, or `file` while `llm.yaml` is in use). A saved glossary starts a new cache generation too (`+g<version>` is added to the pipeline version while a glossary version exists, and results carry `glossary_version`); saved settings never do. A saved model configuration therefore starts a new cache generation: after any save, restore or reset in the admin console (see "Model management"), the same question runs again on the new models instead of returning a review made with the old ones. Deploying Plan 23b itself starts one new generation too: `<prompt_version>` becomes `<prompt_version>+llmfile`, so reviews cached before the deploy are not returned.
 
@@ -109,14 +111,15 @@ Field rules:
 
 Checks run in this order:
 1. Validate the body.
-2. Reject a `callback_url` sent without a key.
-3. Return the cached review if one matches.
-4. Check Turnstile.
-5. Check that `callback_url` is safe.
-6. Check the key's daily quota.
-7. Check capacity: queue and daily caps. This step is atomic across all API processes.
-8. Check the hourly rate limit.
-9. Insert and enqueue the review.
+2. Refuse a topic that reads as an emergency (Plan 26): 422 `code: "emergency"`. Nothing is stored, counted or charged.
+3. Reject a `callback_url` sent without a key.
+4. Return the cached review if one matches.
+5. Check Turnstile.
+6. Check that `callback_url` is safe.
+7. Check the key's daily quota.
+8. Check capacity: queue and daily caps. This step is atomic across all API processes.
+9. Check the hourly rate limit.
+10. Insert and enqueue the review.
 
 ### `GET /api/v1/reviews/{id}`
 
@@ -124,6 +127,8 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `queue_position` counts from 1 (next to start). It is `null` once the review has left the queue.
 - `progress` is reserved and always `null`. Live progress comes from the event stream.
 - `status` is one of `queued`, `running`, `done`, `error`, `rejected` or `cancelled`.
+- `refusal_code` (Plan 26) says why a `rejected` review got no review: `personal_medical` or `declined`; it is `null`
+  for every other status.
 
 `result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`, and since Plan 25 `support` (see "Sentence support (Plan 25)").
 
@@ -1154,6 +1159,75 @@ carry `support` as part of `result`.
 citations, and the share of evidence citations with the badge. Runs made before Plan 25 show "–". Measuring them on
 real reviews is a paid batch, the owner's call.
 
+## Public safety rails and audience modes (Plan 26)
+
+**Two kinds of request get no review.** A free public service will be asked about people's own health; it must
+answer those with "see a doctor, or call 1669", never with a review (roadmap section 5, risk 6).
+
+| `code` | When | Decided by | Cost | What the caller gets |
+|---|---|---|---|---|
+| `emergency` | The topic reads as an emergency of the person asking or of someone with them | Code, in `ReviewService.create`, before every other check (`app/services/safety.py`) | None: no review row, no cache lookup, no rate-limit or quota hit, no LLM call | REST **422** `{detail, code, kind, hotlines, message_th}`; MCP `start_review` returns `{review_id: null, status: "refused", code, kind, hotlines, message, message_th}` (a normal result, not a tool error) |
+| `personal_medical` | A question about one person's own symptoms, diagnosis, test results, medicine, dose or treatment choice, or about someone close to the asker, an emergency happening now, or any mention of suicidal thoughts or self-harm | The topic guard (`guard` role), the first step of the review job | One guard call, as for every review; the review used a queue slot until the guard answered and counts against the hourly limit and the daily review counter, like any rejected topic | The review ends `rejected`; `error` is `"personal_medical: <fixed English message>"`, `refusal_code` is `personal_medical`, the `rejected` event carries `code`. The message names 1669 and 1323 |
+| `declined` | Every other guard rejection (not biomedical, aimed at harm, or instructions) | The topic guard | As above | `rejected` with the guard's own `reason`, as before Plan 26; `refusal_code` is `declined` |
+
+- `kind` is `medical` (`hotlines: ["1669"]`, Thai emergency medical services) or `self_harm` (`["1323", "1669"]`: the
+  Thai mental health hotline first).
+- Every message is fixed text: English in `detail` (REST) and `message` (MCP), Thai in `message_th`. None repeats the
+  topic. The `personal_medical` message names both 1669 and 1323, and the personal-question page has a call link for each.
+- **The red-flag pass (high precision).** Code flags a topic only in one of three cases: a first-person self-harm phrase
+  (always); a medical red flag (chest pain, cannot breathe, stroke signs, heavy bleeding, overdose, unconsciousness,
+  seizure, anaphylaxis; English and Thai) with an explicit personal anchor (I, me, my or our plus a kin word in English;
+  a Thai pronoun, or a kin word at the start); or a short conversational topic (Thai with no framing word and at most 40
+  characters; English with at most 8 words, no framing word and a conversational cue). A topic with research framing
+  (study, trial, evidence, patients, incidence; งานวิจัย, การศึกษา, ผู้ป่วย …) is not flagged, so "chest pain in the
+  emergency department: troponin accuracy" and "suicide prevention in adolescents" are reviewed as usual.
+- **Known trade-offs.** Self-harm phrases are refused even inside research framing (the safe side): rephrase such a
+  topic in the third person to get a review. A few research titles and conversational messages the pass misses are left
+  to the guard on purpose; the guard (`personal_medical`) is the backstop for everything the pass lets through.
+- `refusal_code` on `GET /reviews/{id}` and in MCP `get_review_status` and `get_review_result`: `personal_medical`,
+  `declined`, or null when the review was not rejected. It is read from the stored `error`, so reviews rejected
+  before Plan 26 read `declined`.
+- **The guard (prompt_version 2026-10-13.2).** `TopicVerdict` gains `category`: `research | personal_medical | declined`
+  (required). `allowed` is true only for `research`. Either one rejecting is a rejection, and `personal_medical` wins,
+  so its fixed message is shown instead of the model's reason. `personal_medical` also covers someone close to the
+  asker (a parent, child, partner or friend), an emergency happening now, and any mention of suicidal thoughts or
+  self-harm; a population research topic about these conditions stays research. The guard's system prompt is pinned; no
+  other prompt changed.
+
+**Audience modes (web report only).** The report page offers four views: general public (the default), bedside
+clinician, students and residents, and drug committee and HTA. A view changes only the presentation:
+- **Public:** the answer-first order, plus "ก่อนอ่านรายงานนี้" (research about groups, not advice on your own case; what
+  certainty means; see a doctor or pharmacist; 1669).
+- **Bedside:** the summary of findings and the limitations right after the answer and key findings, plus a note that
+  the studies' populations and health systems may differ from Thai practice (context, never evidence).
+- **Learner:** the answer-first order, with a learning note after the summary of findings (GRADE), study selection
+  (PRISMA), risk of bias and the agree/conflict section; the certainty rationale starts open.
+- **Committee:** selection (PRISMA), methods and risk of bias right after the answer, then the summary of findings and
+  key findings; the Thai-practice note; the certainty rationale starts open.
+
+The view is chosen in the request form or on the report (`?view=public|bedside|learner|committee`, remembered in the
+browser's localStorage). It is not a request field, not in the cache key and not in `result`: REST, MCP and the exports
+are the same for every view, and two views of one review share one cached result.
+
+**Safety notices (web report, every view).** Presentation only: worked out in the browser from `result`, no model
+call, and the report text is never rewritten.
+- **ข้อมูลด้านอันตรายไม่ครบ (harms data incomplete):** shown for a `therapy` or `prevention` question (any type but
+  scoping) when no included study reports harms, that is, not every evidence study (not a further report, not a design
+  outside the ticked types, not qualitative) reports a harms or adverse-event outcome in its abstract (outcome names and
+  results of `card_en` or `card`, English or Thai harm words). Efficacy composites such as MACE do not count as harms
+  reporting. Abstracts often leave harms out, and absence of harms data is not evidence of safety. API clients can apply
+  the same rule.
+- **ไม่ใช่คำแนะนำเรื่องขนาดยา (not dosing advice):** shown when the answer, the summary or a key finding (shown or
+  English) reads as dosing advice to the reader: an imperative or "should" verb with a dose in the same sentence ("take
+  500 mg", "should receive 1 g"), or Thai ควร, แนะนำให้ or โปรด with a dose, ครั้งละ or วันละ. It fires on advice
+  wording, not on doses stated as study conditions ("metformin 500 mg twice daily was associated with…", "participants
+  who take 100 mg…"). A research recommendation ("future trials should…") exempts only the advice it governs, not the
+  rest of the sentence.
+
+**Measuring it.** The red-flag list and the refusal paths are covered by unit tests with fake models. How often the
+guard labels real questions `personal_medical` (and wrongly refuses research questions) needs a paid batch on the 22a
+harness, the owner's call.
+
 ## Event stream (SSE)
 
 `GET /api/v1/reviews/{id}/events` first replays the review's past events, then streams new ones.
@@ -1187,7 +1261,7 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 | `interrupted` | `{will_resume: true}` | the worker stopped and the review went back to the queue; not terminal |
 | `done` | `{cost_usd}` | terminal |
 | `error` | `{message}` | terminal |
-| `rejected` | `{reason}` | terminal: the topic is not a biomedical question |
+| `rejected` | `{reason, code}` | terminal: the topic guard refused it. `code` is `personal_medical` (a question about one person's own case; `reason` is the fixed message) or `declined` (`reason` is the guard's); events before Plan 26 lack `code` |
 | `cancelled` | `{by: "owner" \| "admin"}` | terminal; sent by the API |
 
 With `GRAPH_MODE=stub` and `STUB_DELAY_SECONDS>0` the stub emits the same sequence on a scaled timeline.
@@ -1219,9 +1293,9 @@ The server name is `medical-reviewer-agent`, version 0.8.0. The `Host` header mu
 | Tool | Returns | Notes |
 |---|---|---|
 | `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | Searches the same eight engines as reviews (never ThaiJO). `limit` is clamped to 1–25. Shares the paper-search limit |
-| `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None)` | `{review_id, status, cached, status_url}` | `topic`: up to 600 characters. `max_papers`: clamped into 5–50 (not rejected; default 30). `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. Capacity errors include the reason and the wait time |
-| `get_review_status(review_id)` | `{review_id, status, error, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled` |
-| `get_review_result(review_id)` | `{review_id, status, result}` | The `result` shape is the same as REST: `citations` and, for `meta_analysis`, `meta_analysis`. If the review is not done: `{…, result: null, message, error}` |
+| `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None)` | `{review_id, status, cached, status_url}`; for a topic that reads as an emergency `{review_id: null, status: "refused", code: "emergency", kind, hotlines, message, message_th}` (Plan 26) | `topic`: up to 600 characters. `max_papers`: clamped into 5–50 (not rejected; default 30). `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. Capacity errors include the reason and the wait time |
+| `get_review_status(review_id)` | `{review_id, status, error, refusal_code, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled`; `refusal_code` as in REST (Plan 26) |
+| `get_review_result(review_id)` | `{review_id, status, result}` | The `result` shape is the same as REST: `citations` and, for `meta_analysis`, `meta_analysis`. If the review is not done: `{…, result: null, message, error, refusal_code}` |
 
 The server also exposes these resources and one prompt:
 
