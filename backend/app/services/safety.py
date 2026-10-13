@@ -86,13 +86,28 @@ MEDICAL_TH = ("เจ็บหน้าอก", "แน่นหน้าอก"
 # Applied to the text with all whitespace removed (Thai has no word spaces).
 MEDICAL_PATTERNS_TH = (r"กินยา.{0,12}[\d๐-๙]+เม็ด",)
 # Personal markers: the asker or someone with them, now. A Roman "I" after type/phase/class/grade/stage is no marker.
-PERSONAL_EN = ("i", "i'm", "im", "i've", "i am", "me", "my", "myself", "someone", "somebody", "right now", "just now",
-               "now", "help", "urgent", "mom", "mum", "mother", "dad", "father", "baby", "son", "daughter",
-               "husband", "wife", "child", "kid", "brother", "sister", "friend", "grandma", "grandpa",
-               "grandmother", "grandfather")
-PERSONAL_TH = ("ฉัน", "ผม", "ดิฉัน", "หนู", "เรา", "กู", "ตอนนี้", "เมื่อกี้", "เมื่อกี๊", "ช่วยด้วย",
-               "แม่", "พ่อ", "ลูก", "สามี", "ภรรยา", "แฟน", "เพื่อน", "ยาย", "ปู่", "ย่า", "น้อง", "พี่",
-               "ทำไงดี", "ทำยังไงดี", "ช่วยหน่อย", "ด่วน")  # no "ตา": it also means "eye"
+#
+# PRECISION RULE (Plan 26 fix round 2). This pass aims at high precision; the topic guard (an LLM, `personal_medical`,
+# first node of the review job) is the backstop for anything it lets through. A medical red flag needs an explicit
+# personal anchor: English I / I'm / me / my / our (so "my|our <kin>" is covered) / someone / right now; Thai
+# first-person pronouns, or a kin word at the very start of the topic or right before a pronoun (แม่ฉัน). Standalone
+# help / now / urgent / child / kid / son / baby / friend are NOT anchors. Compounds in NONPERSONAL_TH neutralise only the
+# marker they contain. A Thai topic with no anchor still counts when it is short (at most 40 characters without spaces)
+# and has no framer (FRAMERS_TH) and no research word, because Thai drops pronouns ("เจ็บหน้าอกมาก หายใจไม่ออก").
+# Known misses handed to the guard: English without an anchor ("dad is having a stroke what to do", "baby not
+# breathing", "someone"-less third person), a long Thai description of an emergency, and any framed Thai sentence.
+PERSONAL_EN = ("i", "i'm", "im", "i've", "i am", "me", "my", "our", "myself", "someone", "somebody", "right now",
+               "just now")
+PERSONAL_TH = ("ฉัน", "ดิฉัน", "ผม", "หนู", "เรา", "กู")  # pronouns; เรา not before ะ (หัวเราะ), กู not กู้ (resuscitation)
+KINSHIP_TH = ("แม่", "พ่อ", "ลูก", "สามี", "ภรรยา", "แฟน", "เพื่อน", "ยาย", "ปู่", "ย่า", "น้อง", "พี่")  # no "ตา" (eye)
+# Compounds where a pronoun or kin word is part of another word.
+NONPERSONAL_TH = ("ลูกน้ำ", "ลูกค้า", "ลูกเห็บ", "แม่น้ำ", "แม่บ้าน", "แม่ครัว", "พ่อแม่", "พี่เลี้ยง", "พี่น้อง",
+                  "ขยาย", "แฟนตาซี", "ผมร่วง", "ผมบาง", "ผมหงอก", "เส้นผม", "หนูทดลอง", "หนูตะเภา", "ในหนู",
+                  "น้องหมา", "น้องแมว")
+# Words that frame a Thai topic as a subject (not a conversation): the no-anchor rule does not apply.
+FRAMERS_TH = ("ภาวะ", "การ", "อาการ", "สาเหตุ", "ปัจจัย", "ผล", "ความ", "สำหรับ", "หลัง", "ใน", "ของ", "กับ",
+              "ระหว่าง", "ต่อ", "เทียบ", "ป้องกัน", "รักษา")
+PRO_DROP_MAX_CHARS = 40
 # Research framing: the topic asks about evidence for a population, so a red flag in it is a research subject.
 RESEARCH_EN = ("study", "studies", "trial", "research", "evidence", "review", "systematic", "meta-analys",
                "meta analys", "cohort", "efficacy", "effectiveness", "incidence", "prevalence", "patients",
@@ -100,8 +115,6 @@ RESEARCH_EN = ("study", "studies", "trial", "research", "evidence", "review", "s
                "clinician", "physician", "doctors")  # word starts: "trials", "researching", "meta-analyses", "nurses"
 RESEARCH_TH = ("งานวิจัย", "วิจัย", "การศึกษา", "ศึกษา", "ทบทวน", "ประสิทธิผล", "ประสิทธิภาพ", "หลักฐาน",
                "อุบัติการณ์", "ความชุก", "ผู้ป่วย", "อยากรู้เรื่อง", "อยากทราบ", "แนวทาง")
-# Thai words that make a personal word or a red flag a research subject: ผมร่วง (hair loss), ในหนู (in mice).
-NONPERSONAL_TH = ("ผมร่วง", "ผมบาง", "ในหนู")
 
 _ROMAN_I = r"(?<!type )(?<!phase )(?<!class )(?<!grade )(?<!stage )"
 _ZERO_WIDTH = dict.fromkeys([*range(0x200B, 0x200E), 0x2060, 0xFEFF])
@@ -152,7 +165,11 @@ _MEDICAL_EN = _english(MEDICAL_EN, patterns=MEDICAL_PATTERNS_EN)
 _PERSONAL_EN, _RESEARCH_EN = _english(PERSONAL_EN), _english(RESEARCH_EN, prefix=True)
 _ALWAYS_TH, _SELF_HARM_TH = _thai(SELF_HARM_ALWAYS_TH), _thai(SELF_HARM_TH)
 _MEDICAL_TH = _thai(MEDICAL_TH, MEDICAL_PATTERNS_TH)
-_PERSONAL_TH, _RESEARCH_TH = _thai(PERSONAL_TH), _thai(RESEARCH_TH + NONPERSONAL_TH)
+_RESEARCH_TH, _FRAMERS_TH, _NONPERSONAL_TH = _thai(RESEARCH_TH), _thai(FRAMERS_TH), _thai(NONPERSONAL_TH)
+_PRONOUN = "|".join(re.escape(p) for p in _norm_th(PERSONAL_TH) if p not in ("เรา", "กู")) + r"|เรา(?!ะ)|(?<![ก-ฮ])กู(?![ะ-ฺ็-๎])"
+_KIN = "|".join(re.escape(k) for k in _norm_th(KINSHIP_TH))
+# a pronoun, or a kin word at the very start or right before a pronoun; applied after _NONPERSONAL_TH spans are blanked
+_ANCHOR_TH = re.compile(rf"(?:{_PRONOUN})|^(?:{_KIN})|(?:{_KIN})(?:ของ)?(?:{_PRONOUN})")
 
 
 @dataclass(frozen=True)
@@ -179,10 +196,13 @@ def red_flag(topic: str) -> Emergency | None:
         return Emergency("self_harm")
     if _RESEARCH_EN.search(text) or _RESEARCH_TH.search(th):
         return None
-    personal = bool(_PERSONAL_EN.search(text) or _PERSONAL_TH.search(th))
-    if personal and (_SELF_HARM_EN.search(text) or _SELF_HARM_TH.search(th)):
+    anchored_th = bool(_ANCHOR_TH.search(_NONPERSONAL_TH.sub("\0", th)))
+    personal = anchored_th or bool(_PERSONAL_EN.search(text))
+    # Thai drops pronouns: a short, unframed Thai topic counts without an anchor
+    pro_drop = len(th) <= PRO_DROP_MAX_CHARS and not _FRAMERS_TH.search(th)
+    if _SELF_HARM_EN.search(text) and personal or _SELF_HARM_TH.search(th) and (anchored_th or pro_drop):
         return Emergency("self_harm")
-    if _MEDICAL_TH.search(th) or (personal and _MEDICAL_EN.search(text)):  # Thai drops pronouns
+    if personal and _MEDICAL_EN.search(text) or _MEDICAL_TH.search(th) and (anchored_th or pro_drop):
         return Emergency("medical")
     return None
 
