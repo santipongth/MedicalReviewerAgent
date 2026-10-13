@@ -32,6 +32,12 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
 4. The result's `quality` block reports number verification, model agreement, escalations and per-stage timings.
 5. Live LLM check: `cd backend && OPENROUTER_API_KEY=... uv run pytest -m live`
 
+## ThaiJO (Thai journals, off by default)
+Plan 24 adds Thai Journals Online (TCI) as a search source for Thai health studies: English abstracts only, at most
+15 candidates (and at most 1/8 of the pool), soft-failing, never PDFs or article pages. It is off until
+`THAIJO_ENABLED=true` is set in `.env`, which the owner does only after writing to TCI about the use (its search API
+is undocumented). Details: "ThaiJO source (Plan 24)" in `docs/api.md`.
+
 ## Integrations: REST, MCP, API keys, webhooks
 - **REST:** OpenAPI at `/api/docs`. Anonymous use works without a key (default 5 reviews/hour per IP; when the
   deployment sets `TURNSTILE_SECRET`, anonymous submissions also need a browser Turnstile token, so scripts should use
