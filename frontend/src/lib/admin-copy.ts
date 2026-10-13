@@ -18,6 +18,8 @@ export const ACTION_LABEL: Record<string, string> = {
   "settings.save": "บันทึกการตั้งค่า", "settings.restore": "ย้อนการตั้งค่า", "settings.reset": "กลับไปใช้ค่า env",
   "glossary.save": "บันทึกอภิธานศัพท์", "glossary.restore": "ย้อนอภิธานศัพท์", "glossary.reset": "กลับไปใช้อภิธานศัพท์ตั้งต้น",
   "harness.start": "เริ่มรัน harness", "harness.cancel": "ยกเลิก harness run",
+  "llm_key.set": "ใส่คีย์ผู้ให้บริการ", "llm_key.replace": "เปลี่ยนคีย์ผู้ให้บริการ", "llm_key.delete": "ลบคีย์ผู้ให้บริการ",
+  "llm_key.rotate": "เข้ารหัสคีย์ผู้ให้บริการใหม่ (CLI)",
 };
 
 export const MODEL_SOURCE_LABEL: Record<LlmVersion["source"], string> = {

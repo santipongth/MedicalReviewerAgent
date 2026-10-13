@@ -41,7 +41,11 @@ export interface LlmRoleSpec {
   model: string; provider?: string | null; max_tokens?: number; temperature?: number | null; top_p?: number | null;
   reasoning_effort?: string | null; structured_output?: string; timeout_seconds?: number; fallback_models?: string[];
   extra_body?: Record<string, unknown>;
+  /** Plan 23e: USD per 1M tokens, both or neither; required off OpenRouter. */
+  price_in?: number | null; price_out?: number | null;
 }
+/** Plan 23e: a provider's kind; the three legacy names have the kind of their name. */
+export type ProviderKind = "openrouter" | "anthropic" | "openai_compatible";
 export interface LlmConfigDoc {
   active_preset: string; default_provider?: string; providers: Record<string, Record<string, unknown>>;
   presets: Record<string, Record<string, LlmRoleSpec>>; harness?: Record<string, unknown>;
@@ -53,10 +57,17 @@ export interface LlmConfigDoc {
 export interface LoadedWorker {
   worker: string; version: string; preset: string; loaded_at: string; error: string | null;
   settings?: string | null; glossary?: string | null; sources?: string | null; runtime_error?: string | null;
+  /** Plan 23e: the provider-key revision the worker built its models with ("none" before any key), and why stored
+   * keys cannot be used there. */
+  keys?: string | null; keys_error?: string | null;
 }
+/** Plan 23e: one word for a provider's key: where it comes from, or why there is none. */
+export type KeyStatus = "console" | "env" | "not_needed" | "none" | "origin_mismatch" | "unreadable" | "env_origin_missing";
 export interface LlmConfigState {
   source: "db" | "file"; version: number | null; config: LlmConfigDoc; active_preset: string; env_preset: string | null;
   keys_present: Record<string, boolean>; loaded: LoadedWorker[];
+  /** Plan 23e: each provider's key status, and the code's prices of direct Anthropic models (USD per 1M tokens). */
+  key_status?: Record<string, KeyStatus>; known_prices?: Record<string, [number, number]>;
   /** Plan 23c: set when the configuration in use no longer passes validation (a version saved under older rules, or a
    * broken llm.yaml while no version exists). `config` is then as stored and `keys_present` is empty. */
   error?: string | null;
@@ -78,6 +89,26 @@ export interface CatalogModel {
   structured: boolean; tools: boolean; reasoning: boolean;
 }
 export interface ProbeResult { ok: boolean; latency_ms: number; cost_usd: number; model: string; error: string | null }
+/** Plan 23e: the provider keys (/api/v1/admin/llm-keys). Mirrors backend/app/api/admin_keys_llm.py. A key is never sent
+ * back: only where it comes from, its last 4 characters and the origin it is bound to. */
+export interface ProviderKeyRow {
+  name: string; kind: ProviderKind; origin: string; used_by: string[]; keyless: boolean;
+  key: {
+    source: "console" | "env" | "none"; problem: "origin_mismatch" | "unreadable" | "env_origin_missing" | null;
+    last4: string | null; bound_origin: string | null; updated_at: string | null; updated_by: string | null;
+  };
+  env: { name: string; set: boolean; origin_ok: boolean };
+}
+export interface OrphanKey { name: string; last4: string | null; bound_origin: string | null; updated_at: string | null; unreadable: boolean }
+export interface LlmKeysState {
+  writable: boolean; reason: "no_secret" | "bad_secret" | null; keys_version: number | null; config_version: number | null;
+  config_error: string | null; providers: ProviderKeyRow[]; orphans: OrphanKey[]; loaded: LoadedWorker[];
+}
+/** The answer of a key write: the whole state, and whether the workers were told (false: they find out within 30 s). */
+export type LlmKeysWrite = LlmKeysState & { workers_notified: boolean };
+/** A test call: a role of a preset, or (Plan 23e) a provider with a model of its own. */
+export type TestBody = Partial<LlmDraft> & { preset?: string } & (
+  { role: string } | { provider: string; model: string; price_in?: number; price_out?: number });
 export type LlmDraft = { config: LlmConfigDoc } | { yaml: string };
 export interface CatalogQuery { q?: string; structured?: boolean; reasoning?: boolean; max_price?: number | null }
 
