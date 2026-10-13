@@ -637,3 +637,23 @@ async def test_every_models_write_needs_the_csrf_header_with_a_session_cookie(cl
         key, _ = await mint_key(s, "ops", is_admin=True)
     assert (await client.post(writes["validate"][0], json=writes["validate"][1],
                               headers={"X-API-Key": key})).status_code == 200
+
+
+async def test_version_ids_beyond_postgres_integer_are_422_never_500(client, session_factory):
+    huge = 2**31  # one past Postgres INTEGER: a lookup with it raises in the driver, which would be a 500
+    h = await admin_headers(client, session_factory)
+    assert (await client.get(f"{BASE}/llm-config/versions/{huge}", headers=h)).status_code == 422
+    assert (await client.get(f"{BASE}/llm-config/versions/{huge}/yaml", headers=h)).status_code == 422
+    assert (await client.get(f"{BASE}/llm-config/versions?before={huge}", headers=h)).status_code == 422
+    restore = await client.post(f"{BASE}/llm-config/versions/{huge}/restore", headers=h, json={"base_version": None})
+    assert restore.status_code == 422
+    # the largest INTEGER is an ordinary lookup
+    assert (await client.get(f"{BASE}/llm-config/versions/{huge - 1}", headers=h)).status_code == 404
+    assert (await client.get(f"{BASE}/llm-config/versions/{huge - 1}/yaml", headers=h)).status_code == 404
+    page = await client.get(f"{BASE}/llm-config/versions?before={huge - 1}", headers=h)
+    assert page.json() == {"items": [], "next": None}
+    restore = await client.post(f"{BASE}/llm-config/versions/{huge - 1}/restore", headers=h,
+                                json={"base_version": None})
+    assert restore.status_code == 404
+    async with session_factory() as s:
+        assert await s.scalar(select(func.count()).select_from(LlmConfigVersion)) == 0

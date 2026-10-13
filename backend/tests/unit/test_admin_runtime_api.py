@@ -22,13 +22,15 @@ async def test_settings_state_save_and_status(client, session_factory, redis):
     assert (state["source"], state["version"], state["overrides"]) == ("env", None, {})
     assert state["values"]["max_queued_reviews"] == state["env"]["max_queued_reviews"] == 50
     assert {s["name"] for s in state["specs"]} >= {"review_rate_limit", "llm_concurrency"} and state["loaded"] == []
+    status = "/api/v1/status"
+    assert (await client.get(status)).json()["limits"]["max_queued_reviews"] == 50  # warms this process's 5 s cache
     saved = await client.post(f"{BASE}/settings", headers=h,
                               json={"values": {"max_queued_reviews": 80}, "base_version": None, "note": "busier"})
     assert saved.status_code == 201 and saved.json()["version"] == 1 and saved.json()["workers_notified"] is True
     assert json.loads(await redis.get(SETTINGS_KEY)) == {"version": 1, "values": {"max_queued_reviews": 80}}
     state = (await client.get(f"{BASE}/settings", headers=h)).json()
     assert (state["source"], state["version"], state["values"]["max_queued_reviews"]) == ("db", 1, 80)
-    assert (await client.get("/api/v1/status")).json()["limits"]["max_queued_reviews"] == 80  # this process: at once
+    assert (await client.get(status)).json()["limits"]["max_queued_reviews"] == 80  # this process: at once, not in 5 s
     assert await count(session_factory, "settings.save") == 1
 
 
@@ -91,7 +93,7 @@ async def test_bad_bodies_are_422_never_500(client, session_factory):
     json_headers = {**h, "Content-Type": "application/json"}
     lone_surrogate = r'{"terms":[{"en":"\ud800","th":"ยา"}],"base_version":null}'.encode()
     r = await client.post(f"{BASE}/glossary", headers=json_headers, content=lone_surrogate)
-    assert r.status_code == 422 and "\ud800" not in r.text
+    assert r.status_code == 422 and "ud800" not in r.text.lower()  # json.dumps would echo it as \ud800
     for path, body in ((f"{BASE}/glossary", {"terms": "x", "base_version": None}),
                        (f"{BASE}/glossary", {"terms": [PLACEBO] * 1001, "base_version": None}),
                        (f"{BASE}/settings", {"values": {"max_queued_reviews": {"deep": [1]}}, "base_version": None}),
@@ -174,3 +176,81 @@ async def test_glossary_history_restore_and_a_stored_version_that_no_longer_vali
         assert await s.scalar(select(func.count()).select_from(ConfigVersion)
                               .where(ConfigVersion.kind == "settings")) == 1
     assert await count(session_factory, "settings.restore") == 0
+
+
+async def test_a_save_without_values_is_422_and_writes_nothing(client, session_factory):
+    h = await admin_headers(client, session_factory)
+    for body in ({"base_version": None}, {"base_version": None, "note": "x"}):
+        r = await client.post(f"{BASE}/settings", headers=h, json=body)
+        assert r.status_code == 422, r.text
+    # the validate body keeps its default: nothing typed yet means env everywhere
+    assert (await client.post(f"{BASE}/settings/validate", headers=h, json={})).json()["ok"] is True
+    async with session_factory() as s:
+        assert await s.scalar(select(func.count()).select_from(ConfigVersion)) == 0
+    assert await count(session_factory, "settings.save") == 0
+
+
+async def test_lone_surrogates_are_never_echoed(client, session_factory):
+    h = await admin_headers(client, session_factory)
+    json_headers = {**h, "Content-Type": "application/json"}
+    cases = ((f"{BASE}/settings", r'{"values":{"x\ud800":1},"base_version":null}', 422),
+             (f"{BASE}/settings", r'{"values":{"max_queued_reviews":"\ud800"},"base_version":null}', 422),
+             (f"{BASE}/settings", r'{"values":{},"base_version":null,"note":"\ud800"}', 422),
+             (f"{BASE}/settings/validate", r'{"values":{"x\ud800":1}}', 200),
+             (f"{BASE}/settings/validate", r'{"values":{"max_queued_reviews":"\ud800"}}', 200),
+             (f"{BASE}/glossary", r'{"terms":[{"en":"a","th":"\ud800ยา"}],"base_version":null}', 422),
+             (f"{BASE}/glossary/validate", r'{"terms":[{"en":"\ud800","th":"ยา"}]}', 200),
+             (f"{BASE}/glossary/validate", r'{"terms":[{"en":"a","th":"ยา","note":"\ud800"}]}', 200))
+    for path, body, status in cases:
+        r = await client.post(path, headers=json_headers, content=body.encode())
+        assert r.status_code == status and "ud800" not in r.text.lower(), (path, body, r.status_code)
+        if status == 200:
+            assert r.json()["ok"] is False
+    async with session_factory() as s:
+        assert await s.scalar(select(func.count()).select_from(ConfigVersion)) == 0
+
+
+async def test_a_save_still_succeeds_when_redis_could_not_be_updated(client, session_factory, redis, monkeypatch):
+    h = await admin_headers(client, session_factory)
+
+    def redis_down(*args, **kwargs):
+        raise ConnectionError("redis is down")
+
+    monkeypatch.setattr(redis, "pipeline", redis_down)  # publish() goes through a WATCH/MULTI pipeline
+    status = "/api/v1/status"
+    assert (await client.get(status)).json()["limits"]["max_queued_reviews"] == 50
+    saved = await client.post(f"{BASE}/settings", headers=h,
+                              json={"values": {"max_queued_reviews": 80}, "base_version": None})
+    assert saved.status_code == 201 and saved.json()["workers_notified"] is False
+    assert await redis.get(SETTINGS_KEY) is None  # the mirror was not raised; the workers' poll repairs it
+    async with session_factory() as s:
+        assert await s.scalar(select(func.count()).select_from(ConfigVersion)
+                              .where(ConfigVersion.kind == "settings")) == 1
+    assert await count(session_factory, "settings.save") == 1
+    # this process still shows the save at once: it dropped its cache and reads the DB when the mirror is missing
+    assert (await client.get(status)).json()["limits"]["max_queued_reviews"] == 80
+    glossary = await client.post(f"{BASE}/glossary", headers=h, json={"terms": [PLACEBO], "base_version": None})
+    assert glossary.status_code == 201 and glossary.json()["workers_notified"] is False
+    assert await count(session_factory, "glossary.save") == 1
+
+
+HUGE = 2**31  # one past Postgres INTEGER: a lookup with it raises in the driver, which would be a 500
+
+
+async def test_version_numbers_beyond_postgres_integer_are_422_never_500(client, session_factory):
+    h = await admin_headers(client, session_factory)
+    for kind in ("settings", "glossary"):
+        base = f"{BASE}/{kind}"
+        assert (await client.get(f"{base}/versions/{HUGE}", headers=h)).status_code == 422
+        assert (await client.get(f"{base}/versions?before={HUGE}", headers=h)).status_code == 422
+        restore = await client.post(f"{base}/versions/{HUGE}/restore", headers=h, json={"base_version": None})
+        assert restore.status_code == 422
+        assert (await client.get(f"{base}/versions/0", headers=h)).status_code == 422
+        # the largest INTEGER is an ordinary lookup
+        assert (await client.get(f"{base}/versions/{HUGE - 1}", headers=h)).status_code == 404
+        page = await client.get(f"{base}/versions?before={HUGE - 1}", headers=h)
+        assert page.json() == {"items": [], "next": None}
+        restore = await client.post(f"{base}/versions/{HUGE - 1}/restore", headers=h, json={"base_version": None})
+        assert restore.status_code == 404
+    async with session_factory() as s:
+        assert await s.scalar(select(func.count()).select_from(ConfigVersion)) == 0

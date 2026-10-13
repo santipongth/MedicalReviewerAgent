@@ -11,7 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.api.admin_models import Note
+from app.api.admin_models import Before, Note, VersionId
 from app.api.auth import ip_hash_of, require_admin
 from app.api.deps import get_deps
 from app.api.reviews import service_error_response
@@ -43,7 +43,8 @@ class SettingsDraft(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
-class SettingsSave(SettingsDraft):
+class SettingsSave(BaseModel):
+    values: dict[str, Any]  # required: a body without it must not save "env everywhere"
     base_version: int | None
     note: Note = None
 
@@ -80,14 +81,14 @@ def _history_routes(kind: DocKind) -> None:
     base = f"/admin/{kind.name}"
 
     @router.get(f"{base}/versions")
-    async def versions(before: int | None = Query(None, ge=1), limit: int = Query(50, ge=1, le=100),
+    async def versions(before: Before = None, limit: int = Query(50, ge=1, le=100),
                        deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)) -> dict:
         async with deps.session_factory() as session:
             rows, nxt = await list_versions(session, kind, before=before, limit=limit)
         return {"items": [version_out(r) for r in rows], "next": nxt}
 
     @router.get(f"{base}/versions/{{version}}")
-    async def one_version(version: int, deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)):
+    async def one_version(version: VersionId, deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)):
         try:
             async with deps.session_factory() as session:
                 row = await get_version(session, kind, version)
@@ -96,7 +97,7 @@ def _history_routes(kind: DocKind) -> None:
         return jsonable_encoder({**version_out(row), "document": row.document})
 
     @router.post(f"{base}/versions/{{version}}/restore", status_code=201)
-    async def restore(version: int, body: BaseBody, deps: AppDeps = Depends(get_deps),
+    async def restore(version: VersionId, body: BaseBody, deps: AppDeps = Depends(get_deps),
                       identity: Identity = Depends(require_admin)):
         settings, ip_hash = deps.service.settings, ip_hash_of(identity, deps)
         return await _write(deps, kind, lambda s: restore_version(

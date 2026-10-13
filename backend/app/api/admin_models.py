@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import AfterValidator, BaseModel, Field
@@ -45,6 +45,9 @@ from app.services.review_service import Identity, ServiceError
 router = APIRouter()
 YAML_MAX = 200_000
 TEST_RATE = "10/minute"
+ID_MAX = 2**31 - 1  # Postgres INTEGER: a larger id in a lookup is a DataError (a 500), so it is a 422 here
+VersionId = Annotated[int, Path(ge=1, le=ID_MAX)]
+Before = Annotated[int | None, Query(ge=1, le=ID_MAX)]
 
 
 def _clean_note(value: str | None) -> str | None:
@@ -115,7 +118,7 @@ async def llm_config_state(deps: AppDeps = Depends(get_deps), _: Identity = Depe
 
 
 @router.get("/admin/llm-config/versions")
-async def llm_versions(before: int | None = Query(None, ge=1), limit: int = Query(50, ge=1, le=100),
+async def llm_versions(before: Before = None, limit: int = Query(50, ge=1, le=100),
                        deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)) -> dict:
     async with deps.session_factory() as session:
         rows, nxt = await list_versions(session, before=before, limit=limit)
@@ -123,7 +126,7 @@ async def llm_versions(before: int | None = Query(None, ge=1), limit: int = Quer
 
 
 @router.get("/admin/llm-config/versions/{version_id}")
-async def llm_version(version_id: int, deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)):
+async def llm_version(version_id: VersionId, deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)):
     try:
         async with deps.session_factory() as session:
             row = await get_version(session, version_id)
@@ -133,7 +136,8 @@ async def llm_version(version_id: int, deps: AppDeps = Depends(get_deps), _: Ide
 
 
 @router.get("/admin/llm-config/versions/{version_id}/yaml")
-async def llm_version_yaml(version_id: int, deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)):
+async def llm_version_yaml(version_id: VersionId, deps: AppDeps = Depends(get_deps),
+                            _: Identity = Depends(require_admin)):
     try:
         async with deps.session_factory() as session:
             row = await get_version(session, version_id)
@@ -169,7 +173,7 @@ async def llm_save(body: SaveBody, deps: AppDeps = Depends(get_deps), identity: 
 
 
 @router.post("/admin/llm-config/versions/{version_id}/restore", status_code=201)
-async def llm_restore(version_id: int, body: BaseBody, deps: AppDeps = Depends(get_deps),
+async def llm_restore(version_id: VersionId, body: BaseBody, deps: AppDeps = Depends(get_deps),
                       identity: Identity = Depends(require_admin)):
     settings, ip_hash = deps.service.settings, ip_hash_of(identity, deps)
     return await _write(deps, identity, lambda s: restore_version(
