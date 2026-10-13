@@ -47,8 +47,10 @@ function Notice({ label, tone, children, kind }: { label: string; tone: string; 
  * The notices under the title block: the public guide (public view), the dosing notice and the harms gap (every view,
  * when they apply), and the Thai-practice note (bedside and committee). Fixed copy; the report text is never rewritten.
  */
-export function ReportNotices({ result, audience, lang, hasPapers }: {
+export function ReportNotices({ result, audience, lang, hasPapers, guideLabel }: {
   result: ReviewResult; audience: Audience; lang: Lang; hasPapers: boolean;
+  /** the guide's heading where the page is not a report (the quick answer); the body text is the same */
+  guideLabel?: string;
 }) {
   const gap = hasPapers ? harmsGap(result) : null;
   const dosing = hasPapers && needsDosingNotice(result);
@@ -58,7 +60,7 @@ export function ReportNotices({ result, audience, lang, hasPapers }: {
   return (
     <div className="grid gap-3" data-report-notices>
       {guide && (
-        <Notice label={L(lang, A.guideLabel)} tone="bg-info-bg" kind="guide">
+        <Notice label={guideLabel ?? L(lang, A.guideLabel)} tone="bg-info-bg" kind="guide">
           <ul className="grid list-disc gap-1 pl-5">
             <li>{L(lang, A.guideGroups)}</li>
             <li>{L(lang, A.guideCertainty)}</li>

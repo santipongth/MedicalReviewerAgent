@@ -58,6 +58,15 @@ for (const [width, height, scheme] of [[1440, 1000, "light"], [390, 844, "light"
     await page.goto(`/r/${QID}`);
     await expect(page.locator("[data-quick-answer]")).toBeVisible();
     await expect(page.locator('[data-notice="guide"]')).toBeVisible();
+    // the answer and how sure it is: side by side on a wide screen, the certainty under the answer on a phone
+    const answer = (await page.locator('section[aria-labelledby="quick-answer-h"]').boundingBox())!;
+    const certainty = (await page.locator("[data-quick-certainty]").boundingBox())!;
+    if (width >= 1024) {
+      expect(certainty.x).toBeGreaterThanOrEqual(answer.x + answer.width - 1);
+      expect(Math.abs(certainty.y - answer.y)).toBeLessThan(80);
+    } else {
+      expect(certainty.y).toBeGreaterThanOrEqual(answer.y + answer.height - 1);
+    }
     await noHorizontalScroll(page);
     await noSeriousA11y(page);
   });

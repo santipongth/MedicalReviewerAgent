@@ -34,6 +34,66 @@ describe("Plan 27 quick answer page", () => {
     expect(document.querySelector("[data-quick-closing]")).toHaveTextContent("ความเชื่อมั่นของหลักฐานต่ำ");
   });
 
+  it("sets each sentence of the answer on its own line, the citation group staying with its sentence", () => {
+    render(<QuickAnswer review={quickReviewFixture} />);
+    const lines = [...document.querySelectorAll("[data-quick-text] [data-quick-sentence]")].map((s) => s.textContent);
+    expect(lines).toEqual(["ผู้ใช้เมตฟอร์มินมีความเสี่ยงมะเร็งลำไส้ใหญ่ต่ำกว่า (HR 0.80) [1✓, 2]", "แต่การศึกษาหนึ่งพบการตรวจพบมากขึ้นในสองปีแรก [3]"]);
+    expect(screen.getByText(/✓ หลังเลขอ้างอิง/)).toBeInTheDocument(); // the legend, since one citation is checked
+  });
+
+  it("beside the answer: the certainty meter with the closing line, and the evidence used (counts and direction tally)", () => {
+    render(<QuickAnswer review={quickReviewFixture} />);
+    const certainty = screen.getByRole("region", { name: "ความเชื่อมั่นของหลักฐาน" });
+    expect(certainty.querySelector('[data-certainty="low"]')).not.toBeNull();
+    expect(within(certainty).getByText("ต่ำ")).toBeInTheDocument();
+    expect(certainty.querySelector("[data-quick-closing]")).not.toBeNull();
+    const evidence = screen.getByRole("region", { name: "หลักฐานที่ใช้" });
+    expect(evidence).toHaveTextContent("อ่าน 4 ฉบับ · อ้างอิง 3 ฉบับ");
+    const tally = within(evidence).getByRole("list", { name: "ทิศทางของผลในงานที่อ้างอิง" });
+    expect(within(tally).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["สนับสนุนผล2", "ตรงข้าม/อันตราย1"]);
+    expect(within(tally).getByRole("img", { name: "ตรงข้าม/อันตราย" })).toBeInTheDocument(); // colour always with its glyph
+    // the full report's caveats: a count of studies (its term), and an SR/MA (P4) may overlap the primary studies
+    expect(evidence).toHaveTextContent("จำนวนงานวิจัยตามทิศทางผลที่เอเจนต์อ่าน");
+    expect(evidence.querySelector("[data-quick-overlap]")).toHaveTextContent("งานทบทวน/วิเคราะห์อภิมานอาจซ้อนกับงานวิจัยหลักที่นับรวม");
+  });
+
+  it("draws adjacent citation groups both, each keeping its marker's support", () => {
+    const text = "ผู้ใช้เมตฟอร์มินมีความเสี่ยงต่ำกว่า [P3][P1] แต่การศึกษาหนึ่งพบมากขึ้น [P4]";
+    render(<QuickAnswer review={{ ...quickReviewFixture, result: { ...quickReviewFixture.result!, summary: text,
+      support: { ...quickReviewFixture.result!.support!, markers: [["P3"], ["P1"], ["P4"]] } } }} />);
+    expect(document.querySelector("[data-quick-text]")!.textContent).toBe("ผู้ใช้เมตฟอร์มินมีความเสี่ยงต่ำกว่า [1✓][2] แต่การศึกษาหนึ่งพบมากขึ้น [3]");
+    expect(screen.getByRole("link", { name: "อ้างอิง 2" })).toHaveAttribute("href", "#qref-2");
+    expect(document.querySelectorAll("[data-quick-cite]")).toHaveLength(3);
+  });
+
+  it("no overlap line when no SR/MA is cited", () => {
+    render(<QuickAnswer review={{ ...quickReviewFixture, result: { ...quickReviewFixture.result!, quick: { refs: ["P3", "P1"], papers_read: 4 } } }} />);
+    expect(document.querySelector("[data-quick-overlap]")).toBeNull();
+  });
+
+  it("an ungraded answer shows no meter, only its words", () => {
+    const ungraded: Review = { ...quickReviewFixture, result: { ...quickReviewFixture.result!,
+      synthesis: { ...quickReviewFixture.result!.synthesis!, evidence_strength: null, answer: "" } } };
+    render(<QuickAnswer review={ungraded} />);
+    expect(document.querySelector("[data-certainty]")).toBeNull();
+    expect(screen.getByRole("region", { name: "ความเชื่อมั่นของหลักฐาน" })).toHaveTextContent("ไม่ได้ประเมินความเชื่อมั่นของหลักฐาน");
+  });
+
+  it("each reference shows its design, year, verified sample size (or the not-verified slot) and direction", () => {
+    const papers = quickReviewFixture.result!.papers!.map((p) => (p.ref === "P1" ? { ...p,
+      card: { ...p.card!, sample_size: null }, card_en: { ...p.card_en!, sample_size: null },
+      verification: { ...p.verification!, unverified: [{ field: "sample_size" as const, outcome: null }] } } : p));
+    render(<QuickAnswer review={{ ...quickReviewFixture, result: { ...quickReviewFixture.result!, papers } }} />);
+    const items = within(screen.getByRole("list", { name: "เอกสารอ้างอิง" })).getAllByRole("listitem");
+    const facts = items.map((li) => li.querySelector("[data-quick-facts]")!);
+    expect(facts[0]).toHaveTextContent(/^Cohort·n = 1,234·สนับสนุนผล$/);
+    expect(facts[0].querySelector(".num-verified")).toHaveTextContent("1,234");
+    expect(facts[1].querySelector(".hole")).not.toBeNull(); // P1: its sample size was blanked
+    expect(facts[1].querySelector(".num-verified")).toBeNull();
+    expect(facts[2]).toHaveTextContent(/SR\/MA ของงานเชิงสังเกต·n = 6,331/);
+    expect(within(facts[2] as HTMLElement).getByRole("img", { name: "ตรงข้าม/อันตราย" })).toBeInTheDocument();
+  });
+
   it("a quick answer with no papers shows the message once, no closing line and no certainty level", () => {
     const empty: Review = { ...quickReviewFixture, result: { ...quickReviewFixture.result!, summary: "ไม่พบงานวิจัยที่เกี่ยวข้อง",
       quick: { refs: [], papers_read: 0 }, support: null,
@@ -43,6 +103,7 @@ describe("Plan 27 quick answer page", () => {
     expect(document.querySelector("[data-quick-closing]")).toBeNull();
     expect(container.textContent?.match(/ไม่พบงานวิจัยที่เกี่ยวข้อง/g)).toHaveLength(1);
     expect(container.textContent).not.toMatch(/very_low|ของหลักฐานต่ำมาก/);
+    expect(document.querySelector("[data-certainty]")).toBeNull();
   });
 
   it("links each number to its reference, and marks only a citation the support check passed", () => {
@@ -75,7 +136,7 @@ describe("Plan 27 quick answer page", () => {
 
   it("keeps the public safety notices: the reader guide and the harms gap", () => {
     render(<QuickAnswer review={quickReviewFixture} />);
-    expect(document.querySelector('[data-notice="guide"]')).not.toBeNull();
+    expect(document.querySelector('[data-notice="guide"]')).toHaveAccessibleName("อ่านคำตอบนี้อย่างไร"); // not "this report"
     expect(document.querySelector('[data-notice="harms"]')).not.toBeNull();
     expect(document.querySelector("[data-audience-switch]")).toBeNull(); // one presentation
   });
