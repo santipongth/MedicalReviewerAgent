@@ -1,6 +1,8 @@
 import type {
-  AdminKey, AdminMe, AdminReview, AdminStatus, AuditEntry, CatalogModel, CatalogQuery, Dashboard, LlmConfigDoc, LlmConfigState,
-  LlmDraft, LlmSaveResult, LlmVersion, MintedKey, Page, ProbeResult, ValidateReport,
+  AdminKey, AdminMe, AdminReview, AdminStatus, AuditEntry, CatalogModel, CatalogQuery, Dashboard, GlossaryReport, GlossaryState,
+  GlossaryTerm, HarnessCompare, HarnessReportItem, HarnessResultItem, HarnessRun, HarnessStartBody, HarnessState, LlmConfigDoc,
+  LlmConfigState, LlmDraft, LlmSaveResult, LlmVersion, MintedKey, Page, ProbeResult, RuntimeKind, RuntimeVersion, SavedVersion,
+  SettingValue, SettingsReport, SettingsState, ValidateReport,
 } from "./admin-types";
 
 /** Admin calls are relative and same-origin: the session cookie (Path=/api/v1/admin) never leaves the site, and Caddy
@@ -94,6 +96,28 @@ export const adminApi = {
   },
   testLlm: (body: Partial<LlmDraft> & { preset?: string; role: string }) =>
     call<ProbeResult>("/llm-models/test", send("POST", body)),
+  settings: () => call<SettingsState>("/settings"),
+  validateSettings: (values: Record<string, SettingValue>) => call<SettingsReport>("/settings/validate", send("POST", { values })),
+  saveSettings: (body: { values: Record<string, SettingValue>; base_version: number | null; note?: string }) =>
+    call<SavedVersion>("/settings", send("POST", body)),
+  glossary: () => call<GlossaryState>("/glossary"),
+  validateGlossary: (terms: GlossaryTerm[]) => call<GlossaryReport>("/glossary/validate", send("POST", { terms })),
+  saveGlossary: (body: { terms: GlossaryTerm[]; base_version: number | null; note?: string }) =>
+    call<SavedVersion>("/glossary", send("POST", body)),
+  runtimeVersions: (kind: RuntimeKind, before?: number | null) =>
+    call<Page<RuntimeVersion>>(`/${kind}/versions${before ? `?before=${before}` : ""}`),
+  restoreRuntime: (kind: RuntimeKind, version: number, base: number | null, note?: string) =>
+    call<SavedVersion>(`/${kind}/versions/${version}/restore`, send("POST", { base_version: base, note })),
+  resetRuntime: (kind: RuntimeKind, base: number | null, note?: string) =>
+    call<SavedVersion>(`/${kind}/reset`, send("POST", { base_version: base, note })),
+  harness: () => call<HarnessState>("/harness"),
+  harnessRuns: (before?: number | null) => call<Page<HarnessRun>>(`/harness/runs${before ? `?before=${before}` : ""}`),
+  startHarness: (body: HarnessStartBody) => call<HarnessRun>("/harness/runs", send("POST", body)),
+  cancelHarness: (id: number) => call<HarnessRun>(`/harness/runs/${id}/cancel`, send("POST")),
+  harnessReports: () => call<{ items: HarnessReportItem[] }>("/harness/reports"),
+  harnessReport: (name: string) => call<{ name: string; text: string }>(`/harness/reports/${enc(name)}`),
+  harnessResults: () => call<{ items: HarnessResultItem[] }>("/harness/results"),
+  harnessCompare: (a: string, b: string) => call<HarnessCompare>(`/harness/compare?a=${enc(a)}&b=${enc(b)}`),
 };
 
 /** Thai text for a failed admin call. A 401 is handled by the gate, which sends the admin back to sign-in. */

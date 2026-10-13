@@ -5,6 +5,7 @@ import { adminApi } from "@/lib/admin-api";
 import { formatWhen } from "@/lib/admin-copy";
 import { missingKeyEnvs, sameConfig } from "@/lib/admin-models";
 import type { LlmConfigDoc, LlmConfigState } from "@/lib/admin-types";
+import { isStale } from "@/lib/admin-workers";
 import { useAdmin } from "./admin-gate";
 import { ConfirmButton } from "./confirm-button";
 import { ModelsCatalog } from "./models-catalog";
@@ -13,6 +14,7 @@ import { ModelsPresets } from "./models-presets";
 import { ModelsSaveBar, type WriteTracker } from "./models-save-bar";
 import { ModelsYaml } from "./models-yaml";
 import { BUTTON_GHOST } from "./ui";
+import { useWorkerFollowUp } from "./use-worker-follow-up";
 
 export type ModelsTab = "presets" | "yaml" | "history" | "catalog";
 const TABS: [ModelsTab, string][] = [["presets", "Presets"], ["yaml", "YAML ขั้นสูง"], ["history", "ประวัติ"], ["catalog", "Catalog"]];
@@ -20,27 +22,12 @@ const TABS: [ModelsTab, string][] = [["presets", "Presets"], ["yaml", "YAML ข�
 /** Why the save is refused while the YAML box holds text that is not the draft. */
 const YAML_NOT_APPLIED = 'กด "ใช้ YAML นี้" ก่อน เพื่อให้ข้อความในกล่องเป็นร่างที่จะบันทึก';
 
-/** Workers re-report every 30 s, so `loaded_at` is "last seen": a worker silent for longer than this has probably stopped. */
-const STALE_AFTER_MS = 120_000;
-
-function isStale(loadedAt: string, now: number): boolean {
-  const seen = Date.parse(loadedAt);
-  return Number.isFinite(seen) && now - seen > STALE_AFTER_MS; // a time that does not parse is not stale
-}
-
 /** The id a worker reports for the version the page shows: "file" while llm.yaml is the source. */
 const wantedVersion = (s: LlmConfigState): string => (s.version === null ? "file" : String(s.version));
 
 /** A worker that is still reporting but runs another version than the page's: it has not picked up a change yet. */
 const hasLaggingWorker = (s: LlmConfigState, now: number): boolean =>
   s.loaded.some((w) => w.version !== wantedVersion(s) && !isStale(w.loaded_at, now));
-
-/** After a save, restore or reset the workers pick the version up within 30 s (their poll), so the page re-reads this
- * often while one lags, for at most POLL_WINDOW_MS. For SETTLING_MS after the page's own change, a lagging worker is
- * "changing" and not yet a warning. */
-const POLL_MS = 10_000;
-const POLL_WINDOW_MS = 120_000;
-const SETTLING_MS = 60_000;
 
 /** `now` (ms since epoch) is when `state` was read: ModelsView passes the time of its fetch and tests pin it. Without it,
  * the time this header first rendered is used. */
@@ -145,9 +132,6 @@ export function ModelsView() {
    * background read starts, and one that began before it is dropped, so a plain reload cannot land before the re-read
    * that belongs to the write. */
   const writes = useRef({ active: 0, began: 0 });
-  /** True for SETTLING_MS after this page's own write. `writeCount` restarts the polling window with each write. */
-  const [settling, setSettling] = useState(false);
-  const [writeCount, setWriteCount] = useState(0);
 
   useEffect(() => {
     mounted.current = true;
@@ -175,12 +159,6 @@ export function ModelsView() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const track = useMemo<WriteTracker>(() => ({
-    start: () => { writes.current.active += 1; writes.current.began += 1; },
-    wrote: () => { setSettling(true); setWriteCount((n) => n + 1); },
-    end: () => { writes.current.active -= 1; },
-  }), []);
-
   /** One background read of /llm-config (a plain reload: unsaved edits stay). */
   const poll = useCallback(() => {
     if (writes.current.active > 0) return; // a write is in flight: its own re-read comes first
@@ -189,21 +167,14 @@ export function ModelsView() {
   }, [load]);
 
   const lagging = state !== null && hasLaggingWorker(state, readAt);
-  useEffect(() => {
-    if (!lagging) return;
-    const since = Date.now();
-    const id = setInterval(() => {
-      if (Date.now() - since >= POLL_WINDOW_MS) clearInterval(id);
-      else poll();
-    }, POLL_MS);
-    return () => clearInterval(id);
-  }, [lagging, writeCount, poll]);
+  /** `settling` is true for 60 s after this page's own write; each write restarts the polling window. */
+  const { settling, wrote } = useWorkerFollowUp(lagging, poll);
 
-  useEffect(() => {
-    if (!settling) return;
-    const id = setTimeout(() => setSettling(false), SETTLING_MS);
-    return () => clearTimeout(id);
-  }, [settling, writeCount]);
+  const track = useMemo<WriteTracker>(() => ({
+    start: () => { writes.current.active += 1; writes.current.began += 1; },
+    wrote,
+    end: () => { writes.current.active -= 1; },
+  }), [wrote]);
 
   useEffect(() => {
     if (draftNote && focusDraftNote.current) {

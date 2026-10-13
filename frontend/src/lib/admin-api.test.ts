@@ -58,6 +58,20 @@ describe("adminApi", () => {
     expect(JSON.parse(init.body as string)).toEqual({ yaml: "active_preset: cheap\n", base_version: 3, note: "cheaper" });
   });
 
+  it("builds the runtime and harness URLs and bodies", async () => {
+    const fn = stub(200, { items: [], next: null });
+    await adminApi.runtimeVersions("glossary", 4);
+    await adminApi.harnessCompare("2026-10-11.1/baseline", "pv/run b");
+    await adminApi.restoreRuntime("settings", 2, 3);
+    const urls = fn.mock.calls.map((c) => c[0]);
+    expect(urls).toEqual(["/api/v1/admin/glossary/versions?before=4",
+      "/api/v1/admin/harness/compare?a=2026-10-11.1%2Fbaseline&b=pv%2Frun%20b",
+      "/api/v1/admin/settings/versions/2/restore"]);
+    const init = fn.mock.calls[2][1];
+    expect(init.headers).toMatchObject({ "X-MRA-Admin": "1" });
+    expect(JSON.parse(init.body as string)).toEqual({ base_version: 3 });
+  });
+
   it("maps failures to AdminApiError with the detail and Retry-After", async () => {
     stub(429, { detail: "too many failed sign-ins; try again later" }, { "Retry-After": "600" });
     const err = await adminApi.signIn("owner", "x").catch((e: unknown) => e);

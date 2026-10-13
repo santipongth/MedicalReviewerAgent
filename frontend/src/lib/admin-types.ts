@@ -47,8 +47,12 @@ export interface LlmConfigDoc {
   presets: Record<string, Record<string, LlmRoleSpec>>; harness?: Record<string, unknown>;
   overrides?: Record<string, Record<string, unknown>>;
 }
-/** `loaded_at` is when the worker last reported (it re-reports every 30 s), not when it loaded the version. */
-export interface LoadedWorker { worker: string; version: string; preset: string; loaded_at: string; error: string | null }
+/** `loaded_at` is when the worker last reported (it re-reports every 30 s), not when it loaded the version. Plan 23c adds
+ * the settings and glossary versions it runs ("env" and "file" for the defaults) and a failed runtime reload. */
+export interface LoadedWorker {
+  worker: string; version: string; preset: string; loaded_at: string; error: string | null;
+  settings?: string | null; glossary?: string | null; runtime_error?: string | null;
+}
 export interface LlmConfigState {
   source: "db" | "file"; version: number | null; config: LlmConfigDoc; active_preset: string; env_preset: string | null;
   keys_present: Record<string, boolean>; loaded: LoadedWorker[];
@@ -72,3 +76,52 @@ export interface CatalogModel {
 export interface ProbeResult { ok: boolean; latency_ms: number; cost_usd: number; model: string; error: string | null }
 export type LlmDraft = { config: LlmConfigDoc } | { yaml: string };
 export interface CatalogQuery { q?: string; structured?: boolean; reasoning?: boolean; max_price?: number | null }
+
+/** Plan 23c: runtime settings, the glossary and the harness. Mirrors backend/app/api/admin_runtime.py and admin_harness.py. */
+export type SettingValue = string | number;
+export interface SettingSpec {
+  name: string; kind: "rate" | "int" | "float"; group: "limits" | "capacity" | "cost" | "workers" | "cache";
+  applies: "api" | "worker" | "both"; min: number | null; max: number | null;
+}
+export interface SettingsState {
+  source: "db" | "env"; version: number | null; values: Record<string, SettingValue>; overrides: Record<string, SettingValue>;
+  env: Record<string, SettingValue>; specs: SettingSpec[]; worst_case_review_usd: number; loaded: LoadedWorker[];
+}
+export interface FieldError { field: string | null; message: string }
+export interface SettingsReport {
+  ok: boolean; errors: FieldError[]; warnings: string[]; values: Record<string, SettingValue> | null;
+  worst_case_review_usd: number | null;
+}
+export interface GlossaryTerm { en: string; th: string; abbr: string | null; note: string | null }
+export interface GlossaryState {
+  source: "db" | "file"; version: number | null; terms: GlossaryTerm[]; chars: number; max_chars: number; loaded: LoadedWorker[];
+}
+export interface GlossaryReport { ok: boolean; errors: FieldError[]; warnings: string[]; preview: string | null; chars: number | null }
+export type RuntimeKind = "settings" | "glossary";
+export interface RuntimeVersion {
+  version: number; kind: RuntimeKind; created_at: string; created_by: string; note: string | null;
+  source: "edit" | "restore" | "reset"; restored_from: number | null; changes: Record<string, unknown>;
+}
+export interface SavedVersion extends RuntimeVersion { workers_notified: boolean }
+export type HarnessStatus = "queued" | "running" | "done" | "stopped" | "cancelled" | "error";
+export interface HarnessRun {
+  id: number; run_id: string; prompt_version: string; status: HarnessStatus; max_usd: number; spent_usd: number;
+  repeats: number; strata: string[]; max_reviews: number | null; compare_run: string | null; planned: number;
+  done: number; failed: number; skipped: number; created_by: string; created_at: string; started_at: string | null;
+  finished_at: string | null; error: string | null; report: string | null; config: Record<string, string>;
+}
+export interface HarnessState {
+  available: boolean; reasons: string[]; prompt_version: string; pool_version: string | null;
+  strata: { name: string; selected: number; with_fixtures: number }[]; fixtures: { selected: number; present: number };
+  worker: { worker: string; seen_at: string } | null; ceiling_usd: number; default_usd: number;
+  per_review_cap_usd: number; typical_review_usd: number | null; active: HarnessRun | null;
+}
+export interface HarnessReportItem { name: string; prompt_version: string | null; run_id: string | null; size: number; modified_at: string }
+export interface HarnessResultItem { label: string; prompt_version: string; run_id: string; files: number; modified_at: string }
+export interface HarnessCompare {
+  a: { label: string; runs: number }; b: { label: string; runs: number };
+  rows: { metric: string; a: string; b: string }[]; verdict_changes: string[];
+}
+export interface HarnessStartBody {
+  max_usd: number; repeats: number; strata: string[]; max_reviews: number | null; compare_run: string | null; confirm: true;
+}
