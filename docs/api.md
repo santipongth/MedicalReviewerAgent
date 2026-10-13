@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-12.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-13.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 120 candidate papers that have abstracts, and analyses the abstracts of the 5–50 you choose (default 30). It never fetches full text.
@@ -125,7 +125,9 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `progress` is reserved and always `null`. Live progress comes from the event stream.
 - `status` is one of `queued`, `running`, `done`, `error`, `rejected` or `cancelled`.
 
-`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`.
+`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods, support`.
+
+**Sentence support (Plan 25).** `result.support` is `null` when the check did not run (results stored before it, or a crash of the check) and otherwise `{judge, markers, claims[], display_aligned}`. `judge` is `ok | incomplete | failed | skipped_budget | none`; `markers` are the citation groups of the English summary in order. Each claim is `{id, where, markers, finding, claim, refs, numbers_checked, computed, citations[]}` and each citation `{ref, label, evidence, score, not_evidence, verified}`: `label` is `supported | partial | unsupported`, or `null` when unknown (judge failed, skipped for budget, over the 30-pair cap, not evidence, or a pooled claim); `evidence` is a sentence copied from the paper's abstract; `verified` (the "ตรวจแล้ว" badge) needs `label` supported, every number of the claim traced to a verified number, no computed pooled value, and an evidence paper. The check never fails a review. `result.quality.support` holds its counts.
 
 **Answer and key findings (Plan 20).** `synthesis` (and `synthesis_en`) also has:
 - `answer`: the bottom line, 1–2 sentences that answer the question directly. A graded answer (`slr`,

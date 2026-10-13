@@ -18,6 +18,7 @@ from app.graph.nodes import (
     retrieval,
     screening,
     stubs,
+    support,
     synthesis,
     thaijo,
 )
@@ -93,8 +94,8 @@ def build_stub_graph(checkpointer: BaseCheckpointSaver | None = None, delay_seco
 
 def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
     """screen_batch* → select_top → read_paper* (+ external_enrich, fetch_citations, thaijo_metadata) → normalize_outcomes
-    → [pool_effects] → explain_conflict* → write_synthesis → localize → finalize. Shared by build_graph and the
-    Plan 22a eval graph."""
+    → [pool_effects] → explain_conflict* → write_synthesis → localize ∥ check_support → finalize. Shared by
+    build_graph and the Plan 22a eval graph."""
     b.add_node("screen_batch", screening.make_screen_batch(deps))
     b.add_node("select_top", screening.make_select_top(deps))
     b.add_node("read_paper", reading.make_read_paper(deps))
@@ -106,6 +107,7 @@ def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
     b.add_node("explain_conflict", synthesis.make_explain_conflict(deps))
     b.add_node("write_synthesis", synthesis.make_write_synthesis(deps))
     b.add_node("localize", synthesis.make_localize(deps))
+    b.add_node("check_support", support.make_check_support(deps))
     b.add_node("finalize", synthesis.make_finalize(deps))
     b.add_edge("screen_batch", "select_top")
     b.add_conditional_edges(
@@ -124,8 +126,11 @@ def _add_review_nodes(b: StateGraph, deps: GraphDeps) -> None:
                             ["pool_effects", "explain_conflict", "write_synthesis"])
     b.add_conditional_edges("pool_effects", synthesis.route_conflicts, ["explain_conflict", "write_synthesis"])
     b.add_edge("explain_conflict", "write_synthesis")
+    # Plan 25: the support check reads the English synthesis, so it runs beside localize; finalize waits for both
     b.add_edge("write_synthesis", "localize")
+    b.add_edge("write_synthesis", "check_support")
     b.add_edge("localize", "finalize")
+    b.add_edge("check_support", "finalize")
     b.add_edge("finalize", END)
 
 
@@ -145,7 +150,7 @@ def _add_intake_nodes(b: StateGraph, deps: GraphDeps) -> None:
 def build_graph(deps: GraphDeps, checkpointer: BaseCheckpointSaver | None = None):
     """topic_guard → refine_question → plan_queries → search → enrich → screen_batch* → select_top
     → read_paper* → normalize_outcomes → [pool_effects, meta_analysis only] → explain_conflict* → write_synthesis
-    → localize → finalize (* = Send fan-out, run in parallel)."""
+    → localize ∥ check_support → finalize (* = Send fan-out, run in parallel; ∥ = side by side)."""
     if deps.llms is None:
         return build_stub_graph(checkpointer, deps.settings.stub_delay_seconds, deps.settings)
     b = StateGraph(ReviewState)
