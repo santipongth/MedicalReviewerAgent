@@ -15,6 +15,7 @@ from app.logging import get_logger
 from app.schemas.review import ReviewOptions
 from app.services.budget import ReviewBudget, review_cost_cap, use_budget
 from app.services.events import EventSink
+from app.services.safety import refusal_code_of
 
 log = get_logger(__name__)
 
@@ -112,7 +113,7 @@ class ReviewRunner:
             reason = str(values["rejected"])
             if not await self._finish(review_id, "rejected", error=reason, cost_usd=cost):
                 return ReviewStatus.cancelled.value
-            await emit("rejected", {"reason": reason})
+            await emit("rejected", {"reason": reason, "code": refusal_code_of("rejected", reason)})
             await self._notify(review_id, has_callback)
             return "rejected"
         result = values.get("result") or {}

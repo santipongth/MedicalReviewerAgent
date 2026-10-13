@@ -99,6 +99,23 @@ async def test_rejected_graph_result_sets_rejected_status(session_factory, redis
     assert got.status == "rejected" and got.error == "not a medical topic"
     assert float(got.cost_usd) == 0.001
     assert events[-1].type == "rejected" and events[-1].payload["reason"] == "not a medical topic"
+    assert events[-1].payload["code"] == "declined"
+
+
+async def test_a_personal_medical_rejection_carries_its_code(session_factory, redis):
+    from app.services.safety import rejection_error
+
+    async def guard(state: ReviewState) -> dict:
+        return {"rejected": rejection_error("personal_medical"), "cost_usd": 0.0001}
+
+    review = await _queued_review(session_factory)
+    sink = EventSink(session_factory, redis, 60)
+    assert await ReviewRunner(session_factory, sink, _single_node_graph(guard)).run(review.id) == "rejected"
+    async with session_factory() as s:
+        got = await ReviewRepository(s).get(review.id)
+        events = await EventRepository(s).list_since(review.id, 0)
+    assert got.status == "rejected" and got.error.startswith("personal_medical: ")
+    assert events[-1].payload["code"] == "personal_medical"
 
 
 async def test_done_review_records_prompt_and_model_versions(session_factory, redis):

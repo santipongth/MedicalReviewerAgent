@@ -18,6 +18,7 @@ from app.harness.study_types import missing_study_types
 from app.schemas.review import ReviewOptions
 from app.services.llm import LLMError, LLMOutputError, LLMRefusal
 from app.services.llm_config import HarnessSpec
+from app.services.safety import rejection_error
 
 MAX_QUERIES = 4
 MAX_QUERIES_META = 5  # meta-analysis: one more query (trial names / acronyms) for recall (audit I-9)
@@ -55,7 +56,9 @@ def make_topic_guard(deps):
             return {"rejected": "The topic was declined by the safety filter."}
         if res.value is None:
             raise LLMOutputError(f"topic check failed: {'; '.join(res.problems) or 'no valid answer'}")
-        if not res.value.allowed:
+        if res.value.category == "personal_medical":  # Plan 26: a fixed message; the model's reason is not shown
+            return {"rejected": rejection_error("personal_medical"), "cost_usd": res.cost}
+        if not res.value.allowed or res.value.category != "research":  # either one rejecting is a rejection
             return {"rejected": res.value.reason or "The topic is not a biomedical research question.",
                     "cost_usd": res.cost}
         return {"english_topic": res.value.english_topic or state["topic"], "cost_usd": res.cost}

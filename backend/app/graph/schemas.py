@@ -65,10 +65,23 @@ class Candidate(BaseModel):
 
 
 # ---- LLM structured outputs -----------------------------------------------------------
+GuardCategory = Literal["research", "personal_medical", "declined"]
+
+
+def _require_category(schema: dict) -> None:
+    schema.setdefault("required", []).append("category")
+    schema["properties"]["category"].pop("default", None)  # strict tool schemas reject "default"
+
+
 class TopicVerdict(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_require_category)
+
     allowed: bool
     reason: str
     english_topic: str
+    # Plan 26: research (allowed), personal_medical (one person's own symptoms, diagnosis, dose or treatment) or
+    # declined (every other rejection). Required for the model; the default only serves verdicts built in code.
+    category: GuardCategory = "research"
 
 
 QuestionType = Literal[

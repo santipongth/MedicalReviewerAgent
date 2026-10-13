@@ -42,9 +42,11 @@ MESSAGES: dict[str, dict[str, str]] = {
     "personal_medical": {
         "en": ("This service summarises research about groups of people and cannot advise on your own case "
                "(symptoms, diagnosis, dose or treatment choice). Please see a doctor or pharmacist. In an emergency "
-               "in Thailand, call 1669."),
+               "in Thailand, call 1669. If the issue is suicidal thoughts or self-harm, call 1323 (Thai mental "
+               "health hotline)."),
         "th": ("บริการนี้สรุปงานวิจัยเกี่ยวกับกลุ่มประชากร จึงให้คำแนะนำเฉพาะกรณีของคุณไม่ได้ เช่น อาการ การวินิจฉัย "
-               "ขนาดยา หรือการเลือกการรักษา โปรดปรึกษาแพทย์หรือเภสัชกร หากเป็นภาวะฉุกเฉิน โทร 1669"),
+               "ขนาดยา หรือการเลือกการรักษา โปรดปรึกษาแพทย์หรือเภสัชกร หากเป็นภาวะฉุกเฉิน โทร 1669 "
+               "หากเป็นเรื่องความคิดอยากทำร้ายตัวเอง โทร 1323 (สายด่วนสุขภาพจิต 1323)"),
     },
 }
 
