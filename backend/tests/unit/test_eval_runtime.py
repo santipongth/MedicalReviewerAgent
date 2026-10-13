@@ -1,3 +1,7 @@
+import asyncio
+import json
+import math
+
 import pytest
 
 from app.cli.eval import EvalConfigError, eval_runtime
@@ -7,7 +11,7 @@ from app.evals.batch import run_all
 from app.evals.freeze import entry_options, freeze_all
 from app.evals.metrics import review_metrics
 from app.evals.models import Fixture, RunRecord, read_model, run_path
-from app.evals.results import load_rows, prior_spend, write_report
+from app.evals.results import list_results, load_rows, prior_spend, write_report
 from app.graph.graph import GraphDeps
 from app.harness.glossary import ActiveGlossary
 from app.schemas.review import ReviewOptions
@@ -91,6 +95,96 @@ async def test_a_retry_counts_earlier_spend_against_the_strict_cap(root, monkeyp
     one = await run_all(GraphDeps(settings=S), m, run_id="r", repeats=1, max_usd=0.5, ids=None, git_sha="s",
                         strict_cap=True, spent_before=0.20)
     assert (one.done, one.stopped_for_budget, one.spent) == (1, True, pytest.approx(0.30))
+
+
+def markers(pv, run="r"):
+    return sorted(models.run_path(pv, run, "x", 1).parent.glob("*.inflight"))
+
+
+async def test_an_interrupted_strict_review_leaves_a_marker_that_a_retry_counts(root, monkeypatch):
+    pv = S.prompt_version
+    m = manifest(3)
+    write_fixtures(m)
+    first = fake_replay(0.10)
+    calls = []
+
+    async def replay(deps, fixture, **kw):
+        calls.append(fixture.id)
+        if len(calls) == 2:
+            raise asyncio.CancelledError  # a worker shutdown in the middle of the second review
+        return await first(deps, fixture, **kw)
+
+    monkeypatch.setattr(batch, "replay", replay)
+    with pytest.raises(asyncio.CancelledError):
+        await run_all(GraphDeps(settings=S), m, run_id="r", repeats=1, max_usd=0.5, ids=None, git_sha="s",
+                      strict_cap=True)
+    [marker] = markers(pv)
+    assert marker.name.startswith("CD1.") and len(marker.name.split(".")) == 3
+    assert json.loads(marker.read_text(encoding="utf-8")) == {"cap": pytest.approx(0.28)}
+    assert b"\r" not in marker.read_bytes()  # written with newline="\n"
+    assert prior_spend(pv, "r") == pytest.approx(0.10 + 0.28)
+    # the run listings, metrics and report never read the marker
+    assert [r["files"] for r in list_results()] == [1]
+    assert len(load_rows(pv, "r", m)[0]) == 1 and write_report(pv, "r", m) is not None
+    # the retried job starts from that: 0.10 spent plus the unknown review's 0.28 leaves no room for a 0.28 review
+    # under 0.5 (without the marker, 0.10 + 0.28 would fit and the review would start)
+    monkeypatch.setattr(batch, "replay", fake_replay(0.10))
+    resumed = await run_all(GraphDeps(settings=S), m, run_id="r", repeats=1, max_usd=0.5, ids=None, git_sha="s",
+                            strict_cap=True, spent_before=prior_spend(pv, "r"))
+    assert (resumed.done, resumed.skipped, resumed.stopped_for_budget) == (0, 1, True)
+    assert resumed.spent == pytest.approx(0.38)
+
+
+async def test_a_strict_review_marks_itself_until_its_record_is_written(root, monkeypatch):
+    pv, seen = S.prompt_version, []
+    m = manifest(3)
+    write_fixtures(m)
+    inner = fake_replay(0.10)
+
+    async def replay(deps, fixture, **kw):
+        seen.append((len(markers(pv)), models.run_path(pv, "r", fixture.id, 1).exists()))
+        return await inner(deps, fixture, **kw)
+
+    async def on_record(rec, summary):
+        seen.append((len(markers(pv)), models.run_path(pv, "r", rec.id, rec.repeat).exists()))
+
+    monkeypatch.setattr(batch, "replay", replay)
+    s = await run_all(GraphDeps(settings=S), m, run_id="r", repeats=1, max_usd=5, ids=None, git_sha="s",
+                      strict_cap=True, on_record=on_record)
+    # per review: one marker and no record while it replays; then a record and no marker
+    assert s.done == 3 and seen == [(1, False), (0, True)] * 3
+    assert markers(pv) == [] and prior_spend(pv, "r") == pytest.approx(0.30)
+
+
+async def test_a_non_strict_run_writes_no_markers(root, monkeypatch):
+    pv, seen = S.prompt_version, []
+    m = manifest(2)
+    write_fixtures(m)
+    inner = fake_replay(0.10)
+
+    async def replay(deps, fixture, **kw):
+        seen.append(len(markers(pv)))
+        return await inner(deps, fixture, **kw)
+
+    monkeypatch.setattr(batch, "replay", replay)
+    s = await run_all(GraphDeps(settings=S), m, run_id="r", repeats=1, max_usd=5, ids=None, git_sha="s")
+    assert s.done == 2 and seen == [0, 0] and markers(pv) == []
+
+
+@pytest.mark.parametrize("content", ["not json", "[]", '{"cap": null}', '{"cap": "x"}', '{"cap": -1}',
+                                     '{"cap": NaN}', "{}"], ids=lambda c: c[:8])
+async def test_an_unreadable_marker_counts_as_infinite_and_stops_a_strict_run(root, monkeypatch, content):
+    pv = S.prompt_version
+    m = manifest(2)
+    write_fixtures(m)
+    models.write_json_atomic(models.run_path(pv, "r", "CD0", 1), record("CD0", 0.1, pv=pv))
+    folder = models.run_path(pv, "r", "CD0", 1).parent
+    (folder / "CD1.0a1b2c3d.inflight").write_text(content, encoding="utf-8")
+    assert math.isinf(prior_spend(pv, "r"))  # unknown spend is never assumed to be zero
+    monkeypatch.setattr(batch, "replay", fake_replay(0.10))
+    s = await run_all(GraphDeps(settings=S), m, run_id="r", repeats=1, max_usd=5, ids=None, git_sha="s",
+                      strict_cap=True, spent_before=prior_spend(pv, "r"))
+    assert (s.done, s.skipped, s.stopped_for_budget) == (0, 1, True)
 
 
 async def test_replay_records_the_glossary_it_used(root):

@@ -2,6 +2,7 @@
 runs once the batch has spent `max_usd`."""
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -30,7 +31,10 @@ async def run_all(deps, manifest: Manifest, *, run_id: str, repeats: int, max_us
                   should_stop=None) -> BatchSummary:
     """Plan 23c, for the console's runs:
     - strict_cap: a review starts only when what is spent plus that review's own cost cap fits in max_usd, so the
-      batch never overshoots by a whole review;
+      batch never overshoots by a whole review. Each review also writes an in-flight marker (models.inflight_path,
+      {"cap": its own cap}) before it starts and removes it once its record is written, so a review that is
+      interrupted or killed mid-way (no record, unknown spend) is still counted at its cap by results.prior_spend
+      when the job is retried. The marker is deliberately not removed on CancelledError;
     - spent_before: what earlier attempts of this run already spent;
     - on_record(rec, summary): called after each record is written;
     - should_stop(): checked before each review; True stops the batch with summary.cancelled."""
@@ -54,6 +58,7 @@ async def run_all(deps, manifest: Manifest, *, run_id: str, repeats: int, max_us
             if s.spent >= max_usd or (strict_cap and s.spent + need > max_usd):
                 s.stopped_for_budget = True
                 return s
+            marker = None
             if fixture.status != "ok":
                 rec = RunRecord(id=entry.id, repeat=repeat, run_id=run_id, prompt_version=pv, git_sha=git_sha,
                                 pool_version=fixture.pool_version, fixture_frozen_at=fixture.frozen_at,
@@ -64,9 +69,15 @@ async def run_all(deps, manifest: Manifest, *, run_id: str, repeats: int, max_us
                                 cost_usd=0.0, status="rejected" if fixture.status == "rejected" else "error",
                                 error=fixture.error)
             else:
+                if strict_cap:  # a write that fails stops the run before any money is spent
+                    marker = models.inflight_path(pv, run_id, entry.id)
+                    models.write_json_atomic(marker, {"cap": need})
                 rec = await replay(deps, fixture, options=entry_options(entry), repeat=repeat, run_id=run_id,
                                    git_sha=git_sha, primary_outcome=entry.primary_outcome)
             models.write_json_atomic(path, rec)
+            if marker is not None:  # only now: until the record exists the marker is the only trace of the spend
+                with contextlib.suppress(OSError):  # a marker left behind only over-counts
+                    marker.unlink(missing_ok=True)
             s.spent += rec.cost_usd
             if rec.status == "done":
                 s.done += 1

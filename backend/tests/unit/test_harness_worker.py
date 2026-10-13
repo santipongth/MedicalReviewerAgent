@@ -1,11 +1,13 @@
 import asyncio
 import contextlib
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import yaml
+from arq.worker import Retry
 
 from app.config import Settings
 from app.db.models import HarnessRun
@@ -17,9 +19,16 @@ from app.services.config_store import save_version
 from app.services.glossary_store import GLOSSARY_KIND
 from app.services.harness_runs import WORKER_KEY
 from app.services.http import HttpClient
+from app.services.runtime_settings import SETTINGS_KIND
 from app.worker import harness as harness_worker
 from app.worker import llm_reload
-from app.worker.harness import HarnessWorkerSettings, build_eval_deps, heartbeat, run_harness
+from app.worker.harness import (
+    MARKER_UNREADABLE,
+    HarnessWorkerSettings,
+    build_eval_deps,
+    heartbeat,
+    run_harness,
+)
 from tests.harness_helpers import make_eval_root, write_run
 from tests.llm_helpers import MINIMAL, write_yaml
 
@@ -121,7 +130,7 @@ async def test_cancelled_runs_are_not_claimed(session_factory, root):
     {"status": "error", "active": 1},  # the status alone refuses it, whatever the slot says
     {"status": "cancelled", "active": 1},
 ], ids=["error", "done", "stopped", "no-active-slot", "error-with-slot", "cancelled-with-slot"])
-async def test_only_a_queued_run_that_holds_the_active_slot_is_claimed(session_factory, root, fields):
+async def test_a_run_that_is_over_or_holds_no_slot_is_not_claimed(session_factory, root, fields):
     pk = await add_run(session_factory, **fields)
     calls = []
 
@@ -166,11 +175,16 @@ async def test_a_prompt_version_mismatch_errors_before_anything_runs(session_fac
     called = []
 
     async def run_all(*a, **k):
-        called.append(1)
+        called.append("run_all")
 
-    out = await run_harness(ctx_for(session_factory, run_all), pk)
+    async def build(ctx):  # config loads, the catalog fetch and LLM construction all come after the check
+        called.append("build_eval_deps")
+        return await fake_deps(ctx)
+
+    out = await run_harness(ctx_for(session_factory, run_all) | {"build_eval_deps": build}, pk)
     row = await get(session_factory, pk)
     assert out["status"] == "error" and called == [] and "prompt_version" in row.error and row.active is None
+    assert row.config == {} and row.started_at is not None
 
 
 async def test_a_shutdown_puts_the_run_back_in_the_queue_and_the_retry_resumes(session_factory, root):
@@ -187,6 +201,131 @@ async def test_a_shutdown_puts_the_run_back_in_the_queue_and_the_retry_resumes(s
     assert (await run_harness(ctx_for(session_factory, fake_run_all(BatchSummary(done=1), seen)), pk))["status"] == "done"
 
 
+async def test_a_late_cancel_is_reported_as_cancelled_not_done(session_factory, root):
+    pk = await add_run(session_factory)
+
+    async def run_all(deps, manifest, **kw):
+        async with session_factory() as s, s.begin():  # cancelled during the last review: nothing left to stop
+            row = await s.get(HarnessRun, pk)
+            row.status, row.active = "cancelled", None
+        return BatchSummary(done=3, spent=0.3)
+
+    out = await run_harness(ctx_for(session_factory, run_all), pk)
+    row = await get(session_factory, pk)
+    assert out["status"] == "cancelled" and (row.status, row.active, row.done) == ("cancelled", None, 3)
+
+
+async def test_the_job_has_its_own_deadline_that_frees_the_slot(session_factory, root, monkeypatch):
+    monkeypatch.setattr(harness_worker, "JOB_DEADLINE_SECONDS", 0.05)
+    pk = await add_run(session_factory)
+
+    async def slow(*a, **k):
+        await asyncio.sleep(30)
+
+    out = await run_harness(ctx_for(session_factory, slow), pk)  # arq's own timeout would leave the row queued
+    row = await get(session_factory, pk)
+    assert out["status"] == "error" and (row.status, row.active, row.error) == ("error", None, "timed out")
+    assert row.finished_at is not None
+
+
+async def test_a_timeout_from_inside_the_work_is_not_called_the_deadline(session_factory, root):
+    pk = await add_run(session_factory)
+
+    async def timed_out(*a, **k):
+        raise TimeoutError("provider")
+
+    out = await run_harness(ctx_for(session_factory, timed_out), pk)
+    row = await get(session_factory, pk)
+    assert out["status"] == "error" and row.error == "TimeoutError: provider" and row.active is None
+
+
+async def test_the_last_allowed_interruption_ends_the_run_instead_of_requeueing_it(session_factory, root):
+    async def interrupted(*a, **k):
+        raise asyncio.CancelledError
+
+    early = await add_run(session_factory)
+    with pytest.raises(asyncio.CancelledError):
+        await run_harness(ctx_for(session_factory, interrupted) | {"job_try": 2}, early)
+    row = await get(session_factory, early)
+    assert (row.status, row.active) == ("queued", 1)  # a try is left: arq runs the job again
+
+    async with session_factory() as s, s.begin():  # free the slot for the next run
+        row = await s.get(HarnessRun, early)
+        row.status, row.active = "cancelled", None
+    last = await add_run(session_factory, run_id="console-2")
+    with pytest.raises(asyncio.CancelledError):
+        await run_harness(ctx_for(session_factory, interrupted) | {"job_try": 3}, last)  # a 4th try never calls us
+    row = await get(session_factory, last)
+    assert (row.status, row.active, row.error) == ("error", None, "interrupted 3 times")
+    assert row.finished_at is not None
+
+
+async def test_a_real_task_cancel_inside_the_deadline_requeues_the_run(session_factory, root):
+    pk = await add_run(session_factory)
+    started = asyncio.Event()
+
+    async def run_all(*a, **k):
+        started.set()
+        await asyncio.sleep(30)
+
+    task = asyncio.create_task(run_harness(ctx_for(session_factory, run_all), pk))  # what arq does on a shutdown
+    await asyncio.wait_for(started.wait(), 5)
+    assert (await get(session_factory, pk)).status == "running"
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    row = await get(session_factory, pk)
+    assert (row.status, row.active) == ("queued", 1)  # the deadline did not turn the cancel into an error
+
+
+async def test_a_database_failure_while_claiming_is_retried_not_failed(session_factory, root, monkeypatch):
+    pk = await add_run(session_factory)
+    calls = []
+
+    async def broken_claim(*a, **k):
+        calls.append(1)
+        raise ConnectionError("database down")
+
+    monkeypatch.setattr(harness_worker, "claim", broken_claim)
+
+    async def must_not_run(*a, **k):
+        raise AssertionError("nothing may start when the claim failed")
+
+    with pytest.raises(Retry) as caught:
+        await run_harness(ctx_for(session_factory, must_not_run) | {"job_try": 1}, pk)
+    assert caught.value.defer_score == 30_000
+    with pytest.raises(ConnectionError):  # on the last try a Retry would only become arq's "max retries exceeded"
+        await run_harness(ctx_for(session_factory, must_not_run) | {"job_try": 3}, pk)
+    assert len(calls) == 2
+
+
+async def test_an_unfinished_review_counts_at_its_cap_when_the_job_is_retried(session_factory, root):
+    pk = await add_run(session_factory)
+    write_run(S.prompt_version, "console-1", [("CD0", 1, 0.25)])
+    folder = models.run_path(S.prompt_version, "console-1", "CD1", 1).parent
+    (folder / "CD1.0a1b2c3d.inflight").write_text(json.dumps({"cap": 0.4}), encoding="utf-8")
+    seen = {}
+    await run_harness(ctx_for(session_factory, fake_run_all(BatchSummary(done=1, spent=0.7), seen)), pk)
+    assert seen["spent_before"] == pytest.approx(0.65)  # the killed review may have spent anything up to its cap
+
+
+async def test_an_unreadable_marker_stops_the_run_and_infinity_never_reaches_the_row(session_factory, root):
+    pk = await add_run(session_factory)
+    folder = models.run_path(S.prompt_version, "console-1", "CD1", 1).parent
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "CD1.0a1b2c3d.inflight").write_text("not json", encoding="utf-8")
+    seen = {}
+
+    async def run_all(deps, manifest, **kw):  # what the real run_all does when spent_before >= max_usd
+        seen.update(kw)
+        return BatchSummary(spent=kw["spent_before"], stopped_for_budget=True)
+
+    out = await run_harness(ctx_for(session_factory, run_all), pk)
+    row = await get(session_factory, pk)
+    assert math.isinf(seen["spent_before"]) and out["status"] == "stopped" and out["spent_usd"] is None
+    assert (row.status, row.active, row.spent_usd, row.error) == ("stopped", None, 0.0, MARKER_UNREADABLE)
+
+
 async def test_heartbeat_and_worker_settings(redis):
     task = asyncio.create_task(heartbeat({"redis_client": redis}, interval=0.01))
     try:
@@ -198,9 +337,12 @@ async def test_heartbeat_and_worker_settings(redis):
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
-    assert json.loads(await redis.get(WORKER_KEY))["worker"] and 0 < await redis.ttl(WORKER_KEY) <= 90
+    beat = json.loads(await redis.get(WORKER_KEY))
+    assert beat["worker"] and datetime.fromisoformat(beat["seen_at"]) and 0 < await redis.ttl(WORKER_KEY) <= 90
     assert (HarnessWorkerSettings.queue_name, HarnessWorkerSettings.max_jobs) == ("arq:harness", 1)
-    assert HarnessWorkerSettings.functions[0].timeout_s == 12 * 3600
+    assert (HarnessWorkerSettings.max_tries, HarnessWorkerSettings.functions[0].max_tries) == (3, 3)
+    assert HarnessWorkerSettings.functions[0].timeout_s == HarnessWorkerSettings.job_timeout == 12 * 3600
+    assert harness_worker.JOB_DEADLINE_SECONDS < harness_worker.JOB_TIMEOUT_SECONDS  # ours fires first
 
 
 def test_compose_keeps_the_harness_opt_in_and_fixtures_out_of_images():
@@ -237,3 +379,25 @@ async def test_eval_deps_use_the_models_settings_glossary_and_catalog_in_force(t
     assert labels == {"llm_config": "file", "settings_version": "env", "glossary": "1"}
     assert deps.glossary.label == "1" and deps.llms.preset == "cheap" and (deps.openalex, deps.mcp) == (None, None)
     assert loaders == [llm_reload.load_live_catalog]  # 23b's one-attempt loader, never the shared client's retries
+
+
+async def test_eval_deps_apply_the_saved_settings_override(tmp_path, session_factory, redis, monkeypatch):
+    settings = Settings(_env_file=None, openrouter_api_key="sk-or-x",
+                        llm_config_path=str(write_yaml(tmp_path / "llm.yaml", MINIMAL)))
+    assert settings.review_cost_per_paper_usd != 0.02
+    async with session_factory() as s, s.begin():
+        await save_version(s, AdminPrincipal(kind="cli", id=None, label="cli"), SETTINGS_KIND,
+                           {"values": {"review_cost_per_paper_usd": 0.02}}, settings=settings, base_version=None)
+
+    async def no_catalog(redis_client, loader):
+        return {}
+
+    monkeypatch.setattr(harness_worker, "cached_catalog", no_catalog)
+    http = HttpClient(timeout=5)
+    try:
+        deps, labels = await build_eval_deps({"settings": settings, "session_factory": session_factory,
+                                              "redis_client": redis, "http": http})
+    finally:
+        await http.aclose()
+    assert deps.settings.review_cost_per_paper_usd == 0.02 and labels["settings_version"] == "1"
+    assert settings.review_cost_per_paper_usd != 0.02  # the base settings object is not mutated

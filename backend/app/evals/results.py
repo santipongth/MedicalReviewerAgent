@@ -3,6 +3,7 @@ Paths are relative to models.EVAL_ROOT (backend/ in development, /app in the con
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import stat
@@ -66,15 +67,31 @@ def write_report(prompt_version: str, run_id: str, manifest: Manifest, compare_l
     return path
 
 
+def _inflight_cap(path: Path) -> float:
+    """The cap an in-flight marker holds. A marker that does not read, or holds no usable cap, counts as infinite:
+    its review's spend is unknown, so the run stops rather than assume it was zero."""
+    try:
+        cap = float(json.loads(path.read_text(encoding="utf-8"))["cap"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return math.inf
+    return cap if math.isfinite(cap) and cap >= 0 else math.inf
+
+
 def prior_spend(prompt_version: str, run_id: str) -> float:
-    """What the records already in a run folder cost (a retried harness job counts it against its cap). Files that
-    do not read are skipped."""
+    """What a run folder already accounts for, which a retried harness job counts against its cap: the cost of every
+    record, plus the cap of every in-flight marker (models.inflight_path). A marker is a review that started in a
+    strict run and never wrote its record, because the worker was killed or interrupted mid-review, so it may have
+    spent anything up to its cap. Record files that do not read are skipped; a marker that does not read makes the
+    result infinite (see _inflight_cap)."""
+    folder = models.EVAL_ROOT / "runs" / prompt_version / run_id
     total = 0.0
-    for path in (models.EVAL_ROOT / "runs" / prompt_version / run_id).glob("*.json"):
+    for path in folder.glob("*.json"):
         try:
             total += float(json.loads(path.read_text(encoding="utf-8")).get("cost_usd") or 0.0)
         except (OSError, ValueError, AttributeError, TypeError):
             continue
+    for marker in folder.glob(f"*{models.INFLIGHT_SUFFIX}"):
+        total += _inflight_cap(marker)
     return total
 
 

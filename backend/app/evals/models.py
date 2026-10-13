@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from pathlib import Path
 from typing import Any, Literal
 
@@ -128,6 +129,17 @@ def fixture_path(pool_version: str, review_id: str) -> Path:
 
 def run_path(prompt_version: str, run_id: str, review_id: str, repeat: int) -> Path:
     return EVAL_ROOT / "runs" / prompt_version / run_id / f"{review_id}.r{repeat}.json"
+
+
+INFLIGHT_SUFFIX = ".inflight"
+
+
+def inflight_path(prompt_version: str, run_id: str, review_id: str) -> Path:
+    """The marker a strict-cap review writes before it starts (`<review id>.<8 hex>.inflight`, JSON {"cap": usd}) and
+    removes once its record is written. One that is still there belongs to a review that never finished (a killed or
+    interrupted worker), whose spend is unknown but at most its cap. Not a `*.json`, so no run listing, report or
+    metric reads it."""
+    return EVAL_ROOT / "runs" / prompt_version / run_id / f"{review_id}.{secrets.token_hex(4)}{INFLIGHT_SUFFIX}"
 
 
 def write_json_atomic(path: Path, data: BaseModel | dict[str, Any]) -> None:

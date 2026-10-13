@@ -2,13 +2,18 @@
 never takes a review slot, and it runs one job at a time. A job replays the frozen pools with the production nodes
 (run_all) on the service's effective models (23b), settings and glossary (23c), inside the run's USD cap:
 run_all(strict_cap=True) never starts a review whose own cap does not fit in what is left, and a retried job counts
-what earlier attempts spent (the run files). Cancel is graceful (checked before each review). The service starts only
-with `docker compose --profile harness up -d harness`."""
+what earlier attempts spent (the run files, plus the cap of every review that was started and never finished: see
+run_all's in-flight markers). Cancel is graceful (checked before each review). Every way a job can end frees the run's
+active slot: the job has its own deadline a minute before arq's, so a timeout is recorded as an error instead of
+leaving the run queued; a job interrupted for the last allowed try is recorded as an error instead of being requeued
+into arq's "max retries exceeded" (which never calls the function). The service starts only with
+`docker compose --profile harness up -d harness`."""
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import json
+import math
 import os
 import socket
 from datetime import UTC, datetime
@@ -16,6 +21,7 @@ from typing import ClassVar
 
 from arq import func
 from arq.connections import RedisSettings
+from arq.worker import Retry
 from redis.asyncio import Redis
 
 from app.cli.eval import git_sha
@@ -46,7 +52,12 @@ from app.worker.llm_reload import load_live_catalog
 
 log = get_logger(__name__)
 JOB_TIMEOUT_SECONDS = 12 * 3600
+JOB_DEADLINE_SECONDS = JOB_TIMEOUT_SECONDS - 60  # the job's own deadline fires first (arq's timeout cannot free the slot)
+MAX_TRIES = 3
+CLAIM_RETRY_SECONDS = 30
 HEARTBEAT_SECONDS = 30
+MARKER_UNREADABLE = ("an in-flight marker of an earlier attempt could not be read, so its spend is unknown; "
+                     "the run was stopped to protect the cap")
 
 
 async def build_eval_deps(ctx: dict):
@@ -68,43 +79,72 @@ async def build_eval_deps(ctx: dict):
                   "glossary": runtime.glossary.label}
 
 
+def _try(ctx: dict) -> int:
+    return ctx.get("job_try", 1)
+
+
 async def run_harness(ctx: dict, run_pk: int) -> dict:
     session_factory = ctx["session_factory"]
-    row = await claim(session_factory, run_pk)
+    try:
+        row = await claim(session_factory, run_pk)
+    except Exception as exc:  # the database is unreachable: retry the job, which has not started anything yet
+        log.warning("harness_claim_failed", run=run_pk, error=type(exc).__name__)
+        if _try(ctx) >= MAX_TRIES:  # arq never calls a fourth try: a Retry here would only hide the failure
+            raise
+        raise Retry(defer=CLAIM_RETRY_SECONDS) from exc
     if row is None:
         return {"run": run_pk, "status": "skipped"}
+    deadline = asyncio.timeout(JOB_DEADLINE_SECONDS)
     try:
-        deps, labels = await ctx.get("build_eval_deps", build_eval_deps)(ctx)
-        await set_config(session_factory, run_pk, labels)
-        pv = deps.settings.prompt_version
-        if pv != row.prompt_version:
-            raise RuntimeError(f"this worker runs prompt_version {pv} but the run was started for "
-                               f"{row.prompt_version}; rebuild the containers")
-        manifest = load_manifest()
-        entries = selection(manifest, row.strata or [], row.max_reviews)
-
-        async def on_record(rec, summary) -> None:
-            await progress(session_factory, run_pk, summary)
-
-        async def should_stop() -> bool:
-            return await run_stopped(session_factory, run_pk)
-
-        summary = await ctx.get("run_all", run_all)(
-            deps, manifest, run_id=row.run_id, repeats=row.repeats, max_usd=row.max_usd,
-            ids=[e.id for e in entries], git_sha=git_sha(), strict_cap=True,
-            spent_before=prior_spend(pv, row.run_id), on_record=on_record, should_stop=should_stop)
-        report = write_report(pv, row.run_id, manifest, row.compare_run)
-        status = "cancelled" if summary.cancelled else "stopped" if summary.stopped_for_budget else "done"
-        await finish(session_factory, run_pk, status=status, summary=summary, report=report.name if report else None)
-        log.info("harness_run_finished", run=run_pk, status=status, spent=round(summary.spent, 4))
-        return {"run": run_pk, "status": status, "spent_usd": round(summary.spent, 6)}
+        async with deadline:
+            return await _replay(ctx, row)
     except asyncio.CancelledError:
-        await requeue(session_factory, run_pk)
+        if _try(ctx) >= MAX_TRIES:  # arq will not call this job again: free the slot now
+            await finish(session_factory, run_pk, status="error", error=f"interrupted {MAX_TRIES} times")
+        else:
+            await requeue(session_factory, run_pk)
         raise
     except Exception as exc:  # recorded on the run, not retried (log.exception keeps the traceback)
-        log.exception("harness_run_failed", run=run_pk)
-        await finish(session_factory, run_pk, status="error", error=f"{type(exc).__name__}: {exc}")
-        return {"run": run_pk, "status": "error"}
+        if isinstance(exc, TimeoutError) and deadline.expired():
+            log.error("harness_run_timed_out", run=run_pk)
+            error = "timed out"
+        else:
+            log.exception("harness_run_failed", run=run_pk)
+            error = f"{type(exc).__name__}: {exc}"
+        final = await finish(session_factory, run_pk, status="error", error=error)
+        return {"run": run_pk, "status": final or "error"}
+
+
+async def _replay(ctx: dict, row) -> dict:
+    session_factory, run_pk = ctx["session_factory"], row.id
+    pv = ctx["settings"].prompt_version
+    if pv != row.prompt_version:  # before anything is built, fetched or spent
+        raise RuntimeError(f"this worker runs prompt_version {pv} but the run was started for "
+                           f"{row.prompt_version}; rebuild the containers")
+    deps, labels = await ctx.get("build_eval_deps", build_eval_deps)(ctx)
+    await set_config(session_factory, run_pk, labels)
+    manifest = load_manifest()
+    entries = selection(manifest, row.strata or [], row.max_reviews)
+    earlier = prior_spend(pv, row.run_id)
+
+    async def on_record(rec, summary) -> None:
+        await progress(session_factory, run_pk, summary)
+
+    async def should_stop() -> bool:
+        return await run_stopped(session_factory, run_pk)
+
+    summary = await ctx.get("run_all", run_all)(
+        deps, manifest, run_id=row.run_id, repeats=row.repeats, max_usd=row.max_usd,
+        ids=[e.id for e in entries], git_sha=git_sha(), strict_cap=True,
+        spent_before=earlier, on_record=on_record, should_stop=should_stop)
+    report = write_report(pv, row.run_id, manifest, row.compare_run)
+    status = "cancelled" if summary.cancelled else "stopped" if summary.stopped_for_budget else "done"
+    note = MARKER_UNREADABLE if status == "stopped" and math.isinf(earlier) else None
+    final = await finish(session_factory, run_pk, status=status, summary=summary,
+                         report=report.name if report else None, error=note) or status
+    spent = round(summary.spent, 6) if math.isfinite(summary.spent) else None
+    log.info("harness_run_finished", run=run_pk, status=final, spent=spent)  # final: an admin may have cancelled late
+    return {"run": run_pk, "status": final, "spent_usd": spent}
 
 
 async def heartbeat(ctx: dict, interval: float = HEARTBEAT_SECONDS) -> None:
@@ -145,7 +185,8 @@ async def shutdown(ctx: dict) -> None:
 
 
 class HarnessWorkerSettings:
-    functions: ClassVar[list] = [func(run_harness, name="run_harness", timeout=JOB_TIMEOUT_SECONDS, max_tries=3)]
+    functions: ClassVar[list] = [func(run_harness, name="run_harness", timeout=JOB_TIMEOUT_SECONDS,
+                                      max_tries=MAX_TRIES)]
     queue_name = HARNESS_QUEUE
     on_startup = startup
     on_shutdown = shutdown
@@ -153,6 +194,6 @@ class HarnessWorkerSettings:
     max_jobs = 1
     job_timeout = JOB_TIMEOUT_SECONDS
     retry_jobs = True  # a shutdown re-runs the job; it resumes (existing run files are skipped, their cost counted)
-    max_tries = 3
+    max_tries = MAX_TRIES
     keep_result = 0
     health_check_interval = 60

@@ -6,6 +6,7 @@ here spends money: the worker never starts a review whose own cap does not fit i
 from __future__ import annotations
 
 import json
+import math
 import secrets
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
@@ -202,20 +203,23 @@ async def get_run(session_factory, run_pk: int) -> HarnessRun:
 
 
 async def finish(session_factory, run_pk: int, *, status: str, summary=None, report: str | None = None,
-                 error: str | None = None) -> None:
-    """The run's end: counts, report and error; the active slot is freed; a cancelled run stays cancelled."""
+                 error: str | None = None) -> str | None:
+    """The run's end: counts, report and error; the active slot is freed; a cancelled run stays cancelled. Returns
+    the status the run ended with ("cancelled" when the admin cancelled it first), None when the row is gone."""
     values: dict[str, Any] = {"active": None, "finished_at": datetime.now(UTC), "report": report,
                               "error": error[:500] if error else None}
     if summary is not None:
-        values |= {"spent_usd": round(summary.spent, 6), "done": summary.done, "failed": summary.failed,
-                   "skipped": summary.skipped}
+        values |= {"done": summary.done, "failed": summary.failed, "skipped": summary.skipped}
+        if math.isfinite(summary.spent):  # unknown earlier spend (an unreadable marker) is infinite: never stored
+            values["spent_usd"] = round(summary.spent, 6)
     async with session_factory() as session, session.begin():
         current = await session.scalar(select(HarnessRun.status).where(HarnessRun.id == run_pk))
         if current is None:
-            return
+            return None
         if current != "cancelled":
             values["status"] = status
         await session.execute(update(HarnessRun).where(HarnessRun.id == run_pk).values(**values))
+    return "cancelled" if current == "cancelled" else status
 
 
 async def claim(session_factory, run_pk: int) -> HarnessRun | None:
@@ -240,9 +244,11 @@ async def set_config(session_factory, run_pk: int, config: dict[str, str]) -> No
 
 async def progress(session_factory, run_pk: int, summary) -> None:
     """Counts and spend after each record; never the status, so a cancel is not overwritten."""
+    values: dict[str, Any] = {"done": summary.done, "failed": summary.failed, "skipped": summary.skipped}
+    if math.isfinite(summary.spent):  # unknown earlier spend (an unreadable marker) is infinite: never stored
+        values["spent_usd"] = round(summary.spent, 6)
     async with session_factory() as session, session.begin():
-        await session.execute(update(HarnessRun).where(HarnessRun.id == run_pk).values(
-            spent_usd=round(summary.spent, 6), done=summary.done, failed=summary.failed, skipped=summary.skipped))
+        await session.execute(update(HarnessRun).where(HarnessRun.id == run_pk).values(**values))
 
 
 async def run_stopped(session_factory, run_pk: int) -> bool:
