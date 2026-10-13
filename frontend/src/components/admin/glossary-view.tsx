@@ -232,7 +232,7 @@ export function GlossaryView() {
                             onChange={(e) => edit(r.key, field, e.target.value)} />
                           {messages && (
                             <div id={`${id}-error`} className="mt-1 grid gap-1 text-sm text-err">
-                              {messages.map((m) => <p key={m}>{m}</p>)}
+                              {messages.map((m, n) => <p key={`${n}-${m}`}>{m}</p>)}
                             </div>
                           )}
                         </td>
@@ -246,6 +246,7 @@ export function GlossaryView() {
               </tbody>
             </table>
           </div>
+          {needle && !rows.some(shown) && <p role="status" className="mt-2 text-sm text-muted">ไม่พบคำที่ตรงกับคำค้น</p>}
           <button ref={addRef} type="button" className={`mt-3 ${BUTTON_GHOST}`} onClick={add}>เพิ่มคำ</button>
           <DraftStatus moved={page.moved} base={draft.base} current={current.version} note={page.draftNote}
             onDiscard={page.discard} onRebase={page.rebase} versionName={glossaryName} />
@@ -254,27 +255,31 @@ export function GlossaryView() {
               <p className="font-display font-semibold">ยังบันทึกไม่ได้</p>
               {cellErrors.size > 0 && <p className="mt-1 text-sm">{`ช่องที่ต้องแก้ ${cellErrors.size} ช่อง: ดูข้อความสีแดงใต้ช่องนั้นในตาราง`}</p>}
               {otherErrors.length > 0 && (
-                <ul className="mt-1 list-disc pl-5 text-sm">{otherErrors.map((e) => <li key={e.message}>{e.message}</li>)}</ul>
+                <ul className="mt-1 list-disc pl-5 text-sm">{otherErrors.map((e, n) => <li key={`${n}-${e.message}`}>{e.message}</li>)}</ul>
               )}
             </div>
           )}
           {report && report.ok && (
-            <div role="status" className="mt-6 grid gap-2">
-              <div className="rounded-sm bg-info-bg px-4 py-3">
-                <p className="font-display font-semibold">ผ่านการตรวจ</p>
-                {report.preview !== null && (
-                  <>
-                    <p className="mt-2 text-sm">{`${report.chars} / ${current.max_chars} ตัวอักษร`}</p>
-                    <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-rule bg-ground p-3 font-code text-xs">
-                      {report.preview}
-                    </pre>
-                  </>
+            <>
+              <div role="status" className="mt-6 grid gap-2">
+                <div className="rounded-sm bg-info-bg px-4 py-3">
+                  <p className="font-display font-semibold">ผ่านการตรวจ</p>
+                  {report.chars !== null && <p className="mt-1 text-sm">{`${report.chars} / ${current.max_chars} ตัวอักษร`}</p>}
+                </div>
+                {report.warnings.length > 0 && (
+                  <ul className="list-disc rounded-sm bg-warn-bg py-2 pr-4 pl-9 text-sm">
+                    {report.warnings.map((w, n) => <li key={`${n}-${w}`}>{w}</li>)}
+                  </ul>
                 )}
               </div>
-              {report.warnings.length > 0 && (
-                <ul className="list-disc rounded-sm bg-warn-bg py-2 pr-4 pl-9 text-sm">{report.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+              {/* Outside the live region: up to 4000 characters must not be read out at every check */}
+              {report.preview !== null && (
+                <pre role="region" aria-label="ตัวอย่างข้อความ glossary ใน prompt" tabIndex={0}
+                  className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-rule bg-ground p-3 font-code text-xs">
+                  {report.preview}
+                </pre>
               )}
-            </div>
+            </>
           )}
           <label className="mt-6 block">
             <span className="text-sm">หมายเหตุ (ไม่บังคับ)</span>

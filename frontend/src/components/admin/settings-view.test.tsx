@@ -111,6 +111,27 @@ describe("SettingsView", () => {
     expect(screen.queryByText(/บันทึกเป็นเวอร์ชัน \d+ แล้ว/)).toBeNull();
   });
 
+  it("lists a message the server sends twice twice, in the notice and among the warnings, without a key warning", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockAdminFetch((m, p) => {
+      if (m === "POST" && p === "/settings/validate") {
+        return [200, { ok: true, errors: [], warnings: ["twice", "twice"], values: SETTINGS.values, worst_case_review_usd: 0.4 }];
+      }
+      if (m === "POST" && p === "/settings") {
+        return [422, { detail: "refused", errors: [{ field: null, message: "once more" }, { field: null, message: "once more" }] }];
+      }
+      return routes()(m, p);
+    });
+    await renderAdmin(<SettingsView />);
+    await screen.findByLabelText(`ค่าใหม่: ${QUEUE}`);
+    fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
+    expect(await screen.findAllByText("twice")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findAllByText("once more")).toHaveLength(2);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
   it("turning off ตั้งค่าเอง drops the override", async () => {
     const posted: unknown[] = [];
     mockAdminFetch((m, p, body) => {

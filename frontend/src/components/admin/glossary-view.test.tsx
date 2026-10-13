@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WORKERS_NOT_NOTIFIED } from "@/lib/admin-copy";
 import type { GlossaryTerm } from "@/lib/admin-types";
 import type { AdminReply } from "@/test/admin-fetch";
 import { mockAdminFetch, renderAdmin } from "@/test/admin-fetch";
@@ -160,7 +161,67 @@ describe("GlossaryView", () => {
     fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
     const warning = await screen.findByText(WARN);
     expect(warning.closest("ul")).toHaveClass("bg-warn-bg");
-    expect(screen.getByText("ผ่านการตรวจ").closest("[role=status]")).toContainElement(warning);
+    const status = screen.getByText("ผ่านการตรวจ").closest("[role=status]");
+    expect(status).toContainElement(warning);
+    expect(status).toHaveTextContent("5 / 4000 ตัวอักษร");
+    // the preview (up to 4000 characters) is a focusable region of its own, not part of what the check announces
+    const preview = screen.getByRole("region", { name: "ตัวอย่างข้อความ glossary ใน prompt" });
+    expect(preview).toHaveTextContent("a = b");
+    expect(preview).toHaveAttribute("tabindex", "0");
+    expect(status).not.toContainElement(preview);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("lists a message the server sends twice for one cell twice, without a key warning", async () => {
+    const DUP = "terms.0.en: also listed in terms.0";
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockAdminFetch((m, p) => (m === "POST" && p === "/glossary/validate"
+      ? [200, { ok: false, errors: [{ field: "terms.0.en", message: DUP }, { field: "terms.0.en", message: DUP },
+        { field: null, message: "same" }, { field: null, message: "same" }], warnings: [], preview: null, chars: null }]
+      : routes()(m, p)));
+    await renderAdmin(<GlossaryView />);
+    fireEvent.click(await screen.findByRole("button", { name: "ตรวจ" }));
+    await screen.findByRole("alert");
+    expect(screen.getAllByText(DUP)).toHaveLength(2);
+    expect(screen.getAllByText("same")).toHaveLength(2);
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("says so when the filter matches no term", async () => {
+    mockAdminFetch(routes());
+    await renderAdmin(<GlossaryView />);
+    const search = await screen.findByLabelText("ค้นหาคำ");
+    expect(screen.queryByText("ไม่พบคำที่ตรงกับคำค้น")).toBeNull();
+    fireEvent.change(search, { target: { value: "zzz" } });
+    expect(screen.getByRole("status")).toHaveTextContent("ไม่พบคำที่ตรงกับคำค้น");
+    fireEvent.change(search, { target: { value: "" } });
+    expect(screen.queryByText("ไม่พบคำที่ตรงกับคำค้น")).toBeNull();
+  });
+
+  it("removing a middle term keeps what was typed in the other rows, on the same inputs", async () => {
+    const three = { ...GLOSSARY, terms: [...GLOSSARY.terms, { en: "mortality", th: "อัตราการเสียชีวิต", abbr: null, note: null }] };
+    mockAdminFetch(routes(three));
+    await renderAdmin(<GlossaryView />);
+    fireEvent.change(await screen.findByLabelText("ตัวย่อ คำที่ 1"), { target: { value: "HRx" } });
+    const third = screen.getByLabelText("หมายเหตุ คำที่ 3");
+    fireEvent.change(third, { target: { value: "typed in 3" } });
+    fireEvent.click(screen.getByRole("button", { name: "ลบคำที่ 2" }));
+    expect(screen.queryByLabelText("English คำที่ 3")).toBeNull();
+    expect(screen.getByLabelText("ตัวย่อ คำที่ 1")).toHaveValue("HRx");
+    expect(screen.getByLabelText("English คำที่ 2")).toHaveValue("mortality");
+    expect(screen.getByLabelText("หมายเหตุ คำที่ 2")).toBe(third); // the same input moved up, it was not rebuilt
+    expect(third).toHaveValue("typed in 3");
+  });
+
+  it("shows the workers-not-notified notice when the save was stored but the publish failed", async () => {
+    mockAdminFetch((m, p) => (m === "POST" && p === "/glossary"
+      ? [201, { ...GLOSSARY_VERSIONS.items[0], version: 5, workers_notified: false }]
+      : routes()(m, p)));
+    await renderAdmin(<GlossaryView />);
+    await screen.findByLabelText("English คำที่ 1");
+    fireEvent.click(screen.getByRole("button", SAVE));
+    expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 5 แล้ว")).toBeInTheDocument();
+    expect(screen.getByText(WORKERS_NOT_NOTIFIED)).toBeInTheDocument();
   });
 });

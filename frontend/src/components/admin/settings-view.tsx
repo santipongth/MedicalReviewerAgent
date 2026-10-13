@@ -231,7 +231,7 @@ export function SettingsView() {
               <p className="font-display font-semibold">ยังบันทึกไม่ได้</p>
               {fieldErrors.size > 0 && <p className="mt-1 text-sm">{`ค่าที่ต้องแก้ ${fieldErrors.size} ค่า: ดูข้อความใต้ค่านั้นในตาราง`}</p>}
               {otherErrors.length > 0 && (
-                <ul className="mt-1 list-disc pl-5 text-sm">{otherErrors.map((e) => <li key={e.message}>{e.message}</li>)}</ul>
+                <ul className="mt-1 list-disc pl-5 text-sm">{otherErrors.map((e, n) => <li key={`${n}-${e.message}`}>{e.message}</li>)}</ul>
               )}
             </div>
           )}
@@ -246,7 +246,7 @@ export function SettingsView() {
                 )}
               </div>
               {report.warnings.length > 0 && (
-                <ul className="list-disc rounded-sm bg-warn-bg py-2 pr-4 pl-9 text-sm">{report.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+                <ul className="list-disc rounded-sm bg-warn-bg py-2 pr-4 pl-9 text-sm">{report.warnings.map((w, n) => <li key={`${n}-${w}`}>{w}</li>)}</ul>
               )}
             </div>
           )}
