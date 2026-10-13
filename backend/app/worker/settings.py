@@ -20,7 +20,8 @@ from app.services.events import EventSink
 from app.services.http import DEFAULT_MIN_INTERVAL, HttpClient
 from app.services.model_catalog import OpenRouterCatalog
 from app.services.queue import ArqJobQueue
-from app.worker.llm_reload import init_llms, poll_llm_config, stop_llms
+from app.worker.llm_reload import init_llms, stop_llms
+from app.worker.runtime_reload import init_runtime, poll_runtime
 from app.worker.sweep import sweep_stale
 from app.worker.tasks import delete_checkpoint, deliver_webhook, resume_review, run_review
 
@@ -49,6 +50,7 @@ async def startup(ctx: dict) -> None:
     await pool.open()
     ctx["pg_pool"] = pool
     ctx["http"] = HttpClient(timeout=settings.http_timeout_seconds, min_interval=DEFAULT_MIN_INTERVAL)
+    await init_runtime(ctx)  # saved settings and glossary (Plan 23c): init_llms sizes the LLM semaphore from them
     catalog = None
     if settings.graph_mode != "stub":
         try:  # OpenRouter catalog: picks the structured-output method per model and prices; optional
@@ -56,7 +58,7 @@ async def startup(ctx: dict) -> None:
         except Exception as exc:  # noqa: BLE001 - offline catalog only degrades to json_schema defaults
             log.warning("openrouter_catalog_unavailable", error=str(exc))
     await init_llms(ctx, catalog, AsyncPostgresSaver(pool))
-    ctx["llm_poller"] = asyncio.create_task(poll_llm_config(ctx))
+    ctx["llm_poller"] = asyncio.create_task(poll_runtime(ctx))
     ctx["queue"] = ArqJobQueue(ctx["redis"])  # arq's own pool: enqueue webhook deliveries
     ctx["capacity"] = Capacity(ctx["events_redis"], settings)  # finished reviews count toward the daily spend
     ctx["webhook_http"] = httpx.AsyncClient(timeout=settings.webhook_timeout_seconds, follow_redirects=False)
