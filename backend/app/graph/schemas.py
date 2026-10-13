@@ -338,6 +338,18 @@ class TranslationBatch(BaseModel):
     items: list[TranslationItem]
 
 
+class SupportVerdict(BaseModel):
+    """Plan 25: the judge's label for one (claim, cited paper) pair. `sentence`: the 1-based candidate that supports
+    the claim (supported, partial); null when unsupported."""
+    id: str
+    label: Literal["supported", "partial", "unsupported"]
+    sentence: int | None
+
+
+class SupportBatch(BaseModel):
+    verdicts: list[SupportVerdict]
+
+
 class ExternalCall(BaseModel):
     tool: str
     arguments_json: str  # JSON object with the tool's arguments (a string keeps the schema strict-compatible)

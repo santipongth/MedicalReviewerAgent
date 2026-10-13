@@ -8,7 +8,8 @@ import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlan
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import { fieldLang, RC } from "@/lib/i18n-report";
 import { showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
-import type { OutcomeResult, Paper, PaperCard } from "@/lib/types";
+import { claimsForPaper, supportState } from "@/lib/support";
+import type { OutcomeResult, Paper, PaperCard, SentenceSupport } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { isRelatedReport, relatedLabelParts, relatedReasonText, relatedReportsLabel } from "@/lib/trial-reports";
@@ -16,6 +17,7 @@ import { ReadingFlag, type Select } from "./report-parts";
 import { L } from "./text";
 
 const R = RC.rail;
+const S = RC.support;
 
 /** Card text in the reader's language when the engine translated it; otherwise as stored, marked with its own `lang`. */
 function Field({ text, lang }: { text: string | null | undefined; lang: Lang }) {
@@ -169,9 +171,59 @@ function RelatedNote({ paper, lang, onSelect }: { paper: Paper; lang: Lang; onSe
   );
 }
 
+/** The chip of a support state: a checked citation gets the outlined "✓ ตรวจแล้ว" mark, "not found" a dashed warning. */
+const STATE_CHIP = {
+  checked: "border-ink", unsupported: "border-dashed border-harm text-warn",
+  numbers: "border-rule text-muted", partial: "border-rule text-muted", computed: "border-rule text-muted",
+  not_evidence: "border-rule text-muted", unchecked: "border-rule text-muted",
+} as const;
+
+/**
+ * Plan 25, "why this source was cited": every sentence of the report that cites this paper (the one the reader came
+ * from first), as the engine checked it in English, the label, and the abstract sentence verbatim (the supporting one,
+ * else the closest one). "Not found" is shown, never hidden.
+ */
+function WhyCited({ paper, support, claim, lang }: {
+  paper: Paper; support?: SentenceSupport | null; claim?: string | null; lang: Lang;
+}) {
+  const items = claimsForPaper(support, paper.ref, claim);
+  if (!items.length) return null;
+  return (
+    <section aria-label={L(lang, S.why)} className="grid gap-2 border-t border-rule pt-3" data-why-cited>
+      <h3 className="label">{L(lang, S.why)}</h3>
+      <ul className="grid gap-3">
+        {items.map(({ claim: c, citation }) => {
+          const state = supportState(c, citation, paper);
+          const supporting = state === "checked" || state === "numbers" || state === "partial";
+          return (
+            <li key={c.id} data-support={state} aria-current={c.id === claim || undefined}
+              className={`grid gap-1.5 ${c.id === claim ? "-mx-2 rounded-sm bg-surface px-2 py-2" : ""}`}>
+              <span className={`w-fit rounded-sm border px-1.5 py-0.5 font-display text-[0.8rem] font-semibold ${STATE_CHIP[state]}`}>
+                {state === "checked" && <span aria-hidden="true">✓ </span>}{L(lang, S.state[state])}
+              </span>
+              <span className="text-[0.8rem] text-muted">{L(lang, c.where === "key_finding" ? S.finding : S.claim)}</span>
+              <p className="text-[0.92rem] break-words" lang="en">{c.claim}</p>
+              {citation.evidence && (
+                <>
+                  <span className="label">{L(lang, supporting ? S.supporting : S.closest)}</span>
+                  <p className="font-quote text-[1rem] leading-relaxed break-words" lang="en">&ldquo;{citation.evidence}&rdquo;</p>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-[0.8rem] text-muted">{L(lang, S.note)}</p>
+    </section>
+  );
+}
+
 /** The paper behind whatever the reader selected: facts, each outcome's number and the exact sentence it came from. */
-export function SourceRail({ paper, outcome, lang, onClose, headingId, visible = true, type = "legacy", onSelect, onReference }: {
+export function SourceRail({ paper, outcome, lang, onClose, headingId, visible = true, type = "legacy", onSelect, onReference,
+  support, claim }: {
   paper: Paper | null; outcome?: string; lang: Lang; onClose?: () => void;
+  /** Plan 25: the engine's sentence support, and the checked sentence the reader came from (listed first) */
+  support?: SentenceSupport | null; claim?: string | null;
   /** the reader follows the link to the paper's reference (the drawer closes and focus lands there) */
   onReference?: (ref: string) => void;
   /** opens another paper in the rail (the primary report of a further report, and back) */
@@ -214,6 +266,7 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
           <p className="font-display text-base font-semibold leading-snug break-words" lang={fieldLang(paper.title, lang)}>{paper.title}</p>
           {paper.journal && <p className="-mt-3 text-sm text-muted">{paper.journal}</p>}
           <RelatedNote paper={paper} lang={lang} onSelect={onSelect} />
+          <WhyCited paper={paper} support={support} claim={claim} lang={lang} />
           {card ? (
             <>
               <Facts paper={paper} card={card} cardEn={cardEn} lang={lang} riskOfBias={showsRiskOfBias(type)} />

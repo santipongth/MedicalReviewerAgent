@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-12.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-13.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches eight scholarly sources, screens about 120 candidate papers that have abstracts, and analyses the abstracts of the 5–50 you choose (default 30). It never fetches full text.
@@ -125,7 +125,7 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `progress` is reserved and always `null`. Live progress comes from the event stream.
 - `status` is one of `queued`, `running`, `done`, `error`, `rejected` or `cancelled`.
 
-`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`.
+`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`, and since Plan 25 `support` (see "Sentence support (Plan 25)").
 
 **Answer and key findings (Plan 20).** `synthesis` (and `synthesis_en`) also has:
 - `answer`: the bottom line, 1–2 sentences that answer the question directly. A graded answer (`slr`,
@@ -605,6 +605,14 @@ Plan 24 adds (absent while ThaiJO is off):
   search (`hits`: health-category hits across the queries, de-duplicated; `detailed`: abstracts looked up; `kept`: candidates taken),
   plus `failed` (an error name) or `timed_out: true` when it failed or was cut, and `metadata: {asked, found, failed,
   timed_out}` for the OAI-PMH step when a ThaiJO paper was read.
+
+Plan 25 adds (absent in results stored before it):
+- `support`: `{judge, seconds, claims, pairs, judged, over_cap, computed, supported, partial, unsupported, verified}`
+  for the sentence-support check: `pairs` (claim, cited paper) were found, `judged` got a label, `over_cap` stayed
+  unjudged past the cap of 30, `computed` claims restate a pooled value, `supported`, `partial` and `unsupported`
+  count the labels, `verified` citations carry the badge. `judge` is `ok`, `incomplete` (some pairs have no usable
+  verdict), `failed` (no usable verdict), `skipped_budget`, `none` (nothing to judge) or `crashed` (the entry then
+  shows `judge: "crashed"` and `seconds`, and every count as 0, as `harness/quality.py` fills them).
 
 ### Exports
 
@@ -1086,6 +1094,65 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
 - **Not included:** `/api/v1/papers/search` and the MCP `search_papers` tool (they stay on the SearXNG engines), and
   Cochrane replays: pools frozen with the flag on include ThaiJO candidates and record `thaijo` in `engines`, but
   `eval run` and the harness never call ThaiJO (replays start at screening, with ThaiJO unset).
+
+## Sentence support (Plan 25)
+
+Every citation of the summary and of the key findings is checked against the abstract of the paper it cites. Numbers
+were already verified (above); this checks that the sentence citing a paper says what that paper's abstract says.
+- **Claims.** The check reads the English synthesis, before translation. A claim is a sentence of
+  `synthesis_en.executive_summary` that carries a citation group (`[P1]` or `[P1, P3]`; a range such as `[P1-P3]` is
+  not a group), or a key finding's `statement` with its `refs`. The k-th group of the English summary is marker k.
+- **Candidates in code.** For each (claim, cited paper) the abstract is split into sentences and scored without an
+  LLM: the share of the claim's content words the sentence has, plus, when the claim states numbers, the share of
+  those numbers (weighted 0.6 / 0.4). The best 2 sentences are the candidates. Only they reach the judge, never the
+  whole abstract.
+- **Judge.** One call per review on the screener's model, bound to its own schema (`SupportBatch`), through the
+  validate → repair runner with at most one repair and never an escalation (an incomplete answer is usable, and the
+  judge must not spend the budget localize needs): `supported`, `partial` or `unsupported` per pair, and which
+  candidate supports it. At most 30 pairs are judged (summary first, then key findings); the rest keep their closest sentence and a null
+  label. The judge never writes the evidence: the sentence shown is copied from the abstract by index. The items reach the judge as JSON with `&`, `<` and `>` escaped as JSON unicode escapes (`&`, `<`, `>`), so abstract text such as `</items>` cannot close the data block.
+- **Badge ("ตรวจแล้ว").** A citation is `verified` only when the judge said `supported`, the candidate the judge chose scores at least 0.2
+  (`MIN_SUPPORT_SCORE`: a `supported` label on a sentence that shares almost no words or numbers with the claim keeps
+  its label but earns no badge), every number of the claim is
+  verified against the cited abstract(s) or comes from the review's own text (the question and the pipeline counts;
+  the grounded-prose rule), the claim restates no pooled value (`computed`: a computed number is never supported by
+  an abstract), and the paper is evidence (not a further report of a trial, not `design_excluded`). The report adds
+  the same not-evidence rule.
+- **Soft.** A failing or unusable judge leaves the labels null (`judge: "failed"`, one line in `errors`); with less than
+  $0.02 left of the review's cost cap the judge is skipped (`skipped_budget`); a crash of the check leaves
+  `support` null. None of them fails a review or removes a citation.
+- **Cost.** A typical review sends about 24 pairs: about 5,000 input and under 1,000 output tokens, about $0.0005 on
+  the `budget` preset. At most (30 long pairs and one repair round, so two attempts) about 13,000 input tokens per
+  attempt and about $0.004, inside the review's cost cap. These figures (about $0.004, and a cap of at least $0.08) hold at the default settings; the `review_cost_*` settings change the cap.
+
+`result.support` is absent in results stored before Plan 25 (and in stub results from before it; the stub now carries
+one, with every state), and `null` when the check crashed. Otherwise it is:
+- `judge`: as in `quality.support`.
+- `markers`: the refs of each citation group of the English summary, in order.
+- `claims[]`: `{id, where, markers, finding, claim, refs, numbers_checked, computed, citations[]}`. `id` is `s<n>`
+  (summary) or `k<i>` (key finding i); `where` is `summary` or `key_finding`; `markers` (summary) are the claim's
+  group indexes and `finding` (key finding) its index; `claim` is the English text; `numbers_checked` says every
+  number traces as above. The check is on the claim as a whole: its numbers are compared with the verified numbers of all of its cited refs together, not of each cited paper alone, so a number verified for one cited paper counts for the claim's other citations too.
+- `citations[]`: `{ref, label, evidence, score, not_evidence, verified}`. `label` is `supported`, `partial` or
+  `unsupported`, or null (unknown) when the paper has no usable abstract sentence, the claim is over the cap of 30
+  pairs, the judge's verdict was dropped as invalid, or the judge was skipped or failed; a paper that is not evidence
+  and a `computed` claim are never judged, so their label is null too. `evidence` is an abstract sentence, verbatim:
+  the supporting one for `supported` and `partial`, else the closest one. It is null when there is no usable sentence (also
+  for a paper that is not evidence and for a `computed` claim), is clipped with "…" at 500 characters, and is the same text the judge read. `score` is the scorer's value for it.
+- `display_aligned`: whether the shown `synthesis.executive_summary` has the same groups in the same order as the
+  English one.
+
+**Tying the shown text to the claims.** A translated summary keeps every citation group but may move it. When the
+groups come in the same order, group k is marker k. Otherwise a group is tied only when its ref list occurs exactly
+once in both texts; any other group gets no badge. This makes a badge on the wrong sentence unlikely, not impossible: when two groups with the identical ref sequence swap places in translation, the order check cannot tell. `display_aligned` is informational (it says whether the shown groups kept their order); the client does the tying itself. Key findings keep their
+index. The report shows the badge as a check mark on the citation, and opening the paper lists "ทำไมจึงอ้างอิงงานนี้":
+each sentence that cites it (in English, as checked), its label (unsupported is shown as "ไม่พบประโยคที่รองรับ") and
+the abstract sentence. The Markdown and CSV exports do not change; the JSON export and the MCP `get_review_result`
+carry `support` as part of `result`.
+
+**Measuring it.** The Cochrane harness reports two Plan 25 rows from the run files: supported among judged
+citations, and the share of evidence citations with the badge. Runs made before Plan 25 show "–". Measuring them on
+real reviews is a paid batch, the owner's call.
 
 ## Event stream (SSE)
 

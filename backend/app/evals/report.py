@@ -32,6 +32,8 @@ def summary_rows(a: dict) -> list[tuple[str, str]]:
          f"{a['pool_found_mean']:.1f} / {a['pool_with_abstract_mean']:.1f}"),
         ("Glossary consistency", _pct(a["glossary_consistency"])),
         ("Answer present", _pct(a["answer_rate"])),
+        ("Sentence support: supported / judged citations", _pct(a["support_rate"])),
+        ("Citations with the ตรวจแล้ว badge", _pct(a["support_verified_rate"])),
         ("Stability of primary-outcome verdict",
          f"{_pct(a['stability'])} over {a['stability_pairs']} pairs; {a['stability_missing']} ids missing a repeat"),
         ("Cost per review: mean / median / max",

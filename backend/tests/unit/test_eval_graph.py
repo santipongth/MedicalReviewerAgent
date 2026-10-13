@@ -66,7 +66,8 @@ async def test_replay_matches_the_primary_outcome_with_the_planner_bound_to_outc
     rec = await replay(deps, fx, options={"max_papers": 8, "candidate_limit": 20}, repeat=1, run_id="r", git_sha="s",
                        primary_outcome="CRC incidence")
     assert rec.status == "done" and rec.primary_match.row_index == 0 and rec.primary_match.outcome
-    assert asked == [("planner", OutcomeMatch)]
+    # Plan 25: the replay also runs the sentence-support check (the screener bound to SupportBatch)
+    assert [a for a in asked if a[1] is OutcomeMatch] == [("planner", OutcomeMatch)]
 
 
 @pytest.mark.asyncio

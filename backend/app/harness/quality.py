@@ -109,6 +109,12 @@ def summarize_quality(entries: list[dict[str, Any]], started_at: float | None) -
     enrich = by_stage.get("enrich") or []
     if enrich and "off_focus" in enrich[-1]:  # candidates naming no key term, moved behind the on-topic ones
         extra["off_focus_demoted"] = enrich[-1]["off_focus"]
+    support = by_stage.get("support") or []
+    if support:  # Plan 25: the sentence-support check (absent in results stored before it)
+        last = support[-1]
+        extra["support"] = {"judge": last.get("judge"), "seconds": last.get("seconds")} | {
+            k: int(last.get(k, 0)) for k in ("claims", "pairs", "judged", "over_cap", "computed", "supported",
+                                             "partial", "unsupported", "verified")}
     templated = [e["templated"] for e in by_stage.get("localize", []) if "templated" in e]
     if templated:  # consensus/conflict strings rendered from fixed Thai templates in code
         extra["localize_templated"] = templated[-1]

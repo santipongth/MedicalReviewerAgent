@@ -8,6 +8,7 @@ import { EMPTY_MAP, evidenceMap } from "@/lib/evidence-map";
 import type { Lang } from "@/lib/i18n";
 import { fieldLang, RC, type Pair } from "@/lib/i18n-report";
 import { robSummary } from "@/lib/rob-summary";
+import { alignMarkers } from "@/lib/support";
 import { cellOutcome, keyFindingViews, sameModelReadings, sofRows, type OutcomeContext } from "@/lib/report-view";
 import {
   isGraded, metaPoolGap, reportLayout, reviewTypeOf, SECTION_ANCHOR, showsRiskOfBias, showsSection,
@@ -28,7 +29,9 @@ import { Limitations } from "./limitations";
 import { LitMatrixSection } from "./lit-matrix";
 import { MetaAnalysisSection } from "./meta-analysis";
 import { FilterBar, FilterStatus } from "./filter-bar";
-import { CitedText, ClaimsPanel, ComparisonMatrix, MatrixLegend, READING, SameModelReadings } from "./report-parts";
+import {
+  CitedText, ClaimsPanel, ComparisonMatrix, hasCheckedMark, MatrixLegend, READING, SameModelReadings, SupportLegend, type MarkerSupport,
+} from "./report-parts";
 import { ReferencesSection } from "./references";
 import { citedQuestion, DownloadsAndCite } from "./report-cite";
 import { MethodsSection } from "./methods-section";
@@ -41,7 +44,7 @@ import { SourceRail } from "./source-rail";
 import { TitleBlock } from "./title-block";
 import { L, Lw } from "./text";
 
-type Selection = { ref: string; outcome?: string };
+type Selection = { ref: string; outcome?: string; claim?: string };
 
 /** Map a matrix cell to the paper outcome it came from (by finding text, then by direction, then the first). */
 function outcomeFor(paper: Paper | undefined, row: ComparisonRow, ref: string): string | undefined {
@@ -131,10 +134,10 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
     pressed.current = el instanceof HTMLElement ? el : null;
   }
 
-  function select(ref: string, outcome?: string) {
+  function select(ref: string, outcome?: string, claim?: string) {
     const focused = document.activeElement;
     returnFocus.current = focused instanceof HTMLElement && focused !== document.body ? focused : pressed.current;
-    setSelection({ ref, outcome });
+    setSelection({ ref, outcome, claim });
     setDrawerOpen(true);
   }
 
@@ -166,6 +169,10 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   const hasRob = useMemo(() => showsSection(type, "rob") && showsRiskOfBias(type) && robSummary(papers, lang) != null, [type, papers, lang]);
   const answer = synthesis.answer?.trim() ?? "";
   const discussion = synthesis.executive_summary || result.summary || "";
+  // Plan 25: the summary's citation groups tied to the English claims the engine checked (no badge when they moved)
+  const support = result.support ?? null;
+  const discussionMarks = useMemo<MarkerSupport | null>(() => (support
+    ? { claims: alignMarkers(discussion, support), papers: byRef, lang } : null), [support, discussion, byRef, lang]);
   const hasClaims = showsSection(type, "claims") && !!(synthesis.consensus?.length || synthesis.conflicts?.length);
   const hasMatrix = showsSection(type, "findings") && rows.length > 0;
   const hasLitMatrix = showsSection(type, "lit_matrix") && hasPapers;
@@ -247,9 +254,10 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
   function sectionNode(id: TopSectionId): ReactNode {
     switch (id) {
       case "bottom_line":
-        return <BottomLine synthesis={synthesis} result={result} papers={papers} lang={lang} onSelect={select} refs={refs} english={lang === "en"} />;
+        return <BottomLine synthesis={synthesis} result={result} papers={papers} lang={lang} onSelect={select} refs={refs} english={lang === "en"}
+          marks={answer ? null : discussionMarks} />;
       case "key_findings":
-        return hasPapers && findings.length ? <KeyFindings findings={findings} lang={lang} onSelect={select} /> : null;
+        return hasPapers && findings.length ? <KeyFindings findings={findings} lang={lang} onSelect={select} support={support} papers={byRef} /> : null;
       case "sof":
         return hasPapers && sof.length ? <SofTable rows={sof} lang={lang} onSelect={select} graded={graded} /> : null;
       case "limitations":
@@ -268,8 +276,9 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
         return hasPapers && answer && discussion && discussion.trim() !== answer ? (
           <section aria-labelledby="h-discussion" className="grid gap-2">
             <h2 id="h-discussion" className={H2}>{Lw(lang, RC.report.discussionH2)}</h2>
-            <p className={`max-w-[65ch] ${READING}`} data-prose lang={fieldLang(discussion, lang)}><CitedText text={discussion} onSelect={select} refs={refs} /></p>
+            <p className={`max-w-[65ch] ${READING}`} data-prose lang={fieldLang(discussion, lang)}><CitedText text={discussion} onSelect={select} refs={refs} support={discussionMarks} /></p>
             <p className="text-[0.8rem] text-muted">{L(lang, RC.report.discussionNote)}</p>
+            {hasCheckedMark(discussionMarks) && <SupportLegend lang={lang} />}
           </section>
         ) : null;
       case "rob":
@@ -340,7 +349,7 @@ export function Report({ review, offline = false }: { review: Review; offline?: 
           <RailDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} headingId={railHeading} returnFocus={returnFocus}>
             <SourceRail paper={active ? byRef.get(active.ref) ?? null : null} outcome={active?.outcome} lang={lang}
               onClose={() => setDrawerOpen(false)} headingId={railHeading} visible={drawerOpen} type={type} onSelect={select}
-              onReference={toReference} />
+              onReference={toReference} support={support} claim={active?.claim} />
           </RailDrawer>
         )}
       </div>

@@ -35,6 +35,7 @@ class ReviewState(TypedDict, total=False):
     localized_cards: dict[str, dict[str, Any]] | None  # ref -> card in the user's language
     synthesis: dict[str, Any] | None  # Synthesis (English)
     synthesis_display: dict[str, Any] | None  # Synthesis in the user's language
+    support: dict[str, Any] | None  # Plan 25: sentence support of the English synthesis (app.harness.support)
     errors: Annotated[list[str], operator.add]
     cost_usd: Annotated[float, operator.add]
     result: dict[str, Any] | None

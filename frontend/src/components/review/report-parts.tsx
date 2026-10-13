@@ -8,7 +8,8 @@ import { fieldLang, RC, type Pair } from "@/lib/i18n-report";
 import { isReviewDiscordant, matrixView } from "@/lib/report-view";
 import { isRelatedReport, relatedLabel, relatedReasonText, relatedReportsLabel } from "@/lib/trial-reports";
 import { isGraded, REVIEW_TYPE_LABEL, showsCardDirection, showsRiskOfBias, type ReviewTypeOrLegacy } from "@/lib/review-type";
-import type { ComparisonCell, ComparisonRow, EvidenceCluster, Paper, PaperCard, QuestionBlock, Quality, Synthesis } from "@/lib/types";
+import { citationOf, isChecked } from "@/lib/support";
+import type { ComparisonCell, ComparisonRow, EvidenceCluster, Paper, PaperCard, QuestionBlock, Quality, SupportClaim, Synthesis } from "@/lib/types";
 import { DesignMismatchFlag, Glyph, UncertainFlag } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { ThaiText } from "../ui/thai-text";
@@ -25,26 +26,62 @@ const P = RC.parts;
  */
 export const READING = "reading";
 
-export type Select = (ref: string, outcome?: string) => void;
+/** Opens a paper in the rail; `claim` (Plan 25) is the checked sentence the reader came from, shown first there. */
+export type Select = (ref: string, outcome?: string, claim?: string) => void;
 
 const CITE = /\[(P\d+(?:\s*,\s*P\d+)*)\]/g;
+const S = RC.support;
 
-/** Text with [P1, P3] citations turned into buttons that open the cited paper. Narrative numbers stay plain text. */
-export function CitedText({ text, onSelect, refs }: { text: string; onSelect: Select; refs: Set<string> }) {
+/** Plan 25: the claims of a shown text's citation groups (`alignMarkers`), with the papers for the badge rule. */
+export interface MarkerSupport {
+  claims: (SupportClaim | null)[];
+  papers: Map<string, Paper>;
+  lang: Lang;
+}
+
+/** The "ตรวจแล้ว" badge of one citation in running prose: a check mark with its accessible name, never colour alone. */
+export function CheckedMark({ refId, lang }: { refId: string; lang: Lang }) {
+  return (
+    <span role="img" aria-label={L(lang, S.checkedName(refId))} title={L(lang, S.checked)} data-checked={refId}
+      className="ml-0.5 font-display text-[0.8em] font-semibold text-ink">✓</span>
+  );
+}
+
+/** Whether any citation of these groups carries the badge (then the legend explains the mark). */
+export function hasCheckedMark(support: MarkerSupport | null | undefined): boolean {
+  return !!support?.claims.some((c) => c?.citations.some((x) => isChecked(x, support.papers.get(x.ref), c)));
+}
+
+/** The legend under a text or a list that shows the badge. */
+export function SupportLegend({ lang }: { lang: Lang }) {
+  return <p className="text-[0.8rem] text-muted" data-support-legend>{L(lang, S.legend)}</p>;
+}
+
+/**
+ * Text with [P1, P3] citations turned into buttons that open the cited paper. Narrative numbers stay plain text. With
+ * `support` (Plan 25), a citation the engine checked carries the badge, and opening it names its claim.
+ */
+export function CitedText({ text, onSelect, refs, support }: {
+  text: string; onSelect: Select; refs: Set<string>; support?: MarkerSupport | null;
+}) {
   const parts: ReactNode[] = [];
   let last = 0;
+  let k = 0;
   for (const m of text.matchAll(CITE)) {
     parts.push(text.slice(last, m.index));
     const ids = m[1].split(/\s*,\s*/);
+    const claim = support?.claims[k] ?? null;
+    k += 1;
     parts.push(
       <span key={m.index} className="whitespace-nowrap">
         [{ids.map((id, i) => (
           <Fragment key={id}>
             {i > 0 && ", "}
             {refs.has(id) ? (
-              <button type="button" onClick={() => onSelect(id)}
+              <button type="button" onClick={() => (claim ? onSelect(id, undefined, claim.id) : onSelect(id))}
                 className="font-display text-[0.85em] font-semibold text-primary hover:underline">{id}</button>
             ) : id}
+            {support && claim && isChecked(citationOf(claim, id), support.papers.get(id), claim) && <CheckedMark refId={id} lang={support.lang} />}
           </Fragment>
         ))}]
       </span>,
@@ -353,12 +390,19 @@ export function MatrixLegend({ lang, themes = false }: { lang: Lang; themes?: bo
 }
 
 /** Study codes that open the paper in the source rail (44px tall on touch). */
-export function RefButtons({ refs, onSelect, lang }: { refs: string[]; onSelect: Select; lang: Lang }) {
+export function RefButtons({ refs, onSelect, lang, checked, claim }: {
+  refs: string[]; onSelect: Select; lang: Lang;
+  /** Plan 25: refs whose citation carries the "ตรวจแล้ว" badge, and the claim they were checked for */
+  checked?: ReadonlySet<string>; claim?: string;
+}) {
   return (
     <span className="inline-flex flex-wrap gap-1.5">
       {refs.map((r) => (
-        <button key={r} type="button" onClick={() => onSelect(r)} aria-label={L(lang, P.open(r))}
-          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm border border-rule px-1.5 font-display text-[0.8rem] leading-normal hover:border-ink md:min-h-6 md:min-w-0">{r}</button>
+        <button key={r} type="button" onClick={() => (claim ? onSelect(r, undefined, claim) : onSelect(r))}
+          aria-label={L(lang, checked?.has(r) ? S.openChecked(r) : P.open(r))} data-checked={checked?.has(r) || undefined}
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm border border-rule px-1.5 font-display text-[0.8rem] leading-normal hover:border-ink md:min-h-6 md:min-w-0">
+          {r}{checked?.has(r) && <span aria-hidden="true" className="ml-1 font-semibold">✓</span>}
+        </button>
       ))}
     </span>
   );

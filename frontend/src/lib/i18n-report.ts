@@ -6,6 +6,7 @@
 import { META_POOL_COPY, POOLED_OVERLAP_TH } from "./copy";
 import type { Lang } from "./i18n";
 import { plural } from "./plural";
+import type { SupportState } from "./support";
 import { hasThai } from "./text-wrap";
 
 export type Pair = readonly [th: string, en: string];
@@ -484,6 +485,30 @@ export const RC = {
     whatMeans: ["หมายถึงอะไร", "what does this mean?"],
     unread: ["อ่านไม่สำเร็จ ไม่มีข้อมูลที่สกัดได้จากงานวิจัยนี้", "Could not be read; nothing was extracted from this paper"],
     toReference: (ref: string): Pair => [`ดูในเอกสารอ้างอิง (${ref})`, `See in the references (${ref})`],
+  },
+
+  /** Sentence support (Plan 25): the citation badge, its legend, and the rail's "why this source was cited". */
+  support: {
+    checked: ["ตรวจแล้ว", "Checked"],
+    checkedName: (ref: string): Pair => [`${ref} ตรวจแล้ว: บทคัดย่อรองรับประโยคนี้`, `${ref} checked: the abstract supports this sentence`],
+    openChecked: (ref: string): Pair => [`เปิด ${ref} (ตรวจแล้ว)`, `Open ${ref} (checked)`],
+    legend: ["✓ ตรวจแล้ว: ประโยคที่ตรงกันพบในบทคัดย่อของงานนั้น และตัวเลขผ่านการตรวจ แตะรหัสงานวิจัยเพื่อดูประโยค",
+      "✓ Checked: a matching sentence was found in that study's abstract and the numbers passed verification. Tap a study code to see it."],
+    why: ["ทำไมจึงอ้างอิงงานนี้", "Why this source was cited"],
+    claim: ["ประโยคในรายงานที่ตรวจ (ภาษาอังกฤษ ก่อนแปล)", "The report's sentence that was checked (English, before translation)"],
+    finding: ["ผลสำคัญที่ตรวจ (ภาษาอังกฤษ ก่อนแปล)", "The key finding that was checked (English, before translation)"],
+    supporting: ["ประโยคในบทคัดย่อที่รองรับ", "Supporting sentence in the abstract"],
+    closest: ["ประโยคในบทคัดย่อที่ใกล้เคียงที่สุด", "Closest sentence in the abstract"],
+    state: {
+      checked: ["ตรวจแล้ว: บทคัดย่อรองรับประโยคนี้", "Checked: the abstract supports this sentence"],
+      numbers: ["บทคัดย่อรองรับ แต่ตัวเลขในประโยคยังไม่ผ่านการตรวจ", "Supported, but a number in the sentence is not verified"],
+      partial: ["รองรับบางส่วน", "Partly supported"],
+      unsupported: ["ไม่พบประโยคที่รองรับ", "No supporting sentence found"],
+      computed: ["ประโยคนี้มีค่าที่ระบบคำนวณ จึงไม่ได้ตรวจกับบทคัดย่อ", "States a computed value, so it was not checked against an abstract"],
+      not_evidence: ["งานนี้ไม่นับเป็นหลักฐาน จึงไม่ได้ตรวจ", "Not counted as evidence, so not checked"],
+      unchecked: ["ยังไม่ได้ตรวจ", "Not checked"],
+    } as Record<SupportState, Pair>,
+    note: ["ตรวจโดยโมเดลเทียบกับบทคัดย่อเท่านั้น ใช้ประกอบการอ่าน ไม่ใช่การรับรองผล", "Checked by a model against the abstract only: a reading aid, not an endorsement."],
   },
 
   /** Filters (filter-bar.tsx). */

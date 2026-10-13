@@ -9,7 +9,7 @@ import { metaPoolGap, reviewTypeOf, showsDirection } from "@/lib/review-type";
 import type { Paper, Pool, ReviewResult, Synthesis } from "@/lib/types";
 import { ComputedNumber, Glyph } from "../ui/evidence";
 import { Term } from "../ui/term";
-import { CitedText, READING, StrengthLine, type Select } from "./report-parts";
+import { CitedText, hasCheckedMark, READING, StrengthLine, SupportLegend, type MarkerSupport, type Select } from "./report-parts";
 import { SECTION_H2 } from "./report-nav";
 import { L, Lw } from "./text";
 
@@ -48,10 +48,12 @@ export function PooledLine({ pool, lang, english }: { pool: Pool; lang: Lang; en
  * or "could not pool", how the papers split, and the grading rationale behind a disclosure. A result stored before
  * Plan 20 has no `answer`: its executive summary leads here instead (and no Discussion section repeats it).
  */
-export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, english }: {
+export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, english, marks }: {
   synthesis: Synthesis; result: ReviewResult; papers: Paper[]; lang: Lang; onSelect: Select; refs: Set<string>;
   /** the reader switched a Thai review to English: English pool names */
   english: boolean;
+  /** Plan 25: the badge on the lead's citations when the summary leads (a result without an answer) */
+  marks?: MarkerSupport | null;
 }) {
   const hasPapers = papers.length > 0;
   const type = reviewTypeOf(result);
@@ -78,7 +80,7 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
           line and the key findings carry the bottom line (never an empty paragraph). */}
       {lead.trim() ? (
         <p className={`max-w-[65ch] ${READING}`} data-prose data-answer={synthesis.answer?.trim() ? "" : undefined} lang={fieldLang(lead, lang)}>
-          <CitedText text={lead} onSelect={onSelect} refs={refs} />
+          <CitedText text={lead} onSelect={onSelect} refs={refs} support={marks} />
         </p>
       ) : hasPapers && (
         <p className="max-w-[65ch] text-[0.92rem] text-muted" data-no-answer>
@@ -86,6 +88,7 @@ export function BottomLine({ synthesis, result, papers, lang, onSelect, refs, en
           {L(lang, B.noAnswer)}
         </p>
       )}
+      {hasCheckedMark(marks) && <SupportLegend lang={lang} />}
       {hasPapers && <StrengthLine synthesis={synthesis} lang={lang} quality={result.quality} type={type} bar={!poolGap} />}
       {pools.length > 0 && (
         <div className="grid gap-1.5" data-bottom-pools>

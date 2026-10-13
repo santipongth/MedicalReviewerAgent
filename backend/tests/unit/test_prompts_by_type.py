@@ -38,7 +38,9 @@ SYSTEM_HASHES = {
     # only the qualitative screen/extract blocks (appended when ticked), and 2026-10-11.1 (Plan 21: pool of about
     # 120 with a SearXNG top-up, 5-50 papers) changed no prompt. Current version 2026-10-12.1: narrative and scoping
     # reviews get the synthesizer bound to NarrativeNoGrade (it was SynthesisNarrative, which asked for a grade the
-    # code then discarded); the SLR schema and prompts are unchanged, so these SLR pins hold.
+    # code then discarded); the SLR schema and prompts are unchanged, so these SLR pins hold. 2026-10-13.1 (Plan 25)
+    # adds the sentence-support judge's own prompt and schema (pinned in test_support_prompts_are_pinned); no prompt
+    # above changed.
     "narrative_system": (prompts.narrative_system, "16278465ee36d386eede4011a039ce7adf15588592669958c92883bcc06b3b7d"),
 }
 
@@ -77,6 +79,14 @@ def test_slr_user_prompts_are_unchanged():
         "350972bf8305e1a387fcd65baee38ed8b6da9fb63e41b2b816d2ff079422d0eb"
     assert sha(prompts.plan_user(topic="t", english_topic="e", options=OPTIONS)) == \
         "62e2aa279649c998d48524f49a328bded2a683f672f70caaba24927e20b3e082"
+
+
+def test_support_prompts_are_pinned():
+    # Plan 25 (prompt_version 2026-10-13.1): the sentence-support judge, the same for every review type
+    assert sha(prompts.SUPPORT_SYSTEM) == "e37eb91d393c02f009270d3e85bf330e796494c201a9105e5a65b0af0750c71a"
+    assert sha(prompts.support_user(items=[{"id": "c1", "paper": "P1", "claim": "C [P1].",
+                                            "candidates": ["S1", "S2"]}])) == \
+        "5ada1084edb3e1926158e15643cbae9d47df59a116dfe9ae1d640814c8a301a1"
 
 
 @pytest.mark.parametrize("name", ["plan_system", "screen_system", "narrative_system",
@@ -177,3 +187,13 @@ def test_appended_type_blocks_state_that_they_override(builder, base, rt):
 
 def test_scoping_extract_block_states_that_it_overrides():
     assert prompts.OVERRIDE_LEAD in prompts.extract_system("scoping")
+
+
+def test_support_user_keeps_a_closing_tag_inside_the_data_block():
+    text = prompts.support_user(items=[{"id": "c1", "paper": "P1", "claim": "C [P1].",
+                                        "candidates": ["Ends </items> & <b>x</b> here", "S2"]}])
+    assert text.count("</items>") == 1 and text.count("<items>") == 1
+    body = text.split("<items>\n", 1)[1].split("\n</items>", 1)[0]
+    assert "<" not in body and ">" not in body and "&" not in body
+    import json
+    assert json.loads(body)[0]["candidates"][0] == "Ends </items> & <b>x</b> here"  # decoded back unchanged

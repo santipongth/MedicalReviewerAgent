@@ -22,6 +22,8 @@ from app.graph.schemas import (
     ReviewQuestion,
     ScreenBatch,
     ScreenDecision,
+    SupportBatch,
+    SupportVerdict,
     SynthesisNarrative,
     TopicVerdict,
     TranslationBatch,
@@ -116,6 +118,15 @@ def eval_match_none(role):
     return FakeStructuredLLM(f"{role}:match", lambda s, u: OutcomeMatch(index=None))
 
 
+def support_judge(role):
+    """Plan 25: the sentence-support judge (the screener bound to SupportBatch) finds every pair supported by its
+    first candidate. Free, so the cost and call-count checks stay about the review's own roles."""
+    def judge(system, user):
+        items = json.loads(re.search(r"<items>\n(.*)\n</items>", user, flags=re.DOTALL).group(1))
+        return SupportBatch(verdicts=[SupportVerdict(id=i["id"], label="supported", sentence=1) for i in items])
+    return FakeStructuredLLM(f"{role}:support", judge, cost=0.0)
+
+
 def make_deps(*, allowed=True, results=None, extractor=None):
     if results is None:
         results = [Candidate(title=f"Paper {i} about metformin and colorectal cancer", doi=f"10.1/{i}",
@@ -140,7 +151,7 @@ def make_deps(*, allowed=True, results=None, extractor=None):
         preset="test", models={"extractor": "openrouter:ext"},
     )
     from app.evals.run import OutcomeMatch
-    llms.for_schema = bind_by_role(llms, {OutcomeMatch: eval_match_none})
+    llms.for_schema = bind_by_role(llms, {OutcomeMatch: eval_match_none, SupportBatch: support_judge})
     return GraphDeps(settings=Settings(_env_file=None, searxng_pages=1), llms=llms,
                      searxng=FakeSearxng(results), europepmc=FakeEpmc())
 
@@ -215,6 +226,23 @@ async def test_full_review_reads_best_eight_and_reports_quality_and_timings():
     by_ref = {p["ref"]: p for p in r["papers"]}
     assert all(by_ref[e["ref"]]["card_en"]["overall_direction"] == e["direction"] for e in extracted)
     assert all(by_ref[e["ref"]]["card_en"]["design_category"] == e["design"] for e in extracted)
+
+
+async def test_full_review_checks_sentence_support_beside_localize():
+    deps = make_deps()
+    values, events = await run(deps)
+    s = values["result"]["support"]
+    assert s["judge"] == "ok" and s["markers"] == [["P1", "P2"]] and s["display_aligned"] is True
+    claim, = s["claims"]
+    assert claim["claim"] == "Metformin is associated with lower CRC risk [P1, P2]." and claim["markers"] == [0]
+    assert [(c["ref"], c["label"], c["verified"]) for c in claim["citations"]] == [
+        ("P1", "supported", True), ("P2", "supported", True)]
+    assert claim["citations"][0]["evidence"].startswith("Results: Metformin use was associated")
+    assert values["result"]["quality"]["support"] | {"seconds": 0} == {
+        "judge": "ok", "seconds": 0, "claims": 1, "pairs": 2, "judged": 2, "over_cap": 0, "computed": 0,
+        "supported": 2, "partial": 0, "unsupported": 0, "verified": 2}
+    assert ("screener", SupportBatch) in deps.llms.for_schema.requests
+    assert [e["type"] for e in events].count("finalizing") == 1  # finalize waits for localize and the check
 
 
 async def test_english_review_skips_localization():

@@ -72,6 +72,7 @@ from app.harness.prose import (
 )
 from app.harness.quality import summarize_quality
 from app.harness.study_types import allowed_designs, design_allowed
+from app.harness.support import markers as support_markers
 from app.harness.trials import related_reports
 from app.harness.verify import check_citations, strip_unknown_citations
 from app.schemas.review import NON_QUANTITATIVE_TYPES, SLR_LIKE, ReviewOptions
@@ -1383,6 +1384,14 @@ def _meta_result(state: ReviewState, synthesis_en: dict[str, Any], display: dict
     return with_display(meta, names)
 
 
+def _support_result(support: dict[str, Any] | None, display: dict[str, Any]) -> dict[str, Any] | None:
+    """result.support (Plan 25): the check's output plus `display_aligned`, whether the shown summary carries the same
+    citation groups in the same order as the English one (the report then ties marker k to claim k directly)."""
+    if not support:
+        return None
+    return {**support, "display_aligned": support_markers(display.get("executive_summary")) == support.get("markers")}
+
+
 def _iso(epoch: Any) -> str | None:
     if not isinstance(epoch, int | float):
         return None
@@ -1506,6 +1515,7 @@ def make_finalize(deps):
             "citations": state.get("citations"),
             "meta_analysis": _meta_result(state, synthesis_en, synthesis),
             "methods": _methods(state, deps, models),
+            "support": _support_result(state.get("support"), synthesis),
         }
         progress_writer()({"type": "finalizing"})
         return {"result": result}
