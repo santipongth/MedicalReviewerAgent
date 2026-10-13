@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 import time
 from collections import Counter
@@ -190,6 +191,7 @@ async def thaijo_search(deps, queries: list[str], options: ReviewOptions) -> tup
         stats["timed_out"] = True
     except Exception as exc:  # noqa: BLE001 - an optional source: the review goes on without it
         stats["failed"] = type(exc).__name__
+    out = out[:cap]  # the share cap holds whatever collect does
     return out, {**stats, "cap": cap, "kept": len(out), "seconds": round(time.perf_counter() - started, 3)}
 
 
@@ -226,10 +228,17 @@ def make_search(deps):
         # Plan 24: ThaiJO runs alongside SearXNG (its own timeout is shorter), only when enabled
         thaijo = (asyncio.ensure_future(thaijo_search(deps, queries, options))
                   if getattr(deps, "thaijo", None) is not None else None)
-        results = await asyncio.gather(
-            *(searx(q, p) for q, p in jobs),
-            *(deps.europepmc.search_trials(q, page_size=settings.trial_search_page_size) for q in trial_queries),
-            return_exceptions=True)
+        try:
+            results = await asyncio.gather(
+                *(searx(q, p) for q, p in jobs),
+                *(deps.europepmc.search_trials(q, page_size=settings.trial_search_page_size) for q in trial_queries),
+                return_exceptions=True)
+        except BaseException:  # cancelled (arq abort, worker shutdown): ThaiJO must stop calling TCI too
+            if thaijo is not None and not thaijo.done():
+                thaijo.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await thaijo
+            raise
         per_query: dict[str, list[Candidate]] = {q: [] for q in queries}
         errors: list[str] = []
         for (q, page), res in zip(jobs, results[: len(jobs)], strict=True):
@@ -260,7 +269,7 @@ def make_search(deps):
         names: list[str] = []
         name_hits: list[Candidate] = []
         if trial_queries and hasattr(deps.europepmc, "search_trial_names"):
-            names = harvest_trial_names([c for hits in per_query.values() for c in hits])
+            names = harvest_trial_names([c for q, hits in per_query.items() if q != "thaijo:" for c in hits])
             terms = intervention_terms(state.get("question"))
             if names and terms:
                 try:

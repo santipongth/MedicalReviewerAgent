@@ -136,3 +136,43 @@ async def test_turning_thaijo_on_starts_a_new_cache_generation(client, app):
     app.state.deps.service.settings.thaijo_enabled = True
     again = (await client.post("/api/v1/reviews", json=body)).json()
     assert again["review_id"] != first["review_id"]
+
+
+class BlockingSearxng(FakeSearxng):
+    async def search(self, q, pageno=1):
+        await asyncio.sleep(30)
+
+
+class WatchedThaiJo(FakeThaiJo):
+    cancelled = False
+
+    async def collect(self, queries, *, limit, out, stats):
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+
+
+async def test_cancelling_the_search_cancels_the_thaijo_task():
+    fake = WatchedThaiJo()
+    deps = _deps(fake)
+    deps.searxng = BlockingSearxng({})
+    task = asyncio.ensure_future(make_search(deps)(STATE))
+    await asyncio.sleep(0.1)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    assert task.cancelled() and fake.cancelled
+
+
+async def test_the_result_is_trimmed_to_the_cap_even_if_collect_overshoots():
+    class Greedy(FakeThaiJo):
+        async def collect(self, queries, *, limit, out, stats):
+            out.extend(self.cands)
+
+    out = await make_search(_deps(Greedy([thai(i) for i in range(30)])))(STATE)
+    assert out["search_stats"]["per_source"]["thaijo"] == 15
+    assert out["quality"][0]["thaijo"]["kept"] == 15
