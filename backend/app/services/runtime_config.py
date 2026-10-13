@@ -18,6 +18,7 @@ from app.services.runtime_settings import SETTINGS_KIND, apply_overrides
 
 log = get_logger(__name__)
 RUNTIME_TTL_SECONDS = 5.0
+RUNTIME_READ_TIMEOUT_SECONDS = 2.0  # the app sets no Redis or DB client timeouts: one hung read must not stall every caller
 
 
 @dataclass(frozen=True)
@@ -57,10 +58,11 @@ class RuntimeConfig:
             generation = self._generation
             loaded: tuple[Settings, int | None, str] | None = None
             try:
-                settings = await read_active(self.session_factory, self.redis, SETTINGS_KIND)
-                glossary = await read_active(self.session_factory, self.redis, GLOSSARY_KIND)
-                loaded = (apply_overrides(self.base, settings.mirror.get("values")), settings.version,
-                          "file" if glossary.version is None else str(glossary.version))
+                async with asyncio.timeout(RUNTIME_READ_TIMEOUT_SECONDS):  # a timeout is a failed read (TimeoutError)
+                    settings = await read_active(self.session_factory, self.redis, SETTINGS_KIND)
+                    glossary = await read_active(self.session_factory, self.redis, GLOSSARY_KIND)
+                    loaded = (apply_overrides(self.base, settings.mirror.get("values")), settings.version,
+                              "file" if glossary.version is None else str(glossary.version))
             except Exception as exc:  # noqa: BLE001 - keep the last values (env until any are known)
                 log.warning("runtime_config_unavailable", error=type(exc).__name__)
             if generation != self._generation:

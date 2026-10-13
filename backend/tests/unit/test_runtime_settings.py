@@ -268,3 +268,44 @@ async def test_a_failed_refresh_is_not_retried_within_the_ttl(session_factory):
     clock.now = 5.1
     assert await rc.settings() is BASE
     assert calls == {"redis": 2, "db": 2}
+
+
+async def test_a_hung_read_is_bounded_and_keeps_the_last_values(session_factory, redis, monkeypatch):
+    """The app sets no Redis or DB client timeouts and every hot path asks RuntimeConfig, so one hung read must not
+    stall them: it counts as a failed read (last values kept, the TTL advances, nothing raised)."""
+    from app.services import runtime_config
+
+    monkeypatch.setattr(runtime_config, "RUNTIME_READ_TIMEOUT_SECONDS", 0.05)
+    clock = Clock()
+    hang = {"on": False, "calls": 0}
+
+    class Hangs:
+        async def get(self, key):
+            hang["calls"] += 1
+            if hang["on"]:
+                await asyncio.sleep(30)
+            return await redis.get(key)
+
+        def __getattr__(self, name):
+            return getattr(redis, name)
+
+    rc = RuntimeConfig(BASE, session_factory, Hangs(), ttl=5.0, clock=clock)
+    row = await save(session_factory, SETTINGS_KIND, {"values": {"sse_max_per_ip": 9}})
+    await publish(redis, SETTINGS_KIND, row)
+    assert (await rc.settings()).sse_max_per_ip == 9
+
+    hang["on"], hang["calls"] = True, 0
+    clock.now = 10.0
+    started = asyncio.get_running_loop().time()
+    assert (await asyncio.wait_for(rc.settings(), timeout=2)).sse_max_per_ip == 9  # the last values it knew
+    assert asyncio.get_running_loop().time() - started < 1.0
+    assert await rc.settings_version() == 1 and await rc.glossary_label() == "file"
+    assert hang["calls"] == 1  # the failed read advanced the TTL: callers do not each wait the bound again
+
+    # none known yet: env
+    fresh = RuntimeConfig(BASE, session_factory, Hangs(), ttl=5.0, clock=clock)
+    assert await asyncio.wait_for(fresh.settings(), timeout=2) is BASE
+
+    hang["on"] = False
+    clock.now = 20.0
+    assert (await rc.settings()).sse_max_per_ip == 9 and hang["calls"] >= 2  # it reads again after the TTL
