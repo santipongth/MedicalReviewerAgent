@@ -1009,7 +1009,7 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
   is unavailable). If a role fails, the run ends as `error` with the fixed text "models without a known price: " and the
   role names (never a model id or a price), and nothing is spent.
 - **Accounting.** The worker claims a run that is queued, or running after a hard kill, and still holds the active
-  slot. Money is counted so that the run never shows less than it may have spent:
+  slot. The strict cap counts money so that a retry never counts less than was spent:
   - a review's record stores the larger of what its budget was charged and the cost its graph reports;
   - each review writes an in-flight marker before it starts and removes it once its record is written. On a retry,
     earlier spend is counted from the run files: every record's cost plus the full per-review cap of every marker left
@@ -1017,6 +1017,7 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
   - a run file or marker that cannot be read (or holds no usable cost) counts as unknown spend, which stops the run;
   - a run that ends at its deadline or at its last interruption stores what the run files account for as its spend.
     When that is unknown, the last stored spend is kept and the error says the spend is unknown.
+    A run that ends with any other error keeps the last spend it stored (it is not retried, so no cap reads it).
 - **Run life.** `status` is `queued`, `running`, `done`, `stopped`, `cancelled` or `error`. `stopped` means the cap
   stopped it, and can carry an `error` text. Cancel is graceful: a running batch stops before its next review. A job
   that reaches its own deadline (12 hours minus 60 seconds), or is interrupted 3 times, ends as `error`. A worker that

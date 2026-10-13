@@ -325,7 +325,7 @@ export function HarnessView() {
           <div className="max-w-xs">
             <label className="block">
               <span className="text-sm">งบสูงสุด (USD)</span>
-              <input type="number" step="0.01" min={current.per_review_cap_usd} max={current.ceiling_usd} className={INPUT}
+              <input type="number" step="any" min={current.per_review_cap_usd} max={current.ceiling_usd} className={INPUT}
                 value={capText} aria-invalid={capOk && !noteOf("max_usd") ? undefined : true}
                 aria-describedby={describedBy(!capOk && "harness-cap-range", !!noteOf("max_usd") && "harness-cap-error")}
                 onChange={(e) => { touched(); setCap(e.target.value); }} />
