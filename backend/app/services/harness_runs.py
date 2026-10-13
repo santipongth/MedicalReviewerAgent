@@ -31,7 +31,6 @@ WORKER_KEY = "mra:harness:worker"
 WORKER_TTL_SECONDS = 90
 DEFAULT_CAP_USD = 1.0
 REPEATS_MAX = 2
-ACTIVE = ("queued", "running")
 LABEL_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 OUT_FIELDS = ("id", "run_id", "prompt_version", "status", "max_usd", "spent_usd", "repeats", "strata", "max_reviews",
               "compare_run", "planned", "done", "failed", "skipped", "created_by", "created_at", "started_at",
@@ -216,3 +215,43 @@ async def finish(session_factory, run_pk: int, *, status: str, summary=None, rep
         if current != "cancelled":
             values["status"] = status
         await session.execute(update(HarnessRun).where(HarnessRun.id == run_pk).values(**values))
+
+
+async def claim(session_factory, run_pk: int) -> HarnessRun | None:
+    """queued → running; a retry after a shutdown finds it queued again. None, with the row untouched, when the run
+    is missing, holds no active slot, or is not queued (cancelled, errored, finished or already running): a job can
+    outlive its row (an enqueue that raised after Redis took the job leaves a job for a row already marked error, and
+    cancelling a queued run frees its slot at once)."""
+    async with session_factory() as session, session.begin():
+        row = await session.get(HarnessRun, run_pk)
+        if row is None or row.active is None or row.status != "queued":
+            return None
+        row.status = "running"
+        row.started_at = row.started_at or datetime.now(UTC)
+    return row
+
+
+async def set_config(session_factory, run_pk: int, config: dict[str, str]) -> None:
+    async with session_factory() as session, session.begin():
+        await session.execute(update(HarnessRun).where(HarnessRun.id == run_pk).values(config=config))
+
+
+async def progress(session_factory, run_pk: int, summary) -> None:
+    """Counts and spend after each record; never the status, so a cancel is not overwritten."""
+    async with session_factory() as session, session.begin():
+        await session.execute(update(HarnessRun).where(HarnessRun.id == run_pk).values(
+            spent_usd=round(summary.spent, 6), done=summary.done, failed=summary.failed, skipped=summary.skipped))
+
+
+async def run_stopped(session_factory, run_pk: int) -> bool:
+    """True once the run is no longer running (the admin cancelled it): the batch stops before its next review."""
+    async with session_factory() as session:
+        status = await session.scalar(select(HarnessRun.status).where(HarnessRun.id == run_pk))
+    return status != "running"
+
+
+async def requeue(session_factory, run_pk: int) -> None:
+    """Worker shutdown: a running run goes back to queued; arq retries the job and run_all skips finished files."""
+    async with session_factory() as session, session.begin():
+        await session.execute(update(HarnessRun).where(HarnessRun.id == run_pk, HarnessRun.status == "running")
+                              .values(status="queued"))
