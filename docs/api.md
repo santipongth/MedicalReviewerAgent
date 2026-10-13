@@ -13,8 +13,8 @@ The service reviews published papers automatically:
 - **Search:** the service's own SearXNG with eight engines: PubMed, Europe PMC (incl. medRxiv/bioRxiv preprints), OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ and OpenAIRE. PLOS is available but opt-in (`SEARXNG_ENGINES`).
 - **Metadata enrichment:** Europe PMC (abstracts, identifiers, publication types, open-access flag, cited-by count).
 - **Citation metadata (reference lists, cited-by counts):** OpenAlex, with Europe PMC as the fallback.
-- **ThaiJO (Plan 24, off by default):** Thai health journals through TCI's search API, enabled only with
-  `THAIJO_ENABLED=true` (see "ThaiJO source (Plan 24)" below).
+- **ThaiJO (Plan 24, on by default since 2026-10-13):** Thai health journals through TCI's search API, turned off
+  with `THAIJO_ENABLED=false` (see "ThaiJO source (Plan 24)" below).
 - **Optional API keys** in `.env`: `NCBI_API_KEY`, `OPENALEX_API_KEY`, `S2_API_KEY` and `CORE_API_KEY`. Empty keys work at lower rate limits. They are never logged.
 - **Survey of other open sources:** `docs/superpowers/notes/2026-10-10-open-scholarly-sources-survey.md`.
 
@@ -61,7 +61,8 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 **Cache hits are free.** The same topic (case and spaces ignored), language, options and pipeline version within 24 hours of finishing, or while still queued or running, returns that review with `cached: true`. Cache hits skip every limit, Turnstile and capacity check. The pipeline version is the prompt version plus the model configuration in use, written `<prompt_version>+llm<id>` (`id` is the saved configuration version, or `file` while `llm.yaml` is in use). A saved glossary starts a new cache generation too (`+g<version>` is added to the pipeline version while a glossary version exists, and results carry `glossary_version`); saved settings never do. A saved model configuration therefore starts a new cache generation: after any save, restore or reset in the admin console (see "Model management"), the same question runs again on the new models instead of returning a review made with the old ones. Deploying Plan 23b itself starts one new generation too: `<prompt_version>` becomes `<prompt_version>+llmfile`, so reviews cached before the deploy are not returned.
 
 **ThaiJO and the cache (Plan 24).** While `THAIJO_ENABLED` is true, `+thaijo` is added to the pipeline version, so
-turning ThaiJO on or off never returns a review that was searched the other way.
+turning ThaiJO on or off never returns a review that was searched the other way. ThaiJO is on by default, so deploying
+the 2026-10-13 default starts a new cache generation: reviews cached before it (searched without ThaiJO) are not returned.
 
 **Turnstile.** This only applies when the deployment sets `TURNSTILE_SECRET`. An anonymous `POST /reviews` must then send the browser token in the `cf-turnstile-response` header:
 - A missing or rejected token gets **403**.
@@ -1070,9 +1071,10 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
 
 ## ThaiJO source (Plan 24)
 
-- **Off by default.** `THAIJO_ENABLED=true` (env only, read by the API for the cache key and by the workers for the
-  search) adds Thai Journals Online (TCI) to every review's search. TCI's search API is undocumented and has no
-  published terms: the owner writes to TCI for permission or rate guidance before turning it on.
+- **On by default** since 2026-10-13 (the owner's decision). `THAIJO_ENABLED=false` (env only, read by the API for the
+  cache key and by the workers for the search) turns it off; otherwise Thai Journals Online (TCI) is added to every
+  review's search. TCI's search API is undocumented and has no published terms: writing to TCI for permission or rate
+  guidance is recommended, not a precondition.
 - **What it asks.** Per review: one search per planner query (at most 3, `POST /api/v1/articles/search`, health
   categories only), the English abstract of each hit it takes (`GET /api/v1/articles/{id}`, at most the cap plus 5),
   and, for the ThaiJO papers that are read, the journal's OAI-PMH `GetRecord` (oai_dc) for volume, issue, pages, ISSN,

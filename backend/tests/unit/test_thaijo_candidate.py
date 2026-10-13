@@ -8,12 +8,15 @@ ABSTRACT = ("Background: a synthetic abstract written for tests. Methods: a cros
             "in a district hospital. Results: adherence was 71.5%. Conclusion: support programmes are needed.")
 
 
-def test_thaijo_is_off_by_default_and_faster_than_the_other_sources():
+def test_thaijo_is_on_by_default_and_faster_than_the_other_sources(monkeypatch):
+    monkeypatch.delenv("THAIJO_ENABLED", raising=False)  # conftest pins it off for the suite
     s = Settings(_env_file=None)
-    assert s.thaijo_enabled is False and s.thaijo_url == "https://www.tci-thaijo.org/api/v1"
+    assert s.thaijo_enabled is True and s.thaijo_url == "https://www.tci-thaijo.org/api/v1"
     assert s.thaijo_max_candidates == 15 and s.thaijo_cache_ttl_seconds == 7 * 86400
     assert s.thaijo_timeout_seconds < s.searxng_timeout_seconds
     assert s.thaijo_request_timeout_seconds < min(s.openalex_timeout_seconds, EuropePmcClient.TRIAL_TIMEOUT)
+    monkeypatch.setenv("THAIJO_ENABLED", "false")
+    assert Settings(_env_file=None).thaijo_enabled is False
 
 
 def test_a_thaijo_record_keeps_its_page_link_when_merged_with_a_search_hit():

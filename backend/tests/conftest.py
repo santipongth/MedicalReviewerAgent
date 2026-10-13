@@ -4,6 +4,9 @@ import sys
 
 import pytest
 
+# ThaiJO is on by default (2026-10-13); tests stay offline unless one opts in with thaijo_enabled=True.
+os.environ["THAIJO_ENABLED"] = "false"
+
 if sys.platform == "win32":
     # psycopg async (integration tests, LangGraph Postgres checkpointer) refuses the Proactor loop.
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -81,7 +84,7 @@ def queue():
 
 @pytest.fixture
 def test_settings():
-    return Settings(_env_file=None, ratelimit_storage_uri="memory://")
+    return Settings(_env_file=None, ratelimit_storage_uri="memory://", thaijo_enabled=False)
 
 
 @pytest.fixture
