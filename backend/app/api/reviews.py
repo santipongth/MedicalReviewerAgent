@@ -22,6 +22,7 @@ from app.services.review_service import (
     Identity,
     QueueUnavailable,
     RateLimited,
+    Refused,
     ServiceError,
     Unavailable,
 )
@@ -38,6 +39,8 @@ def service_error_response(exc: ServiceError) -> JSONResponse:
         content["reason"] = exc.reason
     if isinstance(exc, QueueUnavailable):
         content["review_id"] = str(exc.review_id)
+    if isinstance(exc, Refused):
+        content |= exc.body()
     return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
 
 
@@ -46,7 +49,9 @@ def service_error_response(exc: ServiceError) -> JSONResponse:
                  401: {"description": "invalid or revoked API key"},
                  403: {"description": "callback_url without an API key, or the Turnstile check failed "
                                       "(anonymous web submissions when the deployment enables Turnstile)"},
-                 422: {"description": "invalid body, or callback_url is not https on a public host"},
+                 422: {"description": "invalid body, or callback_url is not https on a public host; or, with "
+                                      "code \"emergency\", a topic that reads as an emergency (Plan 26): body {detail, "
+                                      "code, kind: medical | self_harm, hotlines, message_th}, no review is created"},
                  429: {"description": "hourly rate limit, or the API key daily quota (Retry-After header)"},
                  503: {"description": "not accepting reviews right now: body {detail, reason} with reason "
                                       "queue_full | daily_reviews | daily_budget | verification_unavailable and a "
@@ -54,7 +59,8 @@ def service_error_response(exc: ServiceError) -> JSONResponse:
 async def create_review(body: CreateReviewRequest, request: Request, deps: AppDeps = Depends(get_deps),
                         identity: Identity = Depends(get_identity)):
     """Queue a literature review. The same topic, language and options within 24 hours (or still running) return
-    that review with cached=true, free of every limit. Order of checks: body, callback_url needs a key, cache,
+    that review with cached=true, free of every limit. Order of checks: body, emergency red flags (Plan 26: a topic
+    that reads as an emergency gets 422 code "emergency" with 1669, and 1323 for self-harm), callback_url needs a key, cache,
     Turnstile (anonymous only, when enabled; header cf-turnstile-response), callback_url safety, key quota,
     capacity, hourly rate. Follow progress with GET /reviews/{id}/events."""
     try:

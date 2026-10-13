@@ -17,7 +17,8 @@ from app.config import Settings
 from app.runtime import AppDeps
 from app.schemas.review import CreateReviewRequest, ReviewOptions
 from app.services.report import render_markdown
-from app.services.review_service import Identity, RateLimited, ServiceError, Unavailable
+from app.services.review_service import Identity, RateLimited, Refused, ServiceError, Unavailable
+from app.services.safety import refusal_code_of
 
 _MIN_PAPERS, _MAX_PAPERS = ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le")
 _DEFAULT_PAPERS = ReviewOptions.model_fields["max_papers"].default
@@ -33,7 +34,10 @@ Reports include a comparison matrix, a literature matrix, a concept map and, whe
 network between the reviewed papers (OpenAlex / Europe PMC reference lists).
 Typical flow: start_review(topic) → poll get_review_status every ~10 seconds until the status is terminal: done, error,
 rejected or cancelled (done usually takes 1-3 minutes) → on done call get_review_result (or read
-review://{{id}}/report.md); on error/rejected/cancelled read the error field. search_papers answers quick literature
+review://{{id}}/report.md); on error/rejected/cancelled read the error field (a rejected review also has a refusal_code:
+personal_medical for a question about one person's own symptoms, diagnosis, dose or treatment, declined otherwise).
+A topic that reads as an emergency is not started: start_review returns status "refused" with code "emergency", the
+hotlines (1669, and 1323 for self-harm) and a fixed message to pass on. search_papers answers quick literature
 questions without starting a review. When the service is busy, start_review fails with a reason (queue_full,
 daily_reviews, daily_budget) and how many seconds to wait. Results are a rapid, automated review of published
 papers, not medical advice."""
@@ -52,7 +56,8 @@ are clamped into it) and compares their findings.
 Qualitative, Mixed methods (qualitative/mixed are summarised as themes, never with numbers), Systematic
 review, Meta-analysis, or one "Other: <text>" (60 characters). `year_from` keeps studies from that year on.
 Returns review_id, status, cached
-and status_url. The same topic, language and options within 24 hours (or still running) return that review
+and status_url; or, for a topic that reads as an emergency, status "refused" with code "emergency", kind, hotlines,
+message and message_th (no review is created). The same topic, language and options within 24 hours (or still running) return that review
 (cached=true). Fails with a reason and a wait time when the service is busy."""
 
 
@@ -142,6 +147,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
                                                                              "study_types": study_types or [],
                                                                              "year_from": year_from}))
             created = await get_deps().service.create(req, identity=await identity(ctx), human_check=False)
+        except Refused as exc:  # Plan 26: an emergency gets the hotlines, not a review
+            return {"review_id": None, "status": "refused", "message": exc.detail, **exc.body()}
         except (ServiceError, ValueError) as exc:
             raise _error(exc) from exc
         rid = str(created.review_id)
@@ -150,9 +157,11 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
 
     @mcp.tool()
     async def get_review_status(review_id: str) -> dict[str, Any]:
-        """Status of a review: queued, running, done, error, rejected or cancelled."""
+        """Status of a review: queued, running, done, error, rejected or cancelled. A rejected review has a
+        refusal_code: personal_medical (a question about one person's own case) or declined."""
         r = await review_or_error(review_id)
         return {"review_id": review_id, "status": r.status, "error": r.error,
+                "refusal_code": refusal_code_of(r.status, r.error),
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "finished_at": r.finished_at.isoformat() if r.finished_at else None}
 
@@ -165,7 +174,7 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
             message = ("review is still in progress; poll get_review_status" if r.status in ("queued", "running")
                        else f"review ended with status {r.status}")
             return {"review_id": review_id, "status": r.status, "result": None, "message": message,
-                    "error": r.error}
+                    "error": r.error, "refusal_code": refusal_code_of(r.status, r.error)}
         return {"review_id": review_id, "status": r.status, "result": r.result}
 
     @mcp.resource("review://{review_id}", mime_type="application/json", description="Review status and result")

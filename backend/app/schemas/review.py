@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
+from app.services.safety import refusal_code_of
+
 ReviewType = Literal["narrative", "slr", "scoping", "meta_analysis"]
 REVIEW_TYPES: tuple[str, ...] = ("narrative", "slr", "scoping", "meta_analysis")
 # A meta-analysis is a systematic review plus pooled effects: it behaves exactly like "slr" (screening, selection,
@@ -168,12 +170,15 @@ class ReviewOut(ReviewSummary):
     cost_usd: float
     started_at: datetime | None
     queue_position: int | None = None  # 1 = next to start; None once running or finished
+    # Plan 26: why a rejected review got no review: personal_medical (one person's own case) or declined; else null
+    refusal_code: str | None = None
 
     @model_validator(mode="after")
     def _top_level_verification_rate(self) -> ReviewOut:
         # Plan 20 Task 10: GET /reviews/{id} left it null (it lives in result.quality); filled like GET /reviews
         if self.verification_rate is None:
             self.verification_rate = verification_rate_of(self.result)
+        self.refusal_code = refusal_code_of(self.status, self.error)
         return self
 
 
