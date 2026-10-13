@@ -145,6 +145,31 @@ async def test_search_never_follows_a_redirect():
 
 
 @respx.mock
+async def test_a_cached_abstract_of_the_wrong_type_is_a_miss():
+    route = _details_route()
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    await redis.set("mra:thaijo:abs:health01-900001", json.dumps({"en": 5}))
+    assert await _client(redis).abstract("health01-900001") == ABSTRACT1 and route.call_count == 1
+
+
+@respx.mock
+async def test_a_hit_that_raises_in_parse_hit_is_skipped_and_the_rest_survive(monkeypatch):
+    import app.services.thaijo as mod
+
+    real = mod.parse_hit
+
+    def flaky(h):
+        if h.get("id") == HITS[0]["id"]:
+            raise RuntimeError("boom")
+        return real(h)
+
+    monkeypatch.setattr(mod, "parse_hit", flaky)
+    respx.post(f"{API}/articles/search").mock(return_value=httpx.Response(200, json={**SEARCH, "hits": HITS}))
+    ids = [h.id for h in await _client().search("adherence")]
+    assert "health01-900001" not in ids and "health02-900002" in ids
+
+
+@respx.mock
 async def test_abstracts_are_cached_by_id_including_the_ones_that_are_missing():
     route = _details_route()
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)

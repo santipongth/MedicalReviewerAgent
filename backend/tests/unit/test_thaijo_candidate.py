@@ -31,3 +31,21 @@ def test_a_thaijo_record_keeps_its_page_link_when_merged_with_a_search_hit():
 
 def test_candidates_from_other_sources_carry_no_thaijo_link():
     assert Candidate(title="x").thaijo_url is None
+
+
+def test_an_old_candidate_without_thaijo_url_still_loads():
+    old = Candidate(title="x").model_dump()
+    old.pop("thaijo_url")
+    assert Candidate.model_validate(old).thaijo_url is None
+
+
+def test_europe_pmc_abstract_beats_thaijos_in_a_merge():
+    epmc = Candidate(title="Medication adherence among older adults with hypertension in a district hospital",
+                     abstract=ABSTRACT + " (Europe PMC)", abstract_source="europepmc", doi="10.9999/demo.1",
+                     engines=["europe pmc"])
+    thai = Candidate(title="Medication Adherence among Older Adults with Hypertension in a District Hospital.",
+                     abstract=ABSTRACT, abstract_source="thaijo", year=2024, url=ART, thaijo_url=ART,
+                     engines=["thaijo"])
+    (merged,) = merge_candidates([thai, epmc])
+    assert merged.abstract == ABSTRACT + " (Europe PMC)" and merged.abstract_source == "europepmc"
+    assert merged.thaijo_url == ART
