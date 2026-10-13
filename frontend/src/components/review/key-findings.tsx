@@ -3,11 +3,13 @@
 import type { Lang } from "@/lib/i18n";
 import { fieldLang, RC } from "@/lib/i18n-report";
 import type { EffectState, FindingView, PooledText } from "@/lib/report-view";
+import { findingClaim, isChecked } from "@/lib/support";
+import type { Paper, SentenceSupport } from "@/lib/types";
 import { ComputedNumber, Hole, VerifiedNumber } from "../ui/evidence";
 import { Term } from "../ui/term";
 import { ThaiText } from "../ui/thai-text";
 import { CertaintyMark } from "./certainty";
-import { READING, RefButtons, themeFoundText, type Select } from "./report-parts";
+import { READING, RefButtons, SupportLegend, themeFoundText, type Select } from "./report-parts";
 import { SECTION_H2 } from "./report-nav";
 import { L, Lw } from "./text";
 
@@ -64,8 +66,17 @@ export function StudyEffectValue({ state, lang, onSelect }: { state: NonNullable
  * many studies it rests on, their codes (open the rail) and the one number that fits: the outcome's pooled value
  * (computed) or, when it rests on a single study, that study's verified effect. Never a number the UI computed.
  */
-export function KeyFindings({ findings, lang, onSelect }: { findings: FindingView[]; lang: Lang; onSelect: Select }) {
+export function KeyFindings({ findings, lang, onSelect, support, papers }: {
+  findings: FindingView[]; lang: Lang; onSelect: Select;
+  /** Plan 25: the engine's sentence support; finding i is checked as claim "k<i>" */
+  support?: SentenceSupport | null; papers?: Map<string, Paper>;
+}) {
   if (!findings.length) return null;
+  const checks = findings.map((_, i) => {
+    const claim = findingClaim(support, i);
+    const refs = new Set(claim?.citations.filter((c) => isChecked(c, papers?.get(c.ref))).map((c) => c.ref) ?? []);
+    return { claim: claim?.id, refs };
+  });
   return (
     <section aria-labelledby="h-key-findings" className="grid gap-3">
       <h2 id="h-key-findings" className={SECTION_H2}>{Lw(lang, F.h2)}</h2>
@@ -88,11 +99,12 @@ export function KeyFindings({ findings, lang, onSelect }: { findings: FindingVie
               {f.pools.map((p) => <PooledValue key={p.key} pool={p} lang={lang} />)}
               {!f.pools.length && f.effect && <StudyEffectValue state={f.effect} lang={lang} onSelect={onSelect} />}
               {!f.pools.length && !f.effect && f.k === 1 && !f.themes && <NoEffectText lang={lang} />}
-              {f.refs.length > 0 && <RefButtons refs={f.refs} onSelect={onSelect} lang={lang} />}
+              {f.refs.length > 0 && <RefButtons refs={f.refs} onSelect={onSelect} lang={lang} checked={checks[i].refs} claim={checks[i].claim} />}
             </div>
           </li>
         ))}
       </ol>
+      {checks.some((c) => c.refs.size > 0) && <SupportLegend lang={lang} />}
     </section>
   );
 }
