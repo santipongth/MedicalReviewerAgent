@@ -123,6 +123,13 @@ async def test_a_ring_that_cannot_be_read_keeps_the_old_llms_and_is_reported(tmp
     assert await refresh_llms(ctx, build_graph_fn=build_graph_fn) is True and key_of(ctx) == KEY
 
 
+async def test_the_poll_clears_a_passing_keys_read_failure(tmp_path, session_factory, redis, monkeypatch):
+    ctx = await started(tmp_path, session_factory, redis, monkeypatch)
+    ctx["llm_keys_error"] = "could not read the provider keys: db went away"
+    assert await refresh_llms(ctx, build_graph_fn=build_graph_fn, poll=True) is False
+    assert ctx["llm_keys_error"] is None
+
+
 async def test_keys_this_worker_cannot_decrypt_are_reported_and_env_is_used(tmp_path, session_factory, redis,
                                                                           monkeypatch):
     await put_key(session_factory)

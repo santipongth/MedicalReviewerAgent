@@ -108,6 +108,9 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph, poll: bool = Fa
             wanted_keys = keys_label(await reconcile_keys_version(redis, ctx["session_factory"]))
             if wanted == ctx.get("llm_version"):
                 ctx["llm_error"] = None
+            if wanted_keys == have_keys and ctx.get("llm_keys") is not None:
+                # the DB answered and this worker runs its revision: a past read failure is over
+                ctx["llm_keys_error"] = keys_problem(ctx["llm_keys"])
         else:
             wanted, wanted_keys = await redis.mget(LLM_VERSION_KEY, KEYS_VERSION_KEY)  # a missing key is no news
     except Exception as exc:  # noqa: BLE001 - keep the current models while Redis or the DB is unreachable
