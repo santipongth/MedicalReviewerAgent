@@ -82,8 +82,11 @@ function Sentence({ parts, claims, byRef, lang }: {
         if (!group) {
           // Plan 30: a group with no numberable ref is left out, and so is the space before it when punctuation or
           // another space follows (no "risk . Next" or double space)
-          const next = parts[i + 2];
-          const trim = parts[i + 1]?.kind === "cite" && (next?.kind !== "text" || /^[\s.,;:!?)]/.test(next.text));
+          // (a dropped group followed directly by a valid group keeps its space: "risk [P9][P1]." -> "risk [1].")
+          let j = i + 2;
+          while (parts[j]?.kind === "cite" && !cite(parts[j])) j++;
+          const next = parts[j];
+          const trim = parts[i + 1]?.kind === "cite" && (!next || (next.kind === "text" && /^[\s.,;:!?)]/.test(next.text)));
           return <ThaiText key={i}>{trim ? p.text.replace(/\s+$/, "") : p.text}</ThaiText>;
         }
         const [head, tail] = splitLastWord(p.text);

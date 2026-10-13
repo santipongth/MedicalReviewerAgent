@@ -69,7 +69,7 @@ async def test_queue_position(client, session_factory):
         start = datetime.now(UTC)
         for n, rid in enumerate(ids):
             await ReviewRepository(s).update(uuid.UUID(rid), created_at=start + timedelta(seconds=n))
-    positions =[(await client.get(f"/api/v1/reviews/{i}")).json()["queue_position"] for i in ids]
+    positions = [(await client.get(f"/api/v1/reviews/{i}")).json()["queue_position"] for i in ids]
     assert positions == [1, 2, 3]
     async with session_factory() as s, s.begin():
         await ReviewRepository(s).update(uuid.UUID(ids[0]), status="running", started_at=datetime.now(UTC))

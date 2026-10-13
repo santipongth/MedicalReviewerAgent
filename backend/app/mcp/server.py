@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -30,6 +31,7 @@ from app.services.safety import refusal_code_of, shown_topic
 from app.services.sse_slots import SseSlots
 
 _MIN_PAPERS, _MAX_PAPERS = ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le")
+log = logging.getLogger(__name__)
 _DEFAULT_PAPERS = ReviewOptions.model_fields["max_papers"].default
 _POOL = ReviewOptions.model_fields["candidate_limit"].default
 _QUICK_PAPERS, _QUICK_POOL = QUICK_MAX_PAPERS, QUICK_CANDIDATE_LIMIT
@@ -209,9 +211,14 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
         if review is not None and review.status not in TERMINAL_STATUSES and time.monotonic() < deadline:
             # Plan 30: a client holds at most sse_max_per_ip waits at once (shared with nothing else; Redis-backed so
             # every API process counts them); one over the cap gets the answer at once, as with wait_seconds=0
-            waits = SseSlots(deps.redis, limit=(await deps.service.effective()).sse_max_per_ip)
-            waiter = waiter_key(await identity(ctx), deps)
-            if await waits.acquire(waiter):
+            try:
+                waits = SseSlots(deps.redis, limit=(await deps.service.effective()).sse_max_per_ip)
+                waiter = waiter_key(await identity(ctx), deps)
+                got = await waits.acquire(waiter)
+            except Exception:  # the review exists already: treat an unavailable slot store as "at cap", never fail
+                log.exception("quick_answer wait slot unavailable; returning without waiting")
+                got = False
+            if got:
                 try:
                     while (review is not None and review.status not in TERMINAL_STATUSES
                            and time.monotonic() < deadline):

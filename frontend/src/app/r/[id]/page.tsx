@@ -12,11 +12,13 @@ export async function generateMetadata(props: PageProps<"/r/[id]">): Promise<Met
       signal: AbortSignal.timeout(1500),
     });
     if (!res.ok) return { title: FALLBACK_TITLE };
-    const { topic, refusal_code, error } = (await res.json()) as { topic?: unknown; refusal_code?: unknown; error?: unknown };
+    const { topic, status, refusal_code, error } = (await res.json()) as { topic?: unknown; status?: unknown; refusal_code?: unknown; error?: unknown };
     // Plan 26: a personal medical question is never put in the title or the link preview
     if (isPersonalRefusal(typeof refusal_code === "string" ? refusal_code : null, typeof error === "string" ? error : null)) {
       return { title: FALLBACK_TITLE };
     }
+    // a queued or running review has not passed the guard yet, and link previews are cached: topic only once done
+    if (status !== "done") return { title: FALLBACK_TITLE };
     if (typeof topic !== "string" || !topic.trim()) return { title: FALLBACK_TITLE };
     const title = clampTitle(topic); // a topic can be a 600-character question
     return { title, openGraph: { title } };

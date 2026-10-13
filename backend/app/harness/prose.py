@@ -365,6 +365,15 @@ _LEADING_CITES = re.compile(r"^(?:\s*\[\s*P\d+[^\]]*\])+")
 _CITES_AFTER_STOP = re.compile(r"^(?P<body>.*?)(?P<stop>[.!?])\s*(?P<cites>(?:\s*\[\s*P\d+[^\]]*\])+)\s*$", re.DOTALL)
 
 
+def lead_belongs_to_previous(previous: str, rest: str) -> bool:
+    """A citation group that opens a piece ("... risk. [P1] Next sentence.") belongs to the sentence before it only when
+    that sentence cites nothing itself and the rest of the piece is empty or punctuation only, or starts a new sentence
+    (an uppercase letter). Otherwise ("Risk fell [P1]. [P2] showed harm.") the group is the next sentence's own."""
+    if not re.search(r"\w", rest):
+        return True
+    return not _REF.search(previous) and rest[:1].isupper()
+
+
 def _sentences(text: str) -> list[str]:
     """The sentences of `text`. A citation group written after the stop ("... (HR 0.55). [P1]") belongs to the sentence
     before it when that sentence cites nothing else, and is moved inside its stop ("... (HR 0.55) [P1].") so the
@@ -376,7 +385,7 @@ def _sentences(text: str) -> list[str]:
         lead = _LEADING_CITES.match(piece)
         rest = piece[lead.end():].strip() if lead else ""
         bare = not re.search(r"\w", rest)  # nothing left, or only punctuation
-        if lead and out and (bare or (not _REF.search(out[-1]) and rest[:1].isupper())):
+        if lead and out and lead_belongs_to_previous(out[-1], rest):
             m = _CITES_AFTER_STOP.match(f"{out[-1]} {lead.group(0).strip()}")
             out[-1] = f"{m['body'].rstrip()} {m['cites'].strip()}{m['stop']}" if m else f"{out[-1]} {lead.group(0).strip()}"
             piece = "" if bare else rest

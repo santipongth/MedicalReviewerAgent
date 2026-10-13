@@ -87,6 +87,11 @@ describe("Plan 30: quick page details", () => {
     expect(text).not.toMatch(/ {2}| \./);
   });
 
+  it("keeps the space before a valid group that directly follows a dropped one", () => {
+    render(<QuickAnswer review={withText("risk [P8][P1].", ["P1"])} />);
+    expect(document.querySelector("[data-quick-text]")!.textContent).toBe("risk [1].");
+  });
+
   it("says a cited study's details are missing instead of showing its raw id", () => {
     render(<QuickAnswer review={withText("ผลลดลง [P1, P9]", ["P1", "P9"])} />);
     const missing = document.querySelector('[data-quick-ref="P9"]')!;

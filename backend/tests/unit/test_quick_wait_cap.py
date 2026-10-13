@@ -65,3 +65,19 @@ async def test_a_wait_takes_one_slot_and_gives_it_back(app, redis, session_facto
         out = data(await c.call_tool("quick_answer", TOPIC | {"wait_seconds": 30}))
     assert out["status"] == "done" and seen == ["1"]
     assert await redis.get(f"mra:sse:{local_waiter(app)}") is None  # released
+
+
+async def test_a_failing_slot_store_returns_at_once_instead_of_failing_the_call(app, monkeypatch):
+    slept = []
+
+    async def sleep(seconds):
+        slept.append(seconds)
+
+    async def broken(self, key):
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr(server, "_sleep", sleep)
+    monkeypatch.setattr(SseSlots, "acquire", broken)
+    async with Client(app.state.mcp) as c:
+        out = data(await c.call_tool("quick_answer", TOPIC | {"wait_seconds": 30}))
+    assert out["review_id"] and out["status"] == "queued" and "still running" in out["message"] and slept == []

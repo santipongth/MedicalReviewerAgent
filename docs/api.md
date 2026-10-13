@@ -142,7 +142,7 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
   for every other status.
 - `topic` is `null` for a `personal_medical` refusal (Plan 30): the person's own question is never sent back.
 
-`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`, since Plan 25 `support` (see "Sentence support (Plan 25)"), and since Plan 27 `mode` (`full` or `quick`) and `quick` (null for a full review; see "Quick answer (Plan 27)").
+`result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`, since Plan 25 `support` (see "Sentence support (Plan 25)"), and since Plan 27 `mode` (`full` or `quick`) and `quick` (null for a full review; see "Quick answer (Plan 27)"), and since Plan 30 `pipeline_version` (present when the worker knows its configuration version).
 
 **Answer and key findings (Plan 20).** `synthesis` (and `synthesis_en`) also has:
 - `answer`: the bottom line, 1–2 sentences that answer the question directly. A graded answer (`slr`,

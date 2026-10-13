@@ -38,6 +38,7 @@ from app.harness.prose import (
     ProseContext,
     fix_prose,
     fix_statement,
+    lead_belongs_to_previous,
     prose_problems,
     statement_problems,
 )
@@ -56,8 +57,6 @@ QUICK_FAILED = ("The quick answer could not be written (a temporary model or ser
 NOT_GRADED = "The certainty of the evidence is not graded: the studies read report themes, not effects."
 
 
-
-
 def _cite_inside_stop(sentence: str) -> str:
     """"Risk was lower (HR 0.55). [P1]" -> "Risk was lower (HR 0.55) [P1].": the prose checks split a text before every
     "[", so a citation after the stop would leave its claim looking uncited (and in scope of every paper)."""
@@ -74,7 +73,7 @@ def _sentences(items: list[str]) -> list[str]:
         mine: list[str] = []
         for piece in _split_sentences(item.strip()):
             lead = _LEADING_CITES.match(piece)
-            if lead and mine:
+            if lead and mine and lead_belongs_to_previous(mine[-1], piece[lead.end():].strip()):
                 mine[-1] = f"{mine[-1]} {lead.group(0).strip()}"
                 piece = piece[lead.end():]
             if re.sub(r"[\W_]+", "", _CITE_GROUP.sub("", piece)):
