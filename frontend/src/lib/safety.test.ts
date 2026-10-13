@@ -72,6 +72,8 @@ describe("dosing advice: a notice, never a rewrite", () => {
     "The recommended dose is 5 mg once daily.",
     "ควรรับประทาน 500 มก. วันละ 2 ครั้ง",
     "แนะนำให้กินครั้งละ 1 เม็ด",
+    "ผู้ป่วยควรรับประทาน 500 มิลลิกรัม วันละ 2 ครั้ง ควรศึกษาเพิ่มเติม",
+    "Adults should take 500 mg daily and future trials should confirm this",
     "Consider 500 mg metformin twice daily.",
     "Start with 2.5 mg and titrate to 10 mg.",
     "Use 2 puffs as needed.",

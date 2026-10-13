@@ -65,11 +65,27 @@ const UNIT_TH = String.raw`\d+(?:[.,]\d+)?\s?(?:มก|มิลลิกรั�
 /** Thai advice: ควร / แนะนำให้ / โปรด with a dose or a schedule (ครั้งละ, วันละ) in the same sentence. */
 export const DOSE_ADVICE_TH = new RegExp(String.raw`(?:ควร|แนะนำให้|โปรด)[^.;]{0,30}?(?:${UNIT_TH}|ครั้งละ|วันละ)`);
 
+/** How far before an advice match a research phrase still governs it. */
+const RESEARCH_WINDOW = 40;
+const ADVICE_PATTERNS = [DOSE_ADVICE_EN, DOSE_RECOMMENDED_EN, DOSE_ADVICE_TH]
+  .map((re) => new RegExp(re.source, `${re.flags}g`));
+
+/** An advice match is exempt only when a research phrase sits inside it or just before it, not anywhere in the sentence. */
+function governedByResearch(s: string, index: number, length: number): boolean {
+  return RESEARCH_RECOMMENDATION.test(s.slice(Math.max(0, index - RESEARCH_WINDOW), index + length));
+}
+
 export function hasDosingAdvice(text: string | null | undefined): boolean {
   if (!text) return false;
-  // sentence by sentence (a "." inside a number such as 2.5 is not a break): research recommendations are skipped
-  return text.split(/(?<=[.;])\s+|\n/).some((s) => !RESEARCH_RECOMMENDATION.test(s)
-    && (DOSE_ADVICE_EN.test(s) || DOSE_RECOMMENDED_EN.test(s) || DOSE_ADVICE_TH.test(s)));
+  // sentence by sentence (a "." inside a number such as 2.5 is not a break)
+  return text.split(/(?<=[.;])\s+|\n/).some((s) => ADVICE_PATTERNS.some((re) => {
+    re.lastIndex = 0;
+    for (let m = re.exec(s); m; m = re.exec(s)) {
+      if (!governedByResearch(s, m.index, m[0].length)) return true;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    return false;
+  }));
 }
 
 function synthesisTexts(s: Synthesis | null | undefined): string[] {
