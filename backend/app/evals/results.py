@@ -3,9 +3,13 @@ Paths are relative to models.EVAL_ROOT (backend/ in development, /app in the con
 from __future__ import annotations
 
 import json
+import os
 import re
+import stat
 from datetime import UTC, datetime
 from pathlib import Path
+
+import yaml
 
 from app.evals import models
 from app.evals.freeze import _selected
@@ -74,48 +78,96 @@ def prior_spend(prompt_version: str, run_id: str) -> float:
     return total
 
 
-REPORT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,150}\.md$")
-LABEL_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+# Both name patterns are used with fullmatch: "$" would also let a trailing newline through ("ok.md\n").
+REPORT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,150}\.md")
+LABEL_PART = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 REPORT_MAX_BYTES = 1_000_000
-_REPORT_PARTS = re.compile(r"^(\d{4}-\d{2}-\d{2}\.\d+)-(.+)\.md$")
+LABEL_HINT = "a run label looks like PROMPT_VERSION/RUN_ID"
+_REPORT_PARTS = re.compile(r"(\d{4}-\d{2}-\d{2}\.\d+)-(.+)\.md")
 
 
-def _stamp(path: Path) -> str:
-    return datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat(timespec="seconds")
+class RunNotFound(LookupError):
+    """A compared run (side "a" or "b") has no run files. Carries the side, never the submitted label."""
+
+    def __init__(self, side: str) -> None:
+        super().__init__(f"no run files for run {side}")
+        self.side = side
+
+
+class ResultsUnreadable(Exception):
+    """The manifest or a run file does not read or validate. `what` is "manifest" or "run file". The cause is chained
+    for the log only: pydantic and YAML errors quote the file's content, so it must never reach a response."""
+
+    def __init__(self, what: str) -> None:
+        super().__init__(f"the {what} could not be read")
+        self.what = what
+
+
+def _stamp(mtime: float) -> str:
+    return datetime.fromtimestamp(mtime, UTC).isoformat(timespec="seconds")
 
 
 def list_reports() -> list[dict]:
     folder = models.EVAL_ROOT / "reports"
     if not folder.is_dir():
         return []
+    try:
+        paths = list(folder.glob("*.md"))
+    except OSError:
+        return []
     out = []
-    for path in folder.glob("*.md"):
-        if not REPORT_NAME.match(path.name) or path.is_symlink() or not path.is_file():
+    for path in paths:
+        if not REPORT_NAME.fullmatch(path.name):
             continue
-        m = _REPORT_PARTS.match(path.name)
+        try:  # a file removed or swapped between the glob and the stat is left out, not a 500
+            if path.is_symlink() or not path.is_file():
+                continue
+            info = path.stat()
+        except OSError:
+            continue
+        m = _REPORT_PARTS.fullmatch(path.name)
         out.append({"name": path.name, "prompt_version": m.group(1) if m else None,
-                    "run_id": m.group(2) if m else None, "size": path.stat().st_size, "modified_at": _stamp(path)})
+                    "run_id": m.group(2) if m else None, "size": info.st_size, "modified_at": _stamp(info.st_mtime)})
     return sorted(out, key=lambda r: r["modified_at"], reverse=True)
 
 
 def read_report(name: str) -> str:
     """A report's Markdown. FileNotFoundError for any name that is not a plain .md file directly in reports/ of at
-    most REPORT_MAX_BYTES."""
+    most REPORT_MAX_BYTES. The file is opened once (no symlink followed where the platform can refuse one), the open
+    descriptor is checked, and at most REPORT_MAX_BYTES + 1 bytes are read, so a file that grows or is swapped after
+    the checks cannot get past the limit."""
     folder = (models.EVAL_ROOT / "reports").resolve()
-    if not REPORT_NAME.match(name):
+    if not REPORT_NAME.fullmatch(name):
         raise FileNotFoundError(name)
     path = folder / name
-    if path.is_symlink() or not path.is_file() or path.resolve().parent != folder:
+    try:
+        if path.is_symlink() or path.resolve().parent != folder:
+            raise FileNotFoundError(name)
+    except (OSError, RuntimeError) as exc:  # a path that cannot be resolved is not a report
+        raise FileNotFoundError(name) from exc
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+    except OSError as exc:  # missing, a symlink (ELOOP), a directory on Windows, no permission
+        raise FileNotFoundError(name) from exc
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > REPORT_MAX_BYTES:
+            raise FileNotFoundError(name)
+        handle = os.fdopen(fd, "rb")
+    except BaseException:
+        os.close(fd)
+        raise
+    with handle:
+        data = handle.read(REPORT_MAX_BYTES + 1)
+    if len(data) > REPORT_MAX_BYTES:
         raise FileNotFoundError(name)
-    if path.stat().st_size > REPORT_MAX_BYTES:
-        raise FileNotFoundError(name)
-    return path.read_text(encoding="utf-8", errors="replace")
+    return data.decode("utf-8", errors="replace")
 
 
 def parse_label(label: str) -> tuple[str, str]:
     pv, _, run = label.partition("/")
-    if not (LABEL_PART.match(pv) and LABEL_PART.match(run)):
-        raise ValueError("a run label looks like PROMPT_VERSION/RUN_ID")
+    if not (LABEL_PART.fullmatch(pv) and LABEL_PART.fullmatch(run)):
+        raise ValueError(LABEL_HINT)
     return pv, run
 
 
@@ -123,30 +175,51 @@ def list_results() -> list[dict]:
     root = models.EVAL_ROOT / "runs"
     if not root.is_dir():
         return []
+    try:
+        pv_dirs = list(root.iterdir())
+    except OSError:
+        return []
     out = []
-    for pv_dir in root.iterdir():
-        if not pv_dir.is_dir() or pv_dir.is_symlink() or not LABEL_PART.match(pv_dir.name):
-            continue
-        for run_dir in pv_dir.iterdir():
-            if not run_dir.is_dir() or run_dir.is_symlink() or not LABEL_PART.match(run_dir.name):
+    for pv_dir in pv_dirs:
+        try:
+            if not pv_dir.is_dir() or pv_dir.is_symlink() or not LABEL_PART.fullmatch(pv_dir.name):
                 continue
-            files = sum(1 for _ in run_dir.glob("*.json"))
+            run_dirs = list(pv_dir.iterdir())
+        except OSError:
+            continue
+        for run_dir in run_dirs:
+            try:
+                if not run_dir.is_dir() or run_dir.is_symlink() or not LABEL_PART.fullmatch(run_dir.name):
+                    continue
+                files = sum(1 for _ in run_dir.glob("*.json"))
+                modified = _stamp(run_dir.stat().st_mtime)
+            except OSError:
+                continue
             if files:
                 out.append({"label": f"{pv_dir.name}/{run_dir.name}", "prompt_version": pv_dir.name,
-                            "run_id": run_dir.name, "files": files, "modified_at": _stamp(run_dir)})
+                            "run_id": run_dir.name, "files": files, "modified_at": modified})
     return sorted(out, key=lambda r: r["modified_at"], reverse=True)
 
 
 def compare_results(a: str, b: str) -> dict:
-    """Two runs side by side with the report's summary rows. ValueError for a bad label, LookupError when a run has
-    no files, FileNotFoundError when the manifest is missing."""
-    manifest = load_manifest()
+    """Two runs side by side with the report's summary rows. ValueError for a bad label (checked first),
+    FileNotFoundError when the manifest is missing, RunNotFound when a run has no files and ResultsUnreadable when the
+    manifest or a run file does not read or validate. Anything else is a bug and propagates."""
+    labels = [parse_label(a), parse_label(b)]
+    try:
+        manifest = load_manifest()
+    except FileNotFoundError:
+        raise
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        raise ResultsUnreadable("manifest") from exc
     sides = []
-    for side, label in (("a", a), ("b", b)):
-        pv, run = parse_label(label)
-        rows, _ = load_rows(pv, run, manifest)
+    for side, label, (pv, run) in zip("ab", (a, b), labels, strict=True):
+        try:
+            rows, _ = load_rows(pv, run, manifest)
+        except (OSError, ValueError) as exc:  # includes pydantic's ValidationError and UnicodeDecodeError
+            raise ResultsUnreadable("run file") from exc
         if not rows:
-            raise LookupError(f"no run files for run {side}")  # names the field, never the submitted label
+            raise RunNotFound(side)
         sides.append((label, rows))
     (label_a, rows_a), (label_b, rows_b) = sides
     other = dict(summary_rows(aggregate(rows_b)))

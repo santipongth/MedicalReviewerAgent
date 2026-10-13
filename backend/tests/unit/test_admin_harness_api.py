@@ -1,11 +1,14 @@
+import os
+import stat
 from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
 
 from app.db.models import AdminAudit, HarnessRun
-from app.evals import models
-from app.evals.results import list_reports, list_results, read_report
+from app.evals import models, results
+from app.evals.results import list_reports, list_results, parse_label, read_report
+from app.services import harness_runs
 from tests.admin_helpers import admin_headers
 from tests.harness_helpers import make_eval_root, worker_up, write_run
 
@@ -26,6 +29,11 @@ def start_body(**kw):
 async def runs_count(session_factory):
     async with session_factory() as s:
         return await s.scalar(select(func.count()).select_from(HarnessRun))
+
+
+async def start_audits(session_factory):
+    async with session_factory() as s:
+        return await s.scalar(select(func.count()).select_from(AdminAudit).where(AdminAudit.action == "harness.start"))
 
 
 async def test_state_lists_strata_and_says_why_it_cannot_start(client, session_factory, root):
@@ -54,11 +62,10 @@ async def test_start_enqueues_one_run_and_writes_an_audit_row(client, session_fa
     assert (run["status"], run["planned"], run["max_usd"], run["strata"]) == ("queued", 4, 1.0, ["cv"])
     assert run["run_id"].startswith("console-") and queue.harness == [run["id"]]
     assert (await client.post(f"{BASE}/runs", headers=h, json=start_body())).status_code == 409
+    assert queue.harness == [run["id"]] and await runs_count(session_factory) == 1  # the refused start added nothing
     state = (await client.get(BASE, headers=h)).json()
     assert state["reasons"] == ["active_run"] and state["active"]["id"] == run["id"]
-    async with session_factory() as s:
-        audits = await s.scalar(select(func.count()).select_from(AdminAudit).where(AdminAudit.action == "harness.start"))
-    assert audits == 1
+    assert await start_audits(session_factory) == 1
 
 
 @pytest.mark.parametrize("body", [
@@ -78,14 +85,14 @@ async def test_bad_starts_create_nothing(client, session_factory, redis, queue, 
     h = await admin_headers(client, session_factory)
     r = await client.post(f"{BASE}/runs", headers=h, json=body)
     assert r.status_code == 422, r.text
-    assert queue.harness == [] and await runs_count(session_factory) == 0
+    assert queue.harness == [] and await runs_count(session_factory) == 0 and await start_audits(session_factory) == 0
 
 
 async def test_start_is_refused_while_unavailable(client, session_factory, queue, root):
     h = await admin_headers(client, session_factory)  # no worker heartbeat
     r = await client.post(f"{BASE}/runs", headers=h, json=start_body())
     assert r.status_code == 503 and r.json()["reasons"] == ["no_worker"]
-    assert queue.harness == [] and await runs_count(session_factory) == 0
+    assert queue.harness == [] and await runs_count(session_factory) == 0 and await start_audits(session_factory) == 0
 
 
 async def test_cancel_clears_the_active_slot(client, session_factory, redis, root):
@@ -232,3 +239,172 @@ async def test_start_at_the_ceiling_and_at_one_review_cap_is_accepted(client, se
     await client.post(f"{BASE}/runs/{queue.harness[0]}/cancel", headers=h)
     assert (await client.post(f"{BASE}/runs", headers=h, json=start_body(max_usd=5.0))).status_code == 201
     assert len(queue.harness) == 2
+
+
+# --- fix round 1 -------------------------------------------------------------------------------------------------
+
+
+async def test_two_starts_that_both_pass_the_pre_check_make_one_run(client, session_factory, redis, queue, root,
+                                                                    monkeypatch):
+    """The unique active column decides the race: the loser's IntegrityError is a 409 with no row, audit or job."""
+    await worker_up(redis)
+    h = await admin_headers(client, session_factory)
+    real_state = harness_runs.harness_state
+
+    async def blind_state(*args):  # both racers read "no active run"
+        state = await real_state(*args)
+        state["reasons"] = [x for x in state["reasons"] if x != "active_run"]
+        return state
+
+    monkeypatch.setattr(harness_runs, "harness_state", blind_state)
+    first = await client.post(f"{BASE}/runs", headers=h, json=start_body())
+    second = await client.post(f"{BASE}/runs", headers=h, json=start_body())
+    assert (first.status_code, second.status_code) == (201, 409), (first.text, second.text)
+    assert queue.harness == [first.json()["id"]]
+    assert await runs_count(session_factory) == 1 and await start_audits(session_factory) == 1
+
+
+@pytest.mark.parametrize("answer", [False, None])
+async def test_an_enqueue_arq_refuses_marks_the_run_error(client, session_factory, redis, queue, root, monkeypatch,
+                                                           answer):
+    """arq answers None when harness:{id} already has a job or result key; the row must not stay queued forever."""
+    await worker_up(redis)
+
+    async def refused(run_pk):
+        return answer
+
+    monkeypatch.setattr(queue, "enqueue_harness", refused)
+    h = await admin_headers(client, session_factory)
+    r = await client.post(f"{BASE}/runs", headers=h, json=start_body())
+    assert r.status_code == 503 and r.json()["reasons"] == []
+    async with session_factory() as s:
+        row = (await s.execute(select(HarnessRun))).scalar_one()
+    assert (row.status, row.active, row.error) == ("error", None, "enqueue failed")
+    assert (await client.get(BASE, headers=h)).json()["reasons"] == []  # the slot is free again
+
+
+async def test_a_trailing_newline_passes_no_name_pattern(client, session_factory, redis, root):
+    await worker_up(redis)
+    h = await admin_headers(client, session_factory)
+    (root / "reports").mkdir()
+    (root / "reports" / "ok.md").write_text("fine", encoding="utf-8")
+    write_run("pv1", "a", [("CD0", 1, 0.05)])
+    with pytest.raises(FileNotFoundError):
+        read_report("ok.md\n")
+    with pytest.raises(ValueError):
+        parse_label("pv1/a\n")
+    assert (await client.get(f"{BASE}/reports/ok.md%0A", headers=h)).status_code == 404
+    assert (await client.get(f"{BASE}/compare?a=pv1/a%0A&b=pv1/a", headers=h)).status_code == 422
+    assert (await client.get(f"{BASE}/compare?a=pv1/a&b=pv1/a%0A", headers=h)).status_code == 422
+    assert (await client.post(f"{BASE}/runs", headers=h, json=start_body(compare_run="pv1/a\n"))).status_code == 422
+    assert await runs_count(session_factory) == 0
+    assert (await client.post(f"{BASE}/runs", headers=h, json=start_body(compare_run="pv1/a"))).status_code == 201
+
+
+def test_a_report_is_read_through_one_bounded_read(root, monkeypatch):
+    (root / "reports").mkdir()
+    (root / "reports" / "exact.md").write_bytes(b"x" * 1_000_000)
+    (root / "reports" / "grown.md").write_bytes(b"x" * 1_000_001)
+    assert len(read_report("exact.md")) == 1_000_000
+
+    class Small:  # what fstat said before the file grew
+        st_mode = stat.S_IFREG | 0o644
+        st_size = 10
+
+    with monkeypatch.context() as m:
+        m.setattr(os, "fstat", lambda fd: Small())
+        with pytest.raises(FileNotFoundError):  # the read itself stops at the limit
+            read_report("grown.md")
+    with monkeypatch.context() as m:
+        m.setattr(os, "fstat", lambda fd: type("Dir", (), {"st_mode": stat.S_IFDIR, "st_size": 0})())
+        with pytest.raises(FileNotFoundError):  # not a regular file
+            read_report("exact.md")
+
+
+def test_a_name_that_resolves_outside_reports_is_refused(root, monkeypatch):
+    (root / "reports").mkdir()
+    (root / "reports" / "esc.md").write_text("x", encoding="utf-8")
+    (root / "reports" / "ok.md").write_text("y", encoding="utf-8")
+    real = Path.resolve
+    monkeypatch.setattr(Path, "resolve", lambda self, *a, **k: (
+        root / "elsewhere" / self.name if self.name == "esc.md" else real(self, *a, **k)))
+    with pytest.raises(FileNotFoundError):
+        read_report("esc.md")
+    assert read_report("ok.md") == "y"
+
+
+def test_a_symlinked_prompt_version_folder_is_left_out_of_results(root, monkeypatch):
+    for pv in ("pv1", "pvlink"):
+        (root / "runs" / pv / "a").mkdir(parents=True)
+        (root / "runs" / pv / "a" / "CD0.r1.json").write_text("{}", encoding="utf-8")
+    real = Path.is_symlink
+    monkeypatch.setattr(Path, "is_symlink", lambda self: self.name == "pvlink" or real(self))
+    assert [r["label"] for r in list_results()] == ["pv1/a"]
+
+
+def test_a_report_removed_while_listing_is_left_out(root, monkeypatch):
+    (root / "reports").mkdir()
+    (root / "reports" / "gone.md").write_text("x", encoding="utf-8")
+    (root / "reports" / "ok.md").write_text("y", encoding="utf-8")
+    real_stat, real_is_file = Path.stat, Path.is_file
+
+    def stat_(self, **kw):
+        if self.name == "gone.md":
+            raise FileNotFoundError(self.name)
+        return real_stat(self, **kw)
+
+    monkeypatch.setattr(Path, "is_file", lambda self, **kw: self.name == "gone.md" or real_is_file(self, **kw))
+    monkeypatch.setattr(Path, "stat", stat_)
+    assert [r["name"] for r in list_reports()] == ["ok.md"]
+
+
+async def test_compare_never_returns_file_content(client, session_factory, root):
+    h = await admin_headers(client, session_factory)
+    write_run("pv2", "b", [("CD0", 1, 0.10)])
+    folder = root / "runs" / "pv1" / "a"
+    folder.mkdir(parents=True)
+    (folder / "CD0.r1.json").write_text('{"id": "CD0", "note": "file-content-XYZ"}', encoding="utf-8")
+    for side in ("a=pv1/a&b=pv2/b", "a=pv2/b&b=pv1/a"):
+        r = await client.get(f"{BASE}/compare?{side}", headers=h)
+        assert r.status_code == 422 and r.json() == {"detail": "the run file could not be read"}
+        assert "file-content-XYZ" not in r.text
+    (folder / "CD0.r1.json").write_bytes(b'\xff\xfe{"note": "bytes-XYZ"}')  # not UTF-8
+    r = await client.get(f"{BASE}/compare?a=pv1/a&b=pv2/b", headers=h)
+    assert r.status_code == 422 and r.json() == {"detail": "the run file could not be read"}
+
+
+async def test_compare_with_a_broken_or_missing_manifest_is_never_a_500(client, session_factory, root):
+    h = await admin_headers(client, session_factory)
+    write_run("pv1", "a", [("CD0", 1, 0.05)])
+    url = f"{BASE}/compare?a=pv1/a&b=pv1/a"
+    manifest = root / "manifest.yaml"
+    for text in ("reviews: [unclosed\nseed: manifest-XYZ", "seed: manifest-XYZ\nreviews: []\n", "- manifest-XYZ\n"):
+        manifest.write_text(text, encoding="utf-8")
+        r = await client.get(url, headers=h)
+        assert r.status_code == 422 and r.json() == {"detail": "the manifest could not be read"}, text
+        assert "manifest-XYZ" not in r.text
+    manifest.unlink()
+    r = await client.get(url, headers=h)
+    assert r.status_code == 404 and r.json() == {"detail": "the harness manifest is missing"}
+
+
+async def test_a_bug_inside_compare_is_not_turned_into_a_404(client, session_factory, root, monkeypatch):
+    h = await admin_headers(client, session_factory)
+    write_run("pv1", "a", [("CD0", 1, 0.05)])
+
+    def boom(aggregate):
+        raise KeyError("ZZ-secret-ZZ")
+
+    monkeypatch.setattr(results, "summary_rows", boom)
+    with pytest.raises(KeyError):
+        await client.get(f"{BASE}/compare?a=pv1/a&b=pv1/a", headers=h)
+
+
+async def test_an_unexpected_key_is_never_echoed(client, session_factory, redis, queue, root):
+    await worker_up(redis)
+    h = await admin_headers(client, session_factory)
+    secret = "ZZ-secret-ZZ"
+    r = await client.post(f"{BASE}/runs", headers=h, json={**start_body(), secret: 1})
+    assert r.status_code == 422 and secret not in r.text
+    assert [(e["type"], e["loc"]) for e in r.json()["detail"]] == [("extra_forbidden", ["body", "<extra>"])]
+    assert queue.harness == [] and await runs_count(session_factory) == 0

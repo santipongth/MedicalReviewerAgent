@@ -14,7 +14,16 @@ from app.api.admin_models import ID_MAX, Before
 from app.api.auth import ip_hash_of, require_admin
 from app.api.deps import get_deps
 from app.api.reviews import service_error_response
-from app.evals.results import compare_results, list_reports, list_results, read_report
+from app.evals.results import (
+    LABEL_HINT,
+    ResultsUnreadable,
+    RunNotFound,
+    compare_results,
+    list_reports,
+    list_results,
+    parse_label,
+    read_report,
+)
 from app.logging import get_logger
 from app.runtime import AppDeps
 from app.services.harness_runs import (
@@ -67,9 +76,12 @@ async def start(body: StartBody, deps: AppDeps = Depends(get_deps), identity: Id
     except ServiceError as exc:
         return service_error_response(exc)
     try:
-        await deps.queue.enqueue_harness(row.id)
+        queued = await deps.queue.enqueue_harness(row.id)
     except Exception:
         log.exception("harness_enqueue_failed", run=row.id)
+        queued = False
+    if not queued:  # arq answers None when a job or result key for harness:{id} already exists
+        log.warning("harness_not_queued", run=row.id)
         await finish(deps.session_factory, row.id, status="error", error="enqueue failed")
         return JSONResponse(status_code=503, content={"detail": "the harness queue is unavailable; try again",
                                                       "reasons": []})
@@ -106,11 +118,18 @@ async def results(_: Identity = Depends(require_admin)):
 
 @router.get("/admin/harness/compare")
 async def compare(a: str = Query(max_length=129), b: str = Query(max_length=129), _: Identity = Depends(require_admin)):
+    """Every answer is a fixed message: a run file or the manifest can quote its content in its errors, so no exception
+    text is returned. Only the failures named here are handled; any other exception is a bug and propagates."""
+    try:
+        parse_label(a), parse_label(b)
+    except ValueError:
+        return JSONResponse(status_code=422, content={"detail": LABEL_HINT})
     try:
         return await asyncio.to_thread(compare_results, a, b)
-    except LookupError as exc:
-        return JSONResponse(status_code=404, content={"detail": str(exc)})
+    except RunNotFound as exc:
+        return JSONResponse(status_code=404, content={"detail": f"no run files for run {exc.side}"})
     except FileNotFoundError:
         return JSONResponse(status_code=404, content={"detail": "the harness manifest is missing"})
-    except ValueError as exc:
-        return JSONResponse(status_code=422, content={"detail": str(exc)})
+    except ResultsUnreadable as exc:
+        log.exception("harness_compare_unreadable", what=exc.what)
+        return JSONResponse(status_code=422, content={"detail": f"the {exc.what} could not be read"})

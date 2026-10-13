@@ -48,12 +48,24 @@ class McpPathMiddleware:
         await self.app(scope, receive, send)
 
 
+EXTRA_KEY_TOKEN = "<extra>"
+
+
+def _safe_loc(error: dict) -> list:
+    """An error's location, with an unexpected key replaced: for extra_forbidden the last element is the submitted key,
+    which is unbounded text of the sender's choosing."""
+    loc = list(error["loc"])
+    if error["type"] == "extra_forbidden" and loc:
+        loc[-1] = EXTRA_KEY_TOKEN
+    return loc
+
+
 async def admin_validation_errors(request: Request, exc: RequestValidationError) -> Response:
     """The admin console's 422 never echoes the request back (FastAPI's default does): a lone surrogate in a JSON
     string makes the echoed error unencodable, and a deeply nested body overflows the encoder; both would be a 500."""
     if not request.url.path.startswith("/api/v1/admin"):
         return await request_validation_exception_handler(request, exc)
-    errors = [{"type": e["type"], "loc": list(e["loc"]), "msg": e["msg"]} for e in exc.errors()]
+    errors = [{"type": e["type"], "loc": _safe_loc(e), "msg": e["msg"]} for e in exc.errors()]
     return Response(json.dumps({"detail": errors}), status_code=422, media_type="application/json")
 
 
