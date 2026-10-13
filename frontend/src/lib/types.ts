@@ -382,6 +382,44 @@ export interface ExternalNote {
   preview: string;
 }
 
+/** Plan 25: one cited paper of a claim, as the engine judged it against the paper's abstract. */
+export interface SupportCitation {
+  ref: string;
+  /** the judge's label; null when not judged (budget, failure, over the cap, not evidence, a computed claim) */
+  label: "supported" | "partial" | "unsupported" | null;
+  /** a sentence copied from the abstract: the supporting one (supported, partial), else the closest one; null when none */
+  evidence: string | null;
+  score: number | null;
+  not_evidence: boolean;
+  /** the "ตรวจแล้ว" badge: supported, every number of the claim verified, no pooled value, evidence */
+  verified: boolean;
+}
+
+/** Plan 25: an English sentence of the summary (with its citation groups) or a key finding's statement. */
+export interface SupportClaim {
+  id: string;
+  where: "summary" | "key_finding";
+  /** summary: the indexes of its citation groups in the English summary */
+  markers: number[] | null;
+  /** key finding: its index in `key_findings` */
+  finding: number | null;
+  claim: string;
+  refs: string[];
+  numbers_checked: boolean;
+  computed: boolean;
+  citations: SupportCitation[];
+}
+
+/** Plan 25: `result.support`; null when the check crashed, absent before Plan 25. */
+export interface SentenceSupport {
+  judge: "ok" | "incomplete" | "failed" | "skipped_budget" | "none";
+  /** the refs of each citation group of the English summary, in order */
+  markers: string[][];
+  claims: SupportClaim[];
+  /** the shown summary has the same groups in the same order */
+  display_aligned?: boolean;
+}
+
 export interface ReviewResult {
   topic?: string;
   english_topic?: string | null;
@@ -403,6 +441,7 @@ export interface ReviewResult {
   meta_analysis?: MetaAnalysis | null; // Plan 14b
   citations?: Citations | null; // Plan 14b
   methods?: ReviewMethods; // Plan 20
+  support?: SentenceSupport | null; // Plan 25
 }
 
 export interface ServiceStatus {
