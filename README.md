@@ -60,6 +60,7 @@ is recommended (its search API is undocumented). Details: "ThaiJO source (Plan 2
   management (cancel, hide or show, delete), API keys (mint, edit, revoke) and an audit log of every change. See
   `docs/api.md` → Admin API.
   Models: change presets and per-role models at `/admin/models`; each save is a version you can restore; workers pick it up within 30 seconds.
+  Provider keys: enter, replace or delete LLM provider keys and add OpenAI-compatible providers (OpenAI, Gemini, DeepSeek, Groq, Mistral, Together, Ollama) in the "ผู้ให้บริการและคีย์" tab of `/admin/models`; keys are stored encrypted with `LLM_KEYS_SECRET` (set it in `.env`, see `.env.example`) and are never shown again.
   Settings, glossary and harness: change limits and the Thai glossary at `/admin/settings` and `/admin/glossary` (versioned, restorable, live within 30 seconds); read and compare Cochrane harness reports and start a capped run at `/admin/harness` (`docker compose --profile harness up -d harness`).
   Search sources: turn each of the eight SearXNG engines and ThaiJO off or on at `/admin/sources` (versioned, restorable, live within 30 seconds; a running review keeps its sources; `GET /api/v1/status` lists the ones in use).
 - **Webhooks:** `POST /api/v1/reviews` with `"callback_url": "https://..."` (key required, HTTPS public host).

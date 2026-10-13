@@ -773,15 +773,18 @@ audit rules as the rest of the Admin API and are not in the public OpenAPI.
 | `POST /admin/llm-config/versions/{id}/restore` `{base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 404, 409, 422 |
 | `POST /admin/llm-config/reset` `{base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 409, 422 |
 | `GET /admin/llm-models?q=&structured=&reasoning=&max_price=&limit=100` (1–500) | 200 `{items, available}`, the OpenRouter catalog | 401, 403, 422 |
-| `POST /admin/llm-models/test` `{config \| yaml, preset?, role}` (the document is optional) | 200 `{ok, latency_ms, cost_usd, model, error}` | 401, 403, 422, 429 |
+| `POST /admin/llm-models/test` `{config \| yaml, preset?, role}` or (Plan 23e) `{config \| yaml, provider, model, price_in?, price_out?}` (the document is optional) | 200 `{ok, latency_ms, cost_usd, model, error}` | 401, 403, 422, 429 |
 
-**State.** `GET /admin/llm-config` answers `{source, version, config, active_preset, env_preset, keys_present, loaded, error}`:
+**State.** `GET /admin/llm-config` answers `{source, version, config, active_preset, env_preset, keys_present, key_status, known_prices, loaded, error}`:
 - `source` is `"db"` (a saved version is in use) or `"file"` (none is saved, so `llm.yaml` is in use). `version` is
   that version's id, or null for `"file"`. `config` is the document in use.
 - `active_preset` is the preset the workers run: `LLM_PRESET` while `llm.yaml` is the source, otherwise the version's
   own `active_preset`. `env_preset` is the `LLM_PRESET` setting (null when unset), reported even when it is ignored.
-- `keys_present` is `{ENV_NAME: bool}` for the key variable of each configured provider. Provider API keys never reach
-  the database, the API or the console; the console sees only whether each one is set.
+- `keys_present` is `{ENV_NAME: bool}` for the key variable of each configured provider (`LLM_KEY_<NAME>` for a provider
+  with a free name): true when a key resolves for it, from the console or from env (Plan 23e). `key_status` is
+  `{provider: console | env | not_needed | none | origin_mismatch | unreadable | env_origin_missing}` (see "Provider
+  keys (Plan 23e)"). `known_prices` is `{model: [input, output]}`, the code's prices of direct Anthropic models in USD
+  per 1M tokens. No key ever reaches an answer; the console sees only where each one comes from.
 - `loaded` lists the workers, see "Workers" below.
 - `error` is null normally. When the newest saved version, or `llm.yaml` while no version is saved, no longer passes validation, the route still answers **200** with the stored `config`, an empty `keys_present` and `error` set to the reason, and the console offers restore and reset. The reason is one line: a schema error names the field path and the rule (plus a count of further errors), never the stored value or a YAML snippet.
 
@@ -794,7 +797,9 @@ characters). Send exactly one of them; both, or neither where one is required, i
   that deletes the active preset, is refused at save and never reaches a worker.
 - Each provider is pinned to its own key name: `openrouter` uses `OPENROUTER_API_KEY`, `anthropic` uses
   `ANTHROPIC_API_KEY` and `openai_compatible` uses `OPENAI_COMPATIBLE_API_KEY`. A draft cannot name another variable,
-  so it cannot make the server send another secret, or one provider's key to another host.
+  so it cannot make the server send another secret, or one provider's key to another host. Since Plan 23e
+  `api_key_env` may be left out, and a provider may have a free name with a `kind` (see "Provider keys (Plan 23e)"):
+  its only variable is `LLM_KEY_<NAME>`.
 - The `openrouter` and `anthropic` hosts are pinned: a `base_url`, when given, must be `https://openrouter.ai/…` and
   `https://api.anthropic.com/…` respectively (the whole host; no user info, port or look-alike suffix). The `openrouter`
   `base_url` may be left out: it defaults to `https://openrouter.ai/api/v1`. An `openai_compatible` `base_url` (a local
@@ -818,7 +823,9 @@ characters). Send exactly one of them; both, or neither where one is required, i
   the request back.
 
 **Validate.** `POST /admin/llm-config/validate` checks a draft and saves nothing. A document that breaks one of the
-rules above answers **200** `{ok: false, errors: [message], warnings: [], cost: {}, config: null, yaml: null}`. The
+rules above answers **200** `{ok: false, errors: [message], warnings: [], cost: {}, config: null, yaml: null}`. Since
+Plan 23e that includes every role off OpenRouter without `price_in` and `price_out` and a `default_provider` that is not
+configured (`errors` may then hold several messages; save, restore and reset refuse the same document with 422). The
 YAML-text refusals listed under "Documents" (text that does not parse, is not a mapping, an alias, `!!binary`, nesting
 too deep), and a body with both or neither of `config` and `yaml`, are 422. For a valid draft:
 - `ok` is true, `config` is the normalised document (defaults left out) and `yaml` is its text, so a form and a YAML
@@ -899,8 +906,13 @@ admin-only constants, not `/status` limits).
   a YAML text that cannot be read, a bad document, an unknown preset, a role the preset does not have, a URL that does
   not parse. A request body that fails the route's own schema, and a refused sign-in or CSRF header (401, 403), use none.
 - Every answered test writes an `llm.test` audit row of its own: `target_type` `llm_model`, `target_id` the model id (cut
-  to 64 characters) and `after` `{preset, role, provider, base_url_host, ok, cost_usd}`. `base_url_host` is only the host
-  of the role's `base_url` (null without one), never the key or the full URL.
+  to 64 characters) and `after` `{preset, role, provider, kind, key_source, base_url_host, ok, cost_usd}`.
+  `base_url_host` is only the host of the role's `base_url` (null without one), never the key or the full URL;
+  `key_source` is `console`, `env` or `none` (Plan 23e).
+- Plan 23e: instead of `role`, a body may name a configured `provider` and a `model` (with optional `price_in` and
+  `price_out`), so a key can be tried before any preset uses it (`role` in the audit row is then `test`). Send one of
+  the two forms; both or neither is 422, as is an unknown provider. Keys are resolved as a worker would, so a draft that
+  moves a provider's `base_url` to another origin is tested without its stored key.
 
 **Audit.** Save, restore and reset write `llm_config.save`, `llm_config.restore` and `llm_config.reset` with
 `target_type` `llm_config` and `target_id` the new version's id. `before` is `{version: <previous id or null>}` and
@@ -924,12 +936,13 @@ admin-only constants, not `/status` limits).
   runs the database's active version (or `llm.yaml` while the table is empty), is cleared at the next check.
 - A worker started with `GRAPH_MODE=stub` records the version it sees without building any LLM.
 - Each worker reports itself in the Redis hash `mra:llm:loaded`. The field is `<hostname>:<pid>` and the value is JSON
-  `{version, preset, loaded_at, error, settings, glossary, runtime_error}` (the last three came with Plan 23c, see
-  "Runtime settings, glossary and harness"). `version` is the id as text or `"file"`, and `error` is null or the last error
+  `{version, preset, loaded_at, error, settings, glossary, runtime_error, sources, keys, keys_error}` (settings,
+  glossary and runtime_error came with Plan 23c, sources with 23d, keys and keys_error with 23e: see "Provider keys
+  (Plan 23e)"). `version` is the id as text or `"file"`, and `error` is null or the last error
   (up to 300 characters). A worker reports at start, after each reload and at every 30-second check, so `loaded_at`
   means **last seen**, not when the version was loaded. A worker that shuts down cleanly removes its entry.
   `GET /admin/llm-config` returns the entries as
-  `loaded: [{worker, version, preset, loaded_at, error, settings, glossary, runtime_error}]`, leaving out
+  `loaded: [{worker, version, preset, loaded_at, error, settings, glossary, runtime_error, sources, keys, keys_error}]`, leaving out
   those not refreshed for 3 minutes (Plan 30; six missed checks) and removing them, and any entry that does not parse,
   from the hash; the console calls a worker "not reporting" after 2 minutes.
 
@@ -1124,6 +1137,86 @@ settings ones with `sources` in place of `settings`:
 - `error` in `GET /admin/sources` is null unless the version in use leaves no SearXNG source on under the current
   environment (an env change after the save); env's engines are then searched until a version that turns one on is
   saved. A stored entry that no longer validates is skipped; neither ever answers 500.
+
+### Provider keys (Plan 23e)
+
+The Models page has a tab "ผู้ให้บริการและคีย์": an admin enters, replaces or removes an LLM provider's API key there,
+adds an OpenAI-compatible provider from a template, and tests it, without editing `.env` or restarting anything.
+
+| Method and path | Success | Errors |
+|---|---|---|
+| `GET /admin/llm-keys` | 200 the state below | 401, 403 |
+| `PUT /admin/llm-keys/{provider}` `{"key": "..."}` | 200 the state plus `workers_notified` | 401, 403, 404, 409, 422, 429 |
+| `DELETE /admin/llm-keys/{provider}` | 200 the state plus `workers_notified` | 401, 403, 404, 422, 429 |
+
+- **Write-only.** A key is never answered back, logged, written to the audit log or to Redis. The state shows where
+  each key comes from, its last 4 characters (none for a key under 12 characters) and the origin it is bound to.
+- **Storage.** Keys live in the `llm_provider_keys` table, one row per provider name, outside the config versions (a
+  restore never brings an old key back). Each is a Fernet token of `{"v": 1, "provider", "origin", "key"}` under
+  `LLM_KEYS_SECRET`: one or more comma-separated Fernet keys (newest first; the first encrypts, all decrypt), env
+  only, read once per process. Generate one with `python -m app.cli.admin llm-keys-secret`. To rotate, put a new key
+  in front (`new,old`), restart, run `python -m app.cli.admin rotate-llm-keys` (audited as `llm_key.rotate`), then
+  remove the old key and restart again. Losing the secret makes the stored keys unreadable: enter them again (keep a
+  backup of `.env`; a database backup alone holds only ciphertext).
+- **Without a usable secret** the tab is read-only: `GET` answers `writable: false` with `reason` `no_secret` or
+  `bad_secret`, `PUT` is **409** `{detail, code}` with the same code, and `DELETE` still works (it needs no secret).
+- **PUT body.** Read by the handler itself (at most 4 KiB, a JSON object with `key`), never by a schema, because a
+  schema's 422 quotes the refused input. The key is stripped of surrounding whitespace and must then be 8 to 512
+  visible ASCII characters without spaces; otherwise **422** with the fixed message
+  "the key must be 8 to 512 visible characters without spaces".
+  A body that is not such an object is a fixed 422 too. `{provider}` must be a provider
+  name (`^[a-z][a-z0-9_]{0,31}$`, else 422) configured in the version in use (else **404**: save a version with it
+  first). At most **20 key changes per hour per admin** (PUT and DELETE together), else **429** with `Retry-After`.
+- **DELETE** keeps the row as a tombstone (no key, a new revision) and answers 404 when there is no stored key. It
+  works for a provider no longer configured (an "orphan"). It does not revoke the key at the provider.
+- **Audit.** `llm_key.set`, `llm_key.replace` and `llm_key.delete`, `target_type` `llm_key`, `target_id` the provider;
+  `after` is `{provider, kind, origin, revision}` (delete: `{provider, revision}`), never any part of the key.
+  `api_key`, `ciphertext` and `llm_keys_secret` are also dropped from every audit row by name.
+
+**State.** `{writable, reason, keys_version, config_version, config_error, providers, orphans, loaded}`:
+- `providers`: one entry per provider of the configuration in use, `{name, kind, origin, used_by, keyless, key, env}`.
+  `used_by` lists the roles of the running preset that call it; `keyless` is true for a local server that needs no key.
+  `key` is `{source, problem, last4, bound_origin, updated_at, updated_by}`: `source` `console`, `env` or `none`;
+  `problem` null, `origin_mismatch` (the stored key belongs to another origin), `unreadable` (it cannot be decrypted)
+  or `env_origin_missing` (`LLM_KEY_<NAME>` is set without a matching `LLM_KEY_<NAME>_ORIGIN`). `env` is
+  `{name, set, origin_ok}`: the variable, whether it is non-empty, and whether its origin matches.
+- `orphans`: stored keys of providers no longer configured, `{name, last4, bound_origin, updated_at, unreadable}`.
+- `keys_version` is the newest revision (null before any key was stored); `loaded` are the worker reports.
+
+**Which key a call uses.** A console key whose bound origin equals the provider's origin; else, when a console key is
+bound to another origin, none (no fallback to env, or a `base_url` change would redirect the env key); else the env
+key. `openrouter`, `anthropic` and `openai_compatible` read `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` and
+`OPENAI_COMPATIBLE_API_KEY` as before. A provider with a free name reads only `LLM_KEY_<NAME>` from the process
+environment, and only when `LLM_KEY_<NAME>_ORIGIN` is its origin. The origin is `scheme://host[:port]` of `base_url`
+(default port dropped; a path change keeps it), or `https://openrouter.ai` and `https://api.anthropic.com` for those
+two without a `base_url`. A free-named provider on a public host with no key gets no anonymous call; a local server
+(http to `localhost`, `127.0.0.1`, `::1` or `host.docker.internal`, or the legacy `openai_compatible` entry) is sent
+`not-needed`. Provider error text is redacted with the key (the key and any 12-character slice of it) before it is
+shown or logged.
+
+**Providers.** `kind` is `openrouter`, `anthropic` or `openai_compatible`; the three legacy names have the kind of their
+name and may leave it out, and the first two kinds exist only under their own names. Any other name
+(`^[a-z][a-z0-9_]{0,31}$`, at most 12 providers) is an `openai_compatible` provider whose `base_url` must be https to a
+host name or a global IP address, or http to the four local names above; no user info, query or fragment, and no
+private, link-local or metadata address literal. Fallback models are sent to OpenRouter only (validate warns), and the
+reasoning effort goes to an OpenAI-compatible server as `reasoning_effort`. The console's templates (OpenAI, Gemini's
+OpenAI-compatible endpoint, DeepSeek, Groq, Mistral, Together, Ollama) only prefill a name and a base URL.
+
+**Prices.** Off OpenRouter no catalog prices a call, so every role whose provider is `openai_compatible`, and every
+Anthropic model the code has no price for, needs `price_in` and `price_out` (USD per 1M tokens, both or neither,
+0-1000; 0 is fine for a local server). Validate, save, restore and reset refuse a document without them; a version
+saved before Plan 23e still loads and charges 0 for those roles, as before. An `openai_compatible` call is charged at
+the role's price (a cost the server reports is ignored); an OpenRouter call at its reported cost, else the catalog, else
+the role's price; an Anthropic call at the role's price, else the code's table. The per-review cap and the daily USD
+counter count these charges.
+
+**Workers.** A key write raises the Redis key `mra:llm:keys_version` to its revision (`workers_notified` false: Redis
+could not be updated). A worker compares it with the revision it built its models with at each job start, and the
+database's newest revision every 30 seconds (repairing the Redis key), and rebuilds its models on the same
+configuration and semaphore; a running review keeps the key it started with. Its report in `mra:llm:loaded` gains
+`keys` (the revision, `"none"` before any key) and `keys_error` (stored keys it cannot read, or a failed load; the
+key ring is then the old one, or env keys only). The result cache key does not change with a key: a key changes
+neither the models nor the prompts.
 
 ## Paper count and pool (Plan 21)
 

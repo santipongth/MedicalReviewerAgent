@@ -1,5 +1,6 @@
 """Runtime settings the admin console may change (Plan 23c). Only the names in SPECS can be changed; secrets, URLs,
-proxy trust, Turnstile, salts, admin sign-in rules, provider keys and HARNESS_MAX_USD stay env-only. A saved version
+proxy trust, Turnstile, salts, admin sign-in rules and HARNESS_MAX_USD stay env-only. LLM provider keys may also be
+entered in the console since Plan 23e, stored encrypted outside these versions (app/services/llm_keys.py). A saved version
 stores only the values the admin set; the env value (Settings) stays the default for every other name, so
 {"values": {}} means "env everywhere". Reading never fails: a stored value that no longer validates is skipped."""
 from __future__ import annotations
