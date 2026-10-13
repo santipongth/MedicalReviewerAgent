@@ -569,6 +569,7 @@ export function reportDate(iso: string | null | undefined, lang: Lang): string |
 export const SOURCE_NAME: Record<string, string> = {
   pubmed: "PubMed", "europe pmc": "Europe PMC", europepmc: "Europe PMC", openalex: "OpenAlex", "semantic scholar": "Semantic Scholar",
   semanticscholar: "Semantic Scholar", crossref: "Crossref", arxiv: "arXiv", doaj: "DOAJ", openaire: "OpenAIRE",
+  thaijo: "ThaiJO",
 };
 
 /** Search sources by name, in the order the methods list them; the RCT search counts as its engine. */

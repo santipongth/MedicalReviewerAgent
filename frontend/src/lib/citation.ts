@@ -1,7 +1,8 @@
-// Plan 20 Task 6: references in Vancouver (ICMJE) style and how to cite the report. Pure, no React. The result carries
-// no volume, issue or pages (the search sources do not give them), so a reference is built from authors, title,
-// journal, year and the identifiers only; a missing part is left out, never invented. Titles and journals stay in their
-// own language. The backend's Markdown export (app/services/report.py `vancouver`) follows the same rules.
+// Plan 20 Task 6: references in Vancouver (ICMJE) style and how to cite the report. Pure, no React. A reference is
+// built from authors, title, journal, year and the identifiers; volume, issue and pages only for ThaiJO papers (`bib`,
+// from the journal's OAI-PMH record, Plan 24: the other search sources do not give them). A missing part is left
+// out, never invented. Titles and journals stay in their own language. The backend's Markdown export
+// (app/services/report.py `vancouver`) follows the same rules.
 import type { Lang } from "./i18n";
 import type { ReviewTypeOrLegacy } from "./review-type";
 import { TERM_NAME } from "./term-names";
@@ -10,12 +11,18 @@ import type { Paper } from "./types";
 /** ICMJE: list the first six authors, then "et al.". */
 export const MAX_AUTHORS = 6;
 
-export type CitationInput = Partial<Pick<Paper, "title" | "authors" | "journal" | "year" | "doi" | "pmid" | "pmcid">>;
+export type CitationInput = Partial<Pick<Paper, "title" | "authors" | "journal" | "year" | "doi" | "pmid" | "pmcid" | "thaijo_url" | "bib">>;
 
 export interface CitationId {
-  label: "doi" | "PMID" | "PMCID";
+  label: "doi" | "PMID" | "PMCID" | "ThaiJO";
   value: string;
   href: string;
+}
+
+/** A ThaiJO article page (https on *.tci-thaijo.org, the article-view path), as the backend checks it; else null. */
+export function thaijoHref(url: string | null | undefined): string | null {
+  const u = (url ?? "").trim();
+  return /^https:\/\/(?:[a-z0-9-]+\.)*tci-thaijo\.org\/index\.php\/[A-Za-z0-9_-]{1,64}\/article\/view\/\d{1,10}\/?$/i.test(u) ? u : null;
 }
 
 const squash = (v: unknown): string => (typeof v === "string" || typeof v === "number" ? String(v) : "").split(/\s+/).filter(Boolean).join(" ");
@@ -138,7 +145,14 @@ export function citationParts(p: CitationInput): { text: string[]; ids: Citation
   if (title) text.push(/[?!]$/.test(title) ? title : `${title}.`);
   const journal = clean(p.journal);
   if (journal) text.push(`${journal}.`);
-  if (p.year) text.push(`${p.year}.`);
+  const volume = clean(p.bib?.volume);
+  const issue = clean(p.bib?.issue);
+  const pages = clean(p.bib?.pages);
+  const where = volume + (issue ? `(${issue})` : "");
+  let date = clean(p.year);
+  date = date && where ? `${date};${where}` : date || where;
+  date = date && pages ? `${date}:${pages}` : date || pages;
+  if (date) text.push(`${date}.`); // NLM: "2024;17(4):1048-1066.", "2024:e265234."
   const ids: CitationId[] = [];
   const doi = normalizeDoi(p.doi);
   if (doi) ids.push({ label: "doi", value: doi, href: doiHref(doi) });
@@ -146,6 +160,8 @@ export function citationParts(p: CitationInput): { text: string[]; ids: Citation
   if (pmid) ids.push({ label: "PMID", value: pmid, href: pubmedHref(pmid) });
   const pmcid = normalizePmcid(p.pmcid);
   if (pmcid) ids.push({ label: "PMCID", value: pmcid, href: pmcHref(pmcid) });
+  const thaijo = thaijoHref(p.thaijo_url);
+  if (thaijo) ids.push({ label: "ThaiJO", value: thaijo, href: thaijo });
   return { text, ids };
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { HighlightedQuote } from "@/components/ui/quote";
 import { designLabel, isNonQuantitative } from "@/lib/charts-data";
+import { thaijoHref } from "@/lib/citation";
 import { asReported, ciLabel, effectLabel, findReported, isBlankedEffect, isBlankedSampleSize, safeHref } from "@/lib/evidence";
 import { DIRECTION_LABEL, ROB_LABEL, type Lang } from "@/lib/i18n";
 import { fieldLang, RC } from "@/lib/i18n-report";
@@ -120,6 +121,8 @@ function Links({ paper, lang }: { paper: Paper; lang: Lang }) {
   if (paper.pmcid) links.push([`https://pmc.ncbi.nlm.nih.gov/articles/${paper.pmcid}/`, "PubMed Central"]);
   if (paper.pmid) links.push([`https://pubmed.ncbi.nlm.nih.gov/${paper.pmid}/`, "PubMed"]);
   if (paper.doi) links.push([`https://doi.org/${paper.doi}`, `DOI ${paper.doi}`]);
+  const thaijo = thaijoHref(paper.thaijo_url); // Plan 24: the ThaiJO article page, never the PDF
+  if (thaijo) links.push([thaijo, "ThaiJO"]);
   if (fullText && !links.some(([u]) => u === fullText)) links.push([fullText, L(lang, R.fullTextRead)]);
   if (!links.length && page) links.push([page, L(lang, R.articlePage)]);
   return (
