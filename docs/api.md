@@ -1197,15 +1197,18 @@ shown or logged.
 **Providers.** `kind` is `openrouter`, `anthropic` or `openai_compatible`; the three legacy names have the kind of their
 name and may leave it out, and the first two kinds exist only under their own names. Any other name
 (`^[a-z][a-z0-9_]{0,31}$`, at most 12 providers) is an `openai_compatible` provider whose `base_url` must be https to a
-host name or a global IP address, or http to the four local names above; no user info, query or fragment, and no
-private, link-local or metadata address literal. Fallback models are sent to OpenRouter only (validate warns), and the
+public host (a dotted DNS name whose last label is not numeric, without a trailing dot or a private-use suffix such as
+`localhost`, `local`, `internal`, `lan` or `home.arpa`; or a global IP address, never IPv4 inside IPv6), or http to the
+four local names above; no user info, query or fragment. Host names are not resolved at validation. Fallback models are sent to OpenRouter only (validate warns), and the
 reasoning effort goes to an OpenAI-compatible server as `reasoning_effort`. The console's templates (OpenAI, Gemini's
 OpenAI-compatible endpoint, DeepSeek, Groq, Mistral, Together, Ollama) only prefill a name and a base URL.
 
 **Prices.** Off OpenRouter no catalog prices a call, so every role whose provider is `openai_compatible`, and every
 Anthropic model the code has no price for, needs `price_in` and `price_out` (USD per 1M tokens, both or neither,
 0-1000; 0 is fine for a local server). Validate, save, restore and reset refuse a document without them; a version
-saved before Plan 23e still loads and charges 0 for those roles, as before. An `openai_compatible` call is charged at
+saved before Plan 23e still loads and charges 0 for those roles, as before. A review never calls a role on a
+free-named provider on a public host that has no price (a hand-edited `llm.yaml`): the role fails like a missing key,
+naming the price; the console's capped test call may still try it. An `openai_compatible` call is charged at
 the role's price (a cost the server reports is ignored); an OpenRouter call at its reported cost, else the catalog, else
 the role's price; an Anthropic call at the role's price, else the code's table. The per-review cap and the daily USD
 counter count these charges.
