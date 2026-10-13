@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { quickReviewFixture, reviewFixture } from "@/test/fixtures";
-import { formStart, fullReviewHref, isQuickReview, quickParts, quickRefs, retryHref } from "./quick";
+import { formStart, fullReviewHref, isQuickReview, quickBlocks, quickParts, quickRefs, quickSentences, retryHref } from "./quick";
 
 describe("Plan 27 quick answer helpers", () => {
   it("tells a quick answer from a full review by its result or its options", () => {
@@ -27,6 +27,28 @@ describe("Plan 27 quick answer helpers", () => {
       { kind: "cite", refs: [], numbers: [], marker: 2 },
       { kind: "text", text: "." },
     ]);
+  });
+
+  it("splits the answer into sentences, each keeping its citation group (Thai: a group then a space ends one)", () => {
+    expect(quickSentences("ผู้ใช้ยามีความเสี่ยงต่ำกว่า (HR 0.80) [P3, P1] แต่การศึกษาหนึ่งพบมากขึ้น [P4]"))
+      .toEqual(["ผู้ใช้ยามีความเสี่ยงต่ำกว่า (HR 0.80) [P3, P1]", "แต่การศึกษาหนึ่งพบมากขึ้น [P4]"]);
+    // English: a full stop (after the group or before it) ends a sentence; a comma or a lower-case word does not
+    expect(quickSentences("Lower risk (HR 0.80) [P3, P1], but more detection [P4]. Certainty is low. Few trials [P2] and cohorts [P5]."))
+      .toEqual(["Lower risk (HR 0.80) [P3, P1], but more detection [P4].", "Certainty is low.", "Few trials [P2] and cohorts [P5]."]);
+    // a full stop before a citation stays with it; decimals and common abbreviations never split
+    expect(quickSentences("Risk fell vs. placebo, e.g. by 1.5 points. [P1] Next one [P2]."))
+      .toEqual(["Risk fell vs. placebo, e.g. by 1.5 points. [P1]", "Next one [P2]."]);
+    expect(quickSentences("No study matched.")).toEqual(["No study matched."]);
+    expect(quickSentences("  ")).toEqual([]);
+  });
+
+  it("numbers the sentence blocks' citation groups as the whole answer does", () => {
+    const blocks = quickBlocks("A lower risk [P3, P1] แต่ไม่ใช่ [P4]. Extra [P9].", ["P3", "P1", "P4"]);
+    expect(blocks.map((b) => b.map((p) => (p.kind === "text" ? p.text : `[${p.numbers.join(",")}]`)).join(""))).toEqual([
+      "A lower risk [1,2]", "แต่ไม่ใช่ [3].", "Extra [].",
+    ]);
+    expect(blocks.flat().flatMap((p) => (p.kind === "cite" ? [p.marker] : []))).toEqual([0, 1, 2]);
+    expect(quickBlocks("", [])).toEqual([]);
   });
 
   it("links the upgrade to the form with the same question, language and eligibility, as a full review", () => {
