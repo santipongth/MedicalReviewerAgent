@@ -238,7 +238,7 @@ Models are `provider:model` strings as in `result.models` (null when not configu
 - Volume, issue and pages appear only for ThaiJO papers (`bib`); the other search sources do not give them. References
   (report and Markdown, Plan 20 Task 6) are Vancouver style from these fields only: `Authors (the first 6, then "et
   al."). Title. Journal. Year;Volume(Issue):Pages. doi: … PMID: … PMCID: … ThaiJO: <page>`, a missing part left out
-  (`Year.` alone when there is no `bib`), titles and journals as written (never translated). Authors are put in
+  (`Year.` alone when there is no `bib`; an issue without a volume is dropped), titles and journals as written (never translated). Authors are put in
   "Surname Initials" form ("Smith, John A." and "John A. Smith" → "Smith JA"; particles such as "van der" stay with the
   surname; one initial per hyphenated part); an entry holding a ";"-separated list is split there, never at a comma; a
   single word, a non-Latin (e.g. Thai) name or one that does not parse is kept as written. DOI links encode each path
@@ -602,7 +602,7 @@ Plan 20 Task 10 adds:
 
 Plan 24 adds (absent while ThaiJO is off):
 - `thaijo`: `{hits, detailed, no_abstract, search_failed, detail_failed, cache_hits, cap, kept, seconds}` for the ThaiJO
-  search (`hits`: health-category hits across the queries; `detailed`: abstracts looked up; `kept`: candidates taken),
+  search (`hits`: health-category hits across the queries, de-duplicated; `detailed`: abstracts looked up; `kept`: candidates taken),
   plus `failed` (an error name) or `timed_out: true` when it failed or was cut, and `metadata: {asked, found, failed,
   timed_out}` for the OAI-PMH step when a ThaiJO paper was read.
 
@@ -1065,7 +1065,8 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
   and, for the ThaiJO papers that are read, the journal's OAI-PMH `GetRecord` (oai_dc) for volume, issue, pages, ISSN,
   licence and article type. Never the PDF and never the HTML article page. Requests carry the User-Agent
   `MedicalReviewerAgent/0.1 (research; contact via repository)`, are never retried or redirected, time out after
-  `THAIJO_REQUEST_TIMEOUT_SECONDS` (5), and the API host is spaced to at most 5 requests a second per process.
+  `THAIJO_REQUEST_TIMEOUT_SECONDS` (5) per read (not per request: the body is read in full, so the step as a whole is
+  bounded by the 12 s budget below), and the API host is spaced to at most 5 requests a second per process.
   Abstracts and OAI records are cached in Redis by article for `THAIJO_CACHE_TTL_SECONDS` (7 days); a corrupt cache
   entry counts as a miss.
 - **What it adds.** Candidates with an English abstract of at least 150 characters (mostly Latin script), at most
@@ -1083,7 +1084,8 @@ containers (`./backend/evals/cochrane`, read-only for the API), never baked into
   encoding is refused before parsing. Abstracts are third-party text: markup is stripped as for Europe PMC and they
   are data in the prompts.
 - **Not included:** `/api/v1/papers/search` and the MCP `search_papers` tool (they stay on the SearXNG engines), and
-  the Cochrane eval's frozen pools (measuring ThaiJO there needs a new pool version, which is a paid batch).
+  Cochrane replays: pools frozen with the flag on include ThaiJO candidates and record `thaijo` in `engines`, but
+  `eval run` and the harness never call ThaiJO (replays start at screening, with ThaiJO unset).
 
 ## Event stream (SSE)
 

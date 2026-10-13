@@ -251,10 +251,10 @@ class ThaiJoClient:
         if not _ARTICLE_ID.fullmatch(article_id):
             return None
         cached = await self._cache_get(f"abs:{article_id}")
-        if isinstance(cached, dict) and "en" in cached:
+        if isinstance(cached, dict) and "en" in cached and (cached["en"] is None or isinstance(cached["en"], str)):
             if stats is not None:
                 stats["cache_hits"] = stats.get("cache_hits", 0) + 1
-            return cached["en"] if isinstance(cached["en"], str) else None
+            return cached["en"]  # anything else is a corrupt entry: a miss
         resp = await self.http.get(f"{self.base_url}/articles/{article_id}", headers=self._headers,
                                    timeout=self.timeout, retries=0, follow_redirects=False)
         if resp.status_code == 404:

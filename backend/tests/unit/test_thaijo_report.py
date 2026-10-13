@@ -41,3 +41,7 @@ def test_markdown_links_the_thaijo_page():
     r["papers"][0] |= {"thaijo_url": URL, "bib": BIB, "doi": None, "pmid": None, "pmcid": None}
     p1 = next(x for x in render_markdown(_review(r)).splitlines() if x.startswith("- [P1] "))
     assert f"ThaiJO: [{URL}]({URL})." in p1 and ";17(4):1048-1066." in p1
+
+
+def test_stub_papers_carry_the_thaijo_fields():
+    assert all(p["thaijo_url"] is None and p["bib"] is None for p in stub_result("t", "en", "slr")["papers"])

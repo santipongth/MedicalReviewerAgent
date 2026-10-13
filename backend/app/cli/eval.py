@@ -24,7 +24,7 @@ import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.evals import models
 from app.evals.batch import run_all
@@ -202,6 +202,13 @@ async def run(argv: list[str], deps, http, base_url: str) -> int:
     return 0
 
 
+def offline_deps(deps: Any, cmd: str) -> None:
+    """No citation network, external tools or ThaiJO: replays stay deterministic. `freeze` keeps ThaiJO (it searches)."""
+    deps.openalex, deps.mcp = None, None
+    if cmd != "freeze":
+        deps.thaijo = None
+
+
 async def eval_main(settings: Settings, config_file: str | None, rest: list[str],
                     session_factory_maker: Callable[[], async_sessionmaker[AsyncSession]],
                     release_db: Callable[[], Awaitable[None]] | None = None) -> int:
@@ -227,7 +234,7 @@ async def eval_main(settings: Settings, config_file: str | None, rest: list[str]
     # report needs the settings (prompt version) and no models
     deps = (build_graph_deps(runtime.settings, http, resolved=resolved, config_version=label,
                              glossary=runtime.glossary) if runtime is not None else GraphDeps(settings=settings))
-    deps.openalex, deps.mcp = None, None  # no citation network or external tools: replays stay deterministic
+    offline_deps(deps, _parser().parse_args(rest).cmd)
     try:
         return await run(rest, deps, http, settings.europepmc_url)
     finally:
