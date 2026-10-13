@@ -175,7 +175,7 @@ class ReviewSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    topic: str
+    topic: str | None  # Plan 30: null for a personal medical refusal (the person's own question is never echoed)
     language: str
     status: str
     created_at: datetime
@@ -207,6 +207,8 @@ class ReviewOut(ReviewSummary):
         if self.verification_rate is None:
             self.verification_rate = verification_rate_of(self.result)
         self.refusal_code = refusal_code_of(self.status, self.error)
+        if self.refusal_code == "personal_medical":  # Plan 30: the topic stays out of every answer about it
+            self.topic = None
         return self
 
 

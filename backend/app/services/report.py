@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 from app.harness.design import NON_QUANTITATIVE_CATEGORIES
 from app.harness.meta import DESIGN_GROUP_LABEL
+from app.services.safety import shown_topic
 from app.services.thaijo import article_link
 
 DIRECTION = {"positive": "supports", "negative": "opposite/harm", "null": "no association",
@@ -376,7 +377,8 @@ def _quick_markdown(review, result: dict[str, Any]) -> str:
 
 def render_markdown(review) -> str:
     result = review.result
-    out = [f"# Literature review: {review.topic}", ""]
+    topic = shown_topic(review.status, review.error, review.topic)  # Plan 30: never a personal refusal's question
+    out = [f"# Literature review: {topic}" if topic else "# Literature review", ""]
     if not result:
         out.append(f"Status: **{review.status}**" + (f" — {review.error}" if review.error else ""))
         return "\n".join(out) + "\n"

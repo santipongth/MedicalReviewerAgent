@@ -240,7 +240,7 @@ class ReviewService:
             return outcome
         review_id = outcome
         try:
-            await self.event_sink.emit(review_id, "queued", {"topic": req.topic})
+            await self.event_sink.emit(review_id, "queued", {})  # Plan 30: no topic in the event log
             await self.queue.enqueue_review(review_id)
         except Exception as exc:
             log.exception("enqueue_failed", review_id=str(review_id))

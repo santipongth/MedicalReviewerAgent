@@ -26,7 +26,7 @@ from app.schemas.review import (
 )
 from app.services.report import quick_view, render_markdown
 from app.services.review_service import Identity, RateLimited, Refused, ServiceError, Unavailable
-from app.services.safety import refusal_code_of
+from app.services.safety import refusal_code_of, shown_topic
 
 _MIN_PAPERS, _MAX_PAPERS = ReviewOptions.bound("max_papers", "ge"), ReviewOptions.bound("max_papers", "le")
 _DEFAULT_PAPERS = ReviewOptions.model_fields["max_papers"].default
@@ -234,8 +234,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
     @mcp.resource("review://{review_id}", mime_type="application/json", description="Review status and result")
     async def review_resource(review_id: str) -> dict[str, Any]:
         r = await review_or_error(review_id)
-        return {"review_id": review_id, "topic": r.topic, "status": r.status, "result": r.result, "error": r.error,
-                "refusal_code": refusal_code_of(r.status, r.error)}
+        return {"review_id": review_id, "topic": shown_topic(r.status, r.error, r.topic), "status": r.status,
+                "result": r.result, "error": r.error, "refusal_code": refusal_code_of(r.status, r.error)}
 
     @mcp.resource("review://{review_id}/report.md", mime_type="text/markdown",
                   description="Review as a Markdown report")

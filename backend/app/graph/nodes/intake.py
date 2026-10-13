@@ -55,6 +55,8 @@ def make_topic_guard(deps):
         except LLMRefusal:
             # provider refusals cluster on self-harm/violence text: give the fixed message with 1669 and 1323
             return {"rejected": rejection_error("personal_medical")}
+        if res.value is None and res.refused:  # Plan 30: the escalation model's refusal is a refusal too
+            return {"rejected": rejection_error("personal_medical"), "cost_usd": res.cost}
         if res.value is None:
             raise LLMOutputError(f"topic check failed: {'; '.join(res.problems) or 'no valid answer'}")
         if res.value.category == "personal_medical":  # Plan 26: a fixed message; the model's reason is not shown
