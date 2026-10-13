@@ -34,9 +34,10 @@ class Candidate(BaseModel):
     title: str
     abstract: str | None = None
     # Where the abstract came from: a curated record (europepmc), the arXiv summary, a full abstract returned by a
-    # SearXNG engine (engine: pubmed, europe pmc, doaj, plos, openaire), or a search-engine snippet,
+    # SearXNG engine (engine: pubmed, europe pmc, doaj, plos, openaire), the English abstract a ThaiJO journal
+    # published (thaijo, Plan 24), or a search-engine snippet,
     # which is often truncated and only counts as an abstract when it looks complete (see retrieval.usable_abstract).
-    abstract_source: Literal["europepmc", "arxiv", "engine", "snippet"] | None = None
+    abstract_source: Literal["europepmc", "arxiv", "engine", "thaijo", "snippet"] | None = None
     doi: str | None = None
     pmid: str | None = None
     pmcid: str | None = None
@@ -50,6 +51,9 @@ class Candidate(BaseModel):
     pub_types: list[str] = Field(default_factory=list)
     cited_by: int | None = None
     engines: list[str] = Field(default_factory=list)
+    # Plan 24: the ThaiJO article page (https://<journal host>.tci-thaijo.org/index.php/<journal>/article/view/<id>),
+    # checked when parsed; the report links it and the OAI-PMH step reads the record from its host. Never a PDF.
+    thaijo_url: str | None = None
 
     @model_validator(mode="after")
     def _fill_key(self) -> Candidate:
