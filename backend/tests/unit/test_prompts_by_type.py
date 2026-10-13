@@ -42,7 +42,9 @@ SYSTEM_HASHES = {
     # adds the sentence-support judge's own prompt and schema (pinned in test_support_prompts_are_pinned); no prompt
     # above changed. 2026-10-13.2 (Plan 26) changes only the topic guard's prompt and schema (the personal_medical
     # category, pinned in test_guard_prompt_is_pinned); no prompt above changed. 2026-10-13.3 (Plan 27) adds the quick
-    # answer's own prompt and schema (pinned in test_quick_prompts_are_pinned); no prompt above changed.
+    # answer's own prompt and schema (pinned in test_quick_prompts_are_pinned); no prompt above changed. 2026-10-14.1
+    # (Plan 30) changes no prompt or schema: the bump only retires cached results made before the prose check scoped
+    # after-period citations.
     "narrative_system": (prompts.narrative_system, "16278465ee36d386eede4011a039ce7adf15588592669958c92883bcc06b3b7d"),
 }
 

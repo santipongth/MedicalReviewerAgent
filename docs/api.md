@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-13.3`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-14.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches the scholarly sources the service has on (eight engines and ThaiJO by default; `GET /api/v1/status` → `sources` lists them), screens about 120 candidate papers that have abstracts, and analyses the abstracts of the 5–50 you choose (default 30). It never fetches full text.
@@ -60,7 +60,7 @@ With the bundled Caddy front, all of these share one origin, `http://localhost:8
 - **422** with `code: "emergency"` (Plan 26) returns `{detail, code, kind, hotlines, message_th}`: the topic reads as an
   emergency, so no review is created (see "Public safety rails and audience modes (Plan 26)").
 
-**Cache hits are free.** The same topic (case and spaces ignored), language, options and pipeline version within 24 hours of finishing, or while still queued or running, returns that review with `cached: true`. Cache hits skip every limit, Turnstile and capacity check. The pipeline version is the prompt version plus the model configuration in use, written `<prompt_version>+llm<id>` (`id` is the saved configuration version, or `file` while `llm.yaml` is in use). A saved glossary starts a new cache generation too (`+g<version>` is added to the pipeline version while a glossary version exists, and results carry `glossary_version`); saved settings never do. A saved model configuration therefore starts a new cache generation: after any save, restore or reset in the admin console (see "Model management"), the same question runs again on the new models instead of returning a review made with the old ones. Deploying Plan 23b itself starts one new generation too: `<prompt_version>` becomes `<prompt_version>+llmfile`, so reviews cached before the deploy are not returned.
+**Cache hits are free.** The same topic (case and spaces ignored), language, options and pipeline version within 24 hours of finishing, or while still queued or running, returns that review with `cached: true`. Cache hits skip every limit, Turnstile and capacity check. The pipeline version is the prompt version plus the model configuration in use, written `<prompt_version>+llm<id>` (`id` is the saved configuration version, or `file` while `llm.yaml` is in use). A saved glossary starts a new cache generation too (`+g<version>` is added to the pipeline version while a glossary version exists, and results carry `glossary_version`); saved settings never do. A saved model configuration therefore starts a new cache generation: after any save, restore or reset in the admin console (see "Model management"), the same question runs again on the new models instead of returning a review made with the old ones. Deploying Plan 23b itself starts one new generation too: `<prompt_version>` becomes `<prompt_version>+llmfile`, so reviews cached before the deploy are not returned. Since Plan 30 the key a finished review is cached under is the one of the configuration the worker ran: a review queued before a save and run after it is stored under the new generation's key, and a run that resumed across a save is never reused (see "Cleanup after review (Plan 30)"). A request made while a review is running attaches to it; if the worker ran a newer configuration, the finished result is stored under that newer generation.
 
 **ThaiJO and the cache (Plan 24).** While `THAIJO_ENABLED` is true, `+thaijo` is added to the pipeline version, so
 turning ThaiJO on or off never returns a review that was searched the other way. ThaiJO is on by default, so deploying
@@ -140,6 +140,7 @@ The response holds the summary fields plus `options`, `result`, `error`, `cost_u
 - `status` is one of `queued`, `running`, `done`, `error`, `rejected` or `cancelled`.
 - `refusal_code` (Plan 26) says why a `rejected` review got no review: `personal_medical` or `declined`; it is `null`
   for every other status.
+- `topic` is `null` for a `personal_medical` refusal (Plan 30): the person's own question is never sent back.
 
 `result` has these keys: `topic, english_topic, language, review_type, question, summary, synthesis, synthesis_en, papers[], queries, stats, quality, errors, prompt_version, llm_preset, models, external_context, citations, meta_analysis, methods`, since Plan 25 `support` (see "Sentence support (Plan 25)"), and since Plan 27 `mode` (`full` or `quick`) and `quick` (null for a full review; see "Quick answer (Plan 27)").
 
@@ -636,7 +637,7 @@ Plan 25 adds (absent in results stored before it):
 
 ### Exports
 
-The web app also serves the whole interactive report as one HTML file that works offline: `GET <origin>/r/{id}/report.html` (attachment `review-<id8>.html`, about 1.3 MB; 409 until done). It renders from the embedded `review.result` and makes no network request (Plan 20 Task 8: the verified-number face is embedded, the other fonts fall back to system fonts); its header carries a metadata line (review id, review type, search date or else created date, generated date, report language, `prompt_version`) and a light/dark theme toggle. Like the web page, it prints as an A4 report that ends with an appendix of every verified number and its source sentence from the abstract (pooled numbers listed apart, with k and the studies).
+The web app also serves the whole interactive report as one HTML file that works offline: `GET <origin>/r/{id}/report.html` (attachment `review-<id8>.html`, about 1.3 MB; 409 until done; for a quick answer 303 to `/r/{id}`, Plan 30). It renders from the embedded `review.result` and makes no network request (Plan 20 Task 8: the verified-number face is embedded, the other fonts fall back to system fonts); its header carries a metadata line (review id, review type, search date or else created date, generated date, report language, `prompt_version`) and a light/dark theme toggle. Like the web page, it prints as an A4 report that ends with an appendix of every verified number and its source sentence from the abstract (pooled numbers listed apart, with k and the studies).
 
 `GET /reviews/{id}/export?format=…` returns an attachment named `review-<first 8 chars of id>.<format>`. It is only available once the review is `done`; before that it returns 409.
 
@@ -929,7 +930,8 @@ admin-only constants, not `/status` limits).
   means **last seen**, not when the version was loaded. A worker that shuts down cleanly removes its entry.
   `GET /admin/llm-config` returns the entries as
   `loaded: [{worker, version, preset, loaded_at, error, settings, glossary, runtime_error}]`, leaving out
-  those not refreshed for a day, and the console calls a worker "not reporting" after 2 minutes.
+  those not refreshed for 3 minutes (Plan 30; six missed checks) and removing them, and any entry that does not parse,
+  from the hash; the console calls a worker "not reporting" after 2 minutes.
 
 **Command line.** `python -m app.cli.models check [--source file|db]` validates `llm.yaml` (the default) or, with
 `--source db`, the configuration in use (the newest version, else `llm.yaml`; `--config` and `--preset` apply to
@@ -1306,10 +1308,43 @@ harness, the owner's call.
 - **Writer.** One call writes 2–4 English sentences, each ending with its `[Pn]` citations, and one sentence on the main limitation. Code checks the answer sentence by sentence: it keeps only citations of papers read as evidence (a citation written after a full stop is moved inside it, "… [P1]."), corrects measure names (a measure is corrected, not removed), removes a sentence with a number or population that its own cited cards do not support (the full review's prose checks), drops a sentence without a citation, and keeps at most 4. A sentence that states any certainty level ("high-certainty evidence", "the certainty is moderate", a GRADE label) is dropped, graded or not: the closing line always carries the computed certainty, and the limits sentence is dropped when it mentions evidence certainty or quality at all. When nothing is left the answer is a fixed "withheld" notice; when the call fails, a fixed failure notice; both point to a full review and promise no list of studies. With no paper to read the message appears once, with no closing line and a null certainty (`synthesis.evidence_strength`, the MCP `certainty`). At most one repair round, no escalation.
 - **Result.** `mode: "quick"`, `summary` = `synthesis.executive_summary` = the answer (shown language; `synthesis_en` holds the English), `synthesis.answer` = the closing line: the fixed certainty sentence of the GRADE-lite baseline (computed in code, never the model's; `evidence_strength` = `grade_baseline`) then the limits sentence, or "not graded" for qualitative studies only. `comparison`, `consensus`, `conflicts`, `key_findings` and `research_gaps` are empty. `quick: {refs, papers_read}`: the cited refs in order of first citation (reference `[k]` is `refs[k-1]`) and the number of evidence papers the answer was written from. `papers`, `stats`, `question`, `methods` and `support` (Plan 25, which checks the answer's sentences) are as in a full review.
 - **Numbers.** Only numbers verified against the abstracts (`app/harness/verify.py`) can stay in the answer; translation keeps them unchanged.
-- **Cost and limits.** One review against the same hourly rate limit, key quota, queue and daily counters as a full review. Its cost cap is the usual formula with the quick sizes: 0.04 + 0.006 × 8 + 0.0005 × 30 = $0.103 (defaults); expected spend about $0.02 on `budget`. Admission reserves that cap for a new quick answer; queued reviews are reserved at the worst case, as before.
+- **Cost and limits.** One review against the same hourly rate limit, key quota, queue and daily counters as a full review. Its cost cap is the usual formula with the quick sizes (`limits.quick` in `GET /api/v1/status`) and the cost settings in force; expected spend about $0.02 on `budget`. Admission reserves that cap for a new quick answer; queued reviews are reserved at the worst case, as before.
 - **Time.** About 45–75 s on `budget` (an estimate, not measured live: search, screening 3 batches, reading 8 papers in one wave, writing and translating).
 - **Exports.** `export?format=md` and `review://{id}/report.md` give "# Quick answer: …", the answer with `[1]…[n]`, the closing line, a scope note and the numbered references. `csv` and `json` are as for any review.
 - **Web.** The home form starts as a quick answer; `/r/{id}` shows the answer, the numbered references (links to PubMed, DOI, PubMed Central or ThaiJO), the public safety notices (Plan 26) and "ทำรีวิวฉบับเต็ม", which opens the form as a full review with the same question, language, start year and study types.
+
+## Cleanup after review (Plan 30)
+
+Behaviour changed by the cleanup of the review findings of Plans 22a–27. The only version change is
+`prompt_version 2026-10-14.1`: no prompt or schema changed, but stored full-review summaries now keep an after-period
+citation inside its sentence and drop a number misattributed to another paper, so results cached before are not reused.
+- **Cache generation that ran.** The API keys a request with the versions it sees at admission (`<prompt_version>`,
+  `+llm<id>`, `+g<version>`, the sources' `+thaijo` / `+src<fingerprint>`). The worker picks its configuration up when
+  the job starts, so a job queued across an admin save runs on the newer one. On `done` the worker computes the same
+  string from what it loaded and stores it as `result.pipeline_version`; when it gives another key than the admission's,
+  the review is stored under that key (a request made under the new configuration reuses it, one made under the old
+  does not). A run that resumed from a checkpoint and whose version differs may hold work of two configurations: it is
+  stored under a key no request computes, so it is never reused. A request made while a review is running attaches to
+  it, and if the worker ran a newer configuration the finished result is stored under that newer generation.
+- **A personal medical refusal's question.** `GET /reviews/{id}` and the MCP resource `review://{id}` return
+  `topic: null`, the Markdown report (`review://{id}/report.md`) has the title "# Literature review" with no topic, and
+  the event stream never carries the topic (the `queued` event is `{}`). Admins (the console) still see a refused
+  personal review's topic; public surfaces never do. The web page keeps a neutral tab title until
+  the topic check has passed (the first event after `checking_topic`).
+- **An escalation model's refusal** during the topic check ends the review as a `personal_medical` refusal (the fixed
+  message naming 1669 and 1323), like a refusal of the guard's own model. A guard answer that is only malformed still
+  ends the review as `error`.
+- **Red flags.** "swallowed … coin(s)" and "ate / swallowed / drank … rat (mouse, rodent) poison (bait)" are medical red
+  flags under the usual anchor and cue rule; titles such as "coin ingestion in children" are not refused.
+- **Prose checks.** A citation group written after the full stop ("… (HR 0.55). [P1]") belongs to the sentence before
+  it when that sentence cites nothing else: it is moved inside the stop, and the sentence's numbers are checked against
+  that paper only (it was checked against every paper). The quick answer's limits sentence is left out when it advises a
+  person ("Patients should stop…", "Take…", "you…"); the next sentence that passes is used, else none.
+- **The offline report** `GET <origin>/r/{id}/report.html` of a quick answer answers **303** to `/r/{id}`: a quick
+  answer has no full report.
+- **The sources a review searched** (the search stage's `quality` entry) list the env-only engines (`extras`, for
+  example `plos`) after the catalog sources.
+- **Queue positions** of reviews created in the same clock tick are ordered by id, so no two share a position.
 
 ## Event stream (SSE)
 
@@ -1323,7 +1358,7 @@ Every event sent by the worker carries `elapsed_s` (seconds since the review fir
 
 | Event | Payload | Notes |
 |---|---|---|
-| `queued` | `{topic}` | sent by the API |
+| `queued` | `{}` | sent by the API; it carried `{topic}` before Plan 30, and a replay leaves `topic` out of those stored events |
 | `started` | `{resume}` | repeated when a review resumes after a worker restart |
 | `checking_topic` | `{}` | |
 | `refining` | `{}` | |
@@ -1379,7 +1414,7 @@ The server name is `medical-reviewer-agent`, version 0.8.0. The `Host` header mu
 |---|---|---|
 | `search_papers(query, limit=10)` | `{query, papers: [{title, authors (≤6), year, journal, doi, pmid, pmcid, url, is_open_access, abstract (first 600 chars)}]}` | Searches the SearXNG engines reviews use (`GET /api/v1/status` → `sources`; never ThaiJO). `limit` is clamped to 1–25. Shares the paper-search limit |
 | `start_review(topic, language="th", max_papers=30, review_type="slr", study_types=None, year_from=None, mode="full")` | `{review_id, status, cached, status_url}`; for a topic that reads as an emergency `{review_id: null, status: "refused", code: "emergency", kind, hotlines, message, message_th}` (Plan 26) | `topic`: up to 600 characters. `max_papers`: clamped into 5–50 (not rejected; default 30). `review_type`: `narrative`, `slr`, `scoping` or `meta_analysis`; an unknown value is a tool error. `study_types`: the canonical names above or `"Other: <text>"`, normalised as in REST. `year_from`: 1950–2100. `mode` (Plan 27): `full` or `quick`; with `quick` the service sets the type and both sizes. Capacity errors include the reason and the wait time |
-| `quick_answer(topic, language="th", study_types=None, year_from=None, wait_seconds=60)` | `{review_id, status, cached, status_url}` plus, once done, `{answer, closing, certainty, papers_read, references: [{n, ref, citation, links: [{label, url}]}]}`; still running: `message`; ended otherwise: `error`, `refusal_code`; an emergency: the `refused` result of `start_review` | Plan 27. Starts (or reuses) a quick answer and waits up to `wait_seconds` (0–90) for it, checking every 2 s. `answer` has the `[Pn]` groups renumbered `[1]…[n]` by first citation; `references[n-1]` is reference `[n]`, with links to doi.org, PubMed, PubMed Central or ThaiJO. One review against the same limits as `start_review` |
+| `quick_answer(topic, language="th", study_types=None, year_from=None, wait_seconds=60)` | `{review_id, status, cached, status_url}` plus, once done, `{answer, closing, certainty, papers_read, references: [{n, ref, citation, links: [{label, url}]}]}`; still running: `message`; ended otherwise: `error`, `refusal_code`; an emergency: the `refused` result of `start_review` | Plan 27. Starts (or reuses) a quick answer and waits up to `wait_seconds` (0–90) for it, checking every 2 s. A client (an API key, else an address) waits in at most `sse_max_per_ip` calls at once (Plan 30); one more returns at once, as with `wait_seconds` 0. `answer` has the `[Pn]` groups renumbered `[1]…[n]` by first citation; `references[n-1]` is reference `[n]`, with links to doi.org, PubMed, PubMed Central or ThaiJO. One review against the same limits as `start_review` |
 | `get_review_status(review_id)` | `{review_id, status, error, refusal_code, created_at, finished_at}` | poll until `done`, `error`, `rejected` or `cancelled`; `refusal_code` as in REST (Plan 26) |
 | `get_review_result(review_id)` | `{review_id, status, result}` | The `result` shape is the same as REST: `citations` and, for `meta_analysis`, `meta_analysis`. If the review is not done: `{…, result: null, message, error, refusal_code}` |
 
@@ -1387,7 +1422,7 @@ The server also exposes these resources and one prompt:
 
 | Kind | Name | Returns |
 |---|---|---|
-| Resource | `review://{id}` | JSON `{review_id, topic, status, result, error}` |
+| Resource | `review://{id}` | JSON `{review_id, topic, status, result, error, refusal_code}`; `topic` is null for a `personal_medical` refusal (Plan 30) |
 | Resource | `review://{id}/report.md` | the Markdown report |
 | Prompt | `literature_review(topic)` | |
 
