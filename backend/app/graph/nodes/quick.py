@@ -33,6 +33,8 @@ from app.graph.nodes.synthesis import (
 from app.graph.schemas import QuickAnswerDraft, Synthesis
 from app.graph.state import ReviewState
 from app.harness.prose import (
+    _CITES_AFTER_STOP,
+    _LEADING_CITES,
     ProseContext,
     fix_prose,
     fix_statement,
@@ -54,7 +56,6 @@ QUICK_FAILED = ("The quick answer could not be written (a temporary model or ser
 NOT_GRADED = "The certainty of the evidence is not graded: the studies read report themes, not effects."
 
 
-_CITES_AFTER_STOP = re.compile(r"^(?P<body>.*?)(?P<stop>[.!?])\s*(?P<cites>(?:\s*\[\s*P\d+[^\]]*\])+)\s*$", re.DOTALL)
 
 
 def _cite_inside_stop(sentence: str) -> str:
@@ -62,9 +63,6 @@ def _cite_inside_stop(sentence: str) -> str:
     "[", so a citation after the stop would leave its claim looking uncited (and in scope of every paper)."""
     m = _CITES_AFTER_STOP.match(sentence)
     return f"{m['body'].rstrip()} {m['cites'].strip()}{m['stop']}" if m else sentence
-
-
-_LEADING_CITES = re.compile(r"^(?:\s*\[\s*P\d+[^\]]*\])+")
 
 
 def _sentences(items: list[str]) -> list[str]:
@@ -109,12 +107,16 @@ _CERTAINTY_TALK = re.compile(
 # Plan 30: direct advice to a person ("Patients should stop…", "Take X…", "you should…") is never a limits sentence;
 # such a sentence is dropped like a certainty claim (fail-safe: the next clean sentence, else none). Research wording
 # ("patients should be followed up longer in future trials") is not advice: the verbs are the ones a person acts on.
-_ACT = r"(?:stop|start|take|avoid|switch|use|ask|consult|see|talk|discuss|continue|keep|try|reduce|increase)"
+_ACT = r"(?:stop|start|take|avoid|switch|use|ask|consult|see|seek|speak|talk|discuss|continue|keep|try|reduce|increase|consider)"
+# An imperative opens the sentence only as a verb phrase: "Use was self-reported", "Stop rules were...", "Increase in
+# dose was rare", "Never users served..." are ordinary limitations (the verb is followed by a was/were/rules/in/of).
 _ADVICE = re.compile(
-    rf"(?i)^\W*(?:please\s+)?(?:{_ACT}|do\s+not|don'?t|never|always\s+{_ACT})\b(?!-|\s+of\b)"
-    rf"|\b(?:you|your|yourself)\b"
-    rf"|\b(?:patients?|people|readers?|anyone|everyone|adults|parents)\s+(?:should|must|need\s+to|ought\s+to)"
-    rf"\s+(?:not\s+)?{_ACT}\b")
+    rf"(?i)^\W*(?:please\s+)?(?:(?:{_ACT})\b(?!-|\s+(?:of|in|was|were|is|are|rules?|had|has|did)\b)"
+    rf"|(?:do\s+not|don'?t)\b|always\s+{_ACT}\b|never\s+(?:{_ACT}|take|use)\b)"
+    rf"|\b(?:you|yourself)\b"
+    rf"|\byour\s+(?:doctor|physician|pharmacist|nurse|clinician|health|medic)"
+    rf"|\b(?:patients?|people|readers?|anyone|everyone|adults|parents|women|men|clinicians|doctors|those)\s+"
+    rf"(?:should|must|need\s+to|ought\s+to)\s+(?:not\s+)?{_ACT}\b")
 
 
 def _claims_level(sentence: str, strength: str | None) -> bool:

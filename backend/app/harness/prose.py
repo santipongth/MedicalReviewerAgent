@@ -374,10 +374,12 @@ def _sentences(text: str) -> list[str]:
     out: list[str] = []
     for piece in _SENTENCE.split(text.strip()):
         lead = _LEADING_CITES.match(piece)
-        if lead and out and (not _REF.search(out[-1]) or not piece[lead.end():].strip()):
+        rest = piece[lead.end():].strip() if lead else ""
+        bare = not re.search(r"\w", rest)  # nothing left, or only punctuation
+        if lead and out and (bare or (not _REF.search(out[-1]) and rest[:1].isupper())):
             m = _CITES_AFTER_STOP.match(f"{out[-1]} {lead.group(0).strip()}")
             out[-1] = f"{m['body'].rstrip()} {m['cites'].strip()}{m['stop']}" if m else f"{out[-1]} {lead.group(0).strip()}"
-            piece = piece[lead.end():].strip()
+            piece = "" if bare else rest
         if piece:
             out.append(piece)
     return out

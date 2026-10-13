@@ -59,3 +59,37 @@ def test_a_limits_sentence_that_advises_a_person_is_dropped(advice):
 ])
 def test_research_wording_is_not_advice(limits):
     assert closing_line(limits, quick_ctx(), "low") == f"{ANSWER_CERTAINTY['low']} {limits}"
+
+
+def test_a_group_that_starts_a_new_clause_stays_with_it():
+    assert _sentences("Results were mixed. [P2] found a hazard ratio of 0.74.") == [
+        "Results were mixed.", "[P2] found a hazard ratio of 0.74."]
+    assert _sentences("Risk fell (HR 0.74). [P1] [P2] reported a smaller effect.") == [
+        "Risk fell (HR 0.74).", "[P1] [P2] reported a smaller effect."]
+    assert _sentences("Results were mixed. [P2] Another trial found less.") == [
+        "Results were mixed [P2].", "Another trial found less."]
+    c = ctx(META_PAPERS)
+    text = "Results were mixed. [P2] found a hazard ratio of 0.74 for hospitalisation."
+    fixed, counts = fix_prose(text, c)
+    assert "[P2]. found" not in fixed and counts == {"numbers_removed": 1}
+
+
+def test_a_piece_left_with_only_punctuation_is_dropped():
+    assert _sentences("Risk fell. [P1]. Next.") == ["Risk fell [P1].", "Next."]
+
+
+@pytest.mark.parametrize("advice", [
+    "Consider checking renal function.", "Seek medical help if symptoms worsen.",
+    "Women should avoid it in pregnancy.", "Clinicians should consider dose reduction.",
+    "Speak to your doctor.",
+])
+def test_more_advice_is_dropped(advice):
+    assert closing_line(advice, quick_ctx(), "low") == ANSWER_CERTAINTY["low"]
+
+
+@pytest.mark.parametrize("limits", [
+    "Use was self-reported.", "Stop rules were not reported.", "Increase in dose was rare.",
+    "Never users served as controls.", "Trials did not report what your risk would be.",
+])
+def test_ordinary_limitations_are_kept(limits):
+    assert closing_line(limits, quick_ctx(), "low") == f"{ANSWER_CERTAINTY['low']} {limits}"
