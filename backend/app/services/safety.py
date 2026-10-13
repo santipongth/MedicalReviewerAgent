@@ -95,15 +95,16 @@ MEDICAL_PATTERNS_TH = (r"กินยา.{0,12}[\d๐-๙]+เม็ด", r"ก�
 # the backstop for every emergency this pass lets through. A topic with a research word (RESEARCH_EN/TH) is never
 # flagged, except by the self-harm "always" phrases. Otherwise a medical red flag counts when:
 # - it has an explicit personal anchor: English I / I'm / me / my / our (so "my|our <kin>" is covered) / someone /
-#   right now; Thai first-person pronouns, or a kin word at the very start of the topic or right before a pronoun
-#   (แม่ฉัน). Standalone help / now / urgent / kin words are NOT anchors. Compounds in NONPERSONAL_TH neutralise only
+#   right now; Thai first-person pronouns, or a kin word at the very start of the topic (not followed by ที่ / ของ,
+#   which make a population title: "แม่ที่มีภาวะ…") or right before a pronoun (แม่ฉัน). Standalone help / now / urgent / kin words are NOT anchors. Compounds in NONPERSONAL_TH neutralise only
 #   the marker they contain; or
 # - Thai, no anchor (Thai drops pronouns): the topic is short (at most 40 characters without spaces) and has no framer
 #   (FRAMERS_TH, including connectors such as จาก / และ / ลด / แก้ / ต้าน / ขณะ, or a leading ยา "drug"):
 #   "เจ็บหน้าอกมาก หายใจไม่ออก" counts, "เจ็บหน้าอกจากกรดไหลย้อน" does not; or
 # - English, no anchor: the topic has at most 8 words, no framing word (FRAMERS_EN) outside the red-flag phrase, AND a
-#   conversational cue (CUES_EN: a kin word, a pronoun, a verb such as is / has / took, a negation such as cant, or an
-#   urgency word such as help / now / what to do): "baby not breathing" and "mom collapsed please help" count; a
+#   conversational cue (CUES_EN: a kin word, a pronoun, a verb such as has / took, a negation such as cant, or an
+#   urgency word such as help / now / what to do; question and first-aid words such as why / how / first aid are
+#   framers): "baby not breathing" and "mom collapsed please help" count; a
 #   noun-phrase title such as "heart attack aspirin" or "slurred speech thrombectomy" has no cue and does not.
 #   Noun-like flags (NOANCHOR_EXCLUDED_EN: overdose, anaphylaxis ...) always need an anchor.
 # Known misses handed to the guard: an English message with no anchor and no cue ("took a whole bottle of sleeping
@@ -116,10 +117,11 @@ KINSHIP_TH = ("แม่", "พ่อ", "ลูก", "สามี", "ภรร�
 # Compounds where a pronoun or kin word is part of another word.
 NONPERSONAL_TH = ("ลูกน้ำ", "ลูกค้า", "ลูกเห็บ", "แม่น้ำ", "แม่บ้าน", "แม่ครัว", "พ่อแม่", "พี่เลี้ยง", "พี่น้อง",
                   "ขยาย", "แฟนตาซี", "ผมร่วง", "ผมบาง", "ผมหงอก", "เส้นผม", "หนูทดลอง", "หนูตะเภา", "ในหนู",
-                  "น้องหมา", "น้องแมว")
+                  "น้องหมา", "น้องแมว", "ยาย่อย", "ยายับยั้ง")  # ยาย่อย / ยายับยั้ง are drugs, not ยาย
 # Words that frame a Thai topic as a subject (not a conversation): the no-anchor rule does not apply.
 FRAMERS_TH = ("ภาวะ", "การ", "อาการ", "สาเหตุ", "ปัจจัย", "ผล", "ความ", "สำหรับ", "หลัง", "ใน", "ของ", "กับ",
-              "ระหว่าง", "ต่อ", "เทียบ", "ป้องกัน", "รักษา", "จาก", "และ", "ลด", "แก้", "ต้าน", "ขณะ")
+              "ระหว่าง", "ต่อ", "เทียบ", "ป้องกัน", "รักษา", "จาก", "และ", "ลด", "แก้", "ต้าน", "ขณะ",
+              "ยาย่อย", "ยายับยั้ง")
 FRAMER_PATTERNS_TH = (r"^ยา(?!ย)",)  # a topic that starts with ยา ("drug ...") names a treatment; ยาย is grandma
 PRO_DROP_MAX_CHARS = 40
 # English mirror of the short-topic rule: a medical red flag with no anchor counts when the topic has at most
@@ -128,8 +130,9 @@ PRO_DROP_MAX_CHARS = 40
 # without an anchor (NOANCHOR_EXCLUDED_EN).
 SHORT_EN_MAX_WORDS = 8
 # "not" is no cue ("not breathing newborn resuscitation" is a title); "baby not breathing" is caught through "baby".
+# Neither are is / are / was: titles use them ("is coughing up blood always cancer").
 CUES_EN = ("help", "now", "please", "urgent", "asap", "quick", "quickly", "hurry", "what to do", "what do i do",
-           "what should i do", "he", "she", "they", "him", "her", "his", "is", "are", "was", "has", "just", "keeps",
+           "what should i do", "he", "she", "they", "him", "her", "his", "has", "just", "keeps",
            "took", "mom", "mum", "mother", "dad", "father", "baby", "son", "daughter", "husband", "wife", "child",
            "kid", "brother", "sister", "friend", "grandma", "grandpa", "granny", "grandmother", "grandfather",
            "boyfriend", "girlfriend", "partner", "cant", "wont")
@@ -138,7 +141,8 @@ FRAMERS_EN = ("in", "of", "for", "among", "with", "without", "vs", "versus", "co
               "factors", "factor", "guidelines", "and", "or", "by", "on", "from", "after", "during", "between",
               "about", "symptoms", "signs", "syndrome", "recovery", "care", "know", "lung", "after", "than",
               "as", "at", "among", "rate", "rates", "epidemiology", "overview", "history", "definition",
-              "lines", "leading", "protests", "pollution")
+              "lines", "leading", "protests", "pollution", "why", "how", "what is", "first aid", "when to", "always",
+              "sign")
 NOANCHOR_EXCLUDED_EN = ("anaphylaxis", "anaphylactic", "severe allergic reaction", "overdose", "overdosed")
 # Research framing: the topic asks about evidence for a population, so a red flag in it is a research subject.
 RESEARCH_EN = ("study", "studies", "trial", "research", "evidence", "review", "systematic", "meta-analys",
@@ -204,8 +208,9 @@ _RESEARCH_TH, _NONPERSONAL_TH = _thai(RESEARCH_TH), _thai(NONPERSONAL_TH)
 _FRAMERS_TH = _thai(FRAMERS_TH, FRAMER_PATTERNS_TH)
 _PRONOUN = "|".join(re.escape(p) for p in _norm_th(PERSONAL_TH) if p not in ("เรา", "กู")) + r"|เรา(?!ะ)|(?<![ก-ฮ])กู(?![ะ-ฺ็-๎])"
 _KIN = "|".join(re.escape(k) for k in _norm_th(KINSHIP_TH))
-# a pronoun, or a kin word at the very start or right before a pronoun; applied after _NONPERSONAL_TH spans are blanked
-_ANCHOR_TH = re.compile(rf"(?:{_PRONOUN})|^(?:{_KIN})|(?:{_KIN})(?:ของ)?(?:{_PRONOUN})")
+# a pronoun, or a kin word at the very start (not a population title: แม่ที่… / ลูกของ…) or right before a pronoun;
+# applied after _NONPERSONAL_TH spans are blanked
+_ANCHOR_TH = re.compile(rf"(?:{_PRONOUN})|^(?:{_KIN})(?!ที่|ของ)|(?:{_KIN})(?:ของ)?(?:{_PRONOUN})")
 
 
 @dataclass(frozen=True)

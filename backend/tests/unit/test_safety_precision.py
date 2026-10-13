@@ -102,8 +102,53 @@ HELDOUT_EMERGENCIES = [
 ]
 
 
+# Fix round 5: an independent held-out check (rr4).
+RR4_RESEARCH = [
+    "children with difficulty breathing: high-flow nasal oxygen",
+    "mothers with gestational diabetes who had a seizure postpartum",
+    "ทารกที่หยุดหายใจขณะหลับ", "ทารกที่ไม่หายใจขณะหลับ",
+    "Does aspirin reduce death after a heart attack?",
+    "Is tranexamic acid effective for heavy bleeding after childbirth?",
+    "Chest pain: high-sensitivity troponin rule-out", "Choking: back blows versus abdominal thrusts",
+    "Can naloxone given by bystanders reverse an overdose?",
+    "เด็กที่ชักไม่หยุดจากไข้สูง", "ลูกของมารดาที่กินยาเกินขนาดระหว่างตั้งครรภ์", "แม่ที่มีภาวะหายใจลำบากหลังคลอด",
+    "หายใจไม่ออกตอนออกกำลังกายในนักกีฬา", "กินยาเกินขนาดโดยตั้งใจในวัยรุ่น", "เลือดออกมากหลังคลอด: ยา oxytocin",
+    "ยาย่อยลิ่มเลือด แขนขาอ่อนแรง", "ยายับยั้งเกล็ดเลือดหลังเจ็บหน้าอก",
+    "children with asthma attacks who are short of breath", "Why is chest pain missed",
+    "is coughing up blood always cancer",
+]
+# Caught (13/20). Left to the guard: "my mom cnt breathe", "dad having chest pian", "help my son swallowed a coin",
+# "grandma face drooping and cant talk", "my kid ate rat poison", "she cut her wrists bleeding alot", "สามีเจบหน้าอก".
+RR4_EMERGENCIES = [
+    ("my wife just collapsed", "medical"), ("baby turned blue not breathing", "medical"),
+    ("my friend took 40 tylenol", "medical"), ("husband having a heart attack i think", "medical"),
+    ("someone collapsed in the street", "medical"), ("my brother overdosed on heroin", "medical"),
+    ("แม่เจ็บหน้าอกมาก", "medical"), ("พ่อหมดสติล้มในห้องน้ำ", "medical"), ("ลูกกินยาพาราไป 15 เม็ด", "medical"),
+    ("หายใจไม่ออก ช่วยด้วย", "medical"), ("เพื่อนชักกระตุก ทำไงดี", "medical"),
+    ("แฟนกรีดข้อมือเลือดไม่หยุด", "self_harm"), ("ยายล้มหัวฟาดพื้นไม่รู้สึกตัว", "medical"),
+]
+# Accepted and parked (flagged through the "someone" anchor): "what to do when someone is choking: public knowledge",
+# "first aid for someone having a seizure".
+RR4_TRAPS = [
+    "help-seeking after stroke", "when to call an ambulance for chest pain",
+    "why mothers delay care for children with breathing difficulty", "what to do in anaphylaxis guidelines",
+    "what is a heart attack", "how bystanders help someone who collapsed", "first aid when a child is not breathing",
+    "เมื่อลูกชักจากไข้ พ่อแม่ควรทำอย่างไร",
+]
+
+
 def _flagged(topics):
     return [t for t in topics if safety.red_flag(t) is not None]
+
+
+@pytest.mark.parametrize("topics", [RR4_RESEARCH, RR4_TRAPS], ids=["rr4-research", "rr4-traps"])
+def test_rr4_research_titles_and_traps_are_not_refused(topics):
+    assert _flagged(topics) == []
+
+
+@pytest.mark.parametrize(("topic", "kind"), RR4_EMERGENCIES)
+def test_rr4_emergencies_keep_their_kind(topic, kind):
+    assert safety.red_flag(topic) == safety.Emergency(kind), topic
 
 
 @pytest.mark.parametrize("topics", [FRESH_TH_RESEARCH, FRESH_EN_RESEARCH, HELDOUT_TH_RESEARCH, HELDOUT_EN_RESEARCH],
