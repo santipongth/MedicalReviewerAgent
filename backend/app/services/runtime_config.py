@@ -46,6 +46,7 @@ class RuntimeConfig:
         self._glossary = "file"
         self._expires = float("-inf")
         self._lock = asyncio.Lock()
+        self._generation = 0  # bumped by invalidate(): a refresh that began earlier must not store what it read
 
     async def _fresh(self) -> None:
         if self.clock() < self._expires:
@@ -53,15 +54,19 @@ class RuntimeConfig:
         async with self._lock:
             if self.clock() < self._expires:
                 return
+            generation = self._generation
+            loaded: tuple[Settings, int | None, str] | None = None
             try:
                 settings = await read_active(self.session_factory, self.redis, SETTINGS_KIND)
                 glossary = await read_active(self.session_factory, self.redis, GLOSSARY_KIND)
+                loaded = (apply_overrides(self.base, settings.mirror.get("values")), settings.version,
+                          "file" if glossary.version is None else str(glossary.version))
             except Exception as exc:  # noqa: BLE001 - keep the last values (env until any are known)
                 log.warning("runtime_config_unavailable", error=type(exc).__name__)
-            else:
-                self._settings = apply_overrides(self.base, settings.mirror.get("values") or {})
-                self._settings_version = settings.version
-                self._glossary = "file" if glossary.version is None else str(glossary.version)
+            if generation != self._generation:
+                return  # invalidate() ran during the read, which may predate the save: read again next time
+            if loaded is not None:
+                self._settings, self._settings_version, self._glossary = loaded
             self._expires = self.clock() + self.ttl
 
     async def settings(self) -> Settings:
@@ -77,5 +82,7 @@ class RuntimeConfig:
         return self._glossary
 
     def invalidate(self) -> None:
-        """The saving process reads again at once; other processes follow within the TTL."""
+        """The saving process reads again at once; other processes follow within the TTL. A refresh already under way
+        is dropped, not stored: what it read may be from before the save."""
+        self._generation += 1
         self._expires = float("-inf")

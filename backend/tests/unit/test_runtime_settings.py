@@ -1,3 +1,6 @@
+import asyncio
+import json
+
 import pytest
 
 from app.config import Settings
@@ -162,3 +165,106 @@ async def test_load_runtime_reads_the_db(session_factory):
     rt = await load_runtime(session_factory, BASE)
     assert rt.settings.llm_concurrency == 4 and rt.settings_version == "1"
     assert rt.glossary == ActiveGlossary(1, "placebo = ยาหลอก")
+
+
+async def test_capacity_follows_the_cost_values_of_the_settings_it_is_given(redis):
+    cap = Capacity(redis, BASE)
+    pricey = apply_overrides(BASE, {"review_cost_base_usd": 0.5, "max_cost_per_review_usd": 2.0,
+                                    "max_usd_per_day": 2.0})
+    assert worst_case_review_cap(pricey) > worst_case_review_cap(BASE)
+    # two reviews already queued: 3 x the worst case must fit. 3 x 0.40 fits in $2, 3 x 0.86 does not.
+    assert await cap.check(queued=2, settings=BASE.model_copy(update={"max_usd_per_day": 2.0})) is None
+    refusal = await cap.check(queued=2, settings=pricey)
+    assert refusal is not None and refusal.reason == "daily_budget"
+    assert cap.worst_case_cap(pricey) == worst_case_review_cap(pricey) != cap.worst_case_cap()
+
+
+def test_the_daily_budget_is_checked_against_the_merged_settings():
+    assert validate_settings({"values": {"max_usd_per_day": 1}}, BASE)[0] == {"values": {"max_usd_per_day": 1.0}}
+    with pytest.raises(DocumentError, match="no review could be admitted") as info:
+        validate_settings({"values": {"max_usd_per_day": 1, "max_cost_per_review_usd": 2,
+                                      "review_cost_base_usd": 1}}, BASE)
+    assert info.value.errors[0]["field"] == "max_usd_per_day"
+
+
+def test_a_zero_per_review_cap_is_refused_without_echoing_values():
+    zero = {"review_cost_base_usd": 0, "review_cost_per_paper_usd": 0, "review_cost_per_candidate_usd": 0}
+    with pytest.raises(DocumentError) as info:
+        validate_settings({"values": zero}, BASE)
+    assert info.value.errors == [{"field": "review_cost_base_usd", "message": (
+        "the per-review cap would be $0 — at least one cost value must be above 0")}]
+    zero_in_env = BASE.model_copy(update={name: 0.0 for name in zero})
+    with pytest.raises(DocumentError, match="above 0"):  # the merge counts: nothing in the document sets a cost
+        validate_settings({"values": {"max_queued_reviews": 5}}, zero_in_env)
+    validate_settings({"values": {**zero, "review_cost_per_paper_usd": 0.001}}, BASE)  # one cost above 0 is enough
+
+
+def test_values_that_are_not_a_mapping_leave_the_env_settings_alone():
+    for bad in ([1, 2], "oops", 7, None, ()):
+        assert apply_overrides(BASE, bad) is BASE
+
+
+async def test_a_hand_written_mirror_with_odd_values_never_raises(session_factory, redis):
+    clock = Clock()
+    rc = RuntimeConfig(BASE, session_factory, redis, ttl=5.0, clock=clock)
+    key = SETTINGS_KIND.redis_key
+    await redis.set(key, json.dumps({"version": 3, "values": [1, 2]}))
+    assert await rc.settings() is BASE and await rc.settings_version() == 3
+    clock.now = 6.0
+    await redis.set(key, json.dumps({"version": 4, "values": "oops"}))
+    assert await rc.settings() is BASE and await rc.settings_version() == 4
+    clock.now = 12.0
+    await redis.set(key, json.dumps({"version": 5, "values": {"max_queued_reviews": 77}}))
+    assert (await rc.settings()).max_queued_reviews == 77
+
+
+async def test_an_invalidate_during_a_refresh_is_not_undone_by_it(session_factory, redis):
+    """The refresh read the mirror before a save; the save then published and invalidated. Storing that old read would
+    keep the old settings for a whole TTL in the process that saved."""
+    started, release = asyncio.Event(), asyncio.Event()
+    reads = []
+
+    class Gated:
+        async def get(self, key):
+            value = await redis.get(key)  # read first: what a refresh that began before the save sees
+            reads.append(key)
+            started.set()
+            await release.wait()
+            return value
+
+        def __getattr__(self, name):
+            return getattr(redis, name)
+
+    rc = RuntimeConfig(BASE, session_factory, Gated(), ttl=5.0, clock=Clock())
+    refresh = asyncio.create_task(rc.settings())
+    await started.wait()
+    row = await save(session_factory, SETTINGS_KIND, {"values": {"max_queued_reviews": 80}})
+    await publish(redis, SETTINGS_KIND, row)
+    rc.invalidate()
+    release.set()
+    await refresh
+    before = len(reads)
+    assert (await rc.settings()).max_queued_reviews == 80 and await rc.settings_version() == 1
+    assert len(reads) > before  # it read again instead of trusting the refresh that was overtaken
+
+
+async def test_a_failed_refresh_is_not_retried_within_the_ttl(session_factory):
+    clock = Clock()
+    calls = {"redis": 0, "db": 0}
+
+    class Down:
+        async def get(self, *_):
+            calls["redis"] += 1
+            raise ConnectionError("down")
+
+    def broken_factory():
+        calls["db"] += 1
+        raise OSError("db down")
+
+    rc = RuntimeConfig(BASE, broken_factory, Down(), ttl=5.0, clock=clock)
+    for _ in range(3):
+        assert await rc.settings() is BASE and await rc.glossary_label() == "file"
+    assert calls == {"redis": 1, "db": 1}
+    clock.now = 5.1
+    assert await rc.settings() is BASE
+    assert calls == {"redis": 2, "db": 2}

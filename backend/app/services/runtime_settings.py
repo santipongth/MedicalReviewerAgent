@@ -81,9 +81,14 @@ def coerce(spec: SettingSpec, value: Any) -> str | int | float:
 
 
 def apply_overrides(base: Settings, values: dict[str, Any]) -> Settings:
-    """The env settings with the saved values; anything unknown or invalid is skipped with a log line."""
+    """The env settings with the saved values; anything unknown or invalid is skipped with a log line, and values
+    that are not a mapping at all (a hand-edited row or mirror) leave the env settings as they are."""
+    if not isinstance(values, dict):  # a hand-edited row or mirror: env values, never an error on the hot path
+        if values:
+            log.warning("runtime_settings_not_a_mapping", got=type(values).__name__)
+        return base
     update: dict[str, Any] = {}
-    for name, value in (values or {}).items():
+    for name, value in values.items():
         spec = BY_NAME.get(name)
         if spec is None:
             log.warning("runtime_setting_unknown", name=str(name)[:64])
@@ -116,6 +121,9 @@ def validate_settings(raw: Any, settings: Settings) -> tuple[dict[str, Any], lis
         raise DocumentError(errors)
     effective = apply_overrides(settings, values)
     worst = worst_case_review_cap(effective)
+    if worst <= 0:  # all three cost values are 0: every review would get a $0 cap and stop at once
+        raise DocumentError([{"field": "review_cost_base_usd", "message": (
+            "the per-review cap would be $0 — at least one cost value must be above 0")}])
     if worst > effective.max_usd_per_day:
         raise DocumentError([{"field": "max_usd_per_day", "message": (
             f"max_usd_per_day (${effective.max_usd_per_day:.2f}) is below the largest per-review cap "
