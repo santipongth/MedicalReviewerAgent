@@ -64,10 +64,10 @@ function ProviderCell({ role, spec, draft, knownPrices, edit }: {
       </select>
       {kind !== "openrouter" && (
         <div className="grid grid-cols-2 gap-1">
-          <input aria-label={`ราคา input ของ ${role} (USD ต่อ 1M token)`} type="number" min={0} max={1000} step={0.01}
+          <input aria-label={`ราคา input ของ ${role} (USD ต่อ 1M token)`} type="number" min={0} max={1000} step="any"
             className={`${INPUT} w-24`} placeholder={known ? String(known[0]) : "input"} value={spec.price_in ?? ""}
             onChange={(e) => edit(role, { price_in: num(e.target.value) ?? null })} />
-          <input aria-label={`ราคา output ของ ${role} (USD ต่อ 1M token)`} type="number" min={0} max={1000} step={0.01}
+          <input aria-label={`ราคา output ของ ${role} (USD ต่อ 1M token)`} type="number" min={0} max={1000} step="any"
             className={`${INPUT} w-24`} placeholder={known ? String(known[1]) : "output"} value={spec.price_out ?? ""}
             onChange={(e) => edit(role, { price_out: num(e.target.value) ?? null })} />
         </div>

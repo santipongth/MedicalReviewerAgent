@@ -1160,6 +1160,8 @@ adds an OpenAI-compatible provider from a template, and tests it, without editin
   backup of `.env`; a database backup alone holds only ciphertext).
 - **Without a usable secret** the tab is read-only: `GET` answers `writable: false` with `reason` `no_secret` or
   `bad_secret`, `PUT` is **409** `{detail, code}` with the same code, and `DELETE` still works (it needs no secret).
+  `PUT` is also **409** `{detail}` (no `code`) when the configuration in use cannot be read; in that case `GET` lists
+  no orphans, since nothing says which providers are configured.
 - **PUT body.** Read by the handler itself (at most 4 KiB, a JSON object with `key`), never by a schema, because a
   schema's 422 quotes the refused input. The key is stripped of surrounding whitespace and must then be 8 to 512
   visible ASCII characters without spaces; otherwise **422** with the fixed message

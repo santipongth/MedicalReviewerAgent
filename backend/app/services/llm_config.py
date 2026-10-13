@@ -33,6 +33,8 @@ ProviderKind = Literal["openrouter", "anthropic", "openai_compatible"]
 LEGACY_PROVIDERS: tuple[str, ...] = ("openrouter", "anthropic", "openai_compatible")
 PROVIDER_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
 MAX_PROVIDERS = 12
+MAX_BASE_URL = 2048
+MAX_ORIGIN = 255  # llm_provider_keys.bound_origin is varchar(255)
 Effort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 StructuredMethod = Literal["auto", "json_schema", "tool_calling", "json_mode"]
 
@@ -359,6 +361,16 @@ def _check_provider(name: str, spec: ProviderSpec) -> None:
     if spec.api_key_env is not None and spec.api_key_env != expected:
         raise ValueError(f"providers.{name}.api_key_env must be {expected} or left out: a provider's key is only "
                          "sent to that provider")
+    if spec.base_url:
+        too_long = len(spec.base_url) > MAX_BASE_URL
+        if not too_long:
+            try:
+                too_long = len(url_origin(spec.base_url)) > MAX_ORIGIN
+            except ValueError:
+                pass  # a URL that does not parse is refused by its own kind's rule below
+        if too_long:
+            raise ValueError(f"providers.{name}.base_url is too long (at most {MAX_BASE_URL} characters, and "
+                             f"{MAX_ORIGIN} before the path)")
     host = PINNED_HOSTS.get(name)
     if host and spec.base_url and not _is_https_host(spec.base_url, host):
         raise ValueError(f"providers.{name}.base_url must be an https://{host}/ address "

@@ -18,6 +18,7 @@ from app.runtime import AppDeps
 from app.services.audit import record
 from app.services.llm_config import (
     CONFIG_ERRORS,
+    MAX_ORIGIN,
     PROVIDER_KEYS,
     PROVIDER_NAME,
     config_error_summary,
@@ -128,7 +129,8 @@ async def keys_state(deps: AppDeps) -> dict[str, Any]:
     configured = {p["name"] for p in providers}
     orphans = [{"name": row.provider, "last4": row.last4, "bound_origin": row.bound_origin,
                 "updated_at": row.updated_at, "unreadable": row.provider in ring.unreadable}
-               for row in rows.values() if row.ciphertext is not None and row.provider not in configured]
+               for row in rows.values() if row.ciphertext is not None and row.provider not in configured
+               and error is None]  # an unreadable config says nothing about which providers are configured
     return {"writable": state == "ok", "reason": None if state == "ok" else state, "keys_version": revision,
             "config_version": effective.version if effective is not None else None, "config_error": error,
             "providers": providers, "orphans": orphans, "loaded": await loaded_workers(deps.redis)}
@@ -170,6 +172,8 @@ async def llm_key_set(provider: ProviderName, request: Request, deps: AppDeps = 
     if spec is None:
         return _fail(404, f"provider {provider} is not configured; save a version with it first")
     origin = provider_origin(provider, spec)
+    if len(origin) > MAX_ORIGIN:  # backstop: the document refuses these, but a stored one may predate the rule
+        return _fail(422, f"the provider's origin is longer than {MAX_ORIGIN} characters: shorten its base_url")
     async with deps.session_factory() as session, session.begin():
         row, replaced = await store_key(session, fernet, provider, origin, key, by=identity.admin.label)
         await record(session, identity.admin, "llm_key.replace" if replaced else "llm_key.set", target_type="llm_key",

@@ -37,6 +37,8 @@ describe("Presets tab provider and prices (Plan 23e)", () => {
     const setDraft = presets(unpriced);
     expect(screen.queryByLabelText(/ราคา input ของ guard/)).not.toBeInTheDocument();  // OpenRouter: the catalog prices it
     expect(screen.getByText("ต้องใส่ราคา input และ output (USD ต่อ 1M token)")).toBeInTheDocument();
+    expect(screen.getByLabelText("ราคา input ของ extractor (USD ต่อ 1M token)")).toHaveAttribute("step", "any");
+    expect(screen.getByLabelText("ราคา output ของ extractor (USD ต่อ 1M token)")).toHaveAttribute("step", "any");
     fireEvent.change(screen.getByLabelText("ราคา input ของ extractor (USD ต่อ 1M token)"), { target: { value: "0.27" } });
     expect(setDraft.mock.calls[0][0].presets.cheap.extractor.price_in).toBe(0.27);
   });

@@ -147,6 +147,16 @@ def test_a_free_name_cannot_point_at_an_internal_or_disguised_address(url):
         parse_llm_config(with_provider("deepseek", base_url=url))
 
 
+@pytest.mark.parametrize("url", [
+    "https://" + "a" * 250 + ".example.com/v1",  # origin over 255: the stored key's bound_origin column
+    "https://api.deepseek.com/" + "a" * 2100,  # base_url over 2048
+])
+def test_a_base_url_too_long_for_the_origin_column_or_the_cap_is_refused(url):
+    with pytest.raises(LLMConfigError, match="base_url"):
+        parse_llm_config(with_provider("deepseek", base_url=url))
+    parse_llm_config(with_provider("deepseek", base_url="https://" + "a" * 60 + ".example.com/v1"))
+
+
 def test_a_free_name_needs_a_base_url():
     raw = with_provider("deepseek")
     del raw["providers"]["deepseek"]["base_url"]

@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet
 from pydantic import SecretStr
 from sqlalchemy import select
 
-from app.db.models import AdminAudit, LlmProviderKey
+from app.db.models import AdminAudit, LlmConfigVersion, LlmProviderKey
 from app.services.llm_store import KEYS_VERSION_KEY
 from app.services.model_catalog import ModelInfo
 from tests.admin_helpers import CSRF, admin_headers
@@ -213,6 +213,28 @@ async def test_a_key_left_by_a_removed_provider_is_an_orphan_that_can_be_deleted
     assert state["orphans"][0]["name"] == "deepseek" and state["orphans"][0]["last4"] == "abcd"
     r = await client.delete(f"{BASE}/llm-keys/deepseek", headers=h)
     assert r.status_code == 200 and r.json()["orphans"] == []
+
+
+async def test_an_unreadable_config_lists_no_orphans(client, session_factory, secret):
+    h = await admin_headers(client, session_factory)
+    await save(client, h, with_deepseek())
+    await client.put(f"{BASE}/llm-keys/deepseek", json={"key": KEY}, headers=h)
+    async with session_factory() as s, s.begin():
+        s.add(LlmConfigVersion(created_by="owner", source="edit", config={"broken": True}, changes={}))
+    state = (await client.get(f"{BASE}/llm-keys", headers=h)).json()
+    assert state["config_error"] and state["providers"] == [] and state["orphans"] == []
+    r = await client.put(f"{BASE}/llm-keys/deepseek", json={"key": NEW_KEY}, headers=h)
+    assert r.status_code == 409 and "code" not in r.json()
+
+
+async def test_a_provider_origin_over_255_characters_is_a_fixed_422(client, app, session_factory, secret, monkeypatch):
+    h = await admin_headers(client, session_factory)
+    await save(client, h, with_deepseek())
+    monkeypatch.setattr("app.api.admin_keys_llm.provider_origin", lambda name, spec: "https://" + "a" * 260)
+    r = await client.put(f"{BASE}/llm-keys/deepseek", json={"key": KEY}, headers=h)
+    assert r.status_code == 422 and KEY not in r.text and "a" * 50 not in r.text
+    async with session_factory() as s:
+        assert (await s.execute(select(LlmProviderKey))).first() is None
 
 
 async def test_moving_a_providers_origin_silences_its_key_and_validate_says_so_first(client, session_factory, secret):
