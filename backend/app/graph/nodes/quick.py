@@ -47,10 +47,10 @@ log = logging.getLogger(__name__)
 
 MIN_SENTENCES, MAX_SENTENCES = 2, 4
 MAX_REPAIRS = 1  # latency: one repair round at most, no escalation; code removes what still fails
-QUICK_WITHHELD = ("No short answer could be written that the verified abstracts support. The studies read are listed "
-                  "below; a full review may help.")
-QUICK_FAILED = ("The quick answer could not be written (a temporary model or service problem). The studies read are "
-                "listed below; please try again later.")
+QUICK_WITHHELD = ("No short answer could be written that the verified abstracts support. A full review of this "
+                  "question may help.")
+QUICK_FAILED = ("The quick answer could not be written (a temporary model or service problem). A full review of this "
+                "question may help.")
 NOT_GRADED = "The certainty of the evidence is not graded: the studies read report themes, not effects."
 
 
@@ -87,10 +87,32 @@ def _sentences(items: list[str]) -> list[str]:
     return out
 
 
+_LVL = r"(?:very[- ]low|low|moderate|high)"
+# Any mention of a certainty level, broad on purpose: the closing line always states the computed level, so the model
+# never needs to (spec 2). Ordinary words stay ("high blood pressure", "low-dose", "high-risk", "low back pain").
+_LEVEL_MENTION = re.compile(
+    rf"(?i)\b{_LVL}[- ](?:certainty|confidence)\b"
+    rf"|\b{_LVL}[- ]quality[- ](?:of[- ])?evidence\b"
+    rf"|\b(?:certainty|quality|confidence|strength)\s+(?:of|in)\s+(?:the\s+|this\s+|that\s+)?(?:body\s+of\s+)?"
+    rf"(?:evidence|estimates?|findings?|results?)\b"
+    rf"|\bevidence\s+(?:is|was|remains?)\s+(?:generally\s+|overall\s+)?of\s+{_LVL}\s+(?:quality|certainty)\b"
+    rf"|\bcertainty\b\W+(?:\w+\W+){{0,3}}?{_LVL}\b"
+    rf"|\bevidence\b[^.;:!?]{{0,30}}\b(?:is|was|were|remains?|rated|graded|appears?)\b[^.;:!?]{{0,20}}?"
+    rf"\b{_LVL}\s*(?=[.;,:!)]|$)")
+_GRADE_LABEL = re.compile(r"\bGRADE\b")  # case-sensitive: "grade 3 toxicity" is ordinary
+# The limits sentence must not discuss certainty or evidence quality at all (the computed sentence covers it).
+_CERTAINTY_TALK = re.compile(
+    r"(?i)\bcertainty\b|\bconfidence\s+(?:in|level)\b|\b(?:evidence|body of evidence)\s+quality\b"
+    r"|\bquality\s+of\s+(?:the\s+|this\s+)?(?:body\s+of\s+)?evidence\b|\bstrength\s+of\s+(?:the\s+)?evidence\b")
+
+
 def _claims_level(sentence: str, strength: str | None) -> bool:
-    """The sentence (read without its [Pn] groups) claims a certainty level for this review other than `strength`; an
-    ungraded answer has no level, so any claim, self-claim or label, counts (Plan 27 spec 2)."""
+    """The sentence (read without its [Pn] groups) mentions a certainty level for the evidence (any level: the closing
+    line states the computed one, so a model-stated level is never needed), or claims another level than `strength`
+    with the full review's narrower detectors (Plan 27 spec 2)."""
     text = _CITE_GROUP.sub("", sentence)
+    if _LEVEL_MENTION.search(text) or _GRADE_LABEL.search(text):
+        return True
     if strength:
         return _drop_wrong_self_claims(text, strength)[1] > 0
     return _wrong_self_claim(text, "") or _drop_wrong_labels(text, "")[1] > 0
@@ -139,12 +161,20 @@ def checked_answer(draft: QuickAnswerDraft, allowed: set[str], prose: ProseConte
 
 def closing_line(limits: str, prose: ProseContext, strength: str | None) -> str:
     """The certainty sentence (the GRADE-lite baseline, or "not graded") and the model's limits sentence when it
-    passes the numberless check (its first sentence that claims no certainty level, without citations)."""
+    passes the numberless check (its first sentence that says nothing about certainty or evidence quality, without
+    citations)."""
     text, _counts = fix_statement(_CITE_GROUP.sub("", limits or "").strip(), prose)
     text, _n = _drop_wrong_self_claims(text, strength)
-    first = next((s for s in _split_sentences(text) if not _claims_level(s, strength)), "")
+    first = next((s for s in _split_sentences(text)
+                  if not _claims_level(s, strength) and not _CERTAINTY_TALK.search(s)), "")
     certainty = ANSWER_CERTAINTY.get(strength or "", NOT_GRADED)
     return f"{certainty} {first}".strip()
+
+
+def _no_papers(message: str) -> dict[str, Any]:
+    """Nothing was read: the message is the answer, said once; no closing line and no certainty (zero studies)."""
+    out = _empty_synthesis(message)
+    return out | {"answer": "", "evidence_strength": None, "grade_baseline": None}
 
 
 def make_write_quick_answer(deps):
@@ -154,8 +184,8 @@ def make_write_quick_answer(deps):
         papers = _narrative_papers(state)
         if not papers:
             messages = empty_messages(state)
-            return {"synthesis": _empty_synthesis(messages["en"]),
-                    "synthesis_display": _empty_synthesis(messages.get(language, messages["en"])),
+            return {"synthesis": _no_papers(messages["en"]),
+                    "synthesis_display": _no_papers(messages.get(language, messages["en"])),
                     "localized_cards": None, "quality": [{"stage": "quick", "skipped": True, "seconds": 0.0}]}
         matrix = state.get("matrix") or {}
         grade = matrix.get("grade") or {}

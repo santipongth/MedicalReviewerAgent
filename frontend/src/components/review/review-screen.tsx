@@ -66,7 +66,7 @@ export function ReviewScreen({ id }: { id: string }) {
   }
   if (phase === "terminal" && (run.status === "rejected" || run.status === "error" || run.status === "cancelled")) {
     return <TerminalState status={run.status} message={run.message ?? review?.error} topic={topic}
-      code={run.code ?? review?.refusal_code} />;
+      code={run.code ?? review?.refusal_code} review={review} />;
   }
   if (phase === "report" && review && isQuickReview(review)) {
     return <QuickAnswer review={review} />; // Plan 27: the short answer with numbered references

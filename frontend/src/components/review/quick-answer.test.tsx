@@ -34,6 +34,17 @@ describe("Plan 27 quick answer page", () => {
     expect(document.querySelector("[data-quick-closing]")).toHaveTextContent("ความเชื่อมั่นของหลักฐานต่ำ");
   });
 
+  it("a quick answer with no papers shows the message once, no closing line and no certainty level", () => {
+    const empty: Review = { ...quickReviewFixture, result: { ...quickReviewFixture.result!, summary: "ไม่พบงานวิจัยที่เกี่ยวข้อง",
+      quick: { refs: [], papers_read: 0 }, support: null,
+      synthesis: { ...quickReviewFixture.result!.synthesis!, executive_summary: "ไม่พบงานวิจัยที่เกี่ยวข้อง", answer: "",
+        evidence_strength: null, grade_baseline: null } } };
+    const { container } = render(<QuickAnswer review={empty} />);
+    expect(document.querySelector("[data-quick-closing]")).toBeNull();
+    expect(container.textContent?.match(/ไม่พบงานวิจัยที่เกี่ยวข้อง/g)).toHaveLength(1);
+    expect(container.textContent).not.toMatch(/very_low|ของหลักฐานต่ำมาก/);
+  });
+
   it("links each number to its reference, and marks only a citation the support check passed", () => {
     render(<QuickAnswer review={quickReviewFixture} />);
     const one = screen.getByRole("link", { name: "อ้างอิง 1 ตรวจแล้ว: บทคัดย่อรองรับประโยคนี้" });

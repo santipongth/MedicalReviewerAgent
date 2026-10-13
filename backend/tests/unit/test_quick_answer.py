@@ -309,3 +309,49 @@ def test_a_citation_after_the_stop_scopes_its_number_to_the_cited_paper():
         "Risk was lower (HR 0.80) [P1]. Cohorts agree [P2].", 2, 0)
     multi = QuickAnswerDraft(sentences=["Risk was lower! [P1] [P2]", "Is it so? [P1]"], limits="x")
     assert checked_answer(multi, {"P1", "P2"}, ctx(), "low")[0] == "Risk was lower [P1] [P2]! Is it so [P1]?"
+
+
+# ---- final fix wave: any certainty talk is dropped; the computed sentence is the only one ---------------------------
+OTHER = "Cohorts agree [P2]."
+
+
+def test_an_answer_sentence_stating_a_certainty_level_is_dropped_graded_or_not():
+    probes = ["Metformin probably reduces risk, with high certainty evidence [P1].",
+              "The evidence is of moderate quality [P1].", "We have low confidence in this estimate [P1].",
+              "Overall the certainty is high [P1].", "This is very low certainty evidence [P1].",
+              "High-certainty evidence shows lower risk [P1].", "The GRADE rating is moderate [P1]."]
+    for strength in ("low", None):
+        for probe in probes:
+            draft = QuickAnswerDraft(sentences=[probe, OTHER], limits="x")
+            assert checked_answer(draft, {"P1", "P2"}, ctx(), strength) == (OTHER, 1, 1), (strength, probe)
+
+
+def test_ordinary_high_and_low_words_are_not_certainty_claims():
+    for ok in ["Patients with high blood pressure had lower risk [P1].", "Low-dose aspirin reduced events [P1].",
+               "High-risk patients benefited most [P1].", "Low back pain improved with exercise [P1].",
+               "Studies of high quality trials enrolled adults [P1].", "Moderate exercise lowered risk [P1]."]:
+        draft = QuickAnswerDraft(sentences=[ok, OTHER], limits="x")
+        assert checked_answer(draft, {"P1", "P2"}, ctx(), "low") == (f"{ok} {OTHER}", 2, 0), ok
+
+
+def test_the_limits_line_never_discusses_certainty():
+    assert closing_line("Studies were small; the evidence is of high certainty.", ctx(), "low") ==         ANSWER_CERTAINTY["low"]
+    for text in ["The quality of evidence is limited.", "Confidence in the estimate is weak.",
+                 "Evidence certainty could change with new trials."]:
+        assert closing_line(text, ctx(), "low") == ANSWER_CERTAINTY["low"], text
+    assert closing_line("Studies were small. Evidence certainty is high.", ctx(), "low") ==         f"{ANSWER_CERTAINTY['low']} Studies were small."
+    assert closing_line("Patients with high blood pressure were excluded.", ctx(), "low") ==         f"{ANSWER_CERTAINTY['low']} Patients with high blood pressure were excluded."
+
+
+async def test_no_papers_quick_answer_has_one_message_and_no_certainty():
+    deps, writer = quick_deps(results=[])
+    values, _events = await run(deps, options=QUICK, language="en")
+    en = values["result"]["synthesis_en"]
+    assert values["result"]["summary"] == NO_PAPERS["en"]
+    assert en["answer"] == "" and en["evidence_strength"] is None and en["grade_baseline"] is None
+    assert not writer.calls
+
+
+def test_the_fixed_notices_promise_nothing_the_page_cannot_show():
+    for text in (QUICK_WITHHELD, QUICK_FAILED):
+        assert "below" not in text and "later" not in text and "full review" in text

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { quickReviewFixture, reviewFixture } from "@/test/fixtures";
-import { formStart, fullReviewHref, isQuickReview, quickParts, quickRefs } from "./quick";
+import { formStart, fullReviewHref, isQuickReview, quickParts, quickRefs, retryHref } from "./quick";
 
 describe("Plan 27 quick answer helpers", () => {
   it("tells a quick answer from a full review by its result or its options", () => {
@@ -36,6 +36,16 @@ describe("Plan 27 quick answer helpers", () => {
     expect(Object.fromEntries(params)).toEqual({ q: quickReviewFixture.topic, mode: "full", lang: "th", year: "2015",
       types: "Cohort|Other: Delphi study" });
     expect(fullReviewHref({ topic: "t", language: "en", options: {} })).toBe("/?q=t&mode=full&lang=en#request");
+  });
+
+  it("retries in the mode the review had: a quick answer as quick, anything else (or unknown) as full", () => {
+    const quick = new URLSearchParams(retryHref(quickReviewFixture.topic, quickReviewFixture).slice(2).split("#")[0]);
+    expect(quick.get("mode")).toBe("quick");
+    expect(quick.get("year")).toBe("2015");
+    expect(retryHref("t", reviewFixture)).toContain("mode=full");
+    expect(retryHref("t", null)).toBe("/?q=t&mode=full#request");
+    const back = formStart(Object.fromEntries(quick));
+    expect(back).toMatchObject({ mode: "quick", language: "th", yearFrom: "2015" });
   });
 
   it("reads the form's starting values from the address and drops what is not valid", () => {

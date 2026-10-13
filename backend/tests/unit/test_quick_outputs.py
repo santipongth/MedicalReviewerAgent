@@ -151,3 +151,14 @@ async def test_the_timed_stub_runs_a_quick_answer_without_citation_events():
 async def test_the_plain_stub_marks_a_quick_answer():
     _events, _elapsed, state = await run_stub(options={"mode": "quick"}, delay=0)
     assert state.values["result"]["mode"] == "quick" and state.values["result"]["quick"]["refs"] == []
+
+
+def test_a_quick_answer_without_papers_has_no_closing_and_no_certainty():
+    result = {"mode": "quick", "quick": {"refs": [], "papers_read": 0}, "papers": [],
+              "summary": "No relevant papers were found.",
+              "synthesis": {"executive_summary": "No relevant papers were found.", "evidence_strength": None,
+                            "answer": ""}}
+    view = quick_view(result)
+    assert (view["closing"], view["certainty"], view["references"]) == ("", None, [])
+    md = render_markdown(SimpleNamespace(topic="t", status="done", error=None, result=result))
+    assert md.count("No relevant papers were found.") == 1 and "very_low" not in md

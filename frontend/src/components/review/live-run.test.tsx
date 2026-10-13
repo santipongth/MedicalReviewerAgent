@@ -91,14 +91,22 @@ describe("TerminalState", () => {
 
   it("links to a pre-filled retry and keeps the raw error in a details element", () => {
     render(<TerminalState status="error" message="LLMError: provider down" topic="metformin & CRC" />);
-    expect(screen.getByRole("link", { name: "ลองอีกครั้ง" })).toHaveAttribute("href", `/?q=${encodeURIComponent("metformin & CRC")}#request`);
+    expect(screen.getByRole("link", { name: "ลองอีกครั้ง" })).toHaveAttribute("href", "/?q=metformin+%26+CRC&mode=full#request");
     expect(screen.getByText("LLMError: provider down").closest("details")).not.toBeNull();
   });
 
   it("offers an edit-and-resend link for a rejected topic", () => {
     render(<TerminalState status="rejected" message="not medical" topic="pizza" />);
-    expect(screen.getByRole("link", { name: "แก้หัวข้อแล้วส่งใหม่" })).toHaveAttribute("href", "/?q=pizza#request");
+    expect(screen.getByRole("link", { name: "แก้หัวข้อแล้วส่งใหม่" })).toHaveAttribute("href", "/?q=pizza&mode=full#request");
     expect(screen.getByText("not medical").closest("details")).toBeNull();
+  });
+
+  it("retries a failed full review as a full review and a failed quick answer as quick, keeping its choices", () => {
+    const full = { language: "en" as const, options: { year_from: 2015, study_types: ["RCT"] }, result: null };
+    const { rerender } = render(<TerminalState status="error" topic="statins" review={full} />);
+    expect(screen.getByRole("link", { name: "ลองอีกครั้ง" })).toHaveAttribute("href", "/?q=statins&mode=full&lang=en&year=2015&types=RCT#request");
+    rerender(<TerminalState status="cancelled" topic="statins" review={{ ...full, options: { mode: "quick" } }} />);
+    expect(screen.getByRole("link", { name: "ลองอีกครั้ง" })).toHaveAttribute("href", "/?q=statins&mode=quick&lang=en#request");
   });
 
   it("shows errors and cancellations plainly", () => {

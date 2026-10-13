@@ -46,15 +46,29 @@ export function quickParts(text: string, refs: string[]): QuickPart[] {
 /** The anchor of reference [n] in the quick answer's list. */
 export const quickRefId = (n: number): string => `qref-${n}`;
 
-/** "ทำรีวิวฉบับเต็ม": the request form with the same question, language, start year and study types, set to a full
- * review. The person submits it there (Turnstile, the rate limit and the report view live in the form). */
-export function fullReviewHref(review: Pick<Review, "topic" | "language" | "options">): string {
-  const params = new URLSearchParams({ q: review.topic, mode: "full", lang: review.language });
+type FormSource = { topic: string; language?: string | null; options?: Review["options"] | null };
+
+/** The request form with the same question, language, start year and study types, set to `mode`. The person submits
+ * it there (Turnstile, the rate limit and the report view live in the form). */
+export function requestHref(mode: "quick" | "full", review: FormSource): string {
+  const params = new URLSearchParams({ q: review.topic, mode });
+  if (review.language === "th" || review.language === "en") params.set("lang", review.language);
   const { year_from: year, study_types: types } = review.options ?? {};
   if (typeof year === "number") params.set("year", String(year));
   const list = Array.isArray(types) ? types.filter((t): t is string => typeof t === "string") : [];
   if (list.length) params.set("types", list.join("|"));
   return `/?${params.toString()}#request`;
+}
+
+/** "ทำรีวิวฉบับเต็ม": the same question as a full review. */
+export function fullReviewHref(review: Pick<Review, "topic" | "language" | "options">): string {
+  return requestHref("full", review);
+}
+
+/** Retry / edit after a failed, cancelled or rejected review: the same mode it had (a quick answer retries as quick,
+ * a full review, or one whose review is not known, as full), so the form never silently changes it. */
+export function retryHref(topic: string, review?: Pick<Review, "language" | "options" | "result"> | null): string {
+  return requestHref(isQuickReview(review) ? "quick" : "full", { topic, language: review?.language, options: review?.options });
 }
 
 /** The request form's starting values from the address (`?q=…&mode=…&lang=…&year=…&types=a|b`), each checked. */
