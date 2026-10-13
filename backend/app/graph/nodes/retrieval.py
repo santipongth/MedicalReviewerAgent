@@ -325,7 +325,7 @@ def make_search(deps):
         if thaijo_entry is not None:  # Plan 24
             entry["thaijo"] = thaijo_entry
         if getattr(deps, "sources", None) is not None:  # Plan 23d: the sources this review searched
-            entry["sources"] = list(deps.sources.enabled)
+            entry["sources"] = list(deps.sources.enabled) + list(deps.sources.extras)  # Plan 30: env-only too
         return {"candidates": [c.model_dump() for c in found], "errors": errors,
                 "search_stats": {"found": len(found), "per_source": dict(per_source), "searched_at": searched_at},
                 "quality": [entry]}

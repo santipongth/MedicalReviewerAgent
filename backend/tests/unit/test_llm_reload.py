@@ -184,8 +184,8 @@ async def test_run_review_refreshes_before_it_builds_the_runner(tmp_path, sessio
 
 async def test_a_poll_without_a_version_change_still_refreshes_loaded_at(tmp_path, session_factory, redis):
     ctx = await make_ctx(tmp_path, session_factory, redis)
-    old = {"version": "file", "preset": "cheap", "error": None,
-           "loaded_at": (datetime.now(UTC) - timedelta(hours=20)).isoformat()}
+    old = {"version": "file", "preset": "cheap", "error": None,  # still listed (Plan 30: listed for 3 minutes)
+           "loaded_at": (datetime.now(UTC) - timedelta(minutes=2)).isoformat()}
     await redis.hset(LOADED_KEY, worker_id(), json.dumps(old))
     graph = ctx["graph"]
     poller = asyncio.create_task(poll_llm_config(ctx, interval=0.01))

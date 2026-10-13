@@ -111,6 +111,16 @@ def load_manifest(path: Path | None = None) -> Manifest:
     return Manifest.model_validate(yaml.safe_load(p.read_text(encoding="utf-8")) or {})
 
 
+def _replace(tmp: Path, path: Path) -> None:
+    """os.replace, removing the temporary file when it fails (Plan 30: on Windows a reader holding `path` makes the
+    replace fail, which used to leave a `.tmp` file behind)."""
+    try:
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def save_manifest(m: Manifest, path: Path | None = None) -> None:
     p = path if path is not None else EVAL_ROOT / "manifest.yaml"
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -120,7 +130,7 @@ def save_manifest(m: Manifest, path: Path | None = None) -> None:
         encoding="utf-8",
         newline="\n",
     )
-    os.replace(tmp, p)
+    _replace(tmp, p)
 
 
 def fixture_path(pool_version: str, review_id: str) -> Path:
@@ -149,7 +159,7 @@ def write_json_atomic(path: Path, data: BaseModel | dict[str, Any]) -> None:
     tmp.write_text(
         json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n"
     )
-    os.replace(tmp, path)
+    _replace(tmp, path)
 
 
 def read_model[M: BaseModel](path: Path, cls: type[M]) -> M:
@@ -158,8 +168,7 @@ def read_model[M: BaseModel](path: Path, cls: type[M]) -> M:
 
 def load_gold(review_id: str) -> GoldRecord | None:
     p = EVAL_ROOT / "gold" / f"{review_id}.yaml"
-    return (
-        GoldRecord.model_validate(yaml.safe_load(p.read_text(encoding="utf-8")))
-        if p.exists()
-        else None
-    )
+    if not p.exists():
+        return None
+    data = yaml.safe_load(p.read_text(encoding="utf-8"))
+    return GoldRecord.model_validate(data) if data else None  # Plan 30: an empty file is no gold record yet
