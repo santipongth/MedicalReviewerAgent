@@ -52,6 +52,66 @@ def test_research_topics_and_plain_questions_are_not_emergencies(topic):
     assert safety.red_flag(topic) is None
 
 
+@pytest.mark.parametrize("topic", [
+    "เจ็บหน้าอกมาก หายใจไม่ออก", "แม่หมดสติ", "แม่หมดสติ ทำยังไงดี", "พ่อหายใจไม่ออก", "ลูกกินยาเกินขนาด",
+    "เพื่อนชัก", "ผมกินยาไป 30 เม็ด", "กินยาพาราไป 30 เม็ด", "ลูกกลืนน้ำยาล้างห้องน้ำ", "ลูกกินน้ำยาฟอกขาว",
+    "ผมเลือดออกไม่หยุด", "ฉันเจ็บหน้าอก",
+    "I cant breathe", "i can t breathe", "I can't breathe", "I took 30 paracetamol tablets", "i took 30 paracetamol",
+    "my child swallowed bleach", "my kid drank bleach", "help my son had a seizure", "I'm bleeding a lot",
+    "my father is having a stroke what do I do", "my father had a stroke, what should I do",
+    "my father is having a stroke", "dad is having a stroke what to do", "my baby is not breathing",
+    "baby not breathing", "my mom collapsed", "my husband is unconscious", "chest  pain  now  help",
+    "I have chestpain", "my wife is having a heart attack", "I am having a heart attack",
+    "having chest pain and my left arm is numb", "heart attack symptoms right now",
+    "someone collapsed and is not breathing", "I overdosed on paracetamol", "my friend overdosed",
+    "my son is having a seizure",
+])
+def test_further_personal_emergencies_are_medical(topic):
+    assert safety.red_flag(topic) == safety.Emergency("medical"), topic
+
+
+@pytest.mark.parametrize("topic", [
+    "คิดจะฆ่าตัวตาย", "อยาก ตาย", "อยากตายมาก", "อยากตายยย", "ฆ่าตัวตาย ช่วยด้วย", "หนูกรีดข้อมือ",
+    "I'm going to kill my self", "kill-myself", "kill myself.", "KILL MYSELF", "i want to end it all",
+    "I want to die", "i want to die!!!", "i wanna kms", "i'm suicidal", "Im suicidal",
+    "i want to k\u200bill myself", "อยาก\u200bตาย", "ｋｉｌｌ ｍｙｓｅｌｆ", "ฆ่าตัวตายของแม่",
+])
+def test_further_self_harm_reaches_1323(topic):
+    assert safety.red_flag(topic) == safety.Emergency("self_harm"), topic
+
+
+@pytest.mark.parametrize("topic", [
+    "การทำร้ายตัวเองในวัยรุ่น", "ทำร้ายตัวเองกับโซเชียลมีเดีย", "ภาวะหมดสติในหนู", "ยาเกินขนาดในหนู",
+    "acetylcysteine i.v. for paracetamol overdose", "anaphylaxis, i.e. severe allergic reaction to peanuts",
+    "chest pain, i.e. acute coronary syndrome, in women", "ผมร่วงกับหายใจลำบาก",
+    "I'm a nurse: chest pain triage tools", "How do I manage chest pain",
+    "chest pain in the emergency department", "stroke rehabilitation outcomes", "overdose deaths opioid policy",
+    "งานวิจัยเรื่องการฆ่าตัวตายในวัยรุ่น", "self-harm in prisons", "suicide rates among doctors",
+    "อัตราการฆ่าตัวตายในประเทศไทย", "การฆ่าตัวตายในผู้สูงอายุ", "naloxone for opioid overdose",
+    "my research on suicide", "unconscious bias in medicine", "anaphylaxis in children",
+    "anaphylaxis management in schools", "can't breathe protests air pollution", "self harm and social media",
+    "me and my colleagues want to know about chest pain management", "เราอยากรู้เรื่องหายใจลำบากในเด็ก",
+    "ตัวเองเป็นหมอ อยากรู้เรื่องหมดสติจากน้ำตาลต่ำ", "someone with type I diabetes and unconscious episodes",
+    "stage I and II stroke", "grade i anaphylaxis", "i.v. paracetamol overdose",
+    "ฉันอยากทราบเรื่องการใช้ยาเกินขนาดในวัยรุ่น", "เรากินยาเกินขนาด แนวทางรักษา", "someone who overdosed: naloxone",
+])
+def test_further_research_topics_are_not_emergencies(topic):
+    assert safety.red_flag(topic) is None, topic
+
+
+@pytest.mark.parametrize("topic", [
+    "i want to die with dignity: euthanasia attitudes", "assisted dying: end my life laws",
+    "cutting myself: dialectical behaviour therapy", "อยากตายอย่างสงบ: การดูแลระยะท้าย",
+])
+def test_known_self_harm_always_trade_off_is_refused(topic):  # documented in safety.py: the safe side
+    assert safety.red_flag(topic) == safety.Emergency("self_harm")
+
+
+def test_odd_input_does_not_raise():
+    for t in ["\ud800 kill myself", "\udfff", "", "\x00" * 600]:
+        safety.red_flag(t)
+
+
 def test_curly_apostrophes_and_spacing_are_normalized():
     assert safety.red_flag("I  can’t   breathe") == safety.Emergency("medical")
 
