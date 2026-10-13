@@ -207,7 +207,9 @@ export function GlossaryView() {
             <span className="text-sm">ค้นหาคำ</span>
             <input type="search" className={INPUT} value={filter} onChange={(e) => { setFilter(e.target.value); setEditing(null); }} />
           </label>
-          <div className={TABLE_REGION}>
+          {/* Focusable itself: a filter that matches nothing leaves no input inside, and a region that scrolls sideways
+              (the table is wider than a phone) must still be reachable from the keyboard */}
+          <div role="region" aria-label="ตารางคำในอภิธานศัพท์" tabIndex={0} className={TABLE_REGION}>
             <table className="w-full min-w-[54rem] border-collapse text-sm">
               <caption className="sr-only">คำในอภิธานศัพท์</caption>
               <thead>

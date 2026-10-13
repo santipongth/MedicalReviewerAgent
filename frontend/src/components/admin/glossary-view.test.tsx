@@ -195,6 +195,9 @@ describe("GlossaryView", () => {
     expect(screen.queryByText("ไม่พบคำที่ตรงกับคำค้น")).toBeNull();
     fireEvent.change(search, { target: { value: "zzz" } });
     expect(screen.getByRole("status")).toHaveTextContent("ไม่พบคำที่ตรงกับคำค้น");
+    // the table scrolls sideways on a phone and now holds no input: the region itself must take focus
+    expect(screen.queryAllByRole("textbox", { name: /^English / })).toHaveLength(0);
+    expect(screen.getByRole("region", { name: "ตารางคำในอภิธานศัพท์" })).toHaveAttribute("tabindex", "0");
     fireEvent.change(search, { target: { value: "" } });
     expect(screen.queryByText("ไม่พบคำที่ตรงกับคำค้น")).toBeNull();
   });
