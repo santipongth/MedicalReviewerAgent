@@ -47,6 +47,11 @@ class ReviewMetrics:
     pool_found: int = 0
     pool_with_abstract: int = 0
     primary_direction: str = "none"
+    # Plan 25 sentence support, over the evidence citations of the summary and key findings (0 before Plan 25)
+    support_citations: int = 0
+    support_judged: int = 0
+    support_supported: int = 0
+    support_verified: int = 0
 
 
 def review_metrics(rec: RunRecord, stratum: str) -> ReviewMetrics:
@@ -84,6 +89,12 @@ def review_metrics(rec: RunRecord, stratum: str) -> ReviewMetrics:
     m.glossary = [hit for k in en if k in th for hit in check_pair(en[k], th[k], terms)]
     m.answer_present = bool(((result.get("synthesis_en") or {}).get("answer") or "").strip())
     m.papers_analysed = len(result.get("papers") or [])
+    cites = [c for claim in (result.get("support") or {}).get("claims") or [] for c in claim.get("citations") or []
+             if not c.get("not_evidence")]
+    m.support_citations = len(cites)
+    m.support_judged = sum(1 for c in cites if c.get("label") is not None)
+    m.support_supported = sum(1 for c in cites if c.get("label") == "supported")
+    m.support_verified = sum(1 for c in cites if c.get("verified"))
     return m
 
 
@@ -127,6 +138,9 @@ def aggregate(rows: list[ReviewMetrics]) -> dict:
         "glossary_consistency": _rate(sum(glossary), len(glossary)),
         "glossary_top_misses": misses.most_common(10),
         "answer_rate": _rate(sum(1 for r in done if r.answer_present), len(rows)),
+        # Plan 25: supported among the judged citations, and the share of evidence citations with the badge
+        "support_rate": _rate(sum(r.support_supported for r in done), sum(r.support_judged for r in done)),
+        "support_verified_rate": _rate(sum(r.support_verified for r in done), sum(r.support_citations for r in done)),
         "cost_mean": statistics.fmean(costs) if costs else 0.0,
         "cost_median": statistics.median(costs) if costs else 0.0,
         "cost_max": max(costs) if costs else 0.0, "cost_total": sum(costs),

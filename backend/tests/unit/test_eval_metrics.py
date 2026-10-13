@@ -115,6 +115,23 @@ def test_stratum_table_has_new_columns():
     assert "| cv | 1 | 0 |" in md
 
 
+def test_support_rates_count_evidence_citations_of_done_runs():
+    r = rec(1, 1)
+    cite = lambda label, verified=False, not_evidence=False: {"ref": "P1", "label": label, "verified": verified,
+                                                               "not_evidence": not_evidence}
+    r.result["support"] = {"judge": "ok", "markers": [["P1"]], "claims": [
+        {"id": "s0", "citations": [cite("supported", True), cite("partial"), cite(None)]},
+        {"id": "k0", "citations": [cite("unsupported"), cite(None, not_evidence=True)]}]}
+    m = review_metrics(r, "cv")
+    assert (m.support_citations, m.support_judged, m.support_supported, m.support_verified) == (4, 3, 1, 1)
+    a = aggregate([m, review_metrics(rec(1, 2), "cv"), review_metrics(rec(2, 1, status="error"), "cv")])
+    assert a["support_rate"][0] == pytest.approx(1 / 3) and a["support_verified_rate"][0] == pytest.approx(1 / 4)
+    md = render_report("p", "r", Manifest(seed=1), [m], {})
+    assert "| Sentence support: supported / judged citations | 33.3% (" in md
+    assert "| Citations with the ตรวจแล้ว badge | 25.0% (" in md
+    assert aggregate([review_metrics(rec(1, 2), "cv")])["support_rate"] is None  # results before Plan 25
+
+
 def test_header_has_date_range_and_batch_cost():
     rows = [review_metrics(rec(1, 1, started="2026-10-09T08:00"), "cv"),
             review_metrics(rec(1, 2, started="2026-10-11T08:00"), "cv")]
