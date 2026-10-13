@@ -85,8 +85,8 @@ async def test_localize_strings_sends_the_given_glossary():
     ([term(note="a\nb")], "terms.0.note"),
     ([term(th="ยา\x85หลอก")], "terms.0.th"),  # C1 (NEL)
     ([term(en="place\x9fbo")], "terms.0.en"),  # C1
-    ([term(abbr="P ")], "terms.0.abbr"),  # line separator
-    ([term(note="a b")], "terms.0.note"),  # paragraph separator
+    ([term(abbr="P\u2028")], "terms.0.abbr"),  # line separator
+    ([term(note="a\u2029b")], "terms.0.note"),  # paragraph separator
     ([term(th="ยา\x00หลอก")], "terms.0.th"),
     ([term(en="x" * 121)], "terms.0.en"),
     ([{**term(), "extra": 1}], "terms.0"),
