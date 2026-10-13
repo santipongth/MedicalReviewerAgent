@@ -652,6 +652,7 @@ test("harness unavailable: the reason is shown with the profile command and a st
 });
 
 test("harness: a capped start waits for the acknowledgement and the confirm, posts exactly once, then shows progress and polls", async ({ page }) => {
+  await page.clock.install(); // the page polls every 5 s while a run is active; the test moves that clock instead of waiting
   await mockApi(page);
   const admin = await mockRuntime(page);
   await openHarness(page);
@@ -668,7 +669,7 @@ test("harness: a capped start waits for the acknowledgement and the confirm, pos
   await confirmStart(page).click();
 
   // started: one POST with the exact body and the admin header, a notice with focus, and the run's progress line
-  const started = status(page, "เริ่มรัน console-20261013-100000-a1b2 แล้ว (งบไม่เกิน $1.00)");
+  const started = status(page, "เริ่มรัน console-20261013-100000-a1b2 แล้ว (งบ $1.00)");
   await expect(started).toBeVisible();
   await expect(started).toBeFocused();
   expect(admin.calls.harnessStarts).toHaveLength(1);
@@ -682,9 +683,10 @@ test("harness: a capped start waits for the acknowledgement and the confirm, pos
   await expect(page.getByRole("heading", { level: 2, name: "ยังเริ่มรันไม่ได้" })).toBeVisible(); // one run at a time
   await expect(askStart(page)).toBeDisabled();
 
-  // while the run is active the page reads /harness again within 6 s (its poll is every 5 s)
+  // while the run is active the page reads /harness again once its 5 s poll comes round
   const readsBefore = admin.calls.harnessReads;
-  await expect.poll(() => admin.calls.harnessReads, { timeout: 6_000, intervals: [250] }).toBeGreaterThan(readsBefore);
+  await page.clock.runFor(5_500);
+  await expect.poll(() => admin.calls.harnessReads).toBeGreaterThan(readsBefore);
   expect(admin.calls.harnessStarts).toHaveLength(1); // exactly one POST, whatever the polling and the re-reads did
   expectNothingStray(admin);
 });

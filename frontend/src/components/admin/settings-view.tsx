@@ -99,6 +99,12 @@ export function SettingsView() {
   const [busy, setBusy] = useState(false);
   const savedRef = useRef<HTMLDivElement>(null);
   const focusSaved = useRef(false);
+  /** The draft as last rendered, for a save that answers after the admin kept editing (read in handlers only). */
+  const latestDoc = useRef<SettingsDraft | undefined>(undefined);
+
+  useEffect(() => {
+    latestDoc.current = draft?.doc;
+  });
 
   useEffect(() => {
     if (saved && focusSaved.current) {
@@ -159,8 +165,10 @@ export function SettingsView() {
       if (e instanceof AdminApiError && e.status === 409) {
         setActionError(STALE_TEXT);
         page.reload(); // the header moves on; the draft keeps its base and the page offers both ways forward
-      } else if (e instanceof AdminApiError && e.status === 422 && e.errors && e.errors.length > 0) {
-        // The save's own check refused the draft: every error goes beside its row, as after "ตรวจ"
+      } else if (e instanceof AdminApiError && e.status === 422 && e.errors && e.errors.length > 0
+        && latestDoc.current !== undefined && SETTINGS_PAGE.same(sent, latestDoc.current)) {
+        // The save's own check refused the draft: every error goes beside its row, as after "ตรวจ". A draft edited
+        // while the save was in flight would hide them (they are not its errors), so that case falls to the notice.
         setChecked({ doc: sent, report: { ok: false, errors: e.errors, warnings: [], values: null, worst_case_review_usd: null } });
       } else {
         setActionError(fail(e));
@@ -200,7 +208,7 @@ export function SettingsView() {
             return (
               <section key={group} aria-labelledby={`group-${group}`} className="mt-6">
                 <h2 id={`group-${group}`} className="font-display text-xl font-semibold">{SETTING_GROUP_LABEL[group]}</h2>
-                <div className={TABLE_REGION}>
+                <div role="region" aria-label={`ตารางค่า ${SETTING_GROUP_LABEL[group]}`} tabIndex={0} className={TABLE_REGION}>
                   <table className="w-full min-w-[46rem] border-collapse text-sm">
                     <caption className="sr-only">{SETTING_GROUP_LABEL[group]}</caption>
                     <thead>

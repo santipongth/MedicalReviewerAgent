@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WORKERS_NOT_NOTIFIED } from "@/lib/admin-copy";
 import type { GlossaryTerm } from "@/lib/admin-types";
@@ -134,6 +134,26 @@ describe("GlossaryView", () => {
     fireEvent.change(th, { target: { value: "อัตราส่วนฮาซาร์ด" } });
     expect(th).not.toHaveAttribute("aria-invalid");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("a refused save that answers after the rows were edited still shows its message", async () => {
+    const TH = "terms.0.th: must contain Thai";
+    let answer: () => void = () => {};
+    const inner = mockAdminFetch((m, p) => (m === "POST" && p === "/glossary"
+      ? [422, { detail: TH, errors: [{ field: "terms.0.th", message: TH }] }]
+      : routes()(m, p)));
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") await new Promise<void>((resolve) => { answer = resolve; });
+      return inner(input, init);
+    });
+    await renderAdmin(<GlossaryView />);
+    const th = await screen.findByLabelText("ภาษาไทย คำที่ 1");
+    fireEvent.change(th, { target: { value: "hazard ratio" } });
+    fireEvent.click(screen.getByRole("button", SAVE));
+    fireEvent.change(th, { target: { value: "hazard ratio x" } }); // edited while the save is in flight
+    await act(async () => { answer(); });
+    expect(await screen.findByRole("alert")).toHaveTextContent(TH); // the notice, not a hidden cell error
+    expect(th).not.toHaveAttribute("aria-invalid");
   });
 
   it("keeps a row with an error on screen while a filter would hide it, and states document-wide errors in the alert", async () => {

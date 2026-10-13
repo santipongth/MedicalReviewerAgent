@@ -40,6 +40,10 @@ describe("SettingsView", () => {
     const worker = screen.getByText(/worker-1:7/);
     expect(worker).toHaveTextContent("ตรงกับที่ใช้งาน");
     expect(worker).not.toHaveClass("bg-warn-bg");
+    // each group's table scrolls inside a named region a keyboard can reach, as on the glossary and harness pages
+    const region = screen.getByRole("region", { name: "ตารางค่า ความจุ" });
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region).toContainElement(row);
   });
 
   it("marks a worker on another version, one that failed to reload, and one that went quiet", async () => {
@@ -109,6 +113,26 @@ describe("SettingsView", () => {
     expect(queue).toHaveAccessibleDescription(MAX);
     expect(concurrency).toHaveAccessibleDescription(CONC);
     expect(screen.queryByText(/บันทึกเป็นเวอร์ชัน \d+ แล้ว/)).toBeNull();
+  });
+
+  it("a refused save that answers after the draft was edited still shows its message", async () => {
+    const MAX = "max_queued_reviews: must be between 1 and 1000";
+    let answer: () => void = () => {};
+    const inner = mockAdminFetch((m, p) => (m === "POST" && p === "/settings"
+      ? [422, { detail: MAX, errors: [{ field: "max_queued_reviews", message: MAX }] }]
+      : routes()(m, p)));
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") await new Promise<void>((resolve) => { answer = resolve; });
+      return inner(input, init);
+    });
+    await renderAdmin(<SettingsView />);
+    const queue = await screen.findByLabelText(`ค่าใหม่: ${QUEUE}`);
+    fireEvent.change(queue, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", SAVE));
+    fireEvent.change(queue, { target: { value: "70" } }); // edited while the save is in flight
+    await act(async () => { answer(); });
+    expect(await screen.findByRole("alert")).toHaveTextContent(MAX); // the notice, not a hidden field error
+    expect(queue).not.toHaveAttribute("aria-invalid");
   });
 
   it("lists a message the server sends twice twice, in the notice and among the warnings, without a key warning", async () => {

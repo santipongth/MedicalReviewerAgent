@@ -31,9 +31,9 @@ describe("pathological reports", () => {
 
   it("reads a heading line of a long whitespace run before a line separator in linear time", () => {
     // `.` does not match U+2028, so a `.*$` heading pattern fails at it and retries from every shorter whitespace run
-    const line = `# ${" ".repeat(200_000)}x y`;
+    const line = `# ${" ".repeat(200_000)}x\u2028y`;
     expect(timed(line)).toBeLessThan(500);
-    expect(parseReport(`#   x y`)).toEqual([{ kind: "heading", level: 1, text: "x y" }]);
+    expect(parseReport(`#   x\u2028y`)).toEqual([{ kind: "heading", level: 1, text: "x\u2028y" }]);
   });
 
   it("reads long runs of table, list and inline markers in linear time", () => {

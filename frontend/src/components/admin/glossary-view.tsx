@@ -73,6 +73,12 @@ export function GlossaryView() {
   // Where focus goes after the rows change: the new row's English cell, or the add button when a row is removed.
   const focusAfterRows = useRef<"new" | "add" | null>(null);
   const rows = draft?.doc;
+  /** The rows as last rendered, for a save that answers after the admin kept editing (read in handlers only). */
+  const latestRows = useRef<Row[] | undefined>(undefined);
+
+  useEffect(() => {
+    latestRows.current = rows;
+  });
 
   useEffect(() => {
     if (focusAfterRows.current === "new") newRowRef.current?.focus();
@@ -165,8 +171,10 @@ export function GlossaryView() {
       if (e instanceof AdminApiError && e.status === 409) {
         setActionError(STALE_TEXT);
         page.reload(); // the header moves on; the draft keeps its base and the page offers both ways forward
-      } else if (e instanceof AdminApiError && e.status === 422 && e.errors && e.errors.length > 0) {
-        // The save's own check refused the terms: every error goes beside its cell, as after "ตรวจ"
+      } else if (e instanceof AdminApiError && e.status === 422 && e.errors && e.errors.length > 0
+        && latestRows.current !== undefined && GLOSSARY_PAGE.same(sent, latestRows.current)) {
+        // The save's own check refused the terms: every error goes beside its cell, as after "ตรวจ". Rows edited
+        // while the save was in flight would hide them (they are not their errors), so that case falls to the notice.
         setChecked({ rows: sent, report: { ok: false, errors: e.errors, warnings: [], preview: null, chars: null } });
       } else {
         setActionError(fail(e));

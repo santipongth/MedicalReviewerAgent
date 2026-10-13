@@ -6,7 +6,7 @@ import { mockAdminFetch, renderAdmin } from "@/test/admin-fetch";
 import { parseReport } from "@/lib/report-markdown";
 import { COMPARE, HARNESS, REPORTS, REPORT_TEXT, RESULTS, RUN, RUN_DONE } from "@/test/admin-runtime-fixtures";
 import { HarnessReport } from "./harness-report";
-import { HarnessView, plannedRuns } from "./harness-view";
+import { HarnessView, formatCapUsd, plannedRuns } from "./harness-view";
 
 const nav = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => nav, usePathname: () => "/admin/harness" }));
@@ -32,6 +32,32 @@ const routes = (state: HarnessState = HARNESS) => (m: string, p: string): AdminR
   if (p.startsWith("/harness/compare")) return [200, COMPARE];
   return undefined;
 };
+
+describe("formatCapUsd", () => {
+  it("shows a cap the way formatUsd does unless that would hide its 4th place", () => {
+    expect(formatCapUsd(0.28)).toBe("$0.280");
+    expect(formatCapUsd(0.2801)).toBe("$0.2801");
+    expect(formatCapUsd(1)).toBe("$1.00");
+  });
+});
+
+describe("the start form's cap", () => {
+  it("states the lowest cap the server accepts in full and says the cap is not a hard stop", async () => {
+    mockAdminFetch(routes({ ...HARNESS, per_review_cap_usd: 0.2801 }));
+    await renderAdmin(<HarnessView />);
+    await screen.findByText("พร้อมเริ่มรัน");
+    const ack = screen.getByRole("checkbox", { name: ACK });
+    expect(ack.closest("label")).toHaveTextContent("call ที่กำลังทำอยู่จะทำจนจบ");
+    fireEvent.click(ack);
+    const cap = screen.getByLabelText("งบสูงสุด (USD)");
+    const start = screen.getByRole("button", { name: "เริ่มรัน harness" });
+    fireEvent.change(cap, { target: { value: "0.28" } });
+    expect(start).toBeDisabled();
+    expect(screen.getByText("งบต้องอยู่ระหว่าง $0.2801 ถึง $5.00")).toBeInTheDocument();
+    fireEvent.change(cap, { target: { value: "0.2801" } });
+    expect(start).toBeEnabled();
+  });
+});
 
 describe("plannedRuns", () => {
   it("counts the chosen strata's frozen reviews, capped, times the repeats", () => {
@@ -311,7 +337,7 @@ describe("HarnessView", () => {
     const limit = screen.getByLabelText("ไม่เกินกี่รีวิว (ไม่บังคับ)");
     const start = screen.getByRole("button", { name: "เริ่มรัน harness" });
     expect(start).toBeEnabled();
-    for (const bad of ["0", "1.5", "1001", "-3"]) {
+    for (const bad of ["0", "1.5", "1001", "-3", "1e", "-", "abc", "1e3"]) { // a text input: partial junk is not read as empty
       fireEvent.change(limit, { target: { value: bad } });
       expect(start).toBeDisabled();
       expect(limit).toBeInvalid();

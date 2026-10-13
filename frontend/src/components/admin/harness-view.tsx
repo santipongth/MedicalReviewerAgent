@@ -17,6 +17,13 @@ const MAX_REVIEWS = 1000; // StartBody.max_reviews: 1 to 1000
 /** The start form's fields, as the start route names them in an `errors` list. */
 const FORM_FIELDS = ["max_usd", "repeats", "strata", "max_reviews", "compare_run", "confirm"];
 
+/** A cap as the server compares it: the per-review cap comes rounded up to 4 places, and formatUsd shows 3, so a
+ * value whose 4th place formatUsd would hide is shown in full (the lowest cap the page states is one it accepts). */
+export function formatCapUsd(n: number): string {
+  const shown = formatUsd(n);
+  return Number(shown.slice(1)) === n ? shown : "$" + n.toFixed(4);
+}
+
 /** Planned runs for the form: the chosen strata's reviews with a frozen pool (all strata when none is chosen),
  * capped by "at most N reviews", times the repeats. */
 export function plannedRuns(state: HarnessState, strata: string[], maxReviews: number | null, repeats: number): number {
@@ -176,7 +183,7 @@ export function HarnessView() {
       const run = await adminApi.startHarness({ max_usd: capValue, repeats, strata, max_reviews: reviewsLimit,
         compare_run: compareRun || null, confirm: true });
       focusNotice.current = true;
-      setNotice(`เริ่มรัน ${run.run_id} แล้ว (งบไม่เกิน ${formatUsd(run.max_usd)})`);
+      setNotice(`เริ่มรัน ${run.run_id} แล้ว (งบ ${formatUsd(run.max_usd)})`);
       setAck(false);
     } catch (e) {
       if (e instanceof AdminApiError && e.status === 503 && e.reasons && e.reasons.length > 0) {
@@ -295,7 +302,7 @@ export function HarnessView() {
           <div className="max-w-xs">
             <label className="block">
               <span className="text-sm">ไม่เกินกี่รีวิว (ไม่บังคับ)</span>
-              <input type="number" min={1} max={MAX_REVIEWS} step={1} className={INPUT} value={maxReviews}
+              <input type="text" inputMode="numeric" className={INPUT} value={maxReviews}
                 aria-invalid={reviewsOk && !noteOf("max_reviews") ? undefined : true}
                 aria-describedby={describedBy(!reviewsOk && "harness-max-reviews-range", !!noteOf("max_reviews") && "harness-max-reviews-error")}
                 onChange={(e) => { touched(); setMaxReviews(e.target.value); }} />
@@ -325,7 +332,7 @@ export function HarnessView() {
             </label>
             {!capOk && (
               <p id="harness-cap-range" className="mt-1 text-sm text-err">
-                {`งบต้องอยู่ระหว่าง ${formatUsd(current.per_review_cap_usd)} ถึง ${formatUsd(current.ceiling_usd)}`}
+                {`งบต้องอยู่ระหว่าง ${formatCapUsd(current.per_review_cap_usd)} ถึง ${formatUsd(current.ceiling_usd)}`}
               </p>
             )}
             <FieldNote id="harness-cap-error" text={noteOf("max_usd")} />
@@ -333,13 +340,14 @@ export function HarnessView() {
           <p className="text-sm">
             {`ประมาณการ: ${planned} รอบ · กรณีมากที่สุด ${formatUsd(planned * current.per_review_cap_usd)}`}
             {current.typical_review_usd !== null ? ` · โดยทั่วไป ${formatUsd(planned * current.typical_review_usd)}` : ""}
-            {` · งบต่อรีวิว ${formatUsd(current.per_review_cap_usd)} · เพดาน ${formatUsd(current.ceiling_usd)}`}
+            {` · งบต่อรีวิว ${formatCapUsd(current.per_review_cap_usd)} · เพดาน ${formatUsd(current.ceiling_usd)}`}
           </p>
           <div>
             <label className="flex min-h-11 items-center gap-2">
               <input type="checkbox" checked={ack} aria-describedby={noteOf("confirm") ? "harness-confirm-error" : undefined}
                 onChange={(e) => { touched(); setAck(e.target.checked); }} />
-              {`เข้าใจว่าการรันนี้เรียกโมเดลจริงและเสียเงินจริง ไม่เกิน ${Number.isFinite(capValue) ? formatUsd(capValue) : "—"}`}
+              {`เข้าใจว่าการรันนี้เรียกโมเดลจริงและเสียเงินจริง งบ ${Number.isFinite(capValue) ? formatUsd(capValue) : "—"}: `
+                + "ถึงงบแล้วจะไม่เริ่มรีวิวหรือ LLM call ใหม่ แต่ call ที่กำลังทำอยู่จะทำจนจบ จึงอาจเกินงบได้เล็กน้อย"}
             </label>
             <FieldNote id="harness-confirm-error" text={noteOf("confirm")} />
           </div>
