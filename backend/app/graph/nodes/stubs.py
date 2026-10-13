@@ -34,11 +34,14 @@ def make_wait(seconds: float):
 async def finalize(state: ReviewState) -> dict:
     writer = get_stream_writer()
     writer({"type": "synthesizing"})
+    opts = ReviewOptions.clamped(state.get("options"))
     return {
         "result": {
             "summary": f"Stub review for: {state['topic']}",
             "language": state["language"],
-            "review_type": ReviewOptions.clamped(state.get("options")).review_type,
+            "review_type": opts.review_type,
+            # Plan 27: a quick stub answer cites nothing (the stub reads no paper)
+            "mode": opts.mode, "quick": {"refs": [], "papers_read": 0} if opts.mode == "quick" else None,
             "papers": [],
             "comparison": [],
             "citations": None,
@@ -183,7 +186,7 @@ def make_timed_nodes(timeline: StubTimeline, settings) -> dict[str, Any]:
         opts = ReviewOptions.clamped(state.get("options"))
         review_type = opts.review_type
         final = stub_result(state["topic"], state["language"], review_type, opts)  # the result finalize will return
-        if state.get("selected"):
+        if state.get("selected") and final["citations"] is not None:  # a quick answer fetches no citations (Plan 27)
             c = final["citations"]
             progress_writer()({"type": "citations_fetched", "edges": len(c["edges"]),
                                "covered": sum(1 for v in c["coverage"].values() if v), "total": len(c["coverage"])})

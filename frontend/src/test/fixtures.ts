@@ -828,3 +828,38 @@ export const resultN50: Review = paperCountReview("21210000-0000-4000-8000-00000
 
 /** A shortfall: N = 50, S = 120, only E = 22 eligible, so A = 22 (never padded). */
 export const resultShortfall: Review = paperCountReview("21210000-0000-4000-8000-000000000022", { selected: 22, eligible: 22, over_limit: 0 });
+
+// Plan 27: a quick answer as the engine's finalize writes it for mode "quick": the summary is the 2–4 sentence answer
+// (its [Pn] groups kept through translation), synthesis.answer the certainty-and-limits line, quick.refs the cited refs
+// in order of first citation. P3's citation in the first sentence passed the sentence-support check (✓); P1's is partial.
+const QUICK_TH = "ผู้ใช้เมตฟอร์มินมีความเสี่ยงมะเร็งลำไส้ใหญ่ต่ำกว่า (HR 0.80) [P3, P1] แต่การศึกษาหนึ่งพบการตรวจพบมากขึ้นในสองปีแรก [P4]";
+const QUICK_EN = "Metformin users had a lower risk of colorectal cancer (HR 0.80) [P3, P1], but one study found more detection in the first two years [P4].";
+const quickSynthesis = (summary: string, answer: string) => ({
+  executive_summary: summary, comparison: [], consensus: [], conflicts: [], evidence_strength: "low" as const,
+  evidence_rationale: "observational studies", research_gaps: [], grade_baseline: "low" as const, answer, key_findings: [],
+});
+
+export const quickReviewFixture: Review = {
+  ...reviewFixture,
+  id: "27270000-0000-4000-8000-000000000027",
+  options: { mode: "quick", max_papers: 8, candidate_limit: 30, review_type: "slr", year_from: 2015, study_types: ["Cohort", "Other: Delphi study"] },
+  result: {
+    ...resultFixture,
+    review_type: "slr", mode: "quick", quick: { refs: ["P3", "P1", "P4"], papers_read: 4 },
+    summary: QUICK_TH,
+    synthesis: quickSynthesis(QUICK_TH, "ความเชื่อมั่นของหลักฐานต่ำ การศึกษาทั้งหมดเป็นการศึกษาเชิงสังเกต"),
+    synthesis_en: quickSynthesis(QUICK_EN, "The certainty of the evidence is low. All studies were observational."),
+    citations: null,
+    support: {
+      judge: "ok", markers: [["P3", "P1"], ["P4"]], display_aligned: true,
+      claims: [{
+        id: "s0", where: "summary", markers: [0], finding: null, claim: "Metformin users had a lower risk of colorectal cancer (HR 0.80) [P3, P1].",
+        refs: ["P3", "P1"], numbers_checked: true, computed: false,
+        citations: [
+          { ref: "P3", label: "supported", evidence: q3, score: 0.92, not_evidence: false, verified: true },
+          { ref: "P1", label: "partial", evidence: q1, score: 0.61, not_evidence: false, verified: false },
+        ],
+      }],
+    },
+  },
+};

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
-import { TYPICAL_DURATION_TH } from "@/lib/copy";
+import { QUICK_DURATION_TH, TYPICAL_DURATION_TH } from "@/lib/copy";
 import { GLOSS, glossText } from "@/lib/glossary";
 import { STATUS_FIXTURE } from "@/test/status-fixture";
 
@@ -14,6 +14,8 @@ vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api"
   createReview: (...a: unknown[]) => createReview(...a), getStatus: (...a: unknown[]) => getStatus(...a) }));
 
 const OPEN = STATUS_FIXTURE;
+// Plan 27: the form starts as a quick answer; the tests of the full review's options start it as a full review
+const FULL = { mode: "full" } as const;
 
 import { RequestSlip } from "./request-slip";
 
@@ -42,7 +44,7 @@ beforeEach(() => {
 describe("RequestSlip", () => {
   it("submits the topic with options and opens the review", async () => {
     createReview.mockResolvedValue({ review_id: "r-1", status: "queued", cached: false });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await typeTopic();
     await user.click(screen.getByLabelText("English"));
     await user.click(screen.getByLabelText(/RCT/));
@@ -54,7 +56,7 @@ describe("RequestSlip", () => {
   });
 
   it("takes the slider's range and starting value from /status (5–50, default 30)", async () => {
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     const slider = await screen.findByRole("slider", { name: "จำนวนงานวิจัยที่ต้องการวิเคราะห์" });
     expect(slider).toHaveAttribute("min", "5");
     expect(slider).toHaveAttribute("max", "50");
@@ -67,7 +69,7 @@ describe("RequestSlip", () => {
 
   it("submits the count the slider is moved to", async () => {
     createReview.mockResolvedValue({ review_id: "r-1", status: "queued", cached: false });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     const slider = await screen.findByRole("slider", { name: "จำนวนงานวิจัยที่ต้องการวิเคราะห์" });
     fireEvent.change(slider, { target: { value: "50" } });
     expect(slider).toHaveAttribute("aria-valuetext", "50 ฉบับ");
@@ -80,7 +82,7 @@ describe("RequestSlip", () => {
 
   it("follows whatever maximum the service reports (never hard-coded)", async () => {
     getStatus.mockResolvedValue({ ...OPEN, limits: { ...OPEN.limits, max_papers: { min: 5, max: 40, default: 20 } } });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     const slider = await screen.findByRole("slider", { name: "จำนวนงานวิจัยที่ต้องการวิเคราะห์" });
     expect(slider).toHaveAttribute("max", "40");
     expect(slider).toHaveValue("20");
@@ -88,7 +90,7 @@ describe("RequestSlip", () => {
 
   it("uses the server-rendered limits before the browser's own status read lands", () => {
     getStatus.mockReturnValue(new Promise(() => {})); // never settles
-    render(<RequestSlip limits={OPEN.limits} />);
+    render(<RequestSlip limits={OPEN.limits} start={FULL} />);
     const slider = screen.getByRole("slider", { name: "จำนวนงานวิจัยที่ต้องการวิเคราะห์" });
     expect(slider).toHaveAttribute("max", "50");
     expect(slider).toHaveValue("30");
@@ -97,7 +99,7 @@ describe("RequestSlip", () => {
   it("with no limits known (status unreadable), shows no slider and lets the API pick the count", async () => {
     getStatus.mockRejectedValue(new ApiError(0, "network"));
     createReview.mockResolvedValue({ review_id: "r-1", status: "queued", cached: false });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await typeTopic();
     expect(screen.queryByRole("slider")).toBeNull();
     expect(screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary")?.textContent).not.toMatch(/\d+ ฉบับ/);
@@ -107,7 +109,7 @@ describe("RequestSlip", () => {
 
   it("tells people when the service is full and does not let them submit", async () => {
     getStatus.mockResolvedValue({ ...OPEN, accepting: false, reason: "daily_budget", retry_after: 3600 });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     expect(await screen.findByRole("status")).toHaveTextContent("วันนี้");
     expect(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ })).toBeDisabled();
   });
@@ -124,7 +126,7 @@ describe("RequestSlip", () => {
 
   it("explains a full queue returned at submit time", async () => {
     createReview.mockRejectedValue(new ApiError(503, "the review queue is full", 60, undefined, "queue_full"));
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await typeTopic();
     await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("คิว");
@@ -137,7 +139,7 @@ describe("RequestSlip", () => {
     };
     getStatus.mockResolvedValue({ ...OPEN, turnstile_site_key: "site-key" });
     createReview.mockResolvedValue({ review_id: "r-2", status: "queued", cached: false });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await typeTopic();
     // the status first (the button is also enabled before it arrives, when no Turnstile is known), then the token: the
     // widget mounts in a passive effect after the container renders, and the button turns enabled when its token is in
@@ -150,7 +152,7 @@ describe("RequestSlip", () => {
 
   it("explains why it cannot submit when the Turnstile script is blocked", async () => {
     getStatus.mockResolvedValue({ ...OPEN, turnstile_site_key: "site-key" });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     // the script is added by a passive effect that can run after the widget's container is on screen (the flake under
     // load, Task 9): wait for the script itself
     const script = await waitFor(() => {
@@ -165,7 +167,7 @@ describe("RequestSlip", () => {
 
   it("names a momentary admission backlog honestly", async () => {
     createReview.mockRejectedValue(new ApiError(503, "too many submissions", 5, undefined, "busy"));
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await typeTopic();
     await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("มีผู้ส่งพร้อมกันจำนวนมาก");
@@ -173,7 +175,7 @@ describe("RequestSlip", () => {
 
   it("explains a rate limit with the wait time", async () => {
     createReview.mockRejectedValue(new ApiError(429, "rate limit exceeded", 1800));
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await typeTopic();
     await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("30 นาที");
@@ -181,13 +183,13 @@ describe("RequestSlip", () => {
   });
 
   it("example topics fill the slip instead of navigating", async () => {
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await user.click(screen.getByRole("button", { name: "SGLT2 inhibitors and heart failure" }));
     expect(screen.getByLabelText(/คำถามหรือวัตถุประสงค์/)).toHaveValue("SGLT2 inhibitors and heart failure");
   });
 
   it("starts with an empty topic and a placeholder example", () => {
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     const topic = screen.getByLabelText(/คำถามหรือวัตถุประสงค์/);
     expect(topic).toHaveValue("");
     expect(topic.tagName).toBe("TEXTAREA");
@@ -202,7 +204,7 @@ describe("RequestSlip", () => {
 
   it("says why the button is disabled while the Turnstile token is pending", async () => {
     getStatus.mockResolvedValue({ ...OPEN, turnstile_site_key: "site-key" });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await screen.findByTestId("turnstile");
     const button = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ });
     expect(button).toBeDisabled();
@@ -211,7 +213,7 @@ describe("RequestSlip", () => {
   });
 
   it("summarises the folded options as they change", async () => {
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     const summary = screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary") as HTMLElement;
     await waitFor(() => expect(summary).toHaveTextContent("ภาษาไทย · วิเคราะห์ 30 ฉบับ · ทุกปี"));
     await user.click(screen.getByLabelText("English"));
@@ -220,7 +222,7 @@ describe("RequestSlip", () => {
   });
 
   it("shows the three numbered steps of the scope form", () => {
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     expect(screen.getByRole("form", { name: "กำหนดขอบเขตการทบทวน" })).toBeInTheDocument();
     expect(screen.getByLabelText(/รูปแบบการทบทวน/)).toHaveValue("slr");
     expect(screen.getByRole("group", { name: /หลักฐานและเกณฑ์คัดเลือก/ })).toBeInTheDocument();
@@ -228,7 +230,7 @@ describe("RequestSlip", () => {
   });
 
   it("shows each study design as a tile: Thai name first, then the English term and its plain gloss", () => {
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     const group = screen.getByRole("group", { name: /หลักฐานและเกณฑ์คัดเลือก/ });
     // the name is short (Thai name + term); the plain words are the description, so tabbing stays quick
     const rct = within(group).getByRole("checkbox", { name: /RCT/ });
@@ -242,14 +244,14 @@ describe("RequestSlip", () => {
   });
 
   it("marks the folded options as something that opens", () => {
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     const summary = screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary") as HTMLElement;
     expect(summary.querySelector("[data-chevron][aria-hidden=true]")).not.toBeNull();
     expect(summary).toHaveTextContent("แก้ไข");
   });
 
   it("glosses PICO in the question hint and keeps only the typical duration in the submit row", () => {
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     expect(screen.getByText(/ลองคิดตาม/).textContent).toContain(glossText("pico"));
     const row = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }).closest("[data-testid=submit-row]");
     expect(row).toHaveTextContent(TYPICAL_DURATION_TH);
@@ -258,7 +260,7 @@ describe("RequestSlip", () => {
 
   it("sends the chosen review type", async () => {
     createReview.mockResolvedValue({ review_id: "r-4", status: "queued", cached: false });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await typeTopic();
     await user.selectOptions(screen.getByLabelText(/รูปแบบการทบทวน/), "meta_analysis");
     expect(screen.getByText(/ตัวเลขรวมคำนวณโดยระบบ/)).toBeInTheDocument();
@@ -270,7 +272,7 @@ describe("RequestSlip", () => {
 
   it("sends a free-text other study type, capped at 60 characters", async () => {
     createReview.mockResolvedValue({ review_id: "r-5", status: "queued", cached: false });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await typeTopic();
     expect(screen.queryByLabelText("ระบุชนิดงานวิจัยอื่น")).toBeNull();
     await user.click(screen.getByLabelText(/อื่น ๆ — ระบุ/));
@@ -284,7 +286,7 @@ describe("RequestSlip", () => {
   });
 
   it("explains the limited support for qualitative and mixed-methods studies", async () => {
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     expect(screen.queryByText(/สรุปเป็นประเด็นจากบทคัดย่อ/)).toBeNull();
     await user.click(screen.getByLabelText(/Qualitative/));
     expect(screen.getByText(/สรุปเป็นประเด็นจากบทคัดย่อ ไม่มีค่าผลเชิงตัวเลข/)).toBeInTheDocument();
@@ -292,7 +294,7 @@ describe("RequestSlip", () => {
 
   it("sends English study-type values although the labels are Thai", async () => {
     createReview.mockResolvedValue({ review_id: "r-3", status: "queued", cached: false });
-    render(<RequestSlip />);
+    render(<RequestSlip start={FULL} />);
     await typeTopic();
     await user.click(screen.getByLabelText(/Cohort/));
     await user.click(screen.getByLabelText(/การทดลองแบบไม่สุ่ม/));
@@ -300,5 +302,66 @@ describe("RequestSlip", () => {
     expect(createReview).toHaveBeenCalledWith(expect.objectContaining({
       options: { max_papers: 30, review_type: "slr", study_types: ["Cohort", "Non-randomized trial"] },
     }));
+  });
+});
+
+describe("RequestSlip: quick answer or full review (Plan 27)", () => {
+  const quickRadio = () => screen.getByRole("radio", { name: /ถามเร็ว/ });
+  const fullRadio = () => screen.getByRole("radio", { name: /รีวิวฉบับเต็ม/ });
+
+  it("starts as a quick answer, with the paper count from /status in its description", async () => {
+    render(<RequestSlip />);
+    expect(screen.getByRole("group", { name: "ต้องการคำตอบแบบไหน" })).toBeInTheDocument();
+    expect(quickRadio()).toBeChecked();
+    expect(fullRadio()).not.toBeChecked();
+    await waitFor(() => expect(quickRadio()).toHaveAccessibleDescription(/ที่เกี่ยวข้องที่สุด 8 ฉบับ พร้อมเลขอ้างอิง/));
+  });
+
+  it("hides the review type and the paper count for a quick answer, and keeps the study designs as step 2", async () => {
+    render(<RequestSlip />);
+    expect(screen.queryByLabelText(/รูปแบบการทบทวน/)).toBeNull();
+    expect(screen.queryByRole("slider")).toBeNull();
+    expect(screen.getByRole("group", { name: /^2\s*หลักฐานและเกณฑ์คัดเลือก/ })).toBeInTheDocument();
+    const row = screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }).closest("[data-testid=submit-row]");
+    expect(row).toHaveTextContent(QUICK_DURATION_TH);
+    const summary = screen.getByText("ตัวเลือกเพิ่มเติม").closest("summary") as HTMLElement;
+    await waitFor(() => expect(summary).toHaveTextContent("ภาษาไทย · อ่าน 8 ฉบับ · ทุกปี"));
+  });
+
+  it("sends a quick answer with its mode and the eligibility only", async () => {
+    createReview.mockResolvedValue({ review_id: "q-1", status: "queued", cached: false });
+    render(<RequestSlip />);
+    await typeTopic();
+    await user.click(screen.getByLabelText(/Cohort/));
+    await user.type(screen.getByLabelText(/ตั้งแต่ปี/), "2015");
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    expect(createReview).toHaveBeenCalledWith({
+      topic: "statins and dementia", language: "th", options: { mode: "quick", year_from: 2015, study_types: ["Cohort"] },
+    });
+    expect(push).toHaveBeenCalledWith("/r/q-1");
+  });
+
+  it("switching to a full review shows its steps and sends no mode", async () => {
+    createReview.mockResolvedValue({ review_id: "f-1", status: "queued", cached: false });
+    render(<RequestSlip />);
+    await user.click(fullRadio());
+    expect(await screen.findByRole("slider", { name: "จำนวนงานวิจัยที่ต้องการวิเคราะห์" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/รูปแบบการทบทวน/)).toHaveValue("slr");
+    await typeTopic();
+    await user.click(screen.getByRole("button", { name: /ส่งให้เอเจนต์ทบทวน/ }));
+    expect(createReview).toHaveBeenCalledWith({
+      topic: "statins and dementia", language: "th", options: { max_papers: 30, review_type: "slr" },
+    });
+  });
+
+  it("starts from the quick answer's upgrade link: full review, same question, language, year and designs", () => {
+    render(<RequestSlip start={{ topic: "statins and dementia", mode: "full", language: "en", yearFrom: "2015",
+      studyTypes: ["Cohort", "Other: Delphi study", "Unknown"] }} />);
+    expect(fullRadio()).toBeChecked();
+    expect(screen.getByLabelText(/คำถามหรือวัตถุประสงค์/)).toHaveValue("statins and dementia");
+    expect(screen.getByLabelText("English")).toBeChecked();
+    expect(screen.getByLabelText(/ตั้งแต่ปี/)).toHaveValue("2015");
+    expect(screen.getByLabelText(/Cohort/)).toBeChecked();
+    expect(screen.getByLabelText("ระบุชนิดงานวิจัยอื่น")).toHaveValue("Delphi study");
   });
 });

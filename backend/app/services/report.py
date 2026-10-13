@@ -326,12 +326,62 @@ def _reference_line(p: dict[str, Any]) -> str:
     return f"{_vancouver_md(p)}{design}{_other_comparisons(p.get('card_en') or card)}{excluded}{related}"
 
 
+_MARKER = re.compile(r"\[(P\d+(?:\s*,\s*P\d+)*)\]")  # app.harness.support.MARKER: the groups the engine writes
+
+
+def quick_view(result: dict[str, Any]) -> dict[str, Any]:
+    """Plan 27: a quick answer as its readers get it outside the web page (MCP quick_answer, the Markdown export): the
+    shown answer with its [Pn] groups renumbered [1]..[n] by `quick.refs` (order of first citation), the closing
+    certainty-and-limits line, the certainty level (computed, GRADE-lite) and the numbered references with their
+    links. The references are the screened papers the answer cites; nothing is computed here."""
+    s = result.get("synthesis") or {}
+    quick = result.get("quick") or {}
+    refs = [r for r in quick.get("refs") or [] if isinstance(r, str)]
+    by_ref = {p.get("ref"): p for p in result.get("papers") or []}
+
+    def number(m: re.Match[str]) -> str:
+        nums = [str(refs.index(r) + 1) for r in re.findall(r"P\d+", m.group(1)) if r in refs]
+        return f"[{', '.join(nums)}]" if nums else ""
+
+    references = []
+    for n, ref in enumerate(refs, 1):
+        p = by_ref.get(ref) or {"ref": ref}
+        _text, ids = _citation_parts(p)
+        references.append({"n": n, "ref": ref, "citation": vancouver(p),
+                           "links": [{"label": label, "url": url} for label, _value, url in ids]})
+    return {"answer": _MARKER.sub(number, result.get("summary") or s.get("executive_summary") or ""),
+            "closing": s.get("answer") or "", "certainty": s.get("evidence_strength"),
+            "papers_read": quick.get("papers_read"), "references": references}
+
+
+def _quick_markdown(review, result: dict[str, Any]) -> str:
+    view = quick_view(result)
+    q = result.get("question") or {}
+    out = [f"# Quick answer: {review.topic}", ""]
+    if q.get("refined_question"):
+        out += [f"**Question:** {q['refined_question']}", ""]
+    out += [view["answer"], ""]
+    if view["closing"]:
+        out += [view["closing"], ""]
+    if view["papers_read"] is not None:
+        out += [(f"_A quick answer from the abstracts of {view['papers_read']} studies (automated, abstracts only); "
+                 "not a full systematic review and not medical advice._"), ""]
+    if view["references"]:
+        out += ["## References", ""]
+        by_ref = {p.get("ref"): p for p in result.get("papers") or []}
+        out += [f"{r['n']}. {_vancouver_md(by_ref.get(r['ref']) or {})}" for r in view["references"]]
+        out.append("")
+    return "\n".join(out) + "\n"
+
+
 def render_markdown(review) -> str:
     result = review.result
     out = [f"# Literature review: {review.topic}", ""]
     if not result:
         out.append(f"Status: **{review.status}**" + (f" — {review.error}" if review.error else ""))
         return "\n".join(out) + "\n"
+    if result.get("mode") == "quick":  # Plan 27: the answer and its numbered references, not the report
+        return _quick_markdown(review, result)
     q = result.get("question") or {}
     s = result.get("synthesis") or {}
     if q.get("refined_question"):

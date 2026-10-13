@@ -862,4 +862,24 @@ export const RC = {
     harmsNone: ["ไม่มีบทคัดย่อของงานที่รวมไว้รายงานผลด้านอันตรายหรือเหตุการณ์ไม่พึงประสงค์ บทคัดย่อมักไม่รายงานอันตราย การไม่พบข้อมูลจึงไม่ได้แปลว่าปลอดภัย",
       "No included study reports harms or adverse events in its abstract. Abstracts often leave harms out, so missing data is not evidence of safety."],
   },
+
+  /** Plan 27: the quick answer page (components/review/quick-answer.tsx). */
+  quick: {
+    kind: ["ถามเร็ว", "Quick answer"],
+    scope: (n: number): Pair => [`คำตอบสั้นจากบทคัดย่อของงานวิจัย ${n} ฉบับ อัตโนมัติ ไม่ใช่การทบทวนฉบับเต็ม และไม่ใช่คำแนะนำทางการแพทย์`,
+      `A short answer from the abstracts of ${n} ${pl(n, "study", "studies")}; automated, not a full review and not medical advice.`],
+    scopeNone: ["คำตอบสั้นจากบทคัดย่อ อัตโนมัติ ไม่ใช่การทบทวนฉบับเต็ม และไม่ใช่คำแนะนำทางการแพทย์",
+      "A short answer from abstracts; automated, not a full review and not medical advice."],
+    asked: ["คำถามที่คุณพิมพ์", "Your question"],
+    answer: ["คำตอบ", "Answer"],
+    refsTitle: ["เอกสารอ้างอิง", "References"],
+    refsNote: ["เลขในวงเล็บชี้ไปที่งานวิจัยในรายการนี้ ทุกงานผ่านการคัดกรองแล้ว และตัวเลขในคำตอบตรวจกับบทคัดย่อแล้ว",
+      "Each number in brackets points to a study in this list; every study passed screening and every number in the answer was checked against its abstract."],
+    cite: (n: number): Pair => [`อ้างอิง ${n}`, `Reference ${n}`],
+    citeChecked: (n: number): Pair => [`อ้างอิง ${n} ตรวจแล้ว: บทคัดย่อรองรับประโยคนี้`, `Reference ${n} checked: the abstract supports this sentence`],
+    noRefs: ["คำตอบนี้ไม่ได้อ้างอิงงานวิจัยใด", "This answer cites no study."],
+    upgrade: ["ทำรีวิวฉบับเต็ม", "Run a full review"],
+    upgradeHint: ["ค้นกว้างกว่า อ่านงานวิจัยมากกว่า และมีตาราง กราฟ และระดับหลักฐานครบ ส่งได้จากแบบฟอร์มที่กรอกคำถามนี้ไว้ให้แล้ว",
+      "Searches wider, reads more studies and adds the tables, charts and certainty assessment; send it from the form, filled in with this question."],
+  },
 } as const;

@@ -13,6 +13,10 @@ from app.db.models import TERMINAL_STATUSES, Review
 from app.db.repositories import ReviewRepository
 from app.logging import get_logger
 from app.schemas.review import (
+    QUICK_CANDIDATE_LIMIT,
+    QUICK_MAX_PAPERS,
+    QUICK_REVIEW_TYPE,
+    REVIEW_MODES,
     REVIEW_TYPES,
     CreateReviewRequest,
     ReviewCreated,
@@ -271,7 +275,11 @@ class ReviewService:
             "limits": {"review_rate_limit": s.review_rate_limit, "api_key_rate_limit": s.api_key_rate_limit,
                        "paper_search_rate_limit": s.paper_search_rate_limit,
                        "review_types": list(REVIEW_TYPES), "max_papers": bounds("max_papers"), "candidate_limit": bounds("candidate_limit"),
-                       "max_queued_reviews": s.max_queued_reviews, "sse_max_per_ip": s.sse_max_per_ip},
+                       "max_queued_reviews": s.max_queued_reviews, "sse_max_per_ip": s.sse_max_per_ip,
+                       # Plan 27: the quick answer's fixed sizes; it shares the review rate limit and daily counters
+                       "modes": list(REVIEW_MODES),
+                       "quick": {"max_papers": QUICK_MAX_PAPERS, "candidate_limit": QUICK_CANDIDATE_LIMIT,
+                                 "review_type": QUICK_REVIEW_TYPE}},
         }
 
     def sse_key(self, ip: str) -> str:

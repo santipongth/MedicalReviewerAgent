@@ -20,8 +20,9 @@ const ID_NAME: Record<CitationId["label"], string> = { doi: "DOI", PMID: "PubMed
 /** The anchor of a paper's reference (`#ref-P3`): the source rail links here. */
 export const referenceId = (ref: string): string => `ref-${ref}`;
 
-/** The reference text with its identifiers as links (doi.org, PubMed, PubMed Central, the ThaiJO page); the text is never translated. */
-function CitationText({ paper, lang }: { paper: Paper; lang: Lang }) {
+/** The reference text with its identifiers as links (doi.org, PubMed, PubMed Central, the ThaiJO page); the text is
+ * never translated. Also the quick answer's reference list (Plan 27). */
+export function CitationText({ paper, lang }: { paper: Paper; lang: Lang }) {
   const { text, ids } = citationParts(paper);
   const opens = L(lang, R.newTab);
   return (

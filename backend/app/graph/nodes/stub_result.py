@@ -185,8 +185,9 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
                 strict=True)
             for refs in [[c["ref"] for c in row["cells"]]]],
     }
-    return {
+    result = {
         "topic": topic, "english_topic": topic, "language": language, "review_type": review_type,
+        "mode": opts.mode, "quick": None,  # Plan 27 (parity with finalize)
         "question": {
             "original_topic": topic, "english_topic": topic, "refined": True,
             "interpretation": f"Evidence on {topic}",
@@ -236,6 +237,26 @@ def stub_result(topic: str, language: str, review_type: str = "slr",
         },
         "support": _stub_support(synthesis, papers),
     }
+    return _stub_quick(result) if opts.mode == "quick" else result
+
+
+def _stub_quick(result: dict[str, Any]) -> dict[str, Any]:
+    """Plan 27: the stub's quick answer, in the engine's quick shape: the same papers, a two-sentence answer citing
+    P1, P3 and P4 with the certainty-and-limits line, no comparison, consensus, conflicts or key findings, no citation
+    network (a quick answer fetches none) and no sentence-support block (no judge runs)."""
+    topic = result["topic"]
+    level = result["synthesis"]["evidence_strength"]
+    summary = (f"Simulated studies suggest that {topic} may improve the primary outcome [P1, P3]. "
+               "One simulated cohort reports the opposite direction [P4].")
+    synthesis = {**result["synthesis"], "executive_summary": summary, "comparison": [], "consensus": [],
+                 "conflicts": [], "research_gaps": [], "key_findings": [],
+                 "answer": (f"The certainty of the evidence is {level.replace('_', ' ')}. "
+                            "The simulated studies are few and illustrative only.")}
+    evidence = [p for p in result["papers"] if not p["related_to"]
+                and p["card"]["design_category"] != "narrative_review"]
+    return {**result, "mode": "quick", "quick": {"refs": ["P1", "P3", "P4"], "papers_read": len(evidence)},
+            "summary": summary, "synthesis": synthesis, "synthesis_en": synthesis, "citations": None,
+            "support": None}
 
 
 # Fixed verdict by (claim, ref); a ref not listed is "supported". Together they show every state: supported with the

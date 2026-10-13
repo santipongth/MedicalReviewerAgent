@@ -1,4 +1,6 @@
 export const TYPICAL_DURATION_TH = "ปกติใช้ 1–3 นาที";
+/** Plan 27: a quick answer's expected time (an estimate on the budget preset, not measured live). */
+export const QUICK_DURATION_TH = "ปกติใช้ราว 1 นาที";
 /** A paper handed to the readers but not finished: it may be read now or wait behind the LLM limit (never "in flight"). */
 export const READING_OR_QUEUED = "กำลังอ่านหรือรอคิว";
 /** SR/MA overlap note (report bottom line and live evidence board): pooled designs may contain counted primary studies. */

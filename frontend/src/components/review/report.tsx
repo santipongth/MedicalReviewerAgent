@@ -79,7 +79,7 @@ const TOP: Record<Exclude<TopSectionId, "title">, { id: string; nav: Pair; h2?: 
  * footer read it), and goes back to what it was when the report closes. A layout effect: set before the first paint, so
  * an English report never shows a Thai header for a frame (fix round 1).
  */
-function useDocumentLang(lang: Lang) {
+export function useDocumentLang(lang: Lang) {
   useLayoutEffect(() => {
     const root = document.documentElement;
     const before = root.lang;

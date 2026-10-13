@@ -209,6 +209,17 @@ export interface QuestionText {
 
 export type ReviewType = "narrative" | "slr" | "scoping" | "meta_analysis";
 
+/** Plan 27: "quick" = a 2–4 sentence answer with numbered references ("ถามเร็ว"); "full" = the report. */
+export type ReviewMode = "full" | "quick";
+
+/** Plan 27: `result.quick` of a quick answer (null for a full review, absent before Plan 27). */
+export interface QuickBlock {
+  /** the refs the answer cites, in order of first citation: reference [k] is refs[k - 1] */
+  refs: string[];
+  /** the studies the answer was written from (evidence only) */
+  papers_read: number;
+}
+
 export interface KeyTerm {
   term: string;
   synonyms: string[];
@@ -442,6 +453,9 @@ export interface ReviewResult {
   citations?: Citations | null; // Plan 14b
   methods?: ReviewMethods; // Plan 20
   support?: SentenceSupport | null; // Plan 25
+  mode?: ReviewMode; // Plan 27; absent before it (a full review)
+  /** Plan 27: for a quick answer the summary is the answer and synthesis.answer the certainty-and-limits line */
+  quick?: QuickBlock | null;
 }
 
 export interface ServiceStatus {
@@ -461,6 +475,9 @@ export interface ServiceStatus {
     max_queued_reviews: number;
     review_types?: string[];
     sse_max_per_ip?: number;
+    /** Plan 27: the request modes and the quick answer's fixed sizes (absent before it) */
+    modes?: string[];
+    quick?: { max_papers: number; candidate_limit: number; review_type: string };
   };
 }
 
@@ -495,6 +512,7 @@ export interface ReviewOptions {
   year_from?: number | null;
   study_types?: string[];
   review_type?: ReviewType;
+  mode?: ReviewMode; // Plan 27; the service fixes the sizes and the type of a quick answer
 }
 
 export interface CreateReviewBody {

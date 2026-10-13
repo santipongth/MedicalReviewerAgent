@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { HOTLINE_LABEL, PERSONAL_MEDICAL_COPY } from "@/lib/refusal-copy";
+import { retryHref } from "@/lib/quick";
 import { isPersonalRefusal } from "@/lib/title";
+import type { Review } from "@/lib/types";
 
 const COPY = {
   rejected: {
@@ -39,12 +41,16 @@ function PersonalMedical() {
 }
 
 export function TerminalState({
-  status, message, topic, code,
-}: { status: "rejected" | "error" | "cancelled"; message?: string | null; topic: string; code?: string | null }) {
+  status, message, topic, code, review,
+}: {
+  status: "rejected" | "error" | "cancelled"; message?: string | null; topic: string; code?: string | null;
+  /** the review, when loaded: the retry link keeps its mode, language, start year and study types */
+  review?: Pick<Review, "language" | "options" | "result"> | null;
+}) {
   // the code from the event or the review; the stored error's prefix covers a client that missed both
   if (status === "rejected" && isPersonalRefusal(code, message)) return <PersonalMedical />;
   const copy = COPY[status];
-  const retryHref = `/?q=${encodeURIComponent(topic)}#request`;
+  const href = retryHref(topic, review);
   const primary = status === "rejected" ? "แก้หัวข้อแล้วส่งใหม่" : "ลองอีกครั้ง";
   return (
     <section className="grid max-w-[65ch] gap-4 pt-12">
@@ -72,7 +78,7 @@ export function TerminalState({
         </p>
       )}
       <div className="flex flex-wrap gap-3">
-        <Link href={retryHref} className="w-fit rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary no-underline hover:brightness-110">
+        <Link href={href} className="w-fit rounded-sm border border-primary bg-primary px-4 py-2 font-display font-semibold text-on-primary no-underline hover:brightness-110">
           {primary}
         </Link>
         <Link href="/" className="w-fit rounded-sm border border-rule px-4 py-2 font-display font-semibold no-underline hover:bg-rail">

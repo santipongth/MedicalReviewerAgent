@@ -16,7 +16,13 @@ from app.graph.schemas import ScreenBatch
 from app.graph.state import ReviewState
 from app.harness.comparison import intervention_lexicon
 from app.harness.study_types import allowed_designs, canonical_types, design_allowed
-from app.schemas.review import NON_QUANTITATIVE_TYPES, SLR_LIKE, ReviewOptions, wants_qualitative
+from app.schemas.review import (
+    NON_QUANTITATIVE_TYPES,
+    SLR_LIKE,
+    ReviewOptions,
+    is_quick,
+    wants_qualitative,
+)
 from app.services.llm import LLMError
 
 
@@ -255,9 +261,10 @@ def route_to_reading(state: ReviewState, external_enabled=None, citations_enable
               "review_type": ReviewOptions.clamped(state.get("options")).review_type,
               "qualitative": wants_qualitative(state.get("options"))}
     sends = [Send("read_paper", {"paper": s, **common}) for s in selected]
-    if external_enabled is not None and external_enabled():
+    quick = is_quick(state.get("options"))  # Plan 27: a quick answer consults no external tool and fetches no citations
+    if not quick and external_enabled is not None and external_enabled():
         sends.append(Send("external_enrich", {"question": common["question"], "plan": common["plan"]}))
-    if citations_enabled is not None and citations_enabled():
+    if not quick and citations_enabled is not None and citations_enabled():
         sends.append(Send("fetch_citations", {"papers": [{"ref": s["ref"], "candidate": s.get("candidate") or {}}
                                                           for s in selected]}))
     if thaijo_enabled is not None and thaijo_enabled() and (thai := thaijo_papers(selected)):

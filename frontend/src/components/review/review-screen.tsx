@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getReview } from "@/lib/api";
+import { isQuickReview } from "@/lib/quick";
 import { FALLBACK_TITLE, isPersonalRefusal } from "@/lib/title";
 import { readAudience, saveAudience } from "@/lib/use-audience";
 import { useReview } from "@/lib/use-review";
 import { LiveRun } from "./live-run";
+import { QuickAnswer } from "./quick-answer";
 import { Report } from "./report";
 import { TerminalState } from "./terminal-state";
 
@@ -64,12 +66,15 @@ export function ReviewScreen({ id }: { id: string }) {
   }
   if (phase === "terminal" && (run.status === "rejected" || run.status === "error" || run.status === "cancelled")) {
     return <TerminalState status={run.status} message={run.message ?? review?.error} topic={topic}
-      code={run.code ?? review?.refusal_code} />;
+      code={run.code ?? review?.refusal_code} review={review} />;
+  }
+  if (phase === "report" && review && isQuickReview(review)) {
+    return <QuickAnswer review={review} />; // Plan 27: the short answer with numbered references
   }
   if (phase === "report" && review) {
     // Plan 26: the view comes from ?view= or the stored choice; a change is stored and put in the address
     return <Report review={review} initialAudience={readAudience()} onAudience={saveAudience} />;
   }
   return <LiveRun run={run} scene={scene} topic={topic} connection={connection} queuePosition={queuePosition} startedAt={review?.started_at}
-    reviewType={review?.options?.review_type} />;
+    reviewType={review?.options?.review_type} quick={isQuickReview(review)} />;
 }

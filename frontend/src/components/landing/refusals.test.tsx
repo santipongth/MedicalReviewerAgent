@@ -121,6 +121,13 @@ describe("Plan 26: a personal medical question", () => {
     expect(screen.getByRole("link", { name: "ถามคำถามใหม่" })).toHaveAttribute("href", "/");
   });
 
+  it("never shows the topic or a retry link on the personal page, whatever the review", () => {
+    render(<TerminalState status="rejected" code="personal_medical" topic="แม่ผมควรกินยาอะไร"
+      review={{ language: "th", options: { mode: "quick" }, result: null }} />);
+    expect(screen.queryByText(/แม่ผม/)).toBeNull();
+    expect(document.querySelector("a[href*='q=']")).toBeNull();
+  });
+
   it("is recognised from the stored error when the code is missing", () => {
     render(<TerminalState status="rejected" topic="t" message="personal_medical: This service summarises research." />);
     expect(screen.getByRole("heading")).toHaveTextContent(PERSONAL_MEDICAL_COPY.title);

@@ -41,7 +41,8 @@ SYSTEM_HASHES = {
     # code then discarded); the SLR schema and prompts are unchanged, so these SLR pins hold. 2026-10-13.1 (Plan 25)
     # adds the sentence-support judge's own prompt and schema (pinned in test_support_prompts_are_pinned); no prompt
     # above changed. 2026-10-13.2 (Plan 26) changes only the topic guard's prompt and schema (the personal_medical
-    # category, pinned in test_guard_prompt_is_pinned); no prompt above changed.
+    # category, pinned in test_guard_prompt_is_pinned); no prompt above changed. 2026-10-13.3 (Plan 27) adds the quick
+    # answer's own prompt and schema (pinned in test_quick_prompts_are_pinned); no prompt above changed.
     "narrative_system": (prompts.narrative_system, "16278465ee36d386eede4011a039ce7adf15588592669958c92883bcc06b3b7d"),
 }
 
@@ -87,6 +88,15 @@ def test_guard_prompt_is_pinned():
     # same for every review type; its user prompt is unchanged
     assert sha(prompts.GUARD_SYSTEM) == "e38d8f7ce0a198a65d069a7e017157d7c347fa72d529841c8f5c5b89e0c8462e"
     assert sha(prompts.guard_user("t")) == "92fffe5f4585c3344799ba8b4f42b8ef991f5f3decab4b1e88b0920b1fd6c4a6"
+
+
+def test_quick_prompts_are_pinned():
+    # Plan 27 (prompt_version 2026-10-13.3): the quick answer's writer (QuickAnswerDraft), graded or not
+    assert sha(prompts.QUICK_SYSTEM) == "48c261ae9c36a403ec676ada9776e54872b442dd5df9072cfab555c10e4b7223"
+    graded = prompts.quick_user(question="Q?", papers=[{"ref": "P1"}], baseline={"level": "low", "factors": ["f"]})
+    assert sha(graded) == "29e4c61de9c7bb940418d283312155c4a2f8ae3b243ca56000df8f6a27cd9cd1"
+    ungraded = prompts.quick_user(question="Q?", papers=[], baseline=None)
+    assert sha(ungraded) == "cdcc90e46b035f3af33aa0f2d2836230f4f0c31c980c2a7747287fc3ca70500d"
 
 
 def test_support_prompts_are_pinned():
