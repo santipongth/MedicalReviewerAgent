@@ -30,6 +30,7 @@ from app.services.budget import review_cost_cap
 from app.services.capacity import AdmissionBusy
 from app.services.ratelimits import RateLimits
 from app.services.safety import red_flag
+from app.services.sources import ActiveSources, cache_part, effective_sources, public_list
 from app.services.turnstile import TurnstileUnavailable, verify_turnstile
 from app.services.urlsafety import is_public_http_url
 from app.services.webhook import callback_url_problem
@@ -133,16 +134,23 @@ class ReviewService:
         Env-only values (salts, Turnstile, prompt_version) read the same either way."""
         return self.settings if self.runtime is None else await self.runtime.settings()
 
+    async def sources(self) -> ActiveSources:
+        """The search sources in force (Plan 23d): env's with the admin console's saved version, at most 5 seconds
+        old."""
+        return effective_sources(self.settings, {}) if self.runtime is None else await self.runtime.sources()
+
     async def _version(self) -> str:
-        """The cache key's pipeline version: prompt, LLM config (23b) and, once one is saved, the glossary (23c)."""
+        """The cache key's pipeline version: prompt, LLM config (23b), once one is saved the glossary (23c), and the
+        search sources (Plan 24's `+thaijo`; Plan 23d's `+src` fingerprint once a sources version changes the
+        SearXNG engines)."""
         version = self.settings.prompt_version
         if self.llm_version is not None:
             version = f"{version}+llm{await self.llm_version()}"
         if self.runtime is not None and (glossary := await self.runtime.glossary_label()) != "file":
             version = f"{version}+g{glossary}"
-        if self.settings.thaijo_enabled:  # Plan 24: a pool with ThaiJO is a different search
-            version = f"{version}+thaijo"
-        return version
+        # Plan 24: a pool with ThaiJO is a different search; Plan 23d: so is one from another engine set. While no
+        # sources version exists this is Plan 24's `+thaijo` rule, so the key is unchanged.
+        return version + cache_part(await self.sources(), self.settings)
 
     async def _reuse(self, cache_key: str, settings: Settings | None = None) -> ReviewCreated | None:
         ttl = (settings or self.settings).result_cache_ttl_seconds
@@ -272,6 +280,8 @@ class ReviewService:
             "queue_depth": queued, "running": running,
             "reviews_today": await self.capacity.reviews_today() if self.capacity is not None else None,
             "turnstile_site_key": s.turnstile_site_key or None,
+            # Plan 23d: the search sources in force, in catalog order, then env-only engines
+            "sources": public_list(await self.sources()),
             "limits": {"review_rate_limit": s.review_rate_limit, "api_key_rate_limit": s.api_key_rate_limit,
                        "paper_search_rate_limit": s.paper_search_rate_limit,
                        "review_types": list(REVIEW_TYPES), "max_papers": bounds("max_papers"), "candidate_limit": bounds("candidate_limit"),

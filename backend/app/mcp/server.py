@@ -152,12 +152,14 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
 
     @mcp.tool()
     async def search_papers(query: str, ctx: Context, limit: int = 10) -> dict[str, Any]:
-        """Search published biomedical papers (PubMed, Europe PMC, OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ,
-        OpenAIRE; Europe PMC also supplies curated metadata). Returns title, up to 6 authors, year, journal, DOI/PMID/PMCID, open-access flag and the abstract
+        """Search published biomedical papers (the SearXNG engines the service has on: by default PubMed, Europe PMC,
+        OpenAlex, Semantic Scholar, Crossref, arXiv, DOAJ, OpenAIRE; Europe PMC also supplies curated metadata). Returns title, up to 6 authors, year, journal, DOI/PMID/PMCID, open-access flag and the abstract
         (first 600 characters). `limit` is clamped into 1-25; shares the paper-search rate limit with REST."""
         await papers_limit(await identity(ctx))
         try:
-            found = await get_deps().papers.search(query, max(1, min(limit, 25)))
+            deps = get_deps()
+            found = await deps.papers.search(query, max(1, min(limit, 25)),
+                                             engines=(await deps.service.sources()).engines)
             return {"query": query, "papers": [_paper(c) for c in found]}
         except ServiceError as exc:
             raise _error(exc) from exc

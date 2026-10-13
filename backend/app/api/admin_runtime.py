@@ -1,5 +1,5 @@
-"""Admin console: runtime settings and the Thai glossary (Plan 23c). Thin adapters over config_store with the
-settings and glossary kinds. Every change writes its audit row in the same transaction; after the commit the Redis
+"""Admin console: runtime settings and the Thai glossary (Plan 23c), and the search sources (Plan 23d). Thin adapters
+over config_store with the settings, glossary and sources kinds. Every change writes its audit row in the same transaction; after the commit the Redis
 mirror is raised (workers reload within 30 s) and this process's cache is dropped (other API processes follow
 within 5 s). Validation is done against the env settings, never against other overrides."""
 from __future__ import annotations
@@ -34,6 +34,8 @@ from app.services.glossary_store import GLOSSARY_KIND, RENDERED_MAX
 from app.services.llm_store import loaded_workers
 from app.services.review_service import Identity, ServiceError
 from app.services.runtime_settings import SETTINGS_KIND, SPECS, apply_overrides, spec_out
+from app.services.sources import SOURCES, clean_overrides, effective_sources, env_defaults
+from app.services.sources_store import SOURCES_KIND
 
 router = APIRouter()
 TERMS_BODY_MAX = 1000  # more rows than TERMS_MAX reach the validator, which says how many fit
@@ -112,7 +114,17 @@ def _history_routes(kind: DocKind) -> None:
             ip_hash=ip_hash))
 
 
-for _kind in (SETTINGS_KIND, GLOSSARY_KIND):
+class SourcesDraft(BaseModel):
+    sources: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourcesSave(BaseModel):
+    sources: dict[str, Any]  # required: a body without it must not save "env everywhere"
+    base_version: int | None
+    note: Note = None
+
+
+for _kind in (SETTINGS_KIND, GLOSSARY_KIND, SOURCES_KIND):
     _history_routes(_kind)
 
 
@@ -182,4 +194,47 @@ async def glossary_save(body: GlossarySave, deps: AppDeps = Depends(get_deps),
     raw = {"terms": body.terms}
     return await _write(deps, GLOSSARY_KIND, lambda s: save_version(
         s, identity.admin, GLOSSARY_KIND, raw, settings=settings, base_version=body.base_version, note=body.note,
+        ip_hash=ip_hash))
+
+
+# A stored set that leaves no SearXNG source (an env change after the save): env's engines are searched instead.
+SOURCES_FALLBACK = ("the saved version leaves no SearXNG source on with the current SEARXNG_ENGINES, so env's engines "
+                    "are searched; save a version that turns one on")
+
+
+@router.get("/admin/sources")
+async def sources_state(deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)) -> dict:
+    base = deps.service.settings
+    async with deps.session_factory() as session:
+        row = await newest(session, SOURCES_KIND)
+    document = row.document if row is not None and isinstance(row.document, dict) else {}
+    overrides = clean_overrides(document.get("sources"))  # a stored entry that no longer validates is skipped
+    active = effective_sources(base, overrides, row.version if row else None)
+    env = env_defaults(base)
+    return {"source": "db" if row else "env", "version": row.version if row else None,
+            "sources": [{"id": s.id, "label": s.label, "kind": s.kind, "env": env[s.id],
+                         "enabled": s.id in active.enabled, "overridden": overrides.get(s.id, env[s.id]) != env[s.id]}
+                        for s in SOURCES],
+            "extras": list(active.extras), "error": SOURCES_FALLBACK if active.fallback else None,
+            "loaded": await loaded_workers(deps.redis)}
+
+
+@router.post("/admin/sources/validate")
+async def sources_validate(body: SourcesDraft, deps: AppDeps = Depends(get_deps),
+                           _: Identity = Depends(require_admin)) -> dict:
+    base = deps.service.settings
+    try:
+        document, warnings = SOURCES_KIND.validate(body.model_dump(), base)
+    except DocumentError as exc:
+        return {"ok": False, "errors": exc.errors, "warnings": [], "document": None, "enabled": None}
+    enabled = effective_sources(base, document["sources"]).enabled
+    return {"ok": True, "errors": [], "warnings": warnings, "document": document, "enabled": list(enabled)}
+
+
+@router.post("/admin/sources", status_code=201)
+async def sources_save(body: SourcesSave, deps: AppDeps = Depends(get_deps), identity: Identity = Depends(require_admin)):
+    settings, ip_hash = deps.service.settings, ip_hash_of(identity, deps)
+    raw = {"sources": body.sources}
+    return await _write(deps, SOURCES_KIND, lambda s: save_version(
+        s, identity.admin, SOURCES_KIND, raw, settings=settings, base_version=body.base_version, note=body.note,
         ip_hash=ip_hash))
