@@ -39,8 +39,13 @@ def is_allowed_host(url: str, domain: str) -> bool:
     must not make the server call any other host."""
     try:
         parsed = httpx.URL(url)
+        # httpx IDNA-decodes the host lazily, so every access stays inside the try (malformed punycode raises)
+        host = (parsed.host or "").lower().removesuffix(".")
+        scheme, userinfo, port = parsed.scheme, parsed.userinfo, parsed.port
     except Exception:  # noqa: BLE001 - an unparsable URL is never allowed
         return False
-    host = (parsed.host or "").lower().rstrip(".")
-    return (parsed.scheme == "https" and not parsed.userinfo and parsed.port in (None, 443)
+    domain = domain.lower().removesuffix(".")
+    if not host or "" in host.split("."):
+        return False
+    return (scheme == "https" and not userinfo and port in (None, 443)
             and (host == domain or host.endswith(f".{domain}")))

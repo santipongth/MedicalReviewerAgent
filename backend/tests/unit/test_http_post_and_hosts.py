@@ -40,6 +40,24 @@ def test_allowed_host_takes_only_https_on_the_domain():
           "https://tci-thaijo.org/", "https://HE02.TCI-THAIJO.ORG/a", "https://he01.tci-thaijo.org:443/a"]
     bad = ["http://he01.tci-thaijo.org/a", "https://tci-thaijo.org.evil.example/a", "https://eviltci-thaijo.org/a",
            "https://user@he01.tci-thaijo.org/a", "https://he01.tci-thaijo.org:8443/a", "https://169.254.169.254/",
-           "ftp://he01.tci-thaijo.org/a", "not a url", ""]
+           "ftp://he01.tci-thaijo.org/a", "not a url", "",
+           "https://xn--tci-thaijo-.org/", "https://xn--a-.tci-thaijo.org/",
+           "https://.tci-thaijo.org/", "https://a..tci-thaijo.org/", "https://www.tci-thaijo.org../"]
     assert all(is_allowed_host(u, "tci-thaijo.org") for u in ok)
     assert not any(is_allowed_host(u, "tci-thaijo.org") for u in bad)
+
+
+def test_allowed_host_normalises_the_domain_and_one_trailing_dot():
+    assert is_allowed_host("https://he01.tci-thaijo.org/a", "TCI-THAIJO.ORG.")
+    assert is_allowed_host("https://www.tci-thaijo.org./a", "tci-thaijo.org")
+
+
+@respx.mock
+async def test_get_follows_redirects_by_default():
+    respx.get("https://a.example.org/x").mock(
+        return_value=httpx.Response(302, headers={"Location": "https://b.example.org/y"}))
+    respx.get("https://b.example.org/y").mock(return_value=httpx.Response(200))
+    client = HttpClient(retries=0, sleep=_nosleep)
+    resp = await client.get("https://a.example.org/x")
+    await client.aclose()
+    assert resp.status_code == 200
