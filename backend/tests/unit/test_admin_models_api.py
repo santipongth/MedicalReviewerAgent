@@ -637,3 +637,78 @@ async def test_every_models_write_needs_the_csrf_header_with_a_session_cookie(cl
         key, _ = await mint_key(s, "ops", is_admin=True)
     assert (await client.post(writes["validate"][0], json=writes["validate"][1],
                               headers={"X-API-Key": key})).status_code == 200
+
+
+async def test_version_ids_beyond_postgres_integer_are_422_never_500(client, session_factory):
+    huge = 2**31  # one past Postgres INTEGER: a lookup with it raises in the driver, which would be a 500
+    h = await admin_headers(client, session_factory)
+    assert (await client.get(f"{BASE}/llm-config/versions/{huge}", headers=h)).status_code == 422
+    assert (await client.get(f"{BASE}/llm-config/versions/{huge}/yaml", headers=h)).status_code == 422
+    assert (await client.get(f"{BASE}/llm-config/versions?before={huge}", headers=h)).status_code == 422
+    restore = await client.post(f"{BASE}/llm-config/versions/{huge}/restore", headers=h, json={"base_version": None})
+    assert restore.status_code == 422
+    # the largest INTEGER is an ordinary lookup
+    assert (await client.get(f"{BASE}/llm-config/versions/{huge - 1}", headers=h)).status_code == 404
+    assert (await client.get(f"{BASE}/llm-config/versions/{huge - 1}/yaml", headers=h)).status_code == 404
+    page = await client.get(f"{BASE}/llm-config/versions?before={huge - 1}", headers=h)
+    assert page.json() == {"items": [], "next": None}
+    restore = await client.post(f"{BASE}/llm-config/versions/{huge - 1}/restore", headers=h,
+                                json={"base_version": None})
+    assert restore.status_code == 404
+    async with session_factory() as s:
+        assert await s.scalar(select(func.count()).select_from(LlmConfigVersion)) == 0
+
+
+# --- Plan 23c: carried from the 23b final review ----------------------------------------------------------------
+
+async def test_validate_warns_about_roles_whose_price_is_unknown(client, session_factory):
+    h = await admin_headers(client, session_factory)
+    draft = copy.deepcopy(MINIMAL)
+    draft["providers"]["anthropic"] = {"api_key_env": "ANTHROPIC_API_KEY"}
+    draft["presets"]["cheap"]["guard"] = {"model": "claude-unknown-9", "provider": "anthropic"}
+    draft["presets"]["cheap"]["planner"] = {"model": "claude-haiku-4-5", "provider": "anthropic"}  # priced
+    checked = (await client.post(f"{BASE}/llm-config/validate", json={"config": draft}, headers=h)).json()
+    assert checked["ok"] is True
+    unpriced = [w for w in checked["warnings"] if "no known price" in w]
+    assert unpriced[0] == "cheap: no known price for guard: the review cost cap cannot count their calls"
+    assert unpriced[1].startswith("better: no known price for guard, planner, screener")  # not in the catalog
+    assert len(unpriced) == 2
+
+
+async def test_state_shows_a_saved_version_that_no_longer_parses_and_restore_still_works(client, session_factory):
+    h = await admin_headers(client, session_factory)
+    good = (await client.post(f"{BASE}/llm-config", json={"config": MINIMAL, "base_version": None}, headers=h)).json()
+    stale = {**MINIMAL, "harness": {"screen_borderline": [80, 20]}}  # saved under the rules before 23c
+    async with session_factory() as s, s.begin():
+        s.add(LlmConfigVersion(created_by="owner", source="edit", config=stale, changes={}))
+    r = await client.get(f"{BASE}/llm-config", headers=h)
+    assert r.status_code == 200
+    state = r.json()
+    assert (state["source"], state["version"], state["config"]) == ("db", good["id"] + 1, stale)
+    assert "screen_borderline" in state["error"] and state["keys_present"] == {}
+    restored = await client.post(f"{BASE}/llm-config/versions/{good['id']}/restore",
+                                 json={"base_version": state["version"]}, headers=h)
+    assert restored.status_code == 201
+    assert (await client.get(f"{BASE}/llm-config", headers=h)).json()["error"] is None
+
+
+async def test_the_state_error_is_one_line_and_never_echoes_stored_values(client, session_factory):
+    h = await admin_headers(client, session_factory)
+    stale = {**MINIMAL, "harness": {"screen_borderline": ["s3cr3t-value", 20], "max_repairs": "other-s3cr3t"}}
+    async with session_factory() as s, s.begin():
+        s.add(LlmConfigVersion(created_by="owner", source="edit", config=stale, changes={}))
+    error = (await client.get(f"{BASE}/llm-config", headers=h)).json()["error"]
+    assert error and "\n" not in error and "s3cr3t" not in error
+    assert "harness." in error  # the field path is still named
+
+
+async def test_state_with_a_broken_llm_yaml_and_no_version_answers_with_the_error(client, app, session_factory,
+                                                                                 tmp_path, monkeypatch):
+    h = await admin_headers(client, session_factory)
+    broken = tmp_path / "llm.yaml"
+    broken.write_text("presets: [unclosed", encoding="utf-8")
+    monkeypatch.setattr(app.state.deps.service.settings, "llm_config_path", str(broken))
+    r = await client.get(f"{BASE}/llm-config", headers=h)
+    assert r.status_code == 200
+    assert (r.json()["source"], r.json()["version"], r.json()["config"]) == ("file", None, {})
+    assert "invalid YAML" in r.json()["error"]

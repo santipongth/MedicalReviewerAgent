@@ -1,8 +1,15 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from app.services.llm_config import OPTIONAL_ROLES, ROLES, LLMConfigError, load_llm_config
+from app.services.llm_config import (
+    OPTIONAL_ROLES,
+    ROLES,
+    HarnessSpec,
+    LLMConfigError,
+    load_llm_config,
+)
 
 REPO_CONFIG = Path(__file__).parents[2] / "config" / "llm.yaml"
 
@@ -129,3 +136,11 @@ def test_repo_config_has_budget_default_and_all_presets_valid():
     assert budget.harness.dual_extraction is True and budget.harness.localize is True
     direct = load_llm_config(REPO_CONFIG, preset="claude_direct")
     assert {r.provider for r in direct.roles.values()} == {"anthropic"}
+
+
+@pytest.mark.parametrize("band", [(70, 35), (-1, 50), (40, 101), (10**9, 10**9)])
+def test_screen_borderline_is_an_ordered_band_of_relevance_scores(band):
+    with pytest.raises(ValidationError, match="screen_borderline"):
+        HarnessSpec(screen_borderline=band)
+    assert HarnessSpec(screen_borderline=(0, 100)).screen_borderline == (0, 100)
+    assert HarnessSpec(screen_borderline=(50, 50)).screen_borderline == (50, 50)

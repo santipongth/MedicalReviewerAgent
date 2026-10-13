@@ -1,7 +1,8 @@
 """Workers pick up a saved LLM configuration without a restart (Plan 23b). Each worker compares the Redis key
 LLM_VERSION_KEY with the version it loaded when a review job starts, and the DB's newest version every 30 seconds; the
 poll also repairs the key (a lost publish, a key above the DB's newest) and treats the DB as the truth. On a change it
-rebuilds its LLMs (same per-process semaphore, the catalog the API sees) and graph (same checkpointer). Runners already
+rebuilds its LLMs (on the worker's current semaphore, ctx["llm_sem"], which a Plan 23c llm_concurrency change replaces
+for reviews that start afterwards; the catalog the API sees) and graph (same checkpointer). Runners already
 holding the old graph keep it, so a review never switches models mid-way. A configuration that fails to build keeps the
 old models and is reported. Each worker also re-reports its state on every poll (a heartbeat), so `loaded_at` in
 LOADED_KEY means "last seen"."""
@@ -107,7 +108,7 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph, poll: bool = Fa
             await report_state(ctx)
             return False
         ctx["graph_deps"], ctx["graph"], ctx["llm_version"] = deps, graph, effective.active_id
-        ctx["llm_preset"], ctx["llm_error"] = resolved.preset, None
+        ctx["llm_preset"], ctx["llm_error"], ctx["llm_resolved"] = resolved.preset, None, resolved
         if catalog is not None:
             ctx["catalog"] = catalog
         await report_state(ctx)
@@ -117,10 +118,15 @@ async def refresh_llms(ctx: dict, *, build_graph_fn=build_graph, poll: bool = Fa
 
 async def report_state(ctx: dict) -> None:
     """Report this worker's current state to LOADED_KEY: the version it runs, its preset and the last load error
-    (ctx["llm_error"], cleared by the next successful load). `loaded_at` therefore means "last seen", not "loaded at"."""
+    (ctx["llm_error"], cleared by the next successful load), plus (Plan 23c, through `extra`) the settings version
+    ("env" when none), the glossary version ("file" when none) and runtime_error (the last failed settings/glossary
+    reload, cleared by the next one that succeeds or by a poll that finds the worker on the DB's versions).
+    `loaded_at` therefore means "last seen", not "loaded at"."""
     preset = ctx.get("llm_preset") or getattr(getattr(ctx.get("graph_deps"), "llms", None), "preset", "") or ""
+    extra = {"settings": ctx.get("settings_version") or "env", "glossary": ctx.get("glossary_version") or "file",
+             "runtime_error": ctx.get("runtime_error")}
     await report_loaded(ctx["events_redis"], worker_id(), ctx.get("llm_version") or "file", preset,
-                        error=ctx.get("llm_error"))
+                        error=ctx.get("llm_error"), extra=extra)
 
 
 async def poll_llm_config(ctx: dict, interval: float = POLL_SECONDS) -> None:
@@ -137,7 +143,8 @@ async def poll_llm_config(ctx: dict, interval: float = POLL_SECONDS) -> None:
 
 def _wire(ctx: dict, resolved: ResolvedLLMConfig | None, active_id: str, checkpointer, build_graph_fn):
     deps = build_graph_deps(ctx["settings"], ctx["http"], ctx["events_redis"], ctx["catalog"], resolved=resolved,
-                            sem=ctx["llm_sem"], config_version=f"db:{active_id}" if active_id != "file" else "file")
+                            sem=ctx["llm_sem"], config_version=f"db:{active_id}" if active_id != "file" else "file",
+                            glossary=ctx.get("glossary"))
     return deps, build_graph_fn(deps, checkpointer=checkpointer)
 
 
@@ -149,6 +156,7 @@ async def init_llms(ctx: dict, catalog, checkpointer, *, build_graph_fn=build_gr
     settings = ctx["settings"]
     ctx["catalog"] = catalog
     ctx["llm_sem"] = asyncio.Semaphore(max(1, settings.llm_concurrency))
+    ctx["llm_sem_size"] = max(1, settings.llm_concurrency)  # Plan 23c: refresh_runtime compares it with the setting
     ctx["llm_lock"] = asyncio.Lock()
     resolved, active_id, error = await initial_llm_config(ctx["session_factory"], settings)
     try:
@@ -161,7 +169,7 @@ async def init_llms(ctx: dict, catalog, checkpointer, *, build_graph_fn=build_gr
         active_id, error = "file", str(exc)
         deps, graph = _wire(ctx, resolved, active_id, checkpointer, build_graph_fn)
     ctx["graph_deps"], ctx["graph"], ctx["llm_version"] = deps, graph, active_id
-    ctx["llm_preset"], ctx["llm_error"] = resolved.preset if resolved else "", error
+    ctx["llm_preset"], ctx["llm_error"], ctx["llm_resolved"] = resolved.preset if resolved else "", error, resolved
     await report_state(ctx)
 
 

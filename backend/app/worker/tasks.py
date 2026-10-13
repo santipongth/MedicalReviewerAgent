@@ -13,6 +13,7 @@ from app.services.urlsafety import is_public_http_url
 from app.services.webhook import DeliveryOutcome, deliver, sign
 from app.worker.llm_reload import refresh_llms
 from app.worker.runner import ReviewRunner
+from app.worker.runtime_reload import refresh_runtime
 
 log = get_logger(__name__)
 
@@ -25,9 +26,10 @@ def _runner(ctx: dict) -> ReviewRunner:
 
 
 async def run_review(ctx: dict, review_id: str) -> dict:
-    """Start or resume a review (the runner resumes when a checkpoint exists). A saved LLM configuration is picked up
-    first, so the review runs on the newest models (Plan 23b)."""
+    """Start or resume a review (the runner resumes when a checkpoint exists). Saved settings and glossary (Plan 23c),
+    then a saved LLM configuration (Plan 23b), are picked up first, so the review runs on the newest of each."""
     if "llm_lock" in ctx:
+        await refresh_runtime(ctx)
         await refresh_llms(ctx)
     status = await _runner(ctx).run(uuid.UUID(review_id))
     return {"review_id": review_id, "status": status}

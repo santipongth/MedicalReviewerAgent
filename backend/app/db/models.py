@@ -211,3 +211,54 @@ class LlmConfigVersion(Base):
     restored_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
     config: Mapped[dict[str, Any]] = mapped_column(JSONType)
     changes: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+
+
+class ConfigVersion(Base):
+    """One saved runtime document (Plan 23c): kind "settings" (the admin's overrides of env settings) or "glossary"
+    (the Thai glossary). Never updated or deleted; the newest version of a kind is in use, and while a kind has none
+    its seed is (env values, the built-in glossary)."""
+
+    __tablename__ = "config_versions"
+    __table_args__ = (UniqueConstraint("kind", "version", name="uq_config_versions_kind_version"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_by: Mapped[str] = mapped_column(String(64))
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(16))  # edit | restore | reset
+    restored_from: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    document: Mapped[dict[str, Any]] = mapped_column(JSONType)
+    changes: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+
+
+class HarnessRun(Base):
+    """A Cochrane harness run started from the admin console (Plan 23c). `active` is 1 while the run is queued or
+    running and NULL afterwards; its unique constraint allows one active run at a time."""
+
+    __tablename__ = "harness_runs"
+    __table_args__ = (UniqueConstraint("active", name="uq_harness_runs_active"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), unique=True)
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16))  # queued | running | done | stopped | cancelled | error
+    active: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_usd: Mapped[float] = mapped_column(Float)
+    spent_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    repeats: Mapped[int] = mapped_column(Integer)
+    strata: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    max_reviews: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    compare_run: Mapped[str | None] = mapped_column(String(129), nullable=True)
+    planned: Mapped[int] = mapped_column(Integer, default=0)
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)  # {llm_config, settings_version, glossary}

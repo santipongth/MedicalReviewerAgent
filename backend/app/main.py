@@ -15,9 +15,11 @@ from app import __version__
 from app.api import (
     admin,
     admin_dashboard,
+    admin_harness,
     admin_keys,
     admin_models,
     admin_reviews,
+    admin_runtime,
     events,
     health,
     papers,
@@ -46,12 +48,24 @@ class McpPathMiddleware:
         await self.app(scope, receive, send)
 
 
+EXTRA_KEY_TOKEN = "<extra>"
+
+
+def _safe_loc(error: dict) -> list:
+    """An error's location, with an unexpected key replaced: for extra_forbidden the last element is the submitted key,
+    which is unbounded text of the sender's choosing."""
+    loc = list(error["loc"])
+    if error["type"] == "extra_forbidden" and loc:
+        loc[-1] = EXTRA_KEY_TOKEN
+    return loc
+
+
 async def admin_validation_errors(request: Request, exc: RequestValidationError) -> Response:
     """The admin console's 422 never echoes the request back (FastAPI's default does): a lone surrogate in a JSON
     string makes the echoed error unencodable, and a deeply nested body overflows the encoder; both would be a 500."""
     if not request.url.path.startswith("/api/v1/admin"):
         return await request_validation_exception_handler(request, exc)
-    errors = [{"type": e["type"], "loc": list(e["loc"]), "msg": e["msg"]} for e in exc.errors()]
+    errors = [{"type": e["type"], "loc": _safe_loc(e), "msg": e["msg"]} for e in exc.errors()]
     return Response(json.dumps({"detail": errors}), status_code=422, media_type="application/json")
 
 
@@ -82,12 +96,16 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
         from app.services.review_service import ReviewService
 
         d.limits = d.limits or RateLimits(settings.ratelimit_storage_uri)
+        if d.runtime is None:
+            from app.services.runtime_config import RuntimeConfig
+            d.runtime = RuntimeConfig(settings, d.session_factory, d.redis)
         if d.service is None:
             from app.services.capacity import Capacity
             from app.services.llm_store import active_version_id
             d.service = ReviewService(d.session_factory, d.queue, d.event_sink, settings, d.limits,
                                       capacity=Capacity(d.redis, settings),
-                                      llm_version=lambda: active_version_id(d.session_factory, d.redis))
+                                      llm_version=lambda: active_version_id(d.session_factory, d.redis),
+                                      runtime=d.runtime)
         return d
 
     @asynccontextmanager
@@ -140,6 +158,8 @@ def create_app(settings: Settings | None = None, deps: AppDeps | None = None) ->
     app.include_router(admin_keys.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     app.include_router(admin_dashboard.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     app.include_router(admin_models.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
+    app.include_router(admin_runtime.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
+    app.include_router(admin_harness.router, prefix="/api/v1", tags=["admin"], include_in_schema=False)
     mcp = build_mcp(lambda: app.state.deps, settings)
     app.state.mcp = mcp
     app.mount("/mcp", mcp.streamable_http_app(stateless_http=True, json_response=True, streamable_http_path="/",

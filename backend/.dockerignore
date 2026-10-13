@@ -5,3 +5,6 @@ __pycache__
 .ruff_cache
 tests
 .env
+evals/cochrane/fixtures
+evals/cochrane/runs
+evals/cochrane/*.bak

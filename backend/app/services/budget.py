@@ -47,3 +47,12 @@ def review_cost_cap(settings: Settings, options: ReviewOptions) -> float:
     cap = (settings.review_cost_base_usd + settings.review_cost_per_paper_usd * options.max_papers
            + settings.review_cost_per_candidate_usd * options.candidate_limit)
     return min(cap, settings.max_cost_per_review_usd)
+
+
+def worst_case_review_cap(settings: Settings) -> float:
+    """The largest cap any request can get: the most papers and candidates the form allows (Plan 23c: shared by
+    admission control and the settings validation)."""
+    from app.schemas.review import ReviewOptions
+
+    return review_cost_cap(settings, ReviewOptions(max_papers=ReviewOptions.bound("max_papers"),
+                                                   candidate_limit=ReviewOptions.bound("candidate_limit")))

@@ -15,4 +15,4 @@ router = APIRouter()
 @router.get("/admin/dashboard")
 async def admin_dashboard(days: int = Query(30, ge=1, le=90), deps: AppDeps = Depends(get_deps),
                           _: Identity = Depends(require_admin)) -> dict:
-    return await build_dashboard(deps.session_factory, deps.service.capacity, deps.service.settings, days=days)
+    return await build_dashboard(deps.session_factory, deps.service.capacity, await deps.service.effective(), days=days)

@@ -106,6 +106,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend/config:/app/config:ro  # tune models without rebuilding (llm.yaml and LLM_PRESET apply until a version is saved in the admin console)
+      - ./backend/evals/cochrane:/app/evals/cochrane:ro  # harness reports and run files (Plan 23c)
     networks: [data, search, edge]
 
   worker:
@@ -128,6 +129,26 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend/config:/app/config:ro  # tune models without rebuilding (llm.yaml and LLM_PRESET apply until a version is saved in the admin console)
+    networks: [data, search]
+
+  # Cochrane harness runs started from the admin console (Plan 23c). Off by default: start it with
+  # `docker compose --profile harness up -d harness`. It writes run files and reports into backend/evals/cochrane
+  # (fixtures and runs hold third-party abstracts and stay out of git and out of the image). Every run spends real
+  # money up to the cap the admin types (never above HARNESS_MAX_USD).
+  harness:
+    image: mra/backend:dev
+    profiles: ["harness"]
+    env_file: .env
+    command: ["arq", "app.worker.harness.HarnessWorkerSettings"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./backend/config:/app/config:ro
+      - ./backend/evals/cochrane:/app/evals/cochrane
     networks: [data, search]
 
   web:

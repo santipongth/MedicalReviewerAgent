@@ -1,18 +1,48 @@
 import type {
-  AdminKey, AdminMe, AdminReview, AdminStatus, AuditEntry, CatalogModel, CatalogQuery, Dashboard, LlmConfigDoc, LlmConfigState,
-  LlmDraft, LlmSaveResult, LlmVersion, MintedKey, Page, ProbeResult, ValidateReport,
+  AdminKey, AdminMe, AdminReview, AdminStatus, AuditEntry, CatalogModel, CatalogQuery, Dashboard, FieldError, GlossaryReport, GlossaryState,
+  GlossaryTerm, HarnessCompare, HarnessReportItem, HarnessResultItem, HarnessRun, HarnessStartBody, HarnessState, LlmConfigDoc,
+  LlmConfigState, LlmDraft, LlmSaveResult, LlmVersion, MintedKey, Page, ProbeResult, RuntimeKind, RuntimeVersion, SavedVersion,
+  SettingValue, SettingsReport, SettingsState, ValidateReport,
 } from "./admin-types";
 
 /** Admin calls are relative and same-origin: the session cookie (Path=/api/v1/admin) never leaves the site, and Caddy
  * (or the dev rewrite in next.config.ts) routes them to the API. */
 export const ADMIN_BASE = "/api/v1/admin";
 
+/** The body's `errors` when it is a list of {field, message} (a settings or glossary document refused, Plan 23c). */
+function fieldErrorsOf(body: unknown): FieldError[] | null {
+  const errors = typeof body === "object" && body !== null ? (body as { errors?: unknown }).errors : undefined;
+  if (!Array.isArray(errors)) return null;
+  const out: FieldError[] = [];
+  for (const e of errors) {
+    if (typeof e !== "object" || e === null) return null;
+    const { field, message } = e as { field?: unknown; message?: unknown };
+    if (typeof message !== "string" || (field !== undefined && field !== null && typeof field !== "string")) return null;
+    out.push({ field: typeof field === "string" ? field : null, message });
+  }
+  return out;
+}
+
+/** The body's `reasons` when it is a list of codes (the harness start's 503, Plan 23c). */
+function reasonsOf(body: unknown): string[] | null {
+  const reasons = typeof body === "object" && body !== null ? (body as { reasons?: unknown }).reasons : undefined;
+  return Array.isArray(reasons) && reasons.every((r) => typeof r === "string") ? reasons : null;
+}
+
 export class AdminApiError extends Error {
+  /** The body's field errors and reason codes, when it carries them in the right shape; null otherwise. */
+  readonly errors: FieldError[] | null;
+  readonly reasons: string[] | null;
+
   /** `structuredDetail`: the body's `detail` was not a string (FastAPI sends a list of field errors for a 422), so
-   * `message` is only a status fallback and not fit to show. */
-  constructor(public status: number, message: string, public retryAfter: number | null = null, public structuredDetail = false) {
+   * `message` is only a status fallback and not fit to show. `body` is the parsed JSON of a failed answer (null when
+   * there was none or it was not JSON). */
+  constructor(public status: number, message: string, public retryAfter: number | null = null, public structuredDetail = false,
+    public body: unknown = null) {
     super(message);
     this.name = "AdminApiError";
+    this.errors = fieldErrorsOf(body);
+    this.reasons = reasonsOf(body);
   }
 }
 
@@ -30,15 +60,17 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText || `HTTP ${res.status}`;
     let structured = false;
+    let parsed: unknown = null;
     try {
-      const body = (await res.json()) as { detail?: unknown };
+      parsed = await res.json();
+      const body = parsed as { detail?: unknown };
       if (typeof body.detail === "string") detail = body.detail;
       else structured = body.detail !== undefined && body.detail !== null;
     } catch {
       // not JSON: keep the status text
     }
     const retry = Number(res.headers.get("Retry-After"));
-    throw new AdminApiError(res.status, detail, Number.isFinite(retry) && retry > 0 ? retry : null, structured);
+    throw new AdminApiError(res.status, detail, Number.isFinite(retry) && retry > 0 ? retry : null, structured, parsed);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
@@ -94,6 +126,28 @@ export const adminApi = {
   },
   testLlm: (body: Partial<LlmDraft> & { preset?: string; role: string }) =>
     call<ProbeResult>("/llm-models/test", send("POST", body)),
+  settings: () => call<SettingsState>("/settings"),
+  validateSettings: (values: Record<string, SettingValue>) => call<SettingsReport>("/settings/validate", send("POST", { values })),
+  saveSettings: (body: { values: Record<string, SettingValue>; base_version: number | null; note?: string }) =>
+    call<SavedVersion>("/settings", send("POST", body)),
+  glossary: () => call<GlossaryState>("/glossary"),
+  validateGlossary: (terms: GlossaryTerm[]) => call<GlossaryReport>("/glossary/validate", send("POST", { terms })),
+  saveGlossary: (body: { terms: GlossaryTerm[]; base_version: number | null; note?: string }) =>
+    call<SavedVersion>("/glossary", send("POST", body)),
+  runtimeVersions: (kind: RuntimeKind, before?: number | null) =>
+    call<Page<RuntimeVersion>>(`/${kind}/versions${before ? `?before=${before}` : ""}`),
+  restoreRuntime: (kind: RuntimeKind, version: number, base: number | null, note?: string) =>
+    call<SavedVersion>(`/${kind}/versions/${version}/restore`, send("POST", { base_version: base, note })),
+  resetRuntime: (kind: RuntimeKind, base: number | null, note?: string) =>
+    call<SavedVersion>(`/${kind}/reset`, send("POST", { base_version: base, note })),
+  harness: () => call<HarnessState>("/harness"),
+  harnessRuns: (before?: number | null) => call<Page<HarnessRun>>(`/harness/runs${before ? `?before=${before}` : ""}`),
+  startHarness: (body: HarnessStartBody) => call<HarnessRun>("/harness/runs", send("POST", body)),
+  cancelHarness: (id: number) => call<HarnessRun>(`/harness/runs/${id}/cancel`, send("POST")),
+  harnessReports: () => call<{ items: HarnessReportItem[] }>("/harness/reports"),
+  harnessReport: (name: string) => call<{ name: string; text: string }>(`/harness/reports/${enc(name)}`),
+  harnessResults: () => call<{ items: HarnessResultItem[] }>("/harness/results"),
+  harnessCompare: (a: string, b: string) => call<HarnessCompare>(`/harness/compare?a=${enc(a)}&b=${enc(b)}`),
 };
 
 /** Thai text for a failed admin call. A 401 is handled by the gate, which sends the admin back to sign-in. */

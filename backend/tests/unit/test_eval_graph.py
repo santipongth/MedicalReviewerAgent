@@ -137,3 +137,19 @@ async def test_replay_empty_result_is_an_error_keeping_cost(monkeypatch):
     assert rec.status == "error" and rec.error == "empty result" and rec.result is None
     assert rec.cost_usd == 0.5
     assert set(rec.citations) == {"proposed", "stripped"}
+
+
+@pytest.mark.asyncio
+async def test_a_done_record_never_stores_less_than_the_budget_charged(monkeypatch):
+    from app.services.budget import current_budget
+
+    class ChargingGraph:  # a node that charged the budget but did not add its cost to the state (money-safe A3)
+        async def ainvoke(self, *a, **k):
+            current_budget().charge(0.3)
+            return {"cost_usd": 0.1, "result": {"synthesis_en": {}}}
+
+    deps = make_deps()
+    fx = fixture_from(await freeze_values(deps))
+    monkeypatch.setattr("app.evals.run.build_eval_graph", lambda d: ChargingGraph())
+    rec = await _replay(deps, fx)
+    assert rec.status == "done" and rec.cost_usd == 0.3

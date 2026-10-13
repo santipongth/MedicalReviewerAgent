@@ -112,7 +112,8 @@ def build_mcp(get_deps: Callable[[], AppDeps], settings: Settings) -> MCPServer:
 
     async def papers_limit(ident: Identity) -> None:
         deps = get_deps()
-        decision = await deps.limits.hit("papers", ident.rate_key, settings.paper_search_rate_limit)
+        rate = (await deps.service.effective()).paper_search_rate_limit
+        decision = await deps.limits.hit("papers", ident.rate_key, rate)
         if not decision.allowed:
             raise _error(RateLimited(decision.retry_after))
 

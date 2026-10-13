@@ -53,6 +53,7 @@ Without an LLM key set `GRAPH_MODE=stub`: the pipeline plumbing (API, queue, SSE
   management (cancel, hide or show, delete), API keys (mint, edit, revoke) and an audit log of every change. See
   `docs/api.md` → Admin API.
   Models: change presets and per-role models at `/admin/models`; each save is a version you can restore; workers pick it up within 30 seconds.
+  Settings, glossary and harness: change limits and the Thai glossary at `/admin/settings` and `/admin/glossary` (versioned, restorable, live within 30 seconds); read and compare Cochrane harness reports and start a capped run at `/admin/harness` (`docker compose --profile harness up -d harness`).
 - **Webhooks:** `POST /api/v1/reviews` with `"callback_url": "https://..."` (key required, HTTPS public host).
   When the review ends (done, error, rejected or cancelled) we POST `{"review_id","status","result_url"}` (up to 3
   tries, 10 s / 20 s apart, retried on network errors, 5xx and 429) with

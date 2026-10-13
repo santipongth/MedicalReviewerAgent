@@ -264,6 +264,10 @@ class LimitedLLM:
         if budget is not None and budget.exhausted:
             raise BudgetExceeded(f"cost cap of ${budget.cap_usd:.2f} per review reached; step skipped")
         async with self.sem:
+            # Re-check after the wait: calls queued on the semaphore must not start once an earlier call has
+            # spent the cap. Only calls already in flight (at most the semaphore size) can still run past it.
+            if budget is not None and budget.exhausted:
+                raise BudgetExceeded(f"cost cap of ${budget.cap_usd:.2f} per review reached; step skipped")
             res = await self.inner.ainvoke(system, user)
         if budget is not None:
             budget.charge(res.cost_usd)
@@ -344,7 +348,9 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
 def build_llms(settings: Settings, catalog: dict[str, ModelInfo] | None = None, *,
                resolved: ResolvedLLMConfig | None = None, sem: asyncio.Semaphore | None = None,
                config_version: str = "file") -> LLMs:
-    """`resolved` defaults to config/llm.yaml; `sem` lets a reload keep the process's one LLM semaphore (Plan 23b)."""
+    """`resolved` defaults to config/llm.yaml. `sem` is the semaphore every role (and escalation) shares: a reload
+    passes the worker's current one (Plan 23b), and an llm_concurrency change passes a new one for the reviews that
+    start afterwards (Plan 23c); without it a new semaphore of settings.llm_concurrency is made."""
     config = resolved or load_llm_config(settings.llm_config_path, settings.llm_preset)
     sem = sem or asyncio.Semaphore(max(1, settings.llm_concurrency))
     built = {role: LimitedLLM(build_role_llm(r, settings, catalog), sem) for role, r in config.roles.items()

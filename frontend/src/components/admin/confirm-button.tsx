@@ -43,7 +43,7 @@ export function ConfirmButton({ label, confirmLabel, onConfirm, name, hint, disa
   return (
     <span className="inline-flex flex-wrap gap-2">
       {hint && <span id={hintId} className="basis-full max-w-prose text-sm text-muted">{hint}</span>}
-      <button ref={confirmRef} type="button" disabled={busy} aria-describedby={hint ? hintId : undefined} className={BUTTON_DANGER} onClick={async () => {
+      <button ref={confirmRef} type="button" disabled={busy || disabled} aria-describedby={hint ? hintId : undefined} className={BUTTON_DANGER} onClick={async () => {
         setBusy(true);
         try {
           await onConfirm();

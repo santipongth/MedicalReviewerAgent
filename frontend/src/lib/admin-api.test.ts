@@ -58,6 +58,40 @@ describe("adminApi", () => {
     expect(JSON.parse(init.body as string)).toEqual({ yaml: "active_preset: cheap\n", base_version: 3, note: "cheaper" });
   });
 
+  it("builds the runtime and harness URLs and bodies", async () => {
+    const fn = stub(200, { items: [], next: null });
+    await adminApi.runtimeVersions("glossary", 4);
+    await adminApi.harnessCompare("2026-10-11.1/baseline", "pv/run b");
+    await adminApi.restoreRuntime("settings", 2, 3);
+    const urls = fn.mock.calls.map((c) => c[0]);
+    expect(urls).toEqual(["/api/v1/admin/glossary/versions?before=4",
+      "/api/v1/admin/harness/compare?a=2026-10-11.1%2Fbaseline&b=pv%2Frun%20b",
+      "/api/v1/admin/settings/versions/2/restore"]);
+    const init = fn.mock.calls[2][1];
+    expect(init.headers).toMatchObject({ "X-MRA-Admin": "1" });
+    expect(JSON.parse(init.body as string)).toEqual({ base_version: 3 });
+  });
+
+  it("keeps the body on the error, with its field errors and reasons only when they have the right shape (Plan 23c)", async () => {
+    const MAX = "max_queued_reviews: must be between 1 and 1000";
+    const refused = { detail: MAX, errors: [{ field: "max_queued_reviews", message: MAX }, { field: null, message: "bad document" }] };
+    stub(422, refused);
+    const err = await adminApi.saveSettings({ values: { max_queued_reviews: 0 }, base_version: 2 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AdminApiError);
+    expect(err).toMatchObject({ status: 422, message: MAX, body: refused, errors: refused.errors, reasons: null });
+    expect(adminErrorText(err)).toBe(MAX); // the text other callers show is unchanged
+    stub(503, { detail: "the harness cannot start a run now: no_worker", reasons: ["no_worker"] });
+    const body = { max_usd: 1, repeats: 1, strata: [], max_reviews: null, compare_run: null, confirm: true as const };
+    expect(await adminApi.startHarness(body).catch((e: unknown) => e)).toMatchObject({ status: 503, reasons: ["no_worker"], errors: null });
+    stub(422, { detail: [{ loc: ["body", "values"], msg: "Field required", type: "missing" }] });
+    expect(await adminApi.saveSettings({ values: {}, base_version: null }).catch((e: unknown) => e))
+      .toMatchObject({ structuredDetail: true, errors: null, reasons: null });
+    stub(422, { detail: "x", errors: [{ field: 3, message: "x" }], reasons: ["no_worker", 1] });
+    expect(await adminApi.saveSettings({ values: {}, base_version: null }).catch((e: unknown) => e))
+      .toMatchObject({ errors: null, reasons: null });
+    expect(new AdminApiError(500, "x")).toMatchObject({ body: null, errors: null, reasons: null });
+  });
+
   it("maps failures to AdminApiError with the detail and Retry-After", async () => {
     stub(429, { detail: "too many failed sign-ins; try again later" }, { "Retry-After": "600" });
     const err = await adminApi.signIn("owner", "x").catch((e: unknown) => e);

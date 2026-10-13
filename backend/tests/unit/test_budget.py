@@ -25,6 +25,22 @@ async def test_calls_beyond_the_cap_are_refused_without_reaching_the_model():
     await llm.ainvoke("s", "u")  # outside a review budget: no cap
 
 
+async def test_calls_queued_on_the_semaphore_are_refused_once_the_first_call_spends_the_cap():
+    async def slow(s, u):
+        await asyncio.sleep(0.01)
+        return verdict(s, u)
+
+    inner = FakeStructuredLLM("m", slow, cost=0.02)
+    llm = LimitedLLM(inner, asyncio.Semaphore(1))
+    budget = ReviewBudget(cap_usd=0.015)
+    with use_budget(budget):
+        results = await asyncio.gather(*(llm.ainvoke("s", f"u{i}") for i in range(5)), return_exceptions=True)
+    # every call passed the pre-check (nothing spent yet); only the first reached the model
+    assert len(inner.calls) == 1 and round(budget.spent, 3) == 0.02
+    assert sum(isinstance(r, BudgetExceeded) for r in results) == 4
+    assert all("cost cap" in str(r) for r in results if isinstance(r, BudgetExceeded))
+
+
 async def test_each_run_has_its_own_budget():
     inner = FakeStructuredLLM("m", verdict, cost=0.01)
     llm = LimitedLLM(inner, asyncio.Semaphore(4))

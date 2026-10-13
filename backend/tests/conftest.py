@@ -55,6 +55,11 @@ class FakeJobQueue:
         self.enqueued: list[str] = []
         self.aborted: list[str] = []
         self.checkpoint_deletes: list[str] = []
+        self.harness: list[int] = []
+
+    async def enqueue_harness(self, run_pk) -> bool:
+        self.harness.append(run_pk)
+        return True
 
     async def enqueue_review(self, review_id) -> bool:
         self.enqueued.append(str(review_id))

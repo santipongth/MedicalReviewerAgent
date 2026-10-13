@@ -56,11 +56,12 @@ async def review_events(
     review_status = review.status
 
     # Each client may hold a bounded number of open streams (shared across API processes through Redis).
-    slots = SseSlots(deps.redis, limit=settings.sse_max_per_ip)
+    live = await deps.service.effective()  # Plan 23c: the limit in force
+    slots = SseSlots(deps.redis, limit=live.sse_max_per_ip)
     client = deps.service.sse_key(client_ip(request))
     if not await slots.acquire(client):
         return JSONResponse(status_code=429, headers={"Retry-After": "30"},
-                            content={"detail": f"too many open event streams (max {settings.sse_max_per_ip} "
+                            content={"detail": f"too many open event streams (max {live.sse_max_per_ip} "
                                                "per client); close one or poll GET /reviews/{id}"})
 
     lease = slots.lease(client)

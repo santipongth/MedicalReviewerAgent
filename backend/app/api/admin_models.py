@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import AfterValidator, BaseModel, Field
@@ -18,6 +18,7 @@ from app.services.llm import _api_key
 from app.services.llm_config import (
     CONFIG_ERRORS,
     LLMConfigError,
+    config_error_summary,
     config_error_text,
     has_bad_text,
     parse_llm_config,
@@ -32,6 +33,7 @@ from app.services.llm_store import (
     list_versions,
     load_effective,
     loaded_workers,
+    newest_row,
     publish_version,
     reset_to_file,
     restore_version,
@@ -45,6 +47,9 @@ from app.services.review_service import Identity, ServiceError
 router = APIRouter()
 YAML_MAX = 200_000
 TEST_RATE = "10/minute"
+ID_MAX = 2**31 - 1  # Postgres INTEGER: a larger id in a lookup is a DataError (a 500), so it is a 422 here
+VersionId = Annotated[int, Path(ge=1, le=ID_MAX)]
+Before = Annotated[int | None, Query(ge=1, le=ID_MAX)]
 
 
 def _clean_note(value: str | None) -> str | None:
@@ -99,11 +104,28 @@ async def _catalog(deps: AppDeps):
     return await cached_catalog(deps.redis, load_live_catalog)
 
 
+def _unreadable(settings, row, exc: BaseException, loaded: list) -> dict:
+    """The state when the configuration in use no longer passes validation: the newest version was saved under older
+    rules, or llm.yaml is broken while no version exists. It is shown as stored, with the error, and never as a 500,
+    so the console can still restore an older version or build a new one from llm.yaml. Workers keep the models they
+    loaded and report the same error."""
+    raw = row.config if row is not None and isinstance(row.config, dict) else {}
+    preset = raw.get("active_preset")
+    return {"source": "db" if row is not None else "file", "version": row.id if row is not None else None,
+            "config": raw, "active_preset": preset if isinstance(preset, str) else "",
+            "env_preset": settings.llm_preset, "keys_present": {}, "loaded": loaded,
+            "error": config_error_summary(exc)}
+
+
 @router.get("/admin/llm-config")
 async def llm_config_state(deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)) -> dict:
     settings = deps.service.settings
     async with deps.session_factory() as session:
-        effective = await load_effective(session, settings)
+        try:
+            effective = await load_effective(session, settings)
+        except CONFIG_ERRORS as exc:
+            row = await newest_row(session)
+            return _unreadable(settings, row, exc, await loaded_workers(deps.redis))
     keys = {p.api_key_env: bool(_api_key(settings, p.api_key_env)) for p in effective.config.providers.values()}
     # The preset the workers run: LLM_PRESET replaces the file's own active_preset while llm.yaml is the source, and a
     # DB version ignores it. Computed directly, not with effective.resolve(): an LLM_PRESET that names no preset must
@@ -111,11 +133,11 @@ async def llm_config_state(deps: AppDeps = Depends(get_deps), _: Identity = Depe
     running = settings.llm_preset if effective.source == "file" and settings.llm_preset else effective.config.active_preset
     return {"source": effective.source, "version": effective.version, "config": effective.raw,
             "active_preset": running, "env_preset": settings.llm_preset,
-            "keys_present": keys, "loaded": await loaded_workers(deps.redis)}
+            "keys_present": keys, "loaded": await loaded_workers(deps.redis), "error": None}
 
 
 @router.get("/admin/llm-config/versions")
-async def llm_versions(before: int | None = Query(None, ge=1), limit: int = Query(50, ge=1, le=100),
+async def llm_versions(before: Before = None, limit: int = Query(50, ge=1, le=100),
                        deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)) -> dict:
     async with deps.session_factory() as session:
         rows, nxt = await list_versions(session, before=before, limit=limit)
@@ -123,7 +145,7 @@ async def llm_versions(before: int | None = Query(None, ge=1), limit: int = Quer
 
 
 @router.get("/admin/llm-config/versions/{version_id}")
-async def llm_version(version_id: int, deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)):
+async def llm_version(version_id: VersionId, deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)):
     try:
         async with deps.session_factory() as session:
             row = await get_version(session, version_id)
@@ -133,7 +155,8 @@ async def llm_version(version_id: int, deps: AppDeps = Depends(get_deps), _: Ide
 
 
 @router.get("/admin/llm-config/versions/{version_id}/yaml")
-async def llm_version_yaml(version_id: int, deps: AppDeps = Depends(get_deps), _: Identity = Depends(require_admin)):
+async def llm_version_yaml(version_id: VersionId, deps: AppDeps = Depends(get_deps),
+                            _: Identity = Depends(require_admin)):
     try:
         async with deps.session_factory() as session:
             row = await get_version(session, version_id)
@@ -169,7 +192,7 @@ async def llm_save(body: SaveBody, deps: AppDeps = Depends(get_deps), identity: 
 
 
 @router.post("/admin/llm-config/versions/{version_id}/restore", status_code=201)
-async def llm_restore(version_id: int, body: BaseBody, deps: AppDeps = Depends(get_deps),
+async def llm_restore(version_id: VersionId, body: BaseBody, deps: AppDeps = Depends(get_deps),
                       identity: Identity = Depends(require_admin)):
     settings, ip_hash = deps.service.settings, ip_hash_of(identity, deps)
     return await _write(deps, identity, lambda s: restore_version(

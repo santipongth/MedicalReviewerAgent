@@ -47,6 +47,18 @@ describe("ConfirmButton", () => {
     expect(screen.queryByText("ลบแล้วกู้คืนไม่ได้")).not.toBeInTheDocument();
   });
 
+  it("keeps the confirm button disabled while the control is disabled, and does not close the ask", () => {
+    const run = vi.fn();
+    const { rerender } = render(<ConfirmButton label="ลบ" confirmLabel="ยืนยันลบ" onConfirm={run} />);
+    fireEvent.click(screen.getByRole("button", { name: "ลบ" }));
+    rerender(<ConfirmButton label="ลบ" confirmLabel="ยืนยันลบ" onConfirm={run} disabled />);
+    expect(screen.getByRole("button", { name: "ยืนยันลบ" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยันลบ" }));
+    expect(run).not.toHaveBeenCalled();
+    rerender(<ConfirmButton label="ลบ" confirmLabel="ยืนยันลบ" onConfirm={run} />);
+    expect(screen.getByRole("button", { name: "ยืนยันลบ" })).toBeEnabled();
+  });
+
   it("has no description without a hint", () => {
     render(<ConfirmButton label="ลบ" confirmLabel="ยืนยันลบ" onConfirm={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "ลบ" }));

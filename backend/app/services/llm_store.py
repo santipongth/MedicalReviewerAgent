@@ -67,6 +67,11 @@ async def _newest(session: AsyncSession) -> LlmConfigVersion | None:
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+async def newest_row(session: AsyncSession) -> LlmConfigVersion | None:
+    """The newest saved version as stored, unparsed: the console shows one that no longer passes validation."""
+    return await _newest(session)
+
+
 async def load_effective(session: AsyncSession, settings: Settings) -> EffectiveConfig:
     row = await _newest(session)
     if row is not None:
@@ -259,10 +264,12 @@ async def active_version_id(session_factory, redis) -> str:
     return value
 
 
-async def report_loaded(redis, worker: str, version: str, preset: str, error: str | None = None) -> None:
+async def report_loaded(redis, worker: str, version: str, preset: str, error: str | None = None, *,
+                        extra: dict[str, Any] | None = None) -> None:
     """Record what a worker runs. Workers repeat this on every poll (a heartbeat), so `loaded_at` means "last seen",
-    and loaded_workers drops entries that were not refreshed for LOADED_MAX_AGE."""
-    payload = {"version": version, "preset": preset, "loaded_at": datetime.now(UTC).isoformat(),
+    and loaded_workers drops entries that were not refreshed for LOADED_MAX_AGE. `extra` carries the runtime versions
+    (Plan 23c: settings, glossary, runtime_error); it never overrides the LLM fields."""
+    payload = {**(extra or {}), "version": version, "preset": preset, "loaded_at": datetime.now(UTC).isoformat(),
                "error": (error or None) and error[:300]}
     try:
         await redis.hset(LOADED_KEY, worker, json.dumps(payload))
