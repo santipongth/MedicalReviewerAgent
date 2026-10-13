@@ -77,3 +77,67 @@ DETAILS = {
     "health03-900005": detail(HITS[4], "-"),
 }
 NOT_FOUND = {"error": "Article 'health01-0' not found", "code": "NOT_FOUND"}
+
+
+# ---- OAI-PMH GetRecord answers (oai_dc), shaped as the journal servers answered on 2026-10-13 ----------------------
+OAI_URL1 = "https://he01.tci-thaijo.org/index.php/demo/oai"
+OAI_ID1 = "oai:he01.tci-thaijo.org:article/900001"
+
+
+def oai_record(identifier: str = OAI_ID1, *, sources: str = "", rights: str = "", types: str = "",
+               status: str = "") -> bytes:
+    header_status = f' status="{status}"' if status else ""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="https://he01.tci-thaijo.org/lib/pkp/xml/oai2.xsl" ?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+ <responseDate>2026-10-13T04:00:00Z</responseDate>
+ <request verb="GetRecord" metadataPrefix="oai_dc" identifier="{identifier}">{OAI_URL1}</request>
+ <GetRecord><record>
+  <header{header_status}><identifier>{identifier}</identifier><datestamp>2024-03-01T00:00:00Z</datestamp>
+   <setSpec>demo:ART</setSpec></header>
+  <metadata>
+   <oai_dc:dc xmlns:oai_dc="http://www.openarchives.org/OAI/2.0/oai_dc/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title xml:lang="en-US">Medication Adherence among Older Adults with Hypertension in a District Hospital</dc:title>
+    <dc:creator>ตัวอย่าง, สมชาย</dc:creator>
+    <dc:description xml:lang="en-US">An invented abstract; the OAI step never reads it.</dc:description>
+    <dc:date>2024-03-01</dc:date>
+    {types}
+    <dc:format>application/pdf</dc:format>
+    <dc:identifier>https://he01.tci-thaijo.org/index.php/demo/article/view/900001</dc:identifier>
+    {sources}
+    <dc:language>tha</dc:language>
+    <dc:relation>https://he01.tci-thaijo.org/index.php/demo/article/view/900001/555</dc:relation>
+    {rights}
+   </oai_dc:dc>
+  </metadata>
+ </record></GetRecord>
+</OAI-PMH>
+""".encode()
+
+
+FULL_SOURCES = """<dc:source xml:lang="en-US">Journal of Demo Health Sciences; Vol. 17 No. 4 (2024): Oct-Dec; 1048-1066</dc:source>
+    <dc:source xml:lang="th-TH">วารสารวิทยาศาสตร์สุขภาพตัวอย่าง; ปีที่ 17 ฉบับที่ 4 (2024): ต.ค.-ธ.ค.; 1048-1066</dc:source>
+    <dc:source>3027-613x</dc:source>
+    <dc:source>2985-1750</dc:source>"""
+FULL_RIGHTS = """<dc:rights xml:lang="th-TH">ลิขสิทธิ์ (c) 2024 วารสารวิทยาศาสตร์สุขภาพตัวอย่าง</dc:rights>
+    <dc:rights xml:lang="th-TH">https://creativecommons.org/licenses/by-nc-nd/4.0</dc:rights>"""
+FULL_TYPES = """<dc:type>info:eu-repo/semantics/article</dc:type>
+    <dc:type>info:eu-repo/semantics/publishedVersion</dc:type>
+    <dc:type xml:lang="en-US">Peer-reviewed article</dc:type>
+    <dc:type xml:lang="th-TH">บทความที่ผ่านการประเมิน</dc:type>"""
+OAI_FULL = oai_record(sources=FULL_SOURCES, rights=FULL_RIGHTS, types=FULL_TYPES)
+# no pages and no article type (seen on another journal): "Vol. 11 No. 2 (2024): Vol.11 No.2"
+OAI_NO_PAGES = oai_record(sources='<dc:source xml:lang="en-US">Journal of Demo Health Sciences; Vol. 11 No. 2 (2024): '
+                                  'Vol.11 No.2</dc:source>\n    <dc:source>2985-1750</dc:source>',
+                          rights='<dc:rights xml:lang="th-TH">http://creativecommons.org/licenses/by-nc-nd/4.0</dc:rights>',
+                          types="<dc:type>info:eu-repo/semantics/article</dc:type>")
+OAI_MISSING = f"""<?xml version="1.0" encoding="UTF-8"?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/">
+ <responseDate>2026-10-13T04:00:00Z</responseDate>
+ <request verb="GetRecord" metadataPrefix="oai_dc" identifier="{OAI_ID1}">{OAI_URL1}</request>
+ <error code="idDoesNotExist">No matching identifier in this repository</error></OAI-PMH>
+""".encode()
+OAI_BOMB = b"""<?xml version="1.0"?>
+<!DOCTYPE lolz [<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">]>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/"><responseDate>&lol2;</responseDate></OAI-PMH>
+"""

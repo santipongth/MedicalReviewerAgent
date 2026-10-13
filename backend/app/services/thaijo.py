@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,7 +19,7 @@ import httpx
 from app.graph.schemas import Candidate
 from app.services.http import HttpClient
 from app.services.text import normalize_doi, strip_markup, truncate
-from app.services.urlsafety import is_allowed_host
+from app.services.urlsafety import is_allowed_host, is_public_http_url
 
 DOMAIN = "tci-thaijo.org"
 _HEALTH = re.compile(r"health\d{2}", re.ASCII)  # health01-health05 seen 2026-10-13
@@ -126,6 +127,65 @@ def to_candidate(hit: ThaiJoHit, abstract: str) -> Candidate:
 def query_words(query: str) -> str:
     """Words, spaces and hyphens only, at most 200 characters: the search never carries user syntax."""
     return " ".join(re.sub(r"[^\w\s-]", " ", query or "").split())[:200]
+
+
+# ---- OAI-PMH --------------------------------------------------------------------------------------------------
+_OAI = "{http://www.openarchives.org/OAI/2.0/}"
+_OAI_DC = "{http://www.openarchives.org/OAI/2.0/oai_dc/}dc"
+_DC = "{http://purl.org/dc/elements/1.1/}"
+_XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+MAX_XML_BYTES = 512_000
+# xml.etree never fetches external entities, but an internal DTD can still expand entities ("billion laughs"); an
+# OAI-PMH record never needs one, so any document with a DTD or entity declaration is refused before parsing.
+_DTD = re.compile(rb"<!\s*(?:DOCTYPE|ENTITY)", re.IGNORECASE)
+_ISSN = re.compile(r"\d{4}-\d{3}[\dX]", re.ASCII)
+_VOLUME = re.compile(r"\bVol\.?\s*([0-9A-Za-z-]{1,10})|ปีที่\s*([0-9A-Za-z-]{1,10})")
+_ISSUE = re.compile(r"\bNo\.?\s*([0-9A-Za-z-]{1,10})|ฉบับที่\s*([0-9A-Za-z-]{1,10})")
+_PAGES = re.compile(r"[A-Za-z]?\d{1,6}(?:\s*[-–]\s*[A-Za-z]?\d{1,6})?", re.ASCII)
+_LICENSE = re.compile(r"https?://creativecommons\.org/(?:licenses|publicdomain)/[a-z-]{2,20}/\d\.\d/?", re.ASCII)
+
+
+class UnsafeXml(ValueError):
+    pass
+
+
+def _first_group(pattern: re.Pattern[str], text: str) -> str | None:
+    match = pattern.search(text)
+    return next((g for g in match.groups() if g), None) if match else None
+
+
+def parse_oai_record(body: bytes, identifier: str) -> dict[str, Any] | None:
+    """The bibliographic fields of an oai_dc GetRecord answer: `{volume, issue, pages, issn[], license, article_type}`
+    (each null or empty when absent), or None when the record is missing, deleted or not the one asked for, or holds
+    none of them. Raises UnsafeXml for a DTD or an oversized body, and ET.ParseError for broken XML."""
+    if len(body) > MAX_XML_BYTES or _DTD.search(body):
+        raise UnsafeXml("refused: DTD or oversized OAI-PMH answer")
+    root = ET.fromstring(body)
+    record = root.find(f"{_OAI}GetRecord/{_OAI}record")
+    header = record.find(f"{_OAI}header") if record is not None else None
+    if header is None or header.get("status") == "deleted" or header.findtext(f"{_OAI}identifier") != identifier:
+        return None
+    dc = record.find(f"{_OAI}metadata/{_OAI_DC}")
+    if dc is None:
+        return None
+
+    def values(tag: str) -> list[tuple[str, str]]:
+        return [((e.get(_XML_LANG) or "").lower(), _text(e.text, 300)) for e in dc.findall(f"{_DC}{tag}")]
+
+    sources = values("source")
+    issn = list(dict.fromkeys(v.upper() for _, v in sources if _ISSN.fullmatch(v.upper())))
+    citation = next((v for lang, v in sources if lang.startswith("en") and ";" in v), None) or next(
+        (v for _, v in sources if ";" in v), "")
+    parts = [p.strip() for p in citation.split(";")]
+    issue_text = "; ".join(parts[1:])  # after the journal name, which may itself hold "No."
+    pages = parts[-1] if len(parts) >= 3 and _PAGES.fullmatch(parts[-1]) else None
+    licence = next((v for _, v in values("rights") if _LICENSE.fullmatch(v)), None)
+    article_type = next((v for lang, v in values("type") if lang.startswith("en") and v
+                         and not v.startswith("info:")), None)
+    bib = {"volume": _first_group(_VOLUME, issue_text), "issue": _first_group(_ISSUE, issue_text),
+           "pages": re.sub(r"\s*[-–]\s*", "-", pages) if pages else None, "issn": issn,
+           "license": licence, "article_type": truncate(article_type, 80) if article_type else None}
+    return bib if any(bib.values()) else None
 
 
 class ThaiJoClient:
@@ -240,3 +300,28 @@ class ThaiJoClient:
                     stats["no_abstract"] += 1
                 else:
                     out.append(to_candidate(hit, text))
+
+    async def record(self, article_url: str) -> dict[str, Any] | None:
+        """Bibliographic fields from the journal's OAI-PMH record of a ThaiJO article page (`parse_oai_record`),
+        cached; None when the page is not a ThaiJO article or the record is missing. The host comes from the page
+        URL, so it must be a *.tci-thaijo.org host that resolves to public addresses only. Raises on any other
+        failure."""
+        link = article_link(article_url)
+        if link is None:
+            return None
+        host, journal, submission = link
+        key = f"oai:{host}:{submission}"
+        cached = await self._cache_get(key)
+        if isinstance(cached, dict) and "bib" in cached:
+            return cached["bib"] if isinstance(cached["bib"], dict) else None
+        url = f"https://{host}/index.php/{journal}/oai"
+        if not await is_public_http_url(url, self.resolver):
+            raise PermissionError(f"OAI host {host} does not resolve to public addresses")
+        identifier = f"oai:{host}:article/{submission}"
+        resp = await self.http.get(url, params={"verb": "GetRecord", "metadataPrefix": "oai_dc",
+                                                "identifier": identifier},
+                                   headers=self._headers, timeout=self.timeout, retries=0, follow_redirects=False)
+        resp.raise_for_status()
+        bib = parse_oai_record(resp.content, identifier)
+        await self._cache_set(key, {"bib": bib})
+        return bib
