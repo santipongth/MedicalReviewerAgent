@@ -68,6 +68,21 @@ def test_a_dtd_or_an_oversized_answer_is_refused_before_parsing():
         parse_oai_record(b"<OAI-PMH><unclosed></OAI-PMH>", OAI_ID1)
 
 
+def test_utf16_bodies_cannot_hide_a_dtd():
+    with pytest.raises(UnsafeXml):
+        parse_oai_record(OAI_BOMB.decode().encode("utf-16"), OAI_ID1)  # with a byte-order mark
+    with pytest.raises(UnsafeXml):
+        parse_oai_record(OAI_BOMB.decode().encode("utf-16-le"), OAI_ID1)  # without one
+    with pytest.raises(UnsafeXml):
+        parse_oai_record(OAI_BOMB.decode().encode("utf-32"), OAI_ID1)
+
+
+def test_an_unsupported_declared_encoding_is_refused_as_unsafe():
+    body = OAI_FULL.replace(b'encoding="UTF-8"', b'encoding="utf-7"', 1)
+    with pytest.raises(UnsafeXml):
+        parse_oai_record(body, OAI_ID1)
+
+
 def test_markup_in_a_field_is_stripped_and_long_types_are_cut():
     types = '<dc:type xml:lang="en-US">&lt;b&gt;Research&lt;/b&gt; article ' + "x" * 200 + "</dc:type>"
     bib = parse_oai_record(oai_record(types=types), OAI_ID1)
@@ -85,6 +100,16 @@ async def test_record_reads_the_journal_host_from_the_page_and_caches_the_answer
     params = dict(route.calls[0].request.url.params)
     assert params == {"verb": "GetRecord", "metadataPrefix": "oai_dc", "identifier": OAI_ID1}
     assert await redis.ttl("mra:thaijo:oai:he01.tci-thaijo.org:900001") == 600
+
+
+@respx.mock
+async def test_a_corrupt_cache_entry_is_a_miss():
+    route = respx.get(OAI_URL1).mock(return_value=httpx.Response(200, content=OAI_FULL))
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    for bad in ('{"bib": "x"}', '{"bib": 1}'):
+        await redis.set("mra:thaijo:oai:he01.tci-thaijo.org:900001", bad)
+        assert await _client(redis).record(URL1) == FULL
+    assert route.call_count == 2
 
 
 @respx.mock

@@ -158,11 +158,21 @@ def parse_oai_record(body: bytes, identifier: str) -> dict[str, Any] | None:
     """The bibliographic fields of an oai_dc GetRecord answer: `{volume, issue, pages, issn[], license, article_type}`
     (each null or empty when absent), or None when the record is missing, deleted or not the one asked for, or holds
     none of them. Raises UnsafeXml for a DTD or an oversized body, and ET.ParseError for broken XML."""
-    if len(body) > MAX_XML_BYTES or _DTD.search(body):
-        raise UnsafeXml("refused: DTD or oversized OAI-PMH answer")
-    root = ET.fromstring(body)
+    # PKP answers in UTF-8. A NUL byte or a UTF-16/32 byte-order mark means another encoding, which expat would
+    # autodetect and which would hide a DTD from the ASCII check below, so it is refused.
+    if (len(body) > MAX_XML_BYTES or _DTD.search(body) or b"\x00" in body
+            or body.startswith((b"\xfe\xff", b"\xff\xfe"))):
+        raise UnsafeXml("refused: DTD, oversized or non-UTF-8 OAI-PMH answer")
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        raise
+    except ValueError as exc:  # e.g. a declared encoding expat cannot decode
+        raise UnsafeXml("refused: unsupported encoding in OAI-PMH answer") from exc
     record = root.find(f"{_OAI}GetRecord/{_OAI}record")
-    header = record.find(f"{_OAI}header") if record is not None else None
+    if record is None:
+        return None
+    header = record.find(f"{_OAI}header")
     if header is None or header.get("status") == "deleted" or header.findtext(f"{_OAI}identifier") != identifier:
         return None
     dc = record.find(f"{_OAI}metadata/{_OAI_DC}")
@@ -312,8 +322,10 @@ class ThaiJoClient:
         host, journal, submission = link
         key = f"oai:{host}:{submission}"
         cached = await self._cache_get(key)
-        if isinstance(cached, dict) and "bib" in cached:
-            return cached["bib"] if isinstance(cached["bib"], dict) else None
+        if isinstance(cached, dict) and "bib" in cached and (cached["bib"] is None or isinstance(cached["bib"], dict)):
+            return cached["bib"]  # anything else is a corrupt entry: a miss
+        # Residual risks: DNS may change between this check and the request (TLS to a *.tci-thaijo.org name limits
+        # it); the body is read whole before the size check, so only the timeout bounds it (the host is allow-listed).
         url = f"https://{host}/index.php/{journal}/oai"
         if not await is_public_http_url(url, self.resolver):
             raise PermissionError(f"OAI host {host} does not resolve to public addresses")
