@@ -21,9 +21,9 @@ from app.services.text import normalize_doi, strip_markup, truncate
 from app.services.urlsafety import is_allowed_host
 
 DOMAIN = "tci-thaijo.org"
-_HEALTH = re.compile(r"health\d{2}")  # health01-health05 seen 2026-10-13
-_ARTICLE_ID = re.compile(r"(health\d{2})-(\d{1,10})")
-_ARTICLE_PATH = re.compile(r"/index\.php/([A-Za-z0-9_-]{1,64})/article/view/(\d{1,10})/?")
+_HEALTH = re.compile(r"health\d{2}", re.ASCII)  # health01-health05 seen 2026-10-13
+_ARTICLE_ID = re.compile(r"(health\d{2})-(\d{1,10})", re.ASCII)
+_ARTICLE_PATH = re.compile(r"/index\.php/([A-Za-z0-9_-]{1,64})/article/view/(\d{1,10})/?", re.ASCII)
 MIN_ABSTRACT_CHARS = 150  # as retrieval.MIN_ABSTRACT_CHARS
 MIN_LATIN_SHARE = 0.9  # an "English" abstract that is mostly Thai script is not one
 MAX_ABSTRACT_CHARS = 6000  # bounds what an untrusted source can put into a prompt (seen: 800-2,600)
@@ -38,7 +38,9 @@ USER_AGENT = "MedicalReviewerAgent/0.1 (research; contact via repository)"
 
 def gregorian_year(value: Any) -> int | None:
     """ThaiJO years are sometimes Buddhist era (2567): above 2400, 543 is subtracted."""
-    year = value if isinstance(value, int) else int(value) if str(value or "").isdigit() else None
+    text = str(value or "")
+    ascii_digits = text.isascii() and text.isdigit() and len(text) <= 6
+    year = value if isinstance(value, int) else int(text) if ascii_digits else None
     if year is not None and year > 2400:
         year -= BUDDHIST_ERA_OFFSET
     return year if year is not None and 1800 <= year <= 2100 else None
@@ -165,7 +167,15 @@ class ThaiJoClient:
             json={"q": words, "page": 1, "per_page": PER_PAGE, "highlight": False, "facets": False})
         resp.raise_for_status()
         hits = resp.json().get("hits")
-        return [h for h in map(parse_hit, hits if isinstance(hits, list) else []) if h]
+        parsed: list[ThaiJoHit] = []
+        for raw in hits if isinstance(hits, list) else []:
+            try:
+                hit = parse_hit(raw)
+            except Exception:  # noqa: BLE001 - one malformed hit never drops the others
+                hit = None
+            if hit:
+                parsed.append(hit)
+        return parsed
 
     async def abstract(self, article_id: str, stats: dict[str, int] | None = None) -> str | None:
         """The English abstract of one article (None when it has none or is unknown), cached by id. Raises on any

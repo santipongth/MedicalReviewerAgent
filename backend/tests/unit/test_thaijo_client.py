@@ -106,6 +106,22 @@ async def test_search_posts_the_words_with_an_identifying_agent_and_no_retry():
     assert respx.calls.call_count == 2  # the 503 was not retried
 
 
+def test_unusable_years_and_thai_digit_ids_are_refused():
+    assert gregorian_year("²") is None and gregorian_year("9" * 5000) is None and gregorian_year("๒๕๖๗") is None
+    assert parse_hit(hit("health01-๙๐๐๐๐๑", URL1, en="x")) is None
+    assert article_link(URL1, "health01-๙๐๐๐๐๑") is None
+
+
+@respx.mock
+async def test_one_malformed_hit_never_drops_the_rest_of_the_page():
+    bad = [{**HITS[0], "year": "²"}, {**HITS[0], "year": "9" * 5000}]
+    respx.post(f"{API}/articles/search").mock(
+        return_value=httpx.Response(200, json={**SEARCH, "hits": [*bad, HITS[1]]}))
+    hits = await _client().search("adherence")
+    assert [h.id for h in hits] == ["health01-900001", "health01-900001", "health02-900002"]
+    assert hits[0].year is None and hits[1].year is None
+
+
 @respx.mock
 async def test_search_never_follows_a_redirect():
     respx.post(f"{API}/articles/search").mock(
