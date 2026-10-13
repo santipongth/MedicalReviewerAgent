@@ -467,7 +467,10 @@ and up to two candidate sentences copied from that paper's abstract.
 
 
 def support_user(*, items: list[dict[str, Any]]) -> str:
-    return (f"{DATA_NOTICE}\n<items>\n{json.dumps(items, ensure_ascii=False)}\n</items>\n\n"
+    # `&`, `<` and `>` are JSON-escaped so abstract text such as "</items>" cannot close the data block
+    data = (json.dumps(items, ensure_ascii=False)
+            .replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e"))
+    return (f"{DATA_NOTICE}\n<items>\n{data}\n</items>\n\n"
             "Checklist before answering:\n- one verdict for every id above, the id copied exactly\n"
             "- sentence is 1 or 2 for supported and partial, null for unsupported")
 

@@ -200,3 +200,15 @@ def test_the_badge_needs_supported_checked_numbers_no_pool_and_evidence():
     assert sp.citation(pair, "P1", ("supported", 0), **(kw | {"not_evidence": True}))["verified"] is False
     assert sp.citation(None, "P3", None, **kw) == {"ref": "P3", "label": None, "evidence": None, "score": None,
                                                    "not_evidence": False, "verified": False}
+
+
+def test_a_supported_label_on_a_candidate_far_from_the_claim_earns_no_badge():
+    pair = _pairs()[0]
+    kw = {"numbers_checked": True, "computed": False, "not_evidence": False}
+    far = sp.Pair(id=pair.id, claim=pair.claim, ref="P1", candidates=[("Unrelated sentence about weather.", 0.0)])
+    c = sp.citation(far, "P1", ("supported", 0), **kw)
+    assert c["label"] == "supported" and c["score"] == 0.0 and c["verified"] is False  # the label stays as judged
+    edge = sp.Pair(id=pair.id, claim=pair.claim, ref="P1", candidates=[("Some sentence here today.",
+                                                                          sp.MIN_SUPPORT_SCORE)])
+    assert sp.citation(edge, "P1", ("supported", 0), **kw)["verified"] is True
+    assert sp.citation(pair, "P1", ("supported", 0), **kw)["verified"] is True  # a normal candidate still earns it

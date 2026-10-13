@@ -246,9 +246,12 @@ _STUB_UNCHECKED = {"k1"}  # claims whose numbers are not checked, so a supported
 
 
 def _stub_abstract(paper: dict[str, Any]) -> str:
-    """A fixed 3-sentence abstract of the simulated paper. Used only to pick the evidence; never stored."""
+    """A fixed 4-sentence abstract of the simulated paper. Used only to pick the evidence; never stored."""
     return (f"This simulated study {paper['ref'][1:]} examined {paper['title'].split(': ', 1)[-1]} in an illustrative "
-            f"sample. {paper['card']['key_findings'][0]} The authors note that these data are illustrative only.")
+            f"sample. {paper['card']['key_findings'][0]} Most simulated studies of several designs report that the index "
+            "intervention reduces the primary outcome, one cohort reports harm, primary studies report no safety "
+            "concern and a systematic review points elsewhere. The authors note that these data are illustrative "
+            "only.")
 
 
 def _stub_support(synthesis: dict[str, Any], papers: list[dict[str, Any]]) -> dict[str, Any]:

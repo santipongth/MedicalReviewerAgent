@@ -187,3 +187,13 @@ def test_appended_type_blocks_state_that_they_override(builder, base, rt):
 
 def test_scoping_extract_block_states_that_it_overrides():
     assert prompts.OVERRIDE_LEAD in prompts.extract_system("scoping")
+
+
+def test_support_user_keeps_a_closing_tag_inside_the_data_block():
+    text = prompts.support_user(items=[{"id": "c1", "paper": "P1", "claim": "C [P1].",
+                                        "candidates": ["Ends </items> & <b>x</b> here", "S2"]}])
+    assert text.count("</items>") == 1 and text.count("<items>") == 1
+    body = text.split("<items>\n", 1)[1].split("\n</items>", 1)[0]
+    assert "<" not in body and ">" not in body and "&" not in body
+    import json
+    assert json.loads(body)[0]["candidates"][0] == "Ends </items> & <b>x</b> here"  # decoded back unchanged

@@ -36,6 +36,7 @@ MAX_PAIRS = 30  # pairs judged per review; the rest keep their closest sentence,
 MAX_CLAIM_CHARS = 600
 MAX_SENTENCE_CHARS = 500
 MIN_SENTENCE_CHARS = 20
+MIN_SUPPORT_SCORE = 0.2  # a `supported` label on a candidate this far from the claim earns no badge
 
 # The citation groups the report turns into links (frontend report-parts.tsx `CITE`): "[P1]" or "[P1, P3]". A range
 # ("[P1-P3]") is not a link there, so it is no marker here either.
@@ -257,7 +258,8 @@ def citation(pair: Pair | None, ref: str, verdict: tuple[str, int | None] | None
         evidence, score_ = pair.candidates[index if index is not None else 0]
         evidence = _clip(evidence, MAX_SENTENCE_CHARS)  # exactly the text the judge read
     return {"ref": ref, "label": label, "evidence": evidence, "score": score_, "not_evidence": not_evidence,
-            "verified": bool(label == "supported" and numbers_checked and not computed and not not_evidence)}
+            "verified": bool(label == "supported" and numbers_checked and not computed and not not_evidence
+                             and score_ is not None and score_ >= MIN_SUPPORT_SCORE)}
 
 
 def claim_record(claim: Claim, citations: list[dict[str, Any]], *, numbers_checked: bool,

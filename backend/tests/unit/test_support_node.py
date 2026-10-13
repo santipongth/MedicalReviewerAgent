@@ -10,7 +10,7 @@ from app.graph.nodes.synthesis import make_finalize
 from app.graph.schemas import Candidate, SupportBatch, SupportVerdict
 from app.harness import support as sp
 from app.services.budget import ReviewBudget, use_budget
-from app.services.llm import LLMError, LLMs
+from app.services.llm import BudgetExceeded, LLMError, LLMs
 from app.services.llm_config import HarnessSpec
 from tests.fakes import FakeStructuredLLM
 
@@ -195,3 +195,49 @@ async def test_finalize_reports_whether_the_shown_summary_keeps_the_markers():
     assert r["support"]["display_aligned"] is False
     r = (await make_finalize(d)({**st, "support": None}))["result"]
     assert r["support"] is None
+
+
+async def test_the_judge_never_escalates_and_repairs_at_most_once():
+    def half(system, user):
+        return SupportBatch(verdicts=[SupportVerdict(id="c1", label="partial", sentence=1)])
+
+    judge = FakeStructuredLLM("judge", half)
+    big = FakeStructuredLLM("big-model", supported)
+    d = deps(judge)
+    d.llms.harness = HarnessSpec(max_repairs=5)  # the pipeline's setting must not reach the judge
+    d.llms.escalation = lambda schema: big
+    out = await node.make_check_support(d)(state())
+    assert big.calls == [] and len(judge.calls) == 2
+    assert out["support"]["judge"] == "incomplete"
+
+
+async def test_the_judge_is_skipped_below_two_cents_left():
+    judge = FakeStructuredLLM("judge", supported)
+    with use_budget(ReviewBudget(cap_usd=0.10, spent=0.085)):  # $0.015 left
+        out = await node.make_check_support(deps(judge))(state())
+    assert judge.calls == [] and out["support"]["judge"] == "skipped_budget"
+    with use_budget(ReviewBudget(cap_usd=0.10, spent=0.075)):  # $0.025 left
+        out = await node.make_check_support(deps(judge))(state())
+    assert len(judge.calls) == 1 and out["support"]["judge"] == "ok"
+
+
+async def test_a_crash_while_building_the_records_leaves_support_null(monkeypatch):
+    def boom(*a, **k):
+        raise ValueError("bug")
+
+    monkeypatch.setattr(sp, "claim_record", boom)
+    out = await node.make_check_support(deps(FakeStructuredLLM("judge", supported)))(state())
+    assert out["support"] is None and out["quality"][0]["judge"] == "crashed"
+
+
+async def test_the_cap_reached_during_a_repair_is_a_skip_that_keeps_the_completed_verdicts():
+    def half_then_cap(system, user):
+        if "previous_attempt_problems" in user:
+            return BudgetExceeded("cost cap of $0.10 per review reached; step skipped")
+        return SupportBatch(verdicts=[SupportVerdict(id="c1", label="partial", sentence=1)])
+
+    judge = FakeStructuredLLM("judge", half_then_cap, cost=0.002)
+    out = await node.make_check_support(deps(judge))(state())
+    assert out["support"]["judge"] == "skipped_budget" and out["errors"] == []
+    labels = [c["label"] for claim in out["support"]["claims"] for c in claim["citations"]]
+    assert labels == ["partial", None, None, None, None, None] and out["cost_usd"] == 0.002

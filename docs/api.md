@@ -1107,20 +1107,23 @@ were already verified (above); this checks that the sentence citing a paper says
   those numbers (weighted 0.6 / 0.4). The best 2 sentences are the candidates. Only they reach the judge, never the
   whole abstract.
 - **Judge.** One call per review on the screener's model, bound to its own schema (`SupportBatch`), through the
-  validate → repair → escalate runner: `supported`, `partial` or `unsupported` per pair, and which candidate supports
-  it. At most 30 pairs are judged (summary first, then key findings); the rest keep their closest sentence and a null
-  label. The judge never writes the evidence: the sentence shown is copied from the abstract by index.
-- **Badge ("ตรวจแล้ว").** A citation is `verified` only when the judge said `supported`, every number of the claim is
+  validate → repair runner with at most one repair and never an escalation (an incomplete answer is usable, and the
+  judge must not spend the budget localize needs): `supported`, `partial` or `unsupported` per pair, and which
+  candidate supports it. At most 30 pairs are judged (summary first, then key findings); the rest keep their closest sentence and a null
+  label. The judge never writes the evidence: the sentence shown is copied from the abstract by index. The items reach the judge as JSON with `&`, `<` and `>` escaped as JSON unicode escapes (`&`, `<`, `>`), so abstract text such as `</items>` cannot close the data block.
+- **Badge ("ตรวจแล้ว").** A citation is `verified` only when the judge said `supported`, the closest candidate scores at least 0.2
+  (`MIN_SUPPORT_SCORE`: a `supported` label on a sentence that shares almost no words or numbers with the claim keeps
+  its label but earns no badge), every number of the claim is
   verified against the cited abstract(s) or comes from the review's own text (the question and the pipeline counts;
   the grounded-prose rule), the claim restates no pooled value (`computed`: a computed number is never supported by
   an abstract), and the paper is evidence (not a further report of a trial, not `design_excluded`). The report adds
   the same not-evidence rule.
 - **Soft.** A failing or unusable judge leaves the labels null (`judge: "failed"`, one line in `errors`); with less than
-  $0.01 left of the review's cost cap the judge is skipped (`skipped_budget`); a crash of the check leaves
+  $0.02 left of the review's cost cap the judge is skipped (`skipped_budget`); a crash of the check leaves
   `support` null. None of them fails a review or removes a citation.
 - **Cost.** A typical review sends about 24 pairs: about 5,000 input and under 1,000 output tokens, about $0.0005 on
-  the `budget` preset. At most (30 long pairs, two repair rounds and an escalation) about 13,000 input tokens per
-  attempt and about $0.008, inside the review's cost cap (at least $0.08).
+  the `budget` preset. At most (30 long pairs and one repair round, so two attempts) about 13,000 input tokens per
+  attempt and about $0.004, inside the review's cost cap (at least $0.08).
 
 `result.support` is absent in results stored before Plan 25 (and in stub results from before it; the stub now carries
 one, with every state), and `null` when the check crashed. Otherwise it is:
