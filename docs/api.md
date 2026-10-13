@@ -1115,7 +1115,8 @@ settings ones with `sources` in place of `settings`:
   meta-analyses (they find candidates). The abstract and metadata enrichment, the citation network's reference lists
   and the OpenAlex citation lookup are not searches and stay on.
 - **When a save takes effect.** As for settings: API processes within 5 seconds (`/status` → `sources`, the cache key,
-  paper search), workers at the next review start or within 30 seconds. A review keeps the sources it started with;
+  paper search), workers at the next review start or within 30 seconds. A running review keeps the sources it started with (a review resumed after a worker restart uses that worker's
+  current set);
   `mra:llm:loaded` entries gain `sources` (the version each worker runs, `"env"` while none is saved). The Redis mirror
   is `mra:sources:active`.
 - `error` in `GET /admin/sources` is null unless the version in use leaves no SearXNG source on under the current
@@ -1132,10 +1133,10 @@ settings ones with `sources` in place of `settings`:
 
 ## ThaiJO source (Plan 24)
 
-- **On by default** since 2026-10-13 (the owner's decision). `THAIJO_ENABLED=false` turns it off; since Plan 23d the
-  admin console's sources version (`/admin/sources`) wins over the flag in both directions; otherwise Thai Journals Online (TCI) is added to every
-  review's search. TCI's search API is undocumented and has no published terms: writing to TCI for permission or rate
-  guidance is recommended, not a precondition.
+- **On by default** since 2026-10-13 (the owner's decision). While it is on, Thai Journals Online (TCI) is added to
+  every review's search. `THAIJO_ENABLED=false` turns it off; since Plan 23d a saved sources version
+  (`/admin/sources`) wins over the flag in both directions. TCI's search API is undocumented and has no published terms: writing to
+  TCI for permission or rate guidance is recommended, not a precondition.
 - **What it asks.** Per review: one search per planner query (at most 3, `POST /api/v1/articles/search`, health
   categories only), the English abstract of each hit it takes (`GET /api/v1/articles/{id}`, at most the cap plus 5),
   and, for the ThaiJO papers that are read, the journal's OAI-PMH `GetRecord` (oai_dc) for volume, issue, pages, ISSN,

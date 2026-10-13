@@ -50,6 +50,7 @@ function SourceSwitch({ source, on, error, onChange }: {
 }) {
   const nameId = `source-${source.id}-name`;
   const errorId = `source-${source.id}-error`;
+  const buttonId = `source-${source.id}-switch`; // WCAG 2.5.3: the name holds the visible "เปิด"/"ปิด"
   return (
     <li className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 border-b border-rule py-3">
       <div className="grid gap-1">
@@ -61,7 +62,7 @@ function SourceSwitch({ source, on, error, onChange }: {
         </span>
         {error && <p id={errorId} className="text-sm text-err">{error}</p>}
       </div>
-      <button type="button" role="switch" aria-checked={on} aria-labelledby={nameId}
+      <button id={buttonId} type="button" role="switch" aria-checked={on} aria-labelledby={`${nameId} ${buttonId}`}
         aria-describedby={error ? errorId : undefined} onClick={() => onChange(!on)}
         className={`inline-flex min-h-11 min-w-20 cursor-pointer items-center justify-center rounded-sm border px-3 font-display font-semibold ${on ? "border-primary bg-primary text-on-primary" : "border-rule bg-transparent text-ink"}`}>
         {on ? "เปิด" : "ปิด"}

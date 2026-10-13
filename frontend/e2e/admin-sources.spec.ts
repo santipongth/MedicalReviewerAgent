@@ -73,7 +73,7 @@ async function mockSources(page: Page) {
   return { calls, catchUp: () => { worker.sources = String(rows[0].version); } };
 }
 
-const sw = (page: Page, name: string) => page.getByRole("switch", { name, exact: true });
+const sw = (page: Page, name: string) => page.getByRole("switch", { name: new RegExp(`^${name} (เปิด|ปิด)$`) });
 
 async function openSources(page: Page) {
   await page.goto("/admin/sources");

@@ -223,3 +223,14 @@ def test_a_frozen_pool_names_the_sources_it_was_searched_with():
     assert freeze_engines(GraphDeps(settings=ENV))[-1] == "openaire"
     deps = GraphDeps(settings=ENV, sources=effective_sources(ENV, {"openaire": False, "thaijo": True}, 3))
     assert freeze_engines(deps) == [*NO_OPENAIRE.split(","), "thaijo"]
+
+
+async def test_a_stale_saved_document_warns_once_per_version_not_on_every_refresh(session_factory, redis, capsys):
+    await redis.set(SOURCES_KEY, json.dumps({"version": 1, "sources": {"not_a_source": True}}))  # stale mirror entry
+    rc = RuntimeConfig(ENV, session_factory, redis, ttl=0)  # every call re-reads
+    for _ in range(3):
+        assert (await rc.sources()).version == 1
+    assert capsys.readouterr().out.count("source_unknown") == 1
+    await redis.set(SOURCES_KEY, json.dumps({"version": 2, "sources": {"also_gone": True}}))  # a new version warns again
+    assert (await rc.sources()).version == 2
+    assert capsys.readouterr().out.count("source_unknown") == 1

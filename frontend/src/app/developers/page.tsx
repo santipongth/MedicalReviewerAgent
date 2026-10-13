@@ -8,7 +8,7 @@ import { LiveLimits } from "@/components/developers/live-limits";
 import { Gloss } from "@/components/ui/gloss";
 import { limitsCopy } from "@/lib/developers-copy";
 import { publicApiUrl } from "@/lib/public-api";
-import { joinThai, sourceLabels } from "@/lib/search-sources";
+import { hasThaiJo, joinThai, sourceLabels } from "@/lib/search-sources";
 import { getServerStatus } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "API และ MCP" };
@@ -203,7 +203,7 @@ export default async function DevelopersPage() {
               {[
                 <>รับหัวข้อหรือคำถาม (ไม่เกิน 600 ตัวอักษร) แล้วตีความเป็นคำถามวิจัยตาม <Gloss k="pico" /> หรือ <Gloss k="pcc" /> สำหรับการทบทวนขอบเขต</>,
                 <>ค้น {sources.length} แหล่ง: {joinThai(sources)} (ฐานข้อมูลสากลค้นผ่าน <Gloss k="searxng" />
-                  {sources.includes("Europe PMC") && <> และ Europe PMC รวม <Gloss k="preprint" /> จาก medRxiv/bioRxiv</>}) แล้วตัดงานซ้ำ</>,
+                  {sources.includes("Europe PMC") && <> และ Europe PMC รวม <Gloss k="preprint" /> จาก medRxiv/bioRxiv</>}{hasThaiJo(status?.sources) && " และค้นวารสารไทยจาก ThaiJO โดยตรง"}) แล้วตัดงานซ้ำ</>,
                 <>คัดกรองงานที่มี<Gloss k="abstract" />{lc.screen && ` ${lc.screen}`} ตามเกณฑ์ของรูปแบบการทบทวน พร้อมเหตุผลที่คัดออกตาม <Gloss k="prisma" /></>,
                 <>อ่านบทคัดย่อของฉบับที่เกี่ยวข้องที่สุด{lc.read} สกัดผล ตัวเลข และ<Gloss k="riskOfBias" /> ตรวจตัวเลขทุกตัวกับประโยคต้นฉบับ</>,
                 <>เทียบผลข้ามงานวิจัย อธิบายจุดที่ขัดกัน สรุปผล (ประเมินระดับความแข็งแรงของหลักฐานเฉพาะ <Gloss k="slr" /> และ <Gloss k="metaAnalysis" />{" "}

@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminReply } from "@/test/admin-fetch";
 import { mockAdminFetch, renderAdmin } from "@/test/admin-fetch";
@@ -17,7 +17,7 @@ const ALL_ON = Object.fromEntries(SOURCES.sources.map((s) => [s.id, true]));
 const routes = (state = SOURCES) => (m: string, p: string): AdminReply | undefined =>
   m === "GET" && p === "/sources" ? [200, state] : m === "GET" && p.startsWith("/sources/versions") ? [200, SOURCES_VERSIONS] : undefined;
 const savedAs = (version: number): AdminReply => [201, { ...SOURCES_VERSIONS.items[0], version, workers_notified: true }];
-const toggle = (name: string) => fireEvent.click(screen.getByRole("switch", { name }));
+const toggle = (name: string) => fireEvent.click(screen.getByRole("switch", { name: new RegExp(`^${name} (เปิด|ปิด)$`) }));
 
 describe("SourcesView", () => {
   it("lists the SearXNG sources and ThaiJO with their env default, the state and the worker", async () => {
@@ -27,14 +27,14 @@ describe("SourcesView", () => {
     const searxng = screen.getByRole("list", { name: "ผ่าน SearXNG" });
     expect(within(searxng).getAllByRole("switch")).toHaveLength(8);
     const direct = screen.getByRole("list", { name: "เรียกตรง" });
-    expect(within(direct).getByRole("switch", { name: "ThaiJO" })).toHaveAttribute("aria-checked", "true");
+    expect(within(direct).getByRole("switch", { name: /^ThaiJO (เปิด|ปิด)$/ })).toHaveAttribute("aria-checked", "true");
     expect(direct).toHaveTextContent("ไม่เกิน 1/8 ของ pool");
-    const openaire = screen.getByRole("switch", { name: "OpenAIRE" });
+    const openaire = screen.getByRole("switch", { name: /^OpenAIRE (เปิด|ปิด)$/ });
     expect(openaire).toHaveAttribute("aria-checked", "false");
     const row = openaire.closest("li") as HTMLElement;
     expect(row).toHaveTextContent("ค่า env: เปิด");
     expect(row).toHaveTextContent("ต่างจาก env");
-    expect(screen.getByRole("switch", { name: "Europe PMC" }).closest("li")).toHaveTextContent("รวม preprint medRxiv/bioRxiv และการค้น RCT");
+    expect(screen.getByRole("switch", { name: /^Europe PMC (เปิด|ปิด)$/ }).closest("li")).toHaveTextContent("รวม preprint medRxiv/bioRxiv และการค้น RCT");
     expect(screen.getByText(/worker-1:7/)).toHaveTextContent("ตรงกับที่ใช้งาน");
   });
 
@@ -53,7 +53,7 @@ describe("SourcesView", () => {
       return routes()(m, p);
     });
     await renderAdmin(<SourcesView />);
-    await screen.findByRole("switch", { name: "PubMed" });
+    await screen.findByRole("switch", { name: /^PubMed (เปิด|ปิด)$/ });
     toggle("PubMed");
     toggle("Europe PMC");
     fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
@@ -75,15 +75,60 @@ describe("SourcesView", () => {
       return routes()(m, p);
     });
     await renderAdmin(<SourcesView />);
-    await screen.findByRole("switch", { name: "OpenAIRE" });
+    await screen.findByRole("switch", { name: /^OpenAIRE (เปิด|ปิด)$/ });
     toggle("OpenAIRE");
-    expect(screen.getByRole("switch", { name: "OpenAIRE" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("switch", { name: "OpenAIRE" }).closest("li")).not.toHaveTextContent("ต่างจาก env");
+    expect(screen.getByRole("switch", { name: /^OpenAIRE (เปิด|ปิด)$/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: /^OpenAIRE (เปิด|ปิด)$/ }).closest("li")).not.toHaveTextContent("ต่างจาก env");
     toggle("ThaiJO");
     fireEvent.change(screen.getByLabelText("หมายเหตุ (ไม่บังคับ)"), { target: { value: "openaire is back" } });
     fireEvent.click(screen.getByRole("button", SAVE));
     expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 2 แล้ว")).toBeInTheDocument();
     expect(posted).toEqual([{ sources: { ...ALL_ON, thaijo: false }, base_version: 1, note: "openaire is back" }]);
+  });
+
+  it("gives each switch an accessible name that holds its visible state", async () => {
+    mockAdminFetch(routes());
+    await renderAdmin(<SourcesView />);
+    expect(await screen.findByRole("switch", { name: "PubMed เปิด" })).toHaveTextContent("เปิด");
+    toggle("PubMed");
+    expect(screen.getByRole("switch", { name: "PubMed ปิด" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  describe("a save the server refuses with 422", () => {
+    const MSG = "sources.pubmed: refused by the server";
+    const refuse = (): AdminReply => [422, { detail: MSG, errors: [{ field: "sources.pubmed", message: MSG }] }];
+    const slowSave = () => {
+      let answer: () => void = () => {};
+      const inner = mockAdminFetch((m, p) => (m === "POST" && p === "/sources" ? refuse() : routes()(m, p)));
+      vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "POST") await new Promise<void>((resolve) => { answer = resolve; });
+        return inner(input, init);
+      });
+      return () => answer();
+    };
+
+    it("shows the check errors when the draft is unchanged since the save was sent", async () => {
+      const answer = slowSave();
+      await renderAdmin(<SourcesView />);
+      await screen.findByRole("switch", { name: /^PubMed (เปิด|ปิด)$/ });
+      toggle("OpenAIRE");
+      fireEvent.click(screen.getByRole("button", SAVE));
+      await act(async () => { answer(); });
+      expect(await screen.findByRole("alert")).toHaveTextContent("ยังบันทึกไม่ได้");
+      expect(screen.getByText(MSG)).toHaveAttribute("id", "source-pubmed-error");
+    });
+
+    it("shows the generic error notice when the draft was edited while the save was in flight", async () => {
+      const answer = slowSave();
+      await renderAdmin(<SourcesView />);
+      await screen.findByRole("switch", { name: /^PubMed (เปิด|ปิด)$/ });
+      toggle("OpenAIRE");
+      fireEvent.click(screen.getByRole("button", SAVE));
+      toggle("arXiv"); // edited meanwhile
+      await act(async () => { answer(); });
+      expect(await screen.findByRole("alert")).toHaveTextContent(MSG);
+      expect(document.getElementById("source-pubmed-error")).toBeNull();
+    });
   });
 
   it("re-reads after a 409, keeps the draft, and saves on the latest version once asked to", async () => {
@@ -99,12 +144,12 @@ describe("SourcesView", () => {
       return routes()(m, p);
     });
     await renderAdmin(<SourcesView />);
-    await screen.findByRole("switch", { name: "arXiv" });
+    await screen.findByRole("switch", { name: /^arXiv (เปิด|ปิด)$/ });
     toggle("arXiv");
     fireEvent.click(screen.getByRole("button", SAVE));
     expect(await screen.findByRole("alert")).toHaveTextContent("มีผู้ดูแลอีกคนบันทึกเวอร์ชันใหม่ก่อน");
     expect(await screen.findByText("ใช้เวอร์ชัน 4 จาก DB")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "arXiv" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: /^arXiv (เปิด|ปิด)$/ })).toHaveAttribute("aria-checked", "false");
     fireEvent.click(screen.getByRole("button", { name: "ใช้ร่างนี้ต่อจากเวอร์ชันล่าสุด" }));
     fireEvent.click(screen.getByRole("button", SAVE));
     expect(await screen.findByText("บันทึกเป็นเวอร์ชัน 5 แล้ว")).toBeInTheDocument();

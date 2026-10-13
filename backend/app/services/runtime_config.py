@@ -19,6 +19,7 @@ from app.services.sources import ActiveSources, effective_sources
 from app.services.sources_store import SOURCES_KIND
 
 log = get_logger(__name__)
+_UNSET = object()  # "no sources version computed yet" (None is a real answer: env in use)
 RUNTIME_TTL_SECONDS = 5.0
 RUNTIME_READ_TIMEOUT_SECONDS = 2.0  # the app sets no Redis or DB client timeouts: one hung read must not stall every caller
 
@@ -52,6 +53,8 @@ class RuntimeConfig:
         self._settings_version: int | None = None
         self._glossary = "file"
         self._sources: ActiveSources = effective_sources(base, {})
+        self._sources_version: object = _UNSET  # versions are append-only and env is fixed per process: recompute (and
+        # warn about a stale document) once per version, not on every refresh
         self._expires = float("-inf")
         self._lock = asyncio.Lock()
         self._generation = 0  # bumped by invalidate(): a refresh that began earlier must not store what it read
@@ -69,15 +72,18 @@ class RuntimeConfig:
                     settings = await read_active(self.session_factory, self.redis, SETTINGS_KIND)
                     glossary = await read_active(self.session_factory, self.redis, GLOSSARY_KIND)
                     sources = await read_active(self.session_factory, self.redis, SOURCES_KIND)
+                    active = (self._sources if sources.version == self._sources_version
+                              else effective_sources(self.base, sources.mirror.get("sources"), sources.version))
                     loaded = (apply_overrides(self.base, settings.mirror.get("values")), settings.version,
-                              "file" if glossary.version is None else str(glossary.version),
-                              effective_sources(self.base, sources.mirror.get("sources"), sources.version))
+                              "file" if glossary.version is None else str(glossary.version), active)
+                    seen = sources.version
             except Exception as exc:  # noqa: BLE001 - keep the last values (env until any are known)
                 log.warning("runtime_config_unavailable", error=type(exc).__name__)
             if generation != self._generation:
                 return  # invalidate() ran during the read, which may predate the save: read again next time
             if loaded is not None:
                 self._settings, self._settings_version, self._glossary, self._sources = loaded
+                self._sources_version = seen
             self._expires = self.clock() + self.ttl
 
     async def settings(self) -> Settings:
