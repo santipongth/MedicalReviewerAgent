@@ -1111,7 +1111,7 @@ were already verified (above); this checks that the sentence citing a paper says
   judge must not spend the budget localize needs): `supported`, `partial` or `unsupported` per pair, and which
   candidate supports it. At most 30 pairs are judged (summary first, then key findings); the rest keep their closest sentence and a null
   label. The judge never writes the evidence: the sentence shown is copied from the abstract by index. The items reach the judge as JSON with `&`, `<` and `>` escaped as JSON unicode escapes (`&`, `<`, `>`), so abstract text such as `</items>` cannot close the data block.
-- **Badge ("ตรวจแล้ว").** A citation is `verified` only when the judge said `supported`, the closest candidate scores at least 0.2
+- **Badge ("ตรวจแล้ว").** A citation is `verified` only when the judge said `supported`, the candidate the judge chose scores at least 0.2
   (`MIN_SUPPORT_SCORE`: a `supported` label on a sentence that shares almost no words or numbers with the claim keeps
   its label but earns no badge), every number of the claim is
   verified against the cited abstract(s) or comes from the review's own text (the question and the pipeline counts;
