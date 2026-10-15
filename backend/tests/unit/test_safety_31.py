@@ -109,3 +109,29 @@ def test_the_blind_emergencies_keep_their_kind_when_caught(s):
     # recall is recorded, not a bar (D4); a caught emergency must be the right kind
     caught = [(t, k) for t, k in s.HELDOUT31_EMERGENCIES if safety.red_flag(t)]
     assert all(_kind(t) == k for t, k in caught)
+
+
+@pytest.mark.parametrize("topic", [
+    "PLS slurred speech progression", "slurred speech PLS", "heart attack awareness PLS-SEM",
+    "PLS-SEM chest pain knowledge", "choking PLS model", "PLZ zinc finger choking",
+])
+def test_a_capitalised_pls_plz_is_an_abbreviation_not_a_plea(topic):
+    assert _kind(topic) is None
+
+
+@pytest.mark.parametrize("topic", ["dad collapsed pls help", "MY DAD COLLAPSED PLS HELP"])
+def test_a_lower_case_or_shouted_plea_still_counts(topic):
+    assert _kind(topic) == "medical"
+
+
+@pytest.mark.parametrize("topic", [
+    "chest pain and has asthma", "short of breath and has covid", "difficulty breathing and has copd",
+    "heavy bleeding and has fibroids", "coughing up blood and has tb", "heart attack and has anxiety",
+    "unconscious and has diabetes",
+])
+def test_has_is_a_cue_not_a_joiner(topic):
+    assert _kind(topic) is None
+
+
+def test_has_as_the_cue_still_catches_a_spoken_message():
+    assert _kind("mom has chest pain and is sweating") == "medical"

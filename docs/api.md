@@ -1467,7 +1467,8 @@ reused. Public limits are never hard-coded here; read them from `GET /api/v1/sta
 - **Admin sessions** end when the admin's password changes (sessions from before Plan 31 end once).
 - **Red flags.** The pass folds common misspellings and repeated letters. An "and" joined to a person-state word or to
   another flag counts. "someone" is an anchor only at the start of the topic or after "help", and not with a research
-  framer or a colon subtitle unless the topic is urgent. Thai kin followed by และ is a population, not a person.
+  framer, and not before a colon subtitle unless the topic is urgent (urgency lifts only the colon rule). A capitalised
+  PLS / PLZ in a topic that is not all capitals is an abbreviation, not a plea. Thai kin followed by และ is a population, not a person.
 - **Prose.** A citation group that opens a sentence naming its study ("[P2] The trial …") stays with that sentence. The
   quick answer's limits sentence drops more direct advice (fail-safe: the next sentence that passes is used, else none).
 

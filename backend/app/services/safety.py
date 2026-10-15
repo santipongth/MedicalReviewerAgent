@@ -122,7 +122,9 @@ MEDICAL_PATTERNS_TH = (r"กินยา.{0,12}[\d๐-๙]+เม็ด", r"ก�
 # the message is urgent; "to help" is
 # neither cue nor urgency word (nor "help seeking"); a Thai kin word followed by และ is a population. The and-joiner
 # joins only when the other side is another flag or a person's state (STATE_WORDS_EN: "chest pain and sweating", not
-# "choking and baby led weaning"); a colon subtitle blocks the "someone" anchor unless the message is urgent.
+# "choking and baby led weaning"; "has" is both joiner and cue, so it is no state word); a colon subtitle blocks the
+# "someone" anchor unless the message is urgent. A capitalised PLS / PLZ in a topic that is not all capitals is an
+# abbreviation (PLS-SEM, PLZ zinc finger), blanked before any check; lower case or an all-caps message stays a plea.
 # Blind sets (research refused of 70, traps refused of 15, emergencies caught of 30):
 # set A master 9 / 4 / 11, first Plan 31 pass 0 / 0 / 27, final 0 / 0 / 25;
 # set B master not measured, first Plan 31 pass 8 / 1 / 28, final 0 / 0 / 27.
@@ -168,7 +170,7 @@ STRONG_FRAMERS_EN = ("effect", "effects", "risk", "risks", "therapy", "preventio
                      "syndrome", "recovery", "care", "epidemiology", "overview", "history", "definition", "rate",
                      "rates", "versus", "vs", "compared", "why", "how", "what is", "first aid", "when to")
 # Plan 31: an "and" next to a red flag joins two flags only when the other side is a person's state, not a topic.
-STATE_WORDS_EN = ("is", "was", "are", "has", "had", "cant", "cannot", "wont", "not", "no", "turning", "getting",
+STATE_WORDS_EN = ("is", "was", "are", "had", "cant", "cannot", "wont", "not", "no", "turning", "getting",
                   "going", "sweating", "shaking", "vomiting", "fell", "fainted", "lost", "losing", "unable", "still",
                   "keeps", "started", "stopped")
 URGENT_EN = ("help", "now", "please", "pls", "plz", "urgent", "asap", "quick", "quickly", "hurry")
@@ -320,8 +322,18 @@ def _join_flags(marked: str) -> str:
     return "".join(out) + marked[last:]
 
 
+_PLEA_ABBREV = re.compile(r"(?<![A-Za-z])PL[SZ](?![A-Za-z])")
+
+
+def _blank_plea_abbrev(topic: str) -> str:
+    """A capitalised PLS / PLZ in a topic that is not all capitals is an abbreviation (partial least squares, ALS-like
+    acronyms, zinc finger), not a plea: blank it. A shouting all-caps message keeps its plea."""
+    return topic if topic.isupper() else _PLEA_ABBREV.sub(" ", topic)
+
+
 def red_flag(topic: str) -> Emergency | None:
     """The emergency a topic reads as, or None. Deterministic; see the module docstring for the rule."""
+    topic = _blank_plea_abbrev(topic or "")
     text = fold_typos(normalize(topic))
     th = _nospace(text)  # Thai lists are matched without spaces
     th_len = len(_nospace(normalize(topic)))  # the message length counts before repeated letters are folded

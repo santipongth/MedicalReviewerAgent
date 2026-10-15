@@ -3,14 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WORKERS_NOT_NOTIFIED } from "@/lib/admin-copy";
 import { mockAdminFetch, renderAdmin } from "@/test/admin-fetch";
 import { SETTINGS_VERSIONS } from "@/test/admin-runtime-fixtures";
-import { VersionHistory } from "./version-history";
+import { VersionHistory, runtimeSource } from "./version-history";
 
 const nav = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => nav, usePathname: () => "/admin/settings" }));
 afterEach(() => { vi.unstubAllGlobals(); nav.replace.mockReset(); });
 
-const props = { kind: "settings" as const, resetLabel: "กลับไปใช้ค่า env", resetHint: "ทุกค่ากลับไปใช้ env",
-  emptyText: "ยังไม่มีเวอร์ชันที่บันทึก" };
+const props = { source: runtimeSource("settings", { resetLabel: "กลับไปใช้ค่า env", resetHint: "ทุกค่ากลับไปใช้ env",
+  emptyText: "ยังไม่มีเวอร์ชันที่บันทึก" }) };
 
 describe("VersionHistory", () => {
   it("lists versions with their changes and marks the active one", async () => {

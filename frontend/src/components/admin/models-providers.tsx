@@ -322,7 +322,7 @@ export function ModelsProviders({ draft, setDraft, fail, version }: {
         คีย์ที่ใส่จากหน้านี้เก็บแบบเข้ารหัสและใช้แทนคีย์ใน .env ระบบไม่แสดงคีย์กลับมาอีก (เห็นได้แค่ 4 ตัวท้าย)
         คีย์ผูกกับ origin ของผู้ให้บริการ ถ้าเปลี่ยน base_url ไป origin อื่นต้องใส่คีย์ใหม่
       </p>
-      <ul aria-label="ผู้ให้บริการ" ref={listRef} tabIndex={-1} className="mt-3 border-t border-rule outline-none">
+      <ul aria-label="ผู้ให้บริการ" ref={listRef} tabIndex={-1} className="mt-3 border-t border-rule">
         {state.providers.map((row) => (
           <ProviderRow key={row.name} row={row} draftSpec={draft.providers[row.name]} writable={state.writable}
             onWrite={wrote} fail={fail}

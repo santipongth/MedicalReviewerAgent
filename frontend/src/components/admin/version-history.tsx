@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { AdminApiError, adminApi } from "@/lib/admin-api";
 import { RUNTIME_SOURCE_LABEL, WORKERS_NOT_NOTIFIED, formatWhen } from "@/lib/admin-copy";
 import type { Page, RuntimeKind, RuntimeVersion } from "@/lib/admin-types";
@@ -65,24 +65,13 @@ export function runtimeSource(kind: RuntimeKind, { resetLabel, resetHint, emptyT
 
 interface Notice { text: string; workersNotified: boolean }
 
-type Props<V> = { base: number | null; onChanged: () => void; writes?: WriteTracker }
-  & ({ source: VersionSource<V> } | ({ source?: undefined; kind: RuntimeKind } & RuntimeLabels));
+type Props<V> = { source: VersionSource<V>; base: number | null; onChanged: () => void; writes?: WriteTracker };
 
 /** The saved versions, newest first (Plan 23b, one implementation since Plan 31): restore and reset append a version
  * and say so here (with the warning when the workers were not told), then `onChanged` re-reads the page; a 409 re-reads
  * too, so the next try carries the fresh base. Reset is offered only once a version exists (before that the default is
- * already in use). A runtime history may also be given as its `kind` and labels instead of a `source`. */
-export function VersionHistory<V>(props: Props<V>) {
-  const { base, onChanged, writes } = props;
-  const given = props.source;
-  const runtime = given === undefined ? props : null;
-  const kind = runtime?.kind;
-  const resetLabel = runtime?.resetLabel ?? "";
-  const resetHint = runtime?.resetHint ?? "";
-  const emptyText = runtime?.emptyText ?? "";
-  const source = useMemo(
-    () => given ?? (runtimeSource(kind!, { resetLabel, resetHint, emptyText }) as unknown as VersionSource<V>),
-    [given, kind, resetLabel, resetHint, emptyText]);
+ * already in use). */
+export function VersionHistory<V>({ source, base, onChanged, writes }: Props<V>) {
   const { fail } = useAdmin();
   const [items, setItems] = useState<V[] | null>(null);
   const [next, setNext] = useState<Page<V>["next"]>(null);
