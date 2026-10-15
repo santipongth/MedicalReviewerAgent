@@ -7,7 +7,7 @@ import json
 import random
 import re
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -99,6 +99,11 @@ def _exclusion(v: Any) -> str:
     if not v.eligible:
         return v.reason or "not eligible"
     if not v.search_date or not _DATE.fullmatch(v.search_date):
+        return "no search date"
+    try:  # Plan 31: a real calendar date, not after today
+        if date.fromisoformat(v.search_date) > datetime.now(UTC).date():
+            return "no search date"
+    except ValueError:
         return "no search date"
     return ""
 

@@ -55,6 +55,7 @@ class Fixture(BaseModel):
     engines: list[str]
     year_to: int
     pmid: str = ""  # the target review's PMID, so replay can drop it again
+    title: str = ""  # its title, for a copy with no DOI or PMID (Plan 31)
     topic: str
     english_topic: str | None
     question: dict[str, Any] | None
@@ -125,12 +126,16 @@ def save_manifest(m: Manifest, path: Path | None = None) -> None:
     p = path if path is not None else EVAL_ROOT / "manifest.yaml"
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(p.suffix + ".tmp")
-    tmp.write_text(
-        yaml.safe_dump(m.model_dump(), allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-        newline="\n",
-    )
-    _replace(tmp, p)
+    try:
+        tmp.write_text(
+            yaml.safe_dump(m.model_dump(), allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+            newline="\n",
+        )
+        _replace(tmp, p)
+    except BaseException:
+        tmp.unlink(missing_ok=True)  # Plan 31: a failed write leaves no .tmp
+        raise
 
 
 def fixture_path(pool_version: str, review_id: str) -> Path:
@@ -156,10 +161,14 @@ def write_json_atomic(path: Path, data: BaseModel | dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = data.model_dump(mode="json") if isinstance(data, BaseModel) else data
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n"
-    )
-    _replace(tmp, path)
+    try:
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n"
+        )
+        _replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)  # Plan 31: a failed write leaves no .tmp
+        raise
 
 
 def read_model[M: BaseModel](path: Path, cls: type[M]) -> M:

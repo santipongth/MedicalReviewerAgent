@@ -47,7 +47,7 @@ def write_fixtures(m):
 
 
 def fake_replay(cost):
-    async def replay(deps, fixture, *, options, repeat, run_id, git_sha, primary_outcome="", language="th"):
+    async def replay(deps, fixture, *, options, repeat, run_id, git_sha, primary_outcome="", language="th", title=""):
         return record(fixture.id, cost, repeat=repeat, pv=deps.settings.prompt_version, run=run_id)
     return replay
 

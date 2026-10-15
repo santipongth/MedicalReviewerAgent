@@ -25,7 +25,7 @@ def entry_options(entry: ManifestEntry) -> dict:
 async def freeze_one(deps, entry: ManifestEntry, *, pool_version: str, git_sha: str, engines: list[str]) -> Fixture:
     base = {"id": entry.id, "pool_version": pool_version, "frozen_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "git_sha": git_sha, "prompt_version": deps.settings.prompt_version, "engines": engines,
-            "year_to": entry.year_to or 9999, "pmid": entry.pmid, "topic": entry.question}
+            "year_to": entry.year_to or 9999, "pmid": entry.pmid, "title": entry.title, "topic": entry.question}
     if entry.year_to is None:  # never freeze without a cutoff
         return Fixture(**base, english_topic=None, question=None, plan=None, candidates=[], search_stats={},
                        status="error", error="no year_to (search date) in manifest")
@@ -37,7 +37,7 @@ async def freeze_one(deps, entry: ManifestEntry, *, pool_version: str, git_sha: 
         return Fixture(**base, english_topic=None, question=None, plan=None, candidates=[], search_stats={},
                        status="error", error=f"{type(exc).__name__}: {exc}")
     status = "rejected" if values.get("rejected") else "ok"
-    candidates, removed = drop_target(values.get("candidates") or [], entry.id, entry.pmid)
+    candidates, removed = drop_target(values.get("candidates") or [], entry.id, entry.pmid, entry.title)
     return Fixture(**base, english_topic=values.get("english_topic"), question=values.get("question"),
                    plan=values.get("plan"), candidates=candidates,
                    search_stats={**(values.get("search_stats") or {}), "target_removed": removed}, status=status,

@@ -321,6 +321,7 @@ async def loaded_workers(redis, now: datetime | None = None) -> list[dict[str, A
     now = now or datetime.now(UTC)
     out: list[dict[str, Any]] = []
     gone: list[str] = []
+    stale: dict[str, Any] = {}
     for worker, raw in sorted((await redis.hgetall(LOADED_KEY)).items()):
         try:
             item = json.loads(raw)
@@ -328,14 +329,26 @@ async def loaded_workers(redis, now: datetime | None = None) -> list[dict[str, A
             fresh = now - loaded_at <= LOADED_MAX_AGE
         except (ValueError, KeyError, TypeError, AttributeError):
             gone.append(worker)
+            stale[worker] = raw
             continue
         if fresh:
             out.append({"worker": worker, **item})
         else:
             gone.append(worker)
+            stale[worker] = raw
     if gone:
         try:
-            await redis.hdel(LOADED_KEY, *gone)
+            # Plan 31: delete only what is still the value that was read; a heartbeat in between is kept
+            async with redis.pipeline(transaction=True) as pipe:
+                await pipe.watch(LOADED_KEY)
+                now_raw = await pipe.hmget(LOADED_KEY, gone)
+                still = [w for w, after in zip(gone, now_raw, strict=True) if after == stale[w]]
+                pipe.multi()
+                if still:
+                    pipe.hdel(LOADED_KEY, *still)
+                await pipe.execute()
+        except WatchError:
+            pass  # a heartbeat moved the hash: the next listing prunes what is still stale
         except Exception:  # noqa: BLE001 - listing never fails on the clean-up
             log.warning("llm_loaded_prune_failed", workers=len(gone))
     return out

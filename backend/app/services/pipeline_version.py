@@ -25,13 +25,12 @@ def finished_cache_key(cache_key: str, topic: str, language: str, options: dict[
                        resumed: bool, review_id: str) -> str:
     """The cache key a finished review is stored under. Unchanged when the run's version is unknown or gives the key the
     review was admitted with. Otherwise the key of the version that ran, so the same question asked under that version
-    reuses it and one asked under the admission's version does not. A resumed run whose version differs may hold work
-    of two configurations, so it gets a key no request computes: it is never reused."""
+    reuses it and one asked under the admission's version does not. A resumed run may hold work of two configurations
+    (the interrupted run's version is not recorded, so A→B→A looks clean), so it always gets a key no request
+    computes: it is never reused (Plan 31)."""
     if version is None:
-        return cache_key
-    ran = compute_cache_key(topic, language, options, version)
-    if ran == cache_key:
         return cache_key
     if resumed:
         return compute_cache_key(topic, language, options, f"{version}+resumed:{review_id}")
-    return ran
+    ran = compute_cache_key(topic, language, options, version)
+    return cache_key if ran == cache_key else ran

@@ -225,3 +225,12 @@ async def test_a_second_force_after_a_crash_keeps_the_first_backup(tmp_path, mon
         await run(["select", "--force"], make_deps(), None, "")
     backups = sorted(tmp_path.glob("manifest.yaml.*.bak"))
     assert len(backups) == 2 and backups[0].read_bytes() == checked  # the owner's checks survive
+
+
+def test_the_results_header_takes_the_first_record_that_has_models(tmp_path, monkeypatch):
+    from app.evals.results import load_rows
+    monkeypatch.setattr(models, "EVAL_ROOT", tmp_path)
+    m = Manifest(seed=1, strata=[Stratum(name="cv", query="x")], reviews=[_entry("CD1"), _entry("CD2")])
+    _write_rec(tmp_path, "pv", "t1", "CD1", 1, models={}, status="error")
+    _write_rec(tmp_path, "pv", "t1", "CD2", 1, models={"extractor": "m2"})
+    assert load_rows("pv", "t1", m)[1]["models"] == {"extractor": "m2"}

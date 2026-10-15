@@ -58,7 +58,9 @@ def test_the_finished_key_follows_the_version_that_ran():
     assert moved == compute_cache_key("t", "en", opts, "pv+llm2")
     assert mixed not in (admitted, moved) and len(mixed) == 64  # a resumed run across a save is never reused
     assert finished_cache_key(admitted, "t", "en", opts, None, resumed=True, review_id="r") == admitted
-    assert finished_cache_key(admitted, "t", "en", opts, "pv+llm1", resumed=True, review_id="r") == admitted
+    resumed_same = finished_cache_key(admitted, "t", "en", opts, "pv+llm1", resumed=True, review_id="r")
+    assert resumed_same not in (admitted, moved) and resumed_same == compute_cache_key(
+        "t", "en", opts, "pv+llm1+resumed:r")  # Plan 31: a resumed run is never reused, whatever its version
 
 
 def test_run_version_names_what_the_worker_loaded_and_is_none_outside_a_worker():
