@@ -300,3 +300,28 @@ async def test_a_draft_that_moves_the_origin_tests_without_the_stored_key(client
     assert r.status_code == 200
     row = next(r for r in await audit_rows(session_factory) if r.action == "llm.test")
     assert row.after["key_source"] == "none" and row.after["base_url_host"] == "api.other.example"
+
+
+async def test_key_allowed_follows_the_origin(client, session_factory, secret):
+    h = await admin_headers(client, session_factory)
+    raw = with_deepseek()
+    raw["providers"]["ollama"] = {"kind": "openai_compatible", "base_url": "http://localhost:11434/v1"}
+    raw["providers"]["openai_compatible"] = {"base_url": "http://10.0.0.5:11434/v1"}
+    await save(client, h, raw)
+    rows = {p["name"]: p for p in (await client.get(f"{BASE}/llm-keys", headers=h)).json()["providers"]}
+    assert rows["deepseek"]["key_allowed"] and rows["ollama"]["key_allowed"] and rows["openrouter"]["key_allowed"]
+    assert rows["ollama"]["keyless"] and not rows["openai_compatible"]["key_allowed"]
+
+
+async def test_a_key_for_a_plain_http_remote_origin_is_refused(client, session_factory, secret):
+    h = await admin_headers(client, session_factory)
+    raw = copy.deepcopy(MINIMAL)
+    raw["providers"]["openai_compatible"] = {"base_url": "http://10.0.0.5:11434/v1"}
+    await save(client, h, raw)
+    r = await client.put(f"{BASE}/llm-keys/openai_compatible", json={"key": KEY}, headers=h)
+    assert r.status_code == 422
+    assert r.json()["detail"] == "a key is sent only over https or to a server on this machine"
+    assert KEY not in r.text
+    async with session_factory() as s:
+        assert (await s.execute(select(LlmProviderKey))).first() is None
+    assert (await client.put(f"{BASE}/llm-keys/openrouter", json={"key": KEY}, headers=h)).status_code == 200

@@ -68,7 +68,7 @@ export function TitleBlock({ review, result, type, lang, original, onLang, poolG
       </h1>
       {refined.trim() !== typed.trim() && (
         <p className="max-w-[65ch] text-[0.95rem] text-muted break-words" data-typed-question>
-          {L(lang, T.typed)}: <span className="text-ink" lang={fieldLang(typed, lang)}><ThaiText>{typed}</ThaiText></span>
+          {L(lang, T.typed)}: <span className="text-ink" lang={fieldLang(typed, lang)}><bdi><ThaiText>{typed}</ThaiText></bdi></span>
         </p>
       )}
 

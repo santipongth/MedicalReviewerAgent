@@ -8,7 +8,7 @@ import { useAdmin } from "./admin-gate";
 import { ConfirmButton } from "./confirm-button";
 import { STALE_TEXT } from "./settings-view";
 import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT, TABLE_REGION, TD, TH } from "./ui";
-import { VersionHistory } from "./version-history";
+import { VersionHistory, runtimeSource } from "./version-history";
 import { DraftStatus, type VersionedSpec, useVersionedPage } from "./versioned-page";
 import { WorkerVersions } from "./worker-versions";
 
@@ -31,6 +31,10 @@ export function termsOf(rows: Row[]): GlossaryTerm[] {
 }
 
 const glossaryName = (v: number | null) => (v === null ? "ตั้งต้น" : String(v));
+
+const GLOSSARY_HISTORY = runtimeSource("glossary", { resetLabel: "กลับไปใช้อภิธานศัพท์ตั้งต้น",
+  emptyText: "ยังไม่มีเวอร์ชันที่บันทึก ใช้อภิธานศัพท์ตั้งต้นอยู่",
+  resetHint: "เวอร์ชันใหม่จะมีคำชุดตั้งต้น แต่ยังเป็นเวอร์ชันที่บันทึก: cache ผลรีวิวเริ่มรุ่นใหม่เหมือนการบันทึกครั้งอื่น" });
 
 export const GLOSSARY_PAGE: VersionedSpec<GlossaryState, Row[]> = {
   read: () => adminApi.glossary(),
@@ -205,10 +209,7 @@ export function GlossaryView() {
         <button type="button" aria-pressed={tab === "history"} className={BUTTON_GHOST} onClick={() => setTab("history")}>ประวัติ</button>
       </div>
       {tab === "history" ? (
-        <VersionHistory kind="glossary" base={current.version} resetLabel="กลับไปใช้อภิธานศัพท์ตั้งต้น"
-          emptyText="ยังไม่มีเวอร์ชันที่บันทึก ใช้อภิธานศัพท์ตั้งต้นอยู่"
-          resetHint="เวอร์ชันใหม่จะมีคำชุดตั้งต้น แต่ยังเป็นเวอร์ชันที่บันทึก: cache ผลรีวิวเริ่มรุ่นใหม่เหมือนการบันทึกครั้งอื่น"
-          onChanged={page.reload} writes={page.track} />
+        <VersionHistory source={GLOSSARY_HISTORY} base={current.version} onChanged={page.reload} writes={page.track} />
       ) : (
         <>
           <label className="mt-6 block max-w-md">

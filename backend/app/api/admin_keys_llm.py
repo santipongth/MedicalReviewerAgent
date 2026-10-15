@@ -22,6 +22,7 @@ from app.services.llm_config import (
     PROVIDER_KEYS,
     PROVIDER_NAME,
     config_error_summary,
+    is_local_origin,
     key_env,
     provider_kind,
     provider_origin,
@@ -51,6 +52,7 @@ BODY_MAX = 4096
 BODY_ERROR = 'the body must be a JSON object {"key": "..."} of at most 4 KiB'
 SECRET_TEXT = {"no_secret": "LLM_KEYS_SECRET is not set on the server: keys cannot be stored from the console",
                "bad_secret": "LLM_KEYS_SECRET on the server is not a list of Fernet keys: keys cannot be stored"}
+KEY_ORIGIN_ERROR = "a key is sent only over https or to a server on this machine"
 ProviderName = Annotated[str, Path(pattern=f"^{PROVIDER_NAME.pattern}$", max_length=32)]
 
 
@@ -80,6 +82,11 @@ async def _body_key(request: Request) -> str:
     if not isinstance(body, dict) or "key" not in body:
         raise ValueError(BODY_ERROR)
     return clean_key(body["key"])
+
+
+def key_allowed(origin: str) -> bool:
+    """A key travels in a header: only over https, or to a server on this machine (Plan 31)."""
+    return origin.startswith("https://") or is_local_origin(origin)
 
 
 def _env(name: str, origin: str, settings) -> dict[str, Any]:
@@ -121,7 +128,7 @@ async def keys_state(deps: AppDeps) -> dict[str, Any]:
             live = row is not None and row.ciphertext is not None
             providers.append({
                 "name": name, "kind": provider_kind(name, spec), "origin": origin, "used_by": used.get(name, []),
-                "keyless": is_keyless(name, spec),
+                "keyless": is_keyless(name, spec), "key_allowed": key_allowed(origin),
                 "key": {"source": choice.source, "problem": choice.problem,
                         "last4": row.last4 if live else None, "bound_origin": row.bound_origin if live else None,
                         "updated_at": row.updated_at if live else None, "updated_by": row.updated_by if live else None},
@@ -174,6 +181,8 @@ async def llm_key_set(provider: ProviderName, request: Request, deps: AppDeps = 
     origin = provider_origin(provider, spec)
     if len(origin) > MAX_ORIGIN:  # backstop: the document refuses these, but a stored one may predate the rule
         return _fail(422, f"the provider's origin is longer than {MAX_ORIGIN} characters: shorten its base_url")
+    if not key_allowed(origin):
+        return _fail(422, KEY_ORIGIN_ERROR)
     async with deps.session_factory() as session, session.begin():
         row, replaced = await store_key(session, fernet, provider, origin, key, by=identity.admin.label)
         await record(session, identity.admin, "llm_key.replace" if replaced else "llm_key.set", target_type="llm_key",

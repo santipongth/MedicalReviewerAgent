@@ -83,16 +83,22 @@ export interface CostEstimate { total_usd: number; per_role: Record<string, numb
 export interface ValidateReport {
   ok: boolean; errors: string[]; warnings: string[]; cost: Record<string, CostEstimate>;
   config: LlmConfigDoc | null; yaml: string | null;
+  /** Plan 31: roles whose price is missing, by preset and role (also on a refused save's 422). */
+  role_errors: RoleError[];
 }
+export interface RoleError { preset: string; role: string; kind: "price" }
 export interface CatalogModel {
   id: string; context_length: number | null; price_in_per_m: number; price_out_per_m: number;
   structured: boolean; tools: boolean; reasoning: boolean;
 }
-export interface ProbeResult { ok: boolean; latency_ms: number; cost_usd: number; model: string; error: string | null }
+/** `cost_usd` is null (and `priced` false) when the role has no price: the cost is unknown, not zero. */
+export interface ProbeResult { ok: boolean; latency_ms: number; cost_usd: number | null; priced: boolean; model: string; error: string | null }
 /** Plan 23e: the provider keys (/api/v1/admin/llm-keys). Mirrors backend/app/api/admin_keys_llm.py. A key is never sent
  * back: only where it comes from, its last 4 characters and the origin it is bound to. */
 export interface ProviderKeyRow {
   name: string; kind: ProviderKind; origin: string; used_by: string[]; keyless: boolean;
+  /** Plan 31: a key may be stored for this provider (its origin is https or this machine). */
+  key_allowed: boolean;
   key: {
     source: "console" | "env" | "none"; problem: "origin_mismatch" | "unreadable" | "env_origin_missing" | null;
     last4: string | null; bound_origin: string | null; updated_at: string | null; updated_by: string | null;

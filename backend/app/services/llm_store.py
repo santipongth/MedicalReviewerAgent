@@ -19,7 +19,6 @@ from app.services.admin_auth import AdminPrincipal
 from app.services.audit import record
 from app.services.llm_config import (
     LLMConfig,
-    LLMConfigError,
     ResolvedLLMConfig,
     ensure_storable,
     parse_llm_config,
@@ -27,7 +26,12 @@ from app.services.llm_config import (
     resolve_llm_config,
 )
 from app.services.llm_keys import keys_revision
-from app.services.llm_validate import document_errors, save_error_text
+from app.services.llm_validate import (
+    DocumentErrors,
+    document_errors,
+    price_role_errors,
+    save_error_text,
+)
 from app.services.review_service import Conflict, NotFound
 
 log = get_logger(__name__)
@@ -130,7 +134,7 @@ async def save_version(session: AsyncSession, actor: AdminPrincipal, raw: Any, *
     config = parse_llm_config(raw, where="config")
     resolve_llm_config(config, None, where="config")
     if errors := document_errors(config):
-        raise LLMConfigError(f"config: {save_error_text(errors)}")
+        raise DocumentErrors(f"config: {save_error_text(errors)}", price_role_errors(config))
     stored = config.model_dump(mode="json", exclude_unset=True)
     ensure_storable(stored)
     if session.get_bind().dialect.name == "postgresql":  # READ COMMITTED would let two saves pass the same check
@@ -321,6 +325,7 @@ async def loaded_workers(redis, now: datetime | None = None) -> list[dict[str, A
     now = now or datetime.now(UTC)
     out: list[dict[str, Any]] = []
     gone: list[str] = []
+    stale: dict[str, Any] = {}
     for worker, raw in sorted((await redis.hgetall(LOADED_KEY)).items()):
         try:
             item = json.loads(raw)
@@ -328,14 +333,26 @@ async def loaded_workers(redis, now: datetime | None = None) -> list[dict[str, A
             fresh = now - loaded_at <= LOADED_MAX_AGE
         except (ValueError, KeyError, TypeError, AttributeError):
             gone.append(worker)
+            stale[worker] = raw
             continue
         if fresh:
             out.append({"worker": worker, **item})
         else:
             gone.append(worker)
+            stale[worker] = raw
     if gone:
         try:
-            await redis.hdel(LOADED_KEY, *gone)
+            # Plan 31: delete only what is still the value that was read; a heartbeat in between is kept
+            async with redis.pipeline(transaction=True) as pipe:
+                await pipe.watch(LOADED_KEY)
+                now_raw = await pipe.hmget(LOADED_KEY, gone)
+                still = [w for w, after in zip(gone, now_raw, strict=True) if after == stale[w]]
+                pipe.multi()
+                if still:
+                    pipe.hdel(LOADED_KEY, *still)
+                await pipe.execute()
+        except WatchError:
+            pass  # a heartbeat moved the hash: the next listing prunes what is still stale
         except Exception:  # noqa: BLE001 - listing never fails on the clean-up
             log.warning("llm_loaded_prune_failed", workers=len(gone))
     return out

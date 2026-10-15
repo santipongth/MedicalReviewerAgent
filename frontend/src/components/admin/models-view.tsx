@@ -1,21 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatWhen } from "@/lib/admin-copy";
 import { type MissingKey, missingKeys, sameConfig } from "@/lib/admin-models";
-import type { LlmConfigDoc, LlmConfigState } from "@/lib/admin-types";
+import type { LlmConfigDoc, LlmConfigState, RoleError } from "@/lib/admin-types";
 import { isStale } from "@/lib/admin-workers";
 import { useAdmin } from "./admin-gate";
-import { ConfirmButton } from "./confirm-button";
 import { ModelsCatalog } from "./models-catalog";
 import { ModelsHistory } from "./models-history";
 import { ModelsPresets } from "./models-presets";
 import { ModelsProviders } from "./models-providers";
-import { ModelsSaveBar, type WriteTracker } from "./models-save-bar";
+import { ModelsSaveBar } from "./models-save-bar";
 import { ModelsYaml } from "./models-yaml";
-import { BUTTON_GHOST } from "./ui";
-import { useWorkerFollowUp } from "./use-worker-follow-up";
+import { DraftStatus, type VersionedSpec, useVersionedPage } from "./versioned-page";
 
 export type ModelsTab = "presets" | "providers" | "yaml" | "history" | "catalog";
 const TABS: [ModelsTab, string][] = [
@@ -37,10 +35,6 @@ const YAML_NOT_APPLIED = 'กด "ใช้ YAML นี้" ก่อน เพ�
 
 /** The id a worker reports for the version the page shows: "file" while llm.yaml is the source. */
 const wantedVersion = (s: LlmConfigState): string => (s.version === null ? "file" : String(s.version));
-
-/** A worker that is still reporting but runs another version than the page's: it has not picked up a change yet. */
-const hasLaggingWorker = (s: LlmConfigState, now: number): boolean =>
-  s.loaded.some((w) => w.version !== wantedVersion(s) && !isStale(w.loaded_at, now));
 
 /** `now` (ms since epoch) is when `state` was read: ModelsView passes the time of its fetch and tests pin it. Without it,
  * the time this header first rendered is used. */
@@ -94,34 +88,24 @@ function runningDoc(s: LlmConfigState): LlmConfigDoc {
   return { ...s.config, active_preset: s.active_preset };
 }
 
-/** The draft being edited: `origin` is the config it was loaded from (so "dirty" means it differs from that), and `base`
- * is the version it was loaded from, which its save is built on. `refused` is the YAML of this very document as the check
- * of a refused save made it (the YAML tab starts from it). It belongs to the document: every new document, whether the
- * admin edited it, discarded it or the page replaced it with the server's, comes without it. */
-interface Draft { doc: LlmConfigDoc; origin: LlmConfigDoc; base: number | null; refused?: string }
-const fresh = (s: LlmConfigState): Draft => {
-  const doc = runningDoc(s);
-  return { doc, origin: doc, base: s.version };
-};
-const isDirty = (d: Draft) => !sameConfig(d.doc, d.origin);
 const versionName = (v: number | null) => (v === null ? "llm.yaml" : String(v));
 
-/** What an answer from the server does to the draft. `saved` and `savedId` are set only on the re-read that follows the
- * admin's own save: the document that was saved and the version it became.
- * - The draft is still that document: the server's copy replaces it.
- * - The draft has been edited since, and the server is on the version just saved: those edits stay, on top of it (so
- *   no conflict) and still unsaved.
- * - The draft has been edited since, but the server is on another version (someone saved after us): the edits were
- *   made without seeing it, so the ordinary rule applies and the save is built on the old base and gets its 409.
- * Any other answer replaces a draft without edits and leaves a draft with edits alone. */
-function reconcile(draft: Draft | null, server: LlmConfigState, saved?: LlmConfigDoc, savedId?: number): Draft {
-  if (draft === null) return fresh(server);
-  if (saved !== undefined) {
-    if (sameConfig(draft.doc, saved)) return fresh(server);
-    if (server.version === savedId) return { doc: draft.doc, origin: server.config, base: server.version };
-  }
-  return isDirty(draft) ? draft : fresh(server);
-}
+/** The models page on the shared versioned-page rules (Plan 31). A draft's `refused` is the YAML of a refused save,
+ * which the YAML tab starts from. */
+export const MODELS_PAGE: VersionedSpec<LlmConfigState, LlmConfigDoc> = {
+  read: () => adminApi.llmConfig(),
+  docOf: runningDoc,
+  same: sameConfig,
+  workerVersion: (w) => w.version,
+  wanted: wantedVersion,
+  versionName,
+};
+
+/** A read of a configuration that no longer passes the checks leaves the draft alone: the page shows only the history. */
+const unreadable = (s: LlmConfigState) => s.error;
+
+/** What "discard" loses here: the YAML text too. */
+const DISCARD_HINT = "การแก้ไขที่ยังไม่ได้บันทึกจะหายไป (รวมถึงข้อความ YAML ที่พิมพ์ไว้แต่ยังไม่ได้ใช้) และร่างจะตรงกับเวอร์ชันที่ใช้อยู่";
 
 /** The configuration in use no longer passes the checks (Plan 23c, carried from 23b): a version saved under older
  * rules, or a broken llm.yaml while no version exists. The page shows why and the history, never an editor. */
@@ -133,115 +117,36 @@ function unreadableText(s: LlmConfigState): string {
 
 export function ModelsView() {
   const { fail } = useAdmin();
-  const [state, setState] = useState<LlmConfigState | null>(null);
-  const [readAt, setReadAt] = useState(0);
-  const [edit, setEdit] = useState<Draft | null>(null);
+  const [roleErrors, setRoleErrors] = useState<RoleError[]>([]);
   const [tab, setTab] = useState<ModelsTab>("presets");
-  const [error, setError] = useState<string | null>(null);
   /** The YAML box holds text that is not the draft. That text lives in the YAML tab, which stays mounted (hidden) while
    * it is pending, so leaving the tab loses nothing; `yamlKey` starts it afresh when the draft it was written for goes. */
   const [yamlPending, setYamlPending] = useState(false);
   const [yamlKey, setYamlKey] = useState(0);
-  /** What the last "discard" or "build on the latest" did, for the base it applies to. Any edit clears it. */
-  const [draftNote, setDraftNote] = useState<{ text: string; base: number | null } | null>(null);
-  const draftNoteRef = useRef<HTMLParagraphElement>(null);
-  const focusDraftNote = useRef(false);
-  const mounted = useRef(true);
-  /** Request numbers only (never what a request is for): an answer older than one already applied is dropped. */
-  const requests = useRef({ started: 0, applied: 0 });
-  /** Saves, restores and resets in flight (`active`) and how many have begun (`began`). While one is in flight no
-   * background read starts, and one that began before it is dropped, so a plain reload cannot land before the re-read
-   * that belongs to the write. */
-  const writes = useRef({ active: 0, began: 0 });
+  const page = useVersionedPage(MODELS_PAGE, {
+    error: unreadable,
+    blockers: [yamlPending ? YAML_NOT_APPLIED : null],
+    onDiscard: () => { setYamlPending(false); setYamlKey((k) => k + 1); },
+  });
+  const { state, draft: edit, readAt, settling, track, load, reload, setRefused } = page;
+  const pageEdit = page.edit;
 
-  useEffect(() => {
-    mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
-
-  /** Reads /llm-config. Resolves when the answer is applied or the read has failed; it never rejects. `saved` and
-   * `savedId` are the document an admin has just saved and the version it became. They belong to this one request: a
-   * read that fails drops them with it. */
-  const load = useCallback((saved?: LlmConfigDoc, savedId?: number, accept?: () => boolean): Promise<void> => {
-    const seq = ++requests.current.started;
-    return adminApi.llmConfig()
-      .then((s) => {
-        if (!mounted.current || seq < requests.current.applied || (accept && !accept())) return;
-        requests.current.applied = seq;
-        setState(s);
-        setReadAt(Date.now());
-        setError(null);
-        setEdit((e) => (s.error ? e : reconcile(e, s, saved, savedId)));
-      })
-      .catch((e: unknown) => {
-        if (mounted.current && seq >= requests.current.applied && (!accept || accept())) setError(fail(e));
-      });
-  }, [fail]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  /** One background read of /llm-config (a plain reload: unsaved edits stay). */
-  const poll = useCallback(() => {
-    if (writes.current.active > 0) return; // a write is in flight: its own re-read comes first
-    const began = writes.current.began;
-    void load(undefined, undefined, () => writes.current.active === 0 && writes.current.began === began);
-  }, [load]);
-
-  const lagging = state !== null && hasLaggingWorker(state, readAt);
-  /** `settling` is true for 60 s after this page's own write; each write restarts the polling window. */
-  const { settling, wrote } = useWorkerFollowUp(lagging, poll);
-
-  const track = useMemo<WriteTracker>(() => ({
-    start: () => { writes.current.active += 1; writes.current.began += 1; },
-    wrote,
-    end: () => { writes.current.active -= 1; },
-  }), [wrote]);
-
-  useEffect(() => {
-    if (draftNote && focusDraftNote.current) {
-      focusDraftNote.current = false;
-      draftNoteRef.current?.focus();
-    }
-  }, [draftNote]);
-
-  const reload = useCallback(() => { void load(); }, [load]);
-  const setDraft = useCallback((doc: LlmConfigDoc) => {
-    setDraftNote(null);
-    setEdit((e) => (e ? { ...e, doc, refused: undefined } : e));
-  }, []);
-
-  const dropRefused = useCallback(() => setEdit((e) => (e && e.refused !== undefined ? { ...e, refused: undefined } : e)), []);
-
-  /** The note and its focus: the button that was pressed is gone once the version no longer differs. */
-  function answer(text: string) {
-    focusDraftNote.current = true;
-    setDraftNote({ text, base: state!.version });
-  }
-  function discardEdits() {
-    setEdit(fresh(state!));
-    setYamlPending(false);
-    setYamlKey((k) => k + 1);
-    answer(`ทิ้งการแก้ไขแล้ว: ร่างตรงกับเวอร์ชัน ${versionName(state!.version)}`);
-  }
-  function buildOnLatest() {
-    setEdit((e) => (e ? { ...e, base: state!.version } : e));
-    answer(`ร่างนี้ใช้เวอร์ชัน ${versionName(state!.version)} เป็นฐานแล้ว: บันทึกต่อจากเวอร์ชันนั้นได้`);
-  }
-
-  const moved = state !== null && edit !== null && isDirty(edit) && edit.base !== state.version;
+  /** The children replace the whole document; a new document drops the refused YAML. */
+  const setDraft = useCallback((doc: LlmConfigDoc) => pageEdit(() => doc), [pageEdit]);
+  const dropRefused = useCallback(() => setRefused(undefined), [setRefused]);
 
   return (
     <section aria-labelledby="models-title" className="py-6">
       <h1 id="models-title" className="font-display text-2xl font-semibold">โมเดล</h1>
-      {error && <p role="alert" className="mt-4 rounded-sm bg-err-bg px-4 py-3">{error}</p>}
-      {!state && !error && <p role="status" className="mt-4 text-muted">กำลังโหลด…</p>}
-      {state?.error && (
+      {page.error && <p role="alert" className="mt-4 rounded-sm bg-err-bg px-4 py-3">{page.error}</p>}
+      {!state && !page.error && <p role="status" className="mt-4 text-muted">กำลังโหลด…</p>}
+      {state && page.stateError && (
         <>
           <p role="alert" className="mt-4 rounded-sm bg-err-bg px-4 py-3">{unreadableText(state)}</p>
           <ModelsHistory base={state.version} onChanged={reload} writes={track} />
         </>
       )}
-      {state && !state.error && edit && (
+      {state && !page.stateError && edit && (
         <>
           <ModelsHeader state={state} now={readAt} settling={settling} />
           <div role="group" aria-label="ส่วนของหน้า" className="mt-6 flex flex-wrap gap-1 border-b border-rule pb-2">
@@ -260,7 +165,7 @@ export function ModelsView() {
             ))}
           </div>
           {tab === "history" && <ModelsHistory base={state.version} onChanged={reload} writes={track} />}
-          {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} knownPrices={state.known_prices} />}
+          {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} knownPrices={state.known_prices} roleErrors={roleErrors} />}
           {tab === "providers" && <ModelsProviders draft={edit.doc} setDraft={setDraft} fail={fail} version={state.version} />}
           {(tab === "yaml" || yamlPending) && (
             <div hidden={tab !== "yaml"}>
@@ -271,23 +176,11 @@ export function ModelsView() {
           {tab === "catalog" && <ModelsCatalog draft={edit.doc} setDraft={setDraft} />}
           {(tab === "presets" || tab === "providers" || tab === "yaml") && (
             <>
-              {moved && (
-                <div className="mt-6 grid gap-2 rounded-sm bg-warn-bg px-4 py-3">
-                  <p>{`ร่างนี้แก้จากเวอร์ชัน ${versionName(edit.base)} แต่ตอนนี้ใช้เวอร์ชัน ${versionName(state.version)} อยู่`}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <ConfirmButton label="ทิ้งการแก้ไข" confirmLabel="ยืนยันทิ้งการแก้ไข" onConfirm={discardEdits}
-                      hint="การแก้ไขที่ยังไม่ได้บันทึกจะหายไป (รวมถึงข้อความ YAML ที่พิมพ์ไว้แต่ยังไม่ได้ใช้) และร่างจะตรงกับเวอร์ชันที่ใช้อยู่" />
-                    <button type="button" className={BUTTON_GHOST} onClick={buildOnLatest}>ใช้ร่างนี้ต่อจากเวอร์ชันล่าสุด</button>
-                  </div>
-                  <p className="text-sm">ถ้าใช้ร่างนี้ต่อ การบันทึกครั้งต่อไปจะทับการเปลี่ยนแปลงที่เกิดขึ้นในเวอร์ชันล่าสุด</p>
-                </div>
-              )}
-              {draftNote && draftNote.base === edit.base && (
-                <p ref={draftNoteRef} tabIndex={-1} role="status" className="mt-6 rounded-sm bg-info-bg px-4 py-2">{draftNote.text}</p>
-              )}
-              <ModelsSaveBar base={edit.base} draft={edit.doc} serverConfig={state.config} blockedReason={yamlPending ? YAML_NOT_APPLIED : null}
+              <DraftStatus moved={page.moved} base={edit.base} current={state.version} note={page.draftNote}
+                onDiscard={page.discard} onRebase={page.rebase} versionName={versionName} hint={DISCARD_HINT} />
+              <ModelsSaveBar onRoleErrors={setRoleErrors} base={edit.base} draft={edit.doc} serverConfig={state.config} blockedReason={page.blocked}
                 writes={track} onSaved={(saved, id) => { dropRefused(); return load(saved, id); }}
-                onConflict={(text) => { setEdit((e) => (e ? { ...e, refused: text } : e)); setTab("yaml"); reload(); }} />
+                onConflict={(text) => { setRefused(text); setTab("yaml"); reload(); }} />
             </>
           )}
         </>

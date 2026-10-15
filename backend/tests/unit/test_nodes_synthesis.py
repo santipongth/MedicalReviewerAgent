@@ -541,3 +541,14 @@ async def test_localize_uses_the_glossary_in_the_deps_and_finalize_records_it():
             "synthesis": {"executive_summary": "none"}}
     assert (await make_finalize(d)(base))["result"]["glossary_version"] == "5"
     assert (await make_finalize(deps())(base))["result"]["glossary_version"] == "file"
+
+
+async def test_a_missing_synthesizer_key_leaves_no_reason_in_the_result():
+    from app.services.llm import NOT_CONFIGURED_ERROR, MissingKeyLLM
+
+    reason = "no key for provider deepseek (the stored key belongs to https://llm.internal.example; enter one)"
+    papers = [paper("P1", card())]
+    out = await make_write_synthesis(deps(synthesizer=MissingKeyLLM("deepseek-chat", reason=reason)))(
+        state(papers, matrix=matrix_for(papers), conflict_notes=[], language="en"))
+    assert out["errors"][0] == f"synthesis failed: {NOT_CONFIGURED_ERROR}"
+    assert "internal.example" not in str(out) and "deepseek" not in str(out)

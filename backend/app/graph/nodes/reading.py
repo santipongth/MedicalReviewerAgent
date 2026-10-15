@@ -20,7 +20,7 @@ from app.harness.design import (
 )
 from app.harness.runner import HarnessResult
 from app.harness.verify import NUMERIC_FIELDS, card_problems, compare_cards, null_unverified_numbers
-from app.services.llm import LLMError
+from app.services.llm import LLMError, public_reason
 
 log = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ def make_read_paper(deps):
         comparison_counts: dict[str, int] = {}
         if card is None:
             failure = primary if isinstance(primary, BaseException) else None
-            message = (f"{type(failure).__name__}: {failure}" if failure else
+            message = (public_reason(failure) if failure else
                        "; ".join(primary.problems) if isinstance(primary, HarnessResult) else "no output")
             entry["error"] = message
             errors.append(f"extraction failed for {paper['ref']}: {message}")

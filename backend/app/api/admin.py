@@ -73,9 +73,10 @@ class SignIn(BaseModel):
 
 
 async def _record_sign_in(deps: AppDeps, user_id: uuid.UUID, verified_hash: str, new_hash: str | None,
-                          ip_hash: str) -> AdminPrincipal | None:
+                          ip_hash: str) -> tuple[AdminPrincipal, str] | None:
     """The success write, in its own short transaction. The account is read again, so one that was disabled, removed
-    or given a new password while its password was being checked does not get in (None)."""
+    or given a new password while its password was being checked does not get in (None). Returns the principal and the
+    password hash as committed (the rehash when there is one), which the session is fingerprinted with."""
     async with deps.session_factory() as session, session.begin():
         # Plan 30: locked until the commit, so a password set meanwhile (the CLI) is never overwritten by the rehash
         user = await session.get(AdminUser, user_id, with_for_update=True)
@@ -86,7 +87,7 @@ async def _record_sign_in(deps: AppDeps, user_id: uuid.UUID, verified_hash: str,
         user.last_login_at = datetime.now(UTC)
         principal = AdminPrincipal(kind="user", id=user.id, label=user.username)
         await record(session, principal, "admin.login", target_type="admin", target_id=user.id, ip_hash=ip_hash)
-    return principal
+    return principal, user.password_hash
 
 
 @router.post("/admin/session", status_code=204)
@@ -119,7 +120,7 @@ async def sign_in(body: SignIn, request: Request, deps: AppDeps = Depends(get_de
                              target_type="admin", target_id=username, ip_hash=ip_hash)
         raise HTTPException(status_code=401, detail="invalid username or password")
     await throttle.succeeded(username, ip_hash)
-    token = await admin_sessions(deps).create(signed_in.id, signed_in.label)
+    token = await admin_sessions(deps).create(signed_in[0].id, signed_in[0].label, signed_in[1])
     response = Response(status_code=204)
     response.set_cookie(ADMIN_COOKIE, token, max_age=settings.admin_session_ttl_seconds, path=ADMIN_COOKIE_PATH,
                         httponly=True, samesite="strict", secure=admin_cookie_secure(request, settings))

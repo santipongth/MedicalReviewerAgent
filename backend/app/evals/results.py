@@ -27,7 +27,7 @@ def load_rows(prompt_version: str, run_id: str, manifest: Manifest) -> tuple[lis
     recs = [read_model(p, RunRecord) for p in sorted(folder.glob("*.json"))]
     meta: dict = {}
     if recs:
-        meta = {"git_sha": recs[0].git_sha, "preset": recs[0].preset, "models": recs[0].models,
+        meta = {"git_sha": recs[0].git_sha, "preset": recs[0].preset, "models": next((r.models for r in recs if r.models), {}),
                 "pool_version": recs[0].pool_version, "llm_config": recs[0].llm_config,
                 "glossary": recs[0].glossary or "file"}
         # expected = every selected review x every repeat number seen in the folder (at least r1 and r2)

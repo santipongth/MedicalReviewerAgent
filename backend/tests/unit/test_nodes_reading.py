@@ -164,3 +164,13 @@ async def test_a_secondary_extractor_on_the_same_model_is_skipped():
     other = FakeStructuredLLM("deepseek/deepseek-v4-flash", lambda s, u: card())
     await make_read_paper(deps(FakeStructuredLLM("qwen/qwen3.5-flash-02-23", lambda s, u: card()), other))(payload())
     assert len(other.calls) == 1  # a different model still cross-checks
+
+
+async def test_a_missing_extractor_key_leaves_no_reason_in_the_result():
+    from app.services.llm import NOT_CONFIGURED_ERROR, MissingKeyLLM
+
+    reason = "no key for provider deepseek (the stored key belongs to https://llm.internal.example; enter one)"
+    out = await make_read_paper(deps(MissingKeyLLM("deepseek-chat", reason=reason)))(payload())
+    assert out["papers"][0]["card"] is None
+    assert out["errors"] == [f"extraction failed for P1: {NOT_CONFIGURED_ERROR}"]
+    assert "internal.example" not in str(out) and "deepseek" not in str(out)

@@ -6,6 +6,7 @@ from app.graph.schemas import TopicVerdict
 from app.services.llm import (
     AnthropicStructuredLLM,
     LLMError,
+    LLMNotConfigured,
     LLMOutputError,
     LLMRefusal,
     MissingKeyLLM,
@@ -59,3 +60,9 @@ async def test_refusal_and_bad_json_raise_typed_errors(fake_anthropic):
 async def test_missing_key_llm_raises_clear_error():
     with pytest.raises(LLMError, match="ANTHROPIC_API_KEY"):
         await MissingKeyLLM("claude-haiku-4-5").ainvoke("s", "u")
+
+
+async def test_missing_key_llm_raises_not_configured_which_is_still_an_llm_error():
+    with pytest.raises(LLMNotConfigured, match="ANTHROPIC_API_KEY") as info:
+        await MissingKeyLLM("claude-haiku-4-5").ainvoke("s", "u")
+    assert isinstance(info.value, LLMError)

@@ -117,10 +117,11 @@ def test_curly_apostrophes_and_spacing_are_normalized():
 
 
 def test_every_list_entry_is_lowercase_and_unique():
-    lists = [safety.SELF_HARM_ALWAYS_EN, safety.SELF_HARM_ALWAYS_TH, safety.SELF_HARM_EN, safety.SELF_HARM_TH,
-             safety.MEDICAL_EN, safety.MEDICAL_TH, safety.PERSONAL_EN, safety.PERSONAL_TH, safety.RESEARCH_EN,
-             safety.RESEARCH_TH]
-    for entries in lists:
+    # every word list of the module (TYPOS_EN / TYPOS_TH hold pairs, not words)
+    lists = {name: value for name, value in vars(safety).items()
+             if name.endswith(("_EN", "_TH")) and not name.startswith("_") and name not in ("TYPOS_EN", "TYPOS_TH") and isinstance(value, tuple)}
+    assert {"FRAMERS_EN", "CUES_EN", "KINSHIP_TH", "NONPERSONAL_TH", "FRAMERS_TH", "STRONG_FRAMERS_EN"} <= set(lists)
+    for entries in lists.values():
         assert len(set(entries)) == len(entries)
         assert all(e == e.lower().strip() and e for e in entries)
 

@@ -3,8 +3,9 @@
 import { useId, useRef, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { KIND_LABEL, ROLE_ORDER, copyPreset, deletePreset, providerKind, setActive, setRole } from "@/lib/admin-models";
-import type { LlmConfigDoc, LlmRoleSpec, ProbeResult } from "@/lib/admin-types";
+import type { LlmConfigDoc, LlmRoleSpec, ProbeResult, RoleError } from "@/lib/admin-types";
 import { ConfirmButton } from "./confirm-button";
+import { ProbeLine } from "./models-providers";
 import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT, TABLE_REGION, TD, TH } from "./ui";
 
 const EFFORTS = ["", "none", "minimal", "low", "medium", "high", "xhigh", "max"];
@@ -41,7 +42,9 @@ function FallbackInput({ role, models, onChange }: { role: string; models: strin
 /** Plan 23e: a role's provider, picked from the draft's providers ("" = the default provider), and its prices when the
  * provider is not OpenRouter (USD per 1M tokens; required there, so the review cost cap counts the calls). An Anthropic
  * model the code prices already shows that price as the placeholder. */
-function ProviderCell({ role, spec, draft, knownPrices, edit }: {
+function ProviderCell({ role, spec, draft, knownPrices, edit, flagged }: {
+  /** The last check lists this role as missing a price. */
+  flagged: boolean;
   role: string; spec: LlmRoleSpec; draft: LlmConfigDoc; knownPrices?: Record<string, [number, number]>;
   edit: (role: string, patch: Partial<LlmRoleSpec>) => void;
 }) {
@@ -72,22 +75,18 @@ function ProviderCell({ role, spec, draft, knownPrices, edit }: {
             onChange={(e) => edit(role, { price_out: num(e.target.value) ?? null })} />
         </div>
       )}
-      {unpriced && <span className="text-sm text-err">ต้องใส่ราคา input และ output (USD ต่อ 1M token)</span>}
+      {(unpriced || flagged) && <span className="text-sm text-err">ต้องใส่ราคา input และ output (USD ต่อ 1M token)</span>}
     </div>
   );
 }
 
-function ProbeLine({ result }: { result: ProbeResult }) {
-  return result.ok
-    ? <span className="text-sm">{`ใช้ได้ · ${result.latency_ms} ms · $${result.cost_usd.toFixed(4)}`}</span>
-    : <span className="text-sm text-err">{`ใช้ไม่ได้: ${result.error ?? "ไม่ทราบสาเหตุ"}`}</span>;
-}
-
 /** The presets tab: pick a preset, edit its roles in the draft, copy, delete, make it active, test a role. */
-export function ModelsPresets({ draft, setDraft, fail, knownPrices }: {
+export function ModelsPresets({ draft, setDraft, fail, knownPrices, roleErrors = [] }: {
   draft: LlmConfigDoc; setDraft: (d: LlmConfigDoc) => void; fail: (e: unknown) => string;
   /** Plan 23e: the code's prices of direct Anthropic models, by model id (USD per 1M tokens, input and output). */
   knownPrices?: Record<string, [number, number]>;
+  /** Plan 31: the roles the server says lack a price (`role_errors` of the last check or refused save). */
+  roleErrors?: RoleError[];
 }) {
   const [preset, setPreset] = useState(draft.active_preset);
   const [newName, setNewName] = useState("");
@@ -172,7 +171,8 @@ export function ModelsPresets({ draft, setDraft, fail, knownPrices }: {
                   <th scope="row" className={`${TD} font-display`}>{role}</th>
                   <td className={TD}><input aria-label={`model ของ ${role}`} value={spec.model} className={INPUT}
                     onChange={(e) => edit(role, { model: e.target.value })} /></td>
-                  <td className={TD}><ProviderCell role={role} spec={spec} draft={draft} knownPrices={knownPrices} edit={edit} /></td>
+                  <td className={TD}><ProviderCell role={role} spec={spec} draft={draft} knownPrices={knownPrices} edit={edit}
+                    flagged={roleErrors.some((e) => e.preset === current && e.role === role && e.kind === "price")} /></td>
                   <td className={TD}><input aria-label={`max_tokens ของ ${role}`} type="number" min={1} max={128000} className={`${INPUT} w-28`}
                     value={spec.max_tokens ?? ""} onChange={(e) => edit(role, { max_tokens: num(e.target.value) })} /></td>
                   <td className={TD}><input aria-label={`temperature ของ ${role}`} type="number" min={0} max={2} step={0.1} className={`${INPUT} w-24`}

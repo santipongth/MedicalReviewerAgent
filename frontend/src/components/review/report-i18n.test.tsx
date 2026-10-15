@@ -74,9 +74,9 @@ describe("untranslated card fields in a Thai report (Plan 20 Task 7)", () => {
     render(<Report review={P20_FIXTURES.slr} />);
     const rail = () => within(screen.getByRole("complementary", { name: /ต้นฉบับ/ }));
     await userEvent.click(screen.getAllByRole("button", { name: /^P3 / })[0]);
-    expect(rail().getByText("adults with type 2 diabetes")).toHaveAttribute("lang", "en");
+    expect(rail().getByText("adults with type 2 diabetes").closest("dd")).toHaveAttribute("lang", "en");
     await userEvent.click(screen.getAllByRole("button", { name: /^P1 / })[0]);
-    expect(rail().getByText("ผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2")).not.toHaveAttribute("lang");
+    expect(rail().getByText("ผู้ใหญ่ที่เป็นเบาหวานชนิดที่ 2").closest("dd")).not.toHaveAttribute("lang");
   });
 
   it("English cells of the literature matrix are marked lang=en", () => {

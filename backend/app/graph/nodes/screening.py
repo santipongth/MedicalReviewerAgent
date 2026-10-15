@@ -23,7 +23,7 @@ from app.schemas.review import (
     is_quick,
     wants_qualitative,
 )
-from app.services.llm import LLMError
+from app.services.llm import LLMError, public_reason
 
 
 def route_to_screening(state: ReviewState, batch_size: int = 10) -> list[Send] | str:
@@ -86,7 +86,7 @@ def make_screen_batch(deps):
             quality["repaired"] = res.repaired
             decisions = _decisions(res.value, refs)
         except LLMError as exc:
-            errors.append(f"screening batch failed: {type(exc).__name__}: {exc}")
+            errors.append(f"screening batch failed: {public_reason(exc)}")
             decisions = {}
 
         uncertain: set[str] = set()

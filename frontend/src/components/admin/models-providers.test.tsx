@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LlmConfigDoc, LlmKeysState } from "@/lib/admin-types";
 import { mockAdminFetch } from "@/test/admin-fetch";
 import { DEEPSEEK_ROW, KEYS_CONFIG, KEYS_STATE, OPENROUTER_ROW, row } from "@/test/admin-keys-fixtures";
-import { ModelsProviders, keyStatusText } from "./models-providers";
+import { ModelsProviders, PROBE_NOTE, UNPRICED_COST, keyStatusText } from "./models-providers";
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -162,5 +163,71 @@ describe("ModelsProviders", () => {
     expect(screen.getByRole("button", { name: "ลบคีย์ของ together" })).toBeInTheDocument();
     expect(screen.getByText(/worker-2:9/)).toHaveTextContent("ยังใช้คีย์ชุดเดิม");
     expect(screen.getByText(/worker-1:7/)).toHaveTextContent("ตรงกับที่ใช้งาน");
+  });
+});
+
+describe("ModelsProviders, Plan 31", () => {
+  const probeFor = (answer: Record<string, unknown>) => (method: string, path: string) =>
+    method === "POST" && path === "/llm-models/test" ? ([200, { ok: true, latency_ms: 300, model: "m", error: null, ...answer }] as [number, unknown]) : undefined;
+
+  it("states the real cost of a test call and no longer promises a $0.05 ceiling", async () => {
+    show();
+    const deepseek = await item("deepseek");
+    expect(deepseek).toHaveTextContent(PROBE_NOTE);
+    expect(screen.queryByText(/\$0\.05/)).not.toBeInTheDocument();
+  });
+
+  it("shows an unpriced test as an unknown cost, never as $0.0000", async () => {
+    show(KEYS_STATE, KEYS_CONFIG, probeFor({ priced: false, cost_usd: null }));
+    fireEvent.click(within(await item("deepseek")).getByRole("button", { name: "ทดสอบ deepseek" }));
+    expect(await screen.findByText(UNPRICED_COST, { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.0000/)).not.toBeInTheDocument();
+  });
+
+  it("offers an optional key for a keyless local provider, and none where a key may not be sent", async () => {
+    const local = row({ name: "ollama", used_by: [], origin: "http://localhost:11434", keyless: true, key_allowed: true,
+      key: { source: "none", last4: null, updated_at: null, updated_by: null } });
+    const plain = row({ name: "lan", used_by: [], origin: "http://10.0.0.5:8000", keyless: true, key_allowed: false,
+      key: { source: "none", last4: null, updated_at: null, updated_by: null } });
+    show({ ...KEYS_STATE, providers: [local, plain] });
+    const ollama = await item("ollama");
+    expect(within(ollama).getByRole("button", { name: "ใส่คีย์ (ไม่บังคับ)ของ ollama" })).toBeInTheDocument();
+    const lan = await item("lan");
+    expect(within(lan).queryByRole("button", { name: /คีย์/ })).not.toBeInTheDocument();
+    expect(lan).toHaveTextContent("ใส่คีย์ได้เฉพาะ https หรือเครื่องนี้");
+  });
+
+  it("removes a saved provider from the draft only when no role uses it, and never a legacy one", async () => {
+    const groq = row({ name: "groq", used_by: [], origin: "https://api.groq.com" });
+    const draft = { ...KEYS_CONFIG, providers: { ...KEYS_CONFIG.providers, groq: { kind: "openai_compatible", base_url: "https://api.groq.com/openai/v1" } } };
+    const { setDraft } = show({ ...KEYS_STATE, providers: [OPENROUTER_ROW, DEEPSEEK_ROW, groq] }, draft);
+    fireEvent.click(within(await item("groq")).getByRole("button", { name: "เอา groq ออกจากร่าง" }));
+    expect(setDraft.mock.calls[0][0].providers.groq).toBeUndefined();
+    expect(within(await item("deepseek")).getByRole("button", { name: "เอา deepseek ออกจากร่าง" })).toBeDisabled();
+    expect(within(await item("openrouter")).queryByRole("button", { name: /ออกจากร่าง/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps focus on the providers list after a removal, and ties the in-use hint to its disabled button", async () => {
+    const groq = row({ name: "groq", used_by: [], origin: "https://api.groq.com" });
+    const start = { ...KEYS_CONFIG, providers: { ...KEYS_CONFIG.providers,
+      groq: { kind: "openai_compatible", base_url: "https://api.groq.com/openai/v1" },
+      mistral: { kind: "openai_compatible", base_url: "https://api.mistral.ai/v1" } } };
+    mockAdminFetch((method, path) => (method === "GET" && path === "/llm-keys" ? [200, { ...KEYS_STATE, providers: [OPENROUTER_ROW, DEEPSEEK_ROW, groq] }] : undefined));
+    function Stateful() {
+      const [draft, setDraft] = useState<LlmConfigDoc>(start);
+      return <ModelsProviders draft={draft} setDraft={setDraft} fail={String} />;
+    }
+    render(<Stateful />);
+    expect(within(await item("deepseek")).getByRole("button", { name: "เอา deepseek ออกจากร่าง" }))
+      .toHaveAccessibleDescription("มี role ใช้อยู่ เปลี่ยน role ก่อน");
+    const list = screen.getByRole("list", { name: "ผู้ให้บริการ" });
+    fireEvent.click(within(await item("groq")).getByRole("button", { name: "เอา groq ออกจากร่าง" })); // saved row
+    await waitFor(() => expect(screen.queryByRole("button", { name: "เอา groq ออกจากร่าง" })).not.toBeInTheDocument());
+    expect(list).toHaveFocus();
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.click(await screen.findByRole("button", { name: "เอา mistral ออกจากร่าง" })); // draft-only row
+    await waitFor(() => expect(screen.queryByRole("button", { name: "เอา mistral ออกจากร่าง" })).not.toBeInTheDocument());
+    expect(list).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
   });
 });

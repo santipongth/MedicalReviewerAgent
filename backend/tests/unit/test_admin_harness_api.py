@@ -68,23 +68,27 @@ async def test_start_enqueues_one_run_and_writes_an_audit_row(client, session_fa
     assert await start_audits(session_factory) == 1
 
 
-@pytest.mark.parametrize("body", [
-    start_body(max_usd=5.01),  # over HARNESS_MAX_USD ($5)
-    start_body(max_usd=0.27),  # below one review's own cap ($0.28)
-    start_body(confirm=False),
-    {"max_usd": 1.0, "repeats": 1},  # no confirm
-    start_body(repeats=3),
-    start_body(strata=["nope"]),
-    start_body(strata=["renal"]),  # no frozen pool in that stratum
-    start_body(compare_run="pv/none"),
-    start_body(compare_run="../etc"),
-    start_body(extra=1),
+@pytest.mark.parametrize(("body", "field"), [
+    (start_body(max_usd=5.01), "max_usd"),  # over HARNESS_MAX_USD ($5)
+    (start_body(max_usd=0.27), "max_usd"),  # below one review's own cap ($0.28)
+    (start_body(confirm=False), "schema"),
+    ({"max_usd": 1.0, "repeats": 1}, "schema"),  # no confirm
+    (start_body(repeats=3), "schema"),
+    (start_body(strata=["nope"]), "strata"),
+    (start_body(strata=["renal"]), None),  # no frozen pool in that stratum: nothing to run
+    (start_body(compare_run="pv/none"), "compare_run"),
+    (start_body(compare_run="../etc"), "schema"),
+    (start_body(extra=1), "schema"),
 ])
-async def test_bad_starts_create_nothing(client, session_factory, redis, queue, root, body):
+async def test_bad_starts_create_nothing(client, session_factory, redis, queue, root, body, field):
     await worker_up(redis)
     h = await admin_headers(client, session_factory)
     r = await client.post(f"{BASE}/runs", headers=h, json=body)
     assert r.status_code == 422, r.text
+    if field == "schema":
+        assert isinstance(r.json()["detail"], list)  # FastAPI's own list; the web reads it
+    else:
+        assert r.json()["errors"] == [{"field": field, "message": r.json()["detail"]}]
     assert queue.harness == [] and await runs_count(session_factory) == 0 and await start_audits(session_factory) == 0
 
 

@@ -15,6 +15,7 @@ from app.logging import get_logger
 from app.schemas.review import ReviewOptions
 from app.services.budget import ReviewBudget, review_cost_cap, use_budget
 from app.services.events import EventSink
+from app.services.llm import LLMNotConfigured, public_reason
 from app.services.pipeline_version import finished_cache_key
 from app.services.safety import refusal_code_of
 
@@ -101,7 +102,9 @@ class ReviewRunner:
             raise
         except Exception as exc:
             log.exception("review_failed", review_id=str(review_id))
-            message = f"{type(exc).__name__}: {exc}"
+            message = public_reason(exc)
+            if isinstance(exc, LLMNotConfigured):  # the reason names hosts and providers: the log only
+                log.error("review_not_configured", review_id=str(review_id), reason=str(exc))
             spent = round(budget.spent, 6) if budget is not None else 0.0  # what the failed run already cost
             await self._note_cost(spent)
             if not await self._finish(review_id, "error", error=message, cost_usd=spent):

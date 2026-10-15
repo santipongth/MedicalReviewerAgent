@@ -1,4 +1,12 @@
-from app.harness.glossary_check import GlossaryTerm, check_pair, default_terms, parse_glossary
+import pytest
+
+from app.harness.glossary_check import (
+    GlossaryTerm,
+    _mentions,
+    check_pair,
+    default_terms,
+    parse_glossary,
+)
 
 
 def test_parse_glossary_splits_aliases_and_abbreviation():
@@ -28,3 +36,18 @@ def test_entry_without_space_after_semicolon_still_splits():
     keys = {t.english[0]: t for t in default_terms()}
     assert keys["progression-free survival"].abbr == "PFS"
     assert keys["adverse events"].thai == "เหตุการณ์ไม่พึงประสงค์"
+
+
+@pytest.mark.parametrize("source, alias", [
+    ("two randomized controlled trials", "randomized controlled trial"), ("three cohort studies", "cohort study"),
+    ("hazard ratios were similar", "hazard ratio"), ("one adverse event", "adverse events"),
+    ("one cohort study", "cohort studies"),
+])
+def test_plurals_and_singulars_match(source, alias):
+    assert _mentions(source, alias)
+
+
+def test_sensitivity_is_not_matched_inside_sensitivity_analysis():
+    assert not _mentions("a sensitivity analysis excluded one trial", "sensitivity")
+    assert not _mentions("sensitivity analyses agreed", "sensitivity")
+    assert _mentions("the sensitivity was 0.9", "sensitivity")

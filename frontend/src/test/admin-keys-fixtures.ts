@@ -17,11 +17,11 @@ export const KEYS_CONFIG: LlmConfigDoc = {
 const noKey: ProviderKeyRow["key"] = { source: "none", problem: null, last4: null, bound_origin: null, updated_at: null, updated_by: null };
 
 export const OPENROUTER_ROW: ProviderKeyRow = {
-  name: "openrouter", kind: "openrouter", origin: "https://openrouter.ai", used_by: ["guard", "planner"], keyless: false,
+  name: "openrouter", kind: "openrouter", origin: "https://openrouter.ai", used_by: ["guard", "planner"], keyless: false, key_allowed: true,
   key: { ...noKey, source: "env" }, env: { name: "OPENROUTER_API_KEY", set: true, origin_ok: true },
 };
 export const DEEPSEEK_ROW: ProviderKeyRow = {
-  name: "deepseek", kind: "openai_compatible", origin: "https://api.deepseek.com", used_by: ["extractor"], keyless: false,
+  name: "deepseek", kind: "openai_compatible", origin: "https://api.deepseek.com", used_by: ["extractor"], keyless: false, key_allowed: true,
   key: { source: "console", problem: null, last4: "a1b2", bound_origin: "https://api.deepseek.com",
     updated_at: "2026-10-14T09:00:00Z", updated_by: "owner" },
   env: { name: "LLM_KEY_DEEPSEEK", set: false, origin_ok: false },
@@ -30,7 +30,7 @@ export const DEEPSEEK_ROW: ProviderKeyRow = {
 export const KEYS_STATE: LlmKeysState = {
   writable: true, reason: null, keys_version: 4, config_version: 3, config_error: null,
   providers: [OPENROUTER_ROW, DEEPSEEK_ROW], orphans: [],
-  loaded: [{ worker: "worker-1:7", version: "3", preset: "cheap", loaded_at: "2026-10-14T09:00:00Z", error: null, keys: "4" }],
+  loaded: [{ worker: "worker-1:7", version: "3", preset: "cheap", loaded_at: new Date().toISOString(), error: null, keys: "4" }],
 };
 
 export const row = (over: Omit<Partial<ProviderKeyRow>, "key"> & { key?: Partial<ProviderKeyRow["key"]> }): ProviderKeyRow =>

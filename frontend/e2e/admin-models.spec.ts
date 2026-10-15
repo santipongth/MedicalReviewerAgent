@@ -54,7 +54,7 @@ function summarize(old: LlmConfigDoc, next: LlmConfigDoc): Record<string, unknow
 
 function check(config: LlmConfigDoc): ValidateReport {
   if (!config.presets[config.active_preset]) {
-    return { ok: false, errors: [`active_preset: ${config.active_preset} is not a preset`], warnings: [], cost: {}, config: null, yaml: null };
+    return { ok: false, errors: [`active_preset: ${config.active_preset} is not a preset`], warnings: [], cost: {}, config: null, yaml: null, role_errors: [] };
   }
   const warnings: string[] = [];
   const cost: ValidateReport["cost"] = {};
@@ -74,7 +74,7 @@ function check(config: LlmConfigDoc): ValidateReport {
     const total = Object.values(perRole).reduce((a, b) => a + b, 0);
     cost[preset] = { total_usd: Math.round(total * 1e6) / 1e6, per_role: perRole, unknown_models: unknown };
   }
-  return { ok: true, errors: [], warnings, cost, config, yaml: asYaml(config) };
+  return { ok: true, errors: [], warnings, cost, config, yaml: asYaml(config), role_errors: [] };
 }
 
 interface Stored extends LlmVersion { config: LlmConfigDoc }
@@ -177,7 +177,7 @@ async function mockModels(page: Page, { signedIn = true, alerts = false } = {}) 
     if (path === "/llm-models/test" && method === "POST") {
       const body = req.postDataJSON() as { config: LlmConfigDoc; preset: string; role: string };
       calls.tests.push({ body, status: 200, headers });
-      const result: ProbeResult = { ok: true, latency_ms: 812, cost_usd: 0.0004, model: body.config.presets[body.preset][body.role].model, error: null };
+      const result: ProbeResult = { ok: true, latency_ms: 812, cost_usd: 0.0004, priced: true, model: body.config.presets[body.preset][body.role].model, error: null };
       return reply(200, result);
     }
     calls.unmocked.push(`${method} ${path}`);
@@ -300,7 +300,7 @@ test("edit a role, check it, save it as version 4, then restore version 3 from t
   await expect(version(page, 3)).not.toContainText("ใช้งานอยู่");
 
   // restore version 3 through the in-page confirm: a new version 5 with the content of version 3
-  await version(page, 3).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }).click();
+  await version(page, 3).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 3" }).click();
   await page.getByRole("button", { name: "ยืนยันย้อนกลับ" }).click();
   await expect(page.getByText("สร้างเวอร์ชัน 5 จากเวอร์ชัน 3 แล้ว")).toBeVisible();
   expect(admin.calls.restores).toHaveLength(1);
@@ -442,7 +442,7 @@ for (const scheme of ["light", "dark"] as const) {
       await openTab(page, "ประวัติ");
       await expect(version(page, 3)).toBeVisible();
       await audit(page, at("History · versions"));
-      await version(page, 2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }).click();
+      await version(page, 2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 2" }).click();
       await expect(page.getByRole("button", { name: "ยืนยันย้อนกลับ" })).toBeVisible();
       await page.getByRole("button", { name: "สร้างเวอร์ชันใหม่จาก llm.yaml" }).click();
       await expect(page.getByText(/เวอร์ชันใหม่จาก llm.yaml จะถูกใช้ทันที/)).toBeVisible();

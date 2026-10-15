@@ -43,7 +43,7 @@ is therefore flagged: start a new batch instead.
 ## Outcomes
 Primary: direction agreement. Secondary: certainty agreement (exact, within one level, weighted kappa); pool recall
 and included-set recall/precision of Cochrane's included studies; number-verification rate; citations stripped as
-unknown; Thai share; glossary consistency; translations refused for changed numbers; run-to-run stability; cost; time.
+unknown; Thai share; glossary consistency (plural-aware from Plan 31, so earlier runs are not comparable on that metric); translations refused for changed numbers; run-to-run stability; cost; time.
 
 ## Reference standard (Plan 22b)
 Extracted from each Cochrane review by an LLM, every item checked by a human who does not see the engine's output.

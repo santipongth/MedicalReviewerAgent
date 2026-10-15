@@ -247,8 +247,8 @@ describe("HarnessView", () => {
   it("puts a 422 start's field errors beside the fields they name and clears them when a field is edited", async () => {
     mockAdminFetch((m, p) => {
       if (m === "POST" && p === "/harness/runs") {
-        return [422, { detail: "invalid", errors: [
-          { field: "max_usd", message: "the cap is above the ceiling" },
+        return [422, { detail: "the cap is above the ceiling of $5.00 (HARNESS_MAX_USD)", errors: [
+          { field: "max_usd", message: "the cap is above the ceiling of $5.00 (HARNESS_MAX_USD)" },
           { field: "confirm", message: "confirm must be true" },
           { field: null, message: "nothing to run" }] }];
       }
@@ -263,12 +263,30 @@ describe("HarnessView", () => {
     expect(alert).toHaveTextContent("ข้อมูลที่ส่งไม่ถูกต้อง");
     expect(within(alert).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["nothing to run"]);
     const cap = screen.getByLabelText("งบสูงสุด (USD)");
-    expect(cap).toHaveAccessibleDescription("the cap is above the ceiling");
+    expect(cap).toHaveAccessibleDescription("the cap is above the ceiling of $5.00 (HARNESS_MAX_USD)");
     expect(cap).toBeInvalid();
     expect(screen.getByRole("checkbox", { name: /เข้าใจว่าการรันนี้เรียกโมเดลจริง/ })).toHaveAccessibleDescription("confirm must be true");
     fireEvent.change(cap, { target: { value: "2" } });
-    expect(screen.queryByText("the cap is above the ceiling")).not.toBeInTheDocument();
+    expect(screen.queryByText("the cap is above the ceiling of $5.00 (HARNESS_MAX_USD)")).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("puts a FastAPI detail[] schema failure beside its field, not in the page banner (Plan 31)", async () => {
+    mockAdminFetch((m, p) => {
+      if (m === "POST" && p === "/harness/runs") {
+        return [422, { detail: [{ type: "too_short", loc: ["body", "strata"], msg: "List should have at least 1 item" }] }];
+      }
+      return routes()(m, p);
+    });
+    await renderAdmin(<HarnessView />);
+    await screen.findByText("พร้อมเริ่มรัน");
+    fireEvent.click(screen.getByRole("checkbox", { name: /เข้าใจว่าการรันนี้เรียกโมเดลจริง/ }));
+    fireEvent.click(screen.getByRole("button", { name: "เริ่มรัน harness" }));
+    fireEvent.click(screen.getByRole("button", { name: "ยืนยัน เริ่มรันและใช้เงินจริง" }));
+    expect(await screen.findByText("List should have at least 1 item")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /กลุ่ม/ })).toHaveAccessibleDescription("List should have at least 1 item");
+    expect(within(screen.getByRole("alert")).queryAllByRole("listitem")).toHaveLength(0); // the banner only points at the field
+    expect(screen.getByRole("alert")).toHaveTextContent("ดูข้อความใต้ช่องที่ระบุ (1 ข้อความ)");
   });
 
   it("shows the compare route's own 404 text, and the generic one when the 404 is not the route's", async () => {

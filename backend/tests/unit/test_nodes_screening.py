@@ -12,7 +12,7 @@ from app.graph.nodes.screening import (
     route_to_screening,
 )
 from app.graph.schemas import Candidate, ScreenBatch, ScreenDecision
-from app.services.llm import LLMError, LLMs
+from app.services.llm import NOT_CONFIGURED_ERROR, LLMError, LLMs, MissingKeyLLM
 from app.services.llm_config import HarnessSpec
 from tests.fakes import FakeStructuredLLM
 
@@ -121,6 +121,13 @@ async def test_screening_failure_keeps_candidates_unscored():
     out = await make_screen_batch(deps(FakeStructuredLLM("g", lambda s, u: LLMError("provider down"))))(payload(2))
     assert [d["include"] for d in out["screened"]] == [False, False]
     assert out["errors"] and "screening" in out["errors"][0]
+
+
+async def test_a_missing_key_leaves_no_reason_in_the_screening_note():
+    reason = "no key for provider deepseek (the stored key belongs to https://llm.internal.example; enter one)"
+    out = await make_screen_batch(deps(MissingKeyLLM("deepseek-chat", reason=reason)))(payload(2))
+    assert out["errors"] == [f"screening batch failed: {NOT_CONFIGURED_ERROR}"]
+    assert "internal.example" not in str(out) and "deepseek" not in str(out)
 
 
 async def test_select_top_ranks_dedupes_and_caps_at_max_papers():

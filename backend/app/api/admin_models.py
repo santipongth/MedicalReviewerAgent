@@ -45,7 +45,7 @@ from app.services.llm_store import (
     save_version,
     version_out,
 )
-from app.services.llm_validate import key_status, to_yaml, validate_document
+from app.services.llm_validate import DocumentErrors, key_status, to_yaml, validate_document
 from app.services.model_catalog import cached_catalog, catalog_rows, load_live_catalog
 from app.services.review_service import Identity, ServiceError
 
@@ -109,7 +109,10 @@ class TestBody(Draft):
 
 
 def _config_error(exc: BaseException) -> JSONResponse:
-    return JSONResponse(status_code=422, content={"detail": config_error_text(exc)})
+    content: dict = {"detail": config_error_text(exc)}
+    if isinstance(exc, DocumentErrors):
+        content["role_errors"] = exc.role_errors
+    return JSONResponse(status_code=422, content=content)
 
 
 async def _catalog(deps: AppDeps):

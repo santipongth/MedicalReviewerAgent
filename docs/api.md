@@ -1,6 +1,6 @@
 # Medical Reviewer Agent: API, events and MCP reference
 
-This reference describes what the running service does, as of `prompt_version 2026-10-14.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
+This reference describes what the running service does, as of `prompt_version 2026-10-15.1`, API/MCP version 0.8.0. For the live numbers on any deployment, read `GET /api/v1/status`. The interactive OpenAPI docs are at `/api/docs` (JSON at `/api/openapi.json`).
 
 The service reviews published papers automatically:
 - It turns your topic or question into a structured question (PICO, or PCC for scoping reviews), searches the scholarly sources the service has on (eight engines and ThaiJO by default; `GET /api/v1/status` → `sources` lists them), screens about 120 candidate papers that have abstracts, and analyses the abstracts of the 5–50 you choose (default 30). It never fetches full text.
@@ -768,12 +768,12 @@ audit rules as the rest of the Admin API and are not in the public OpenAPI.
 | `GET /admin/llm-config/versions?before=&limit=50` (1–100) | 200 `{items, next}`, newest first. An item is `{id, created_at, created_by, note, source, restored_from, active_preset, changes}`. `before` is the previous page's `next` (1-2147483647) | 401, 403, 422 |
 | `GET /admin/llm-config/versions/{id}` | 200 the item above plus `config`, the stored document | 401, 403, 404, 422 (id outside 1-2147483647, or not an integer) |
 | `GET /admin/llm-config/versions/{id}/yaml` | 200 `text/yaml` attachment `llm-config-v{id}.yaml` | 401, 403, 404, 422 |
-| `POST /admin/llm-config/validate` `{config \| yaml}` | 200 `{ok, errors, warnings, cost, config, yaml}`; nothing is saved | 401, 403, 422 |
+| `POST /admin/llm-config/validate` `{config \| yaml}` | 200 `{ok, errors, warnings, role_errors, cost, config, yaml}` (Plan 31: `role_errors` is `[{preset, role, kind: "price"}]`); nothing is saved | 401, 403, 422 |
 | `POST /admin/llm-config` `{config \| yaml, base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 409, 422 |
 | `POST /admin/llm-config/versions/{id}/restore` `{base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 404, 409, 422 |
 | `POST /admin/llm-config/reset` `{base_version, note?}` | 201 the new version plus `workers_notified` | 401, 403, 409, 422 |
 | `GET /admin/llm-models?q=&structured=&reasoning=&max_price=&limit=100` (1–500) | 200 `{items, available}`, the OpenRouter catalog | 401, 403, 422 |
-| `POST /admin/llm-models/test` `{config \| yaml, preset?, role}` or (Plan 23e) `{config \| yaml, provider, model, price_in?, price_out?}` (the document is optional) | 200 `{ok, latency_ms, cost_usd, model, error}` | 401, 403, 422, 429 |
+| `POST /admin/llm-models/test` `{config \| yaml, preset?, role}` or (Plan 23e) `{config \| yaml, provider, model, price_in?, price_out?}` (the document is optional) | 200 `{ok, latency_ms, cost_usd, priced, model, error}` (Plan 31: `priced` false and `cost_usd` null when the role cannot be priced) | 401, 403, 422, 429 |
 
 **State.** `GET /admin/llm-config` answers `{source, version, config, active_preset, env_preset, keys_present, key_status, known_prices, loaded, error}`:
 - `source` is `"db"` (a saved version is in use) or `"file"` (none is saved, so `llm.yaml` is in use). `version` is
@@ -972,7 +972,7 @@ built-in glossary (the seed) is in use.
 | `GET /admin/harness` | 200 the state, see "Harness" | 401, 403 |
 | `GET /admin/harness/runs?before=&limit=20` (1-100) | 200 `{items, next}`, newest first | 401, 403, 422 |
 | `GET /admin/harness/runs/{id}` | 200 the run | 401, 403, 404, 422 |
-| `POST /admin/harness/runs` `{max_usd, repeats?, strata?, max_reviews?, compare_run?, confirm}` | 201 the run | 401, 403, 409, 422, 503 |
+| `POST /admin/harness/runs` `{max_usd, repeats?, strata?, max_reviews?, compare_run?, confirm}` | 201 the run (Plan 31: a service refusal is 422 `{detail, errors: [{field, message}]}`) | 401, 403, 409, 422, 503 |
 | `POST /admin/harness/runs/{id}/cancel` | 200 the run | 401, 403, 404, 409, 422 |
 | `GET /admin/harness/reports` | 200 `{items}` | 401, 403 |
 | `GET /admin/harness/reports/{name}` | 200 `{name, text}` | 401, 403, 404 |
@@ -1145,8 +1145,8 @@ adds an OpenAI-compatible provider from a template, and tests it, without editin
 
 | Method and path | Success | Errors |
 |---|---|---|
-| `GET /admin/llm-keys` | 200 the state below | 401, 403 |
-| `PUT /admin/llm-keys/{provider}` `{"key": "..."}` | 200 the state plus `workers_notified` | 401, 403, 404, 409, 422, 429 |
+| `GET /admin/llm-keys` | 200 the state below (Plan 31: each provider row carries `key_allowed`) | 401, 403 |
+| `PUT /admin/llm-keys/{provider}` `{"key": "..."}` | 200 the state plus `workers_notified` (Plan 31: 422 "a key is sent only over https or to a server on this machine" for any other origin) | 401, 403, 404, 409, 422, 429 |
 | `DELETE /admin/llm-keys/{provider}` | 200 the state plus `workers_notified` | 401, 403, 404, 422, 429 |
 
 - **Write-only.** A key is never answered back, logged, written to the audit log or to Redis. The state shows where
@@ -1443,6 +1443,34 @@ citation inside its sentence and drop a number misattributed to another paper, s
 - **The sources a review searched** (the search stage's `quality` entry) list the env-only engines (`extras`, for
   example `plos`) after the catalog sources.
 - **Queue positions** of reviews created in the same clock tick are ordered by id, so no two share a position.
+
+## Cleanup round 2 (Plan 31)
+
+Behaviour changed by the second cleanup round. The version change is `prompt_version 2026-10-15.1`: no prompt or schema
+changed, but stored summaries and quick answers now follow the new prose rules below, so results cached before are not
+reused. Public limits are never hard-coded here; read them from `GET /api/v1/status`.
+- **Test call.** `POST /admin/llm-models/test` answers `priced: bool`; `cost_usd` is null when the role cannot be
+  priced. `PROBE_BUDGET_USD` is a gate checked before the call, and the call itself is bounded by its 512 output tokens.
+- **Validate and save.** `POST /admin/llm-config/validate` and the save route's 422 carry
+  `role_errors: [{preset, role, kind: "price"}]` for roles that need a price. Save still requires an explicit price for
+  a local `openai_compatible` role (0 is allowed); only the harness's unpriced check exempts local servers.
+- **Provider keys.** `GET /admin/llm-keys` gives each provider `key_allowed` (its origin is https or local).
+  `PUT /admin/llm-keys/{provider}` answers 422 "a key is sent only over https or to a server on this machine" for any
+  other origin. A key stored before Plan 31 for a plain-http remote origin is still resolved (resolution is unchanged).
+- **Harness start.** `POST /admin/harness/runs` answers a service refusal as 422 `{detail, errors: [{field, message}]}`
+  with `field` one of `strata`, `max_usd`, `compare_run` or null. Schema failures keep FastAPI's `detail[]`.
+- **A missing provider key** ends a review with the fixed public error
+  `"LLMNotConfigured: the service's model provider is not set up; an administrator must fix the model settings"`. No
+  provider name, origin or model appears in `error`, events, `result` or MCP. Providers other than OpenRouter never
+  follow HTTP redirects.
+- **Cache.** A resumed run is never reused: its key gets `+resumed:<id>`.
+- **Admin sessions** end when the admin's password changes (sessions from before Plan 31 end once).
+- **Red flags.** The pass folds common misspellings and repeated letters. An "and" joined to a person-state word or to
+  another flag counts. "someone" is an anchor only at the start of the topic or after "help", and not with a research
+  framer, and not before a colon subtitle unless the topic is urgent (urgency lifts only the colon rule). A capitalised
+  PLS / PLZ in a topic that is not all capitals is an abbreviation, not a plea. Thai kin followed by และ is a population, not a person.
+- **Prose.** A citation group that opens a sentence naming its study ("[P2] The trial …") stays with that sentence. The
+  quick answer's limits sentence drops more direct advice (fail-safe: the next sentence that passes is used, else none).
 
 ## Event stream (SSE)
 

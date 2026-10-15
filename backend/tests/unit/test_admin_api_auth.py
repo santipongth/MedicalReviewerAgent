@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 from contextlib import asynccontextmanager
 
 import pytest
@@ -8,7 +10,8 @@ from starlette.requests import Request
 from app.api.auth import admin_cookie_secure
 from app.config import Settings
 from app.db.models import AdminAudit
-from app.services.admin_auth import find_user, set_disabled
+from app.services.admin_auth import find_user, set_disabled, set_password
+from app.services.admin_sessions import SESSION_KEY
 from app.services.api_keys import mint_key
 from tests.admin_helpers import CSRF, PASSWORD, cookie_of, create_admin, sign_in
 
@@ -326,3 +329,26 @@ async def test_sign_out_ends_the_session_and_clears_the_cookie(client, session_f
 async def test_admin_routes_are_not_in_the_public_openapi(client):
     paths = (await client.get("/api/openapi.json")).json()["paths"]
     assert paths and not [p for p in paths if p.startswith("/api/v1/admin")]
+
+
+async def test_a_password_change_ends_a_session_made_before_it(client, session_factory):
+    await create_admin(session_factory)
+    token = cookie_of(await attempt(client))
+    client.cookies.clear()
+    headers = {"Cookie": f"mra_admin={token}"}
+    assert (await client.get("/api/v1/admin/me", headers=headers)).status_code == 200
+    async with session_factory() as s, s.begin():
+        await set_password(s, "owner", "another-long-password-1")  # as the CLI does, before its end_all
+    assert (await client.get("/api/v1/admin/me", headers=headers)).status_code == 401
+
+
+async def test_a_session_from_before_plan_31_is_ended_once(client, session_factory, redis):
+    await create_admin(session_factory)
+    token = cookie_of(await attempt(client))
+    client.cookies.clear()
+    key = SESSION_KEY.format(hashlib.sha256(token.encode()).hexdigest())
+    data = json.loads(await redis.get(key))
+    data.pop("pw")
+    await redis.set(key, json.dumps(data))
+    assert (await client.get("/api/v1/admin/me", headers={"Cookie": f"mra_admin={token}"})).status_code == 401
+    assert await redis.get(key) is None

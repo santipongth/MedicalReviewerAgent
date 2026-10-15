@@ -44,7 +44,7 @@ from app.harness.prose import (
 )
 from app.harness.runner import HarnessRunner
 from app.harness.verify import check_citations, strip_unknown_citations
-from app.services.llm import LLMError
+from app.services.llm import LLMError, public_reason
 
 log = logging.getLogger(__name__)
 
@@ -106,16 +106,45 @@ _CERTAINTY_TALK = re.compile(
 # Plan 30: direct advice to a person ("Patients should stop…", "Take X…", "you should…") is never a limits sentence;
 # such a sentence is dropped like a certainty claim (fail-safe: the next clean sentence, else none). Research wording
 # ("patients should be followed up longer in future trials") is not advice: the verbs are the ones a person acts on.
-_ACT = r"(?:stop|start|take|avoid|switch|use|ask|consult|see|seek|speak|talk|discuss|continue|keep|try|reduce|increase|consider)"
-# An imperative opens the sentence only as a verb phrase: "Use was self-reported", "Stop rules were...", "Increase in
-# dose was rare", "Never users served..." are ordinary limitations (the verb is followed by a was/were/rules/in/of).
+# Plan 31: more advice shapes are caught (modal about a person, "it is advisable to", "get tested") and research wording
+# ("See Table 2", "Trials in women should use longer follow-up") is kept.
+_ACT = (r"(?:stop|start|take|avoid|switch|use|ask|consult|see|seek|speak|talk|discuss|continue|keep|try|reduce"
+        r"|increase|consider|check|contact|call|visit|tell)")
+_GET = r"get\s+(?:tested|checked|screened|vaccinated|help|medical|advice)"
+_PERSON = (r"(?:patients?|people|individuals|persons|users|anyone|everyone|adults|parents|women|men|those|readers?"
+           r"|one|clinicians|doctors)")
+_RESEARCH_NOUN = re.compile(r"(?i)\b(?:trials?|stud(?:y|ies)|research(?:ers)?|investigators|authors|reviews?|data)\b")
+_MODAL = r"(?:should|must|need\s+to|ought\s+to)"
+# An imperative opens the sentence only as a verb phrase ("Use was self-reported", "Call rates ...").
+_IMPERATIVE = re.compile(
+    rf"(?i)^\W*(?:please\s+)?(?:(?:{_ACT})\b(?!-|\s+(?:of|in|was|were|is|are|rules?|had|has|did|rates?|data|for))"
+    rf"|{_GET}\b|(?:do\s+not|don'?t)\b|always\s+{_ACT}\b|never\s+(?:{_ACT}|take|use)\b)")
+# An imperative about reading the evidence is research wording ("See Table 2", "Do not over-interpret ...").
+_READING = re.compile(r"(?i)\b(?:over-?interpret\w*|interpret\w*|reading|tables?|figures?|fig\.|appendix"
+                      r"|supplement\w*|the\s+full\s+(?:review|report))\b")
 _ADVICE = re.compile(
-    rf"(?i)^\W*(?:please\s+)?(?:(?:{_ACT})\b(?!-|\s+(?:of|in|was|were|is|are|rules?|had|has|did)\b)"
-    rf"|(?:do\s+not|don'?t)\b|always\s+{_ACT}\b|never\s+(?:{_ACT}|take|use)\b)"
-    rf"|\b(?:you|yourself)\b"
+    rf"(?i)\byou\s+(?:should|must|need|ought|may\s+want|might\s+want|can|could|have\s+to|will\s+need)\b"
+    rf"|\bif\s+you\b|\byourself\b"
     rf"|\byour\s+(?:doctor|physician|pharmacist|nurse|clinician|health|medic)"
-    rf"|\b(?:patients?|people|readers?|anyone|everyone|adults|parents|women|men|clinicians|doctors|those)\s+"
-    rf"(?:should|must|need\s+to|ought\s+to)\s+(?:not\s+)?{_ACT}\b")
+    rf"|\bit\s+is\s+(?:advisable|recommended|best|wise|prudent)\s+(?:to|that)\b"
+    rf"|\bit\s+is\s+(?:important|essential)\s+(?:to|that)\s+(?:patients?\s+|people\s+|you\s+)?{_ACT}\b"
+    rf"|\b(?:are|is)\s+(?:advised|encouraged|urged)\s+to\b"
+    rf"|\b(?:may|might)\s+(?:want|wish)\s+to\b"
+    rf"|\bwe\s+(?:recommend|advise)\s+(?:that\s+)?(?:patients|people|you|readers|anyone|avoiding|stopping|taking"
+    rf"|using|starting)\b")
+_PERSON_MODAL = re.compile(rf"(?i)\b{_PERSON}\b(?P<between>[^.;:!?]{{0,40}}?)\b{_MODAL}\s+(?:not\s+)?(?:{_ACT}|{_GET})\b")
+
+
+def _is_advice(sentence: str) -> bool:
+    """Direct advice to a person (Plan 30 D8, Plan 31 D6): an imperative that is not about reading the evidence, a
+    sentence addressed to the reader, an advisory phrase, or a person told what they should do (a research noun
+    before the modal makes it research wording: "Trials in women should use longer follow-up")."""
+    if _IMPERATIVE.search(sentence) and not _READING.search(sentence):
+        return True
+    if _ADVICE.search(sentence):
+        return True
+    m = _PERSON_MODAL.search(sentence)
+    return bool(m) and not _RESEARCH_NOUN.search(sentence[:m.start("between")] + m["between"])
 
 
 def _claims_level(sentence: str, strength: str | None) -> bool:
@@ -178,7 +207,7 @@ def closing_line(limits: str, prose: ProseContext, strength: str | None) -> str:
     text, _counts = fix_statement(_CITE_GROUP.sub("", limits or "").strip(), prose)
     text, _n = _drop_wrong_self_claims(text, strength)
     first = next((s for s in _split_sentences(text)
-                  if not _claims_level(s, strength) and not _CERTAINTY_TALK.search(s) and not _ADVICE.search(s)), "")
+                  if not _claims_level(s, strength) and not _CERTAINTY_TALK.search(s) and not _is_advice(s)), "")
     certainty = ANSWER_CERTAINTY.get(strength or "", NOT_GRADED)
     return f"{certainty} {first}".strip()
 
@@ -226,7 +255,7 @@ def make_write_quick_answer(deps):
             cost, draft = res.cost, res.value
             entry["repaired"] = res.repaired
         except LLMError as exc:
-            errors.append(f"quick answer failed: {type(exc).__name__}: {exc}")
+            errors.append(f"quick answer failed: {public_reason(exc)}")
             draft = None
         if draft is None:
             entry["fallback"] = True

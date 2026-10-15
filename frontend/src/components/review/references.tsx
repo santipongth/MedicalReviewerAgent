@@ -23,12 +23,14 @@ export const referenceId = (ref: string): string => `ref-${ref}`;
 /** The reference text with its identifiers as links (doi.org, PubMed, PubMed Central, the ThaiJO page); the text is
  * never translated. Also the quick answer's reference list (Plan 27). */
 export function CitationText({ paper, lang }: { paper: Paper; lang: Lang }) {
-  const { text, ids } = citationParts(paper);
+  const { text, ids, segments } = citationParts(paper);
   const opens = L(lang, R.newTab);
   return (
     // the reference is written as published (Vancouver, the title in its own language)
     <p data-citation className="max-w-[75ch] text-[0.95rem] leading-[1.7] break-words" lang={fieldLang(text.join(" "), lang)}>
-      {text.join(" ")}
+      {segments.map((s, i) => (
+        <Fragment key={i}>{i > 0 && " "}{s.isolate ? <bdi>{s.text}</bdi> : s.text}</Fragment>
+      ))}
       {ids.map((id) => (
         <span key={id.label}>
           {" "}{id.label}:{" "}

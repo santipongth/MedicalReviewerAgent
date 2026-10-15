@@ -104,6 +104,23 @@ class LLMError(Exception):
     pass
 
 
+class LLMNotConfigured(LLMError):
+    """The role has no usable key or price. Its text names providers and hosts, so it is for logs and the admin
+    console only; anything a visitor can read uses public_reason (Plan 31)."""
+
+
+NOT_CONFIGURED_ERROR = (
+    "LLMNotConfigured: the service's model provider is not set up; an administrator must fix the model settings"
+)
+
+
+def public_reason(exc: BaseException) -> str:
+    """The text of a failure that may leave the worker (review error, event, result note)."""
+    if isinstance(exc, LLMNotConfigured):
+        return NOT_CONFIGURED_ERROR
+    return f"{type(exc).__name__}: {exc}"
+
+
 class LLMRefusal(LLMError):
     pass
 
@@ -215,6 +232,7 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
         price: ModelInfo | FixedPrice | None = None,
         reported_cost: bool = True,
         effort_field: str = "reasoning",
+        follow_redirects: bool = True,
     ) -> None:
         """`price` charges a call whose cost the provider does not report, or (reported_cost=False, Plan 23e: any
         server that is not OpenRouter) every call. `effort_field` "reasoning" sends OpenRouter's reasoning object;
@@ -226,6 +244,7 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
         self.method = "tool_calling" if method == "function_calling" else method
         self.price = price
         self.reported_cost = reported_cost
+        self.follow_redirects = follow_redirects
         self._key = api_key  # kept only to redact provider errors
         body: dict[str, Any] = dict(extra_body or {})
         if reasoning_effort and effort_field == "reasoning":
@@ -248,6 +267,8 @@ class OpenAICompatibleStructuredLLM[T: BaseModel]:
             kwargs["default_headers"] = headers
         if body:
             kwargs["extra_body"] = body
+        if not follow_redirects:  # the key travels in a header: a server must not forward it elsewhere
+            kwargs["http_async_client"] = openai.DefaultAsyncHttpxClient(follow_redirects=False)
         lc_method = self.METHODS[method]
         extra = {"strict": True} if lc_method in ("json_schema", "function_calling") else {}
         self._runnable = ChatOpenAI(**kwargs).with_structured_output(
@@ -307,7 +328,7 @@ class MissingKeyLLM:
         self.reason = reason
 
     async def ainvoke(self, system: str, user: str) -> LLMResult:
-        raise LLMError(self.reason or f"{self.env_name} is not configured on the worker (needed for model {self.model})")
+        raise LLMNotConfigured(self.reason or f"{self.env_name} is not configured on the worker (needed for model {self.model})")
 
 
 class LimitedLLM:
@@ -444,6 +465,7 @@ def build_role_llm(role: ResolvedRole, settings: Settings, catalog: dict[str, Mo
         # OpenRouter: its reported cost, else the catalog, else the role's price; any other server: the role's price
         price=(info or role_price(role)) if openrouter else role_price(role), reported_cost=openrouter,
         effort_field="reasoning" if openrouter else "reasoning_effort",
+        follow_redirects=openrouter,
     )
 
 

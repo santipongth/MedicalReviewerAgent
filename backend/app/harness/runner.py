@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.services.llm import LLMError, LLMOutputError, LLMRefusal, StructuredLLM
+from app.services.llm import LLMError, LLMOutputError, LLMRefusal, StructuredLLM, public_reason
 
 Validator = Callable[[Any], list[str]]
 EscalationFactory = Callable[[type[BaseModel]], StructuredLLM | None]
@@ -98,7 +98,7 @@ class HarnessRunner:
         try:
             res = await esc.ainvoke(system, user)
         except LLMError as exc:  # incl. refusal: the caller keeps its own answer and flags it
-            return HarnessResult(None, 0.0, 1, False, True, [f"escalation failed: {type(exc).__name__}: {exc}"],
+            return HarnessResult(None, 0.0, 1, False, True, [f"escalation failed: {public_reason(exc)}"],
                                  False, isinstance(exc, LLMRefusal))
         problems = validate(res.value) if validate else []
         return HarnessResult(res.value, res.cost_usd, 1, False, True, problems, not problems)

@@ -238,3 +238,15 @@ async def test_continue_leaves_a_full_stratum_alone_even_if_its_draw_drifted(roo
         await select(deps, drifted, "u", Manifest(seed=3, per_stratum=2, strata=strata, reviews=partial))
     assert len(drifted.calls) == 1  # only lung was fetched
     assert (root / "frames" / "cv.json").read_bytes() == cv_frame  # the full stratum keeps its committed draw
+
+
+def test_an_impossible_or_future_search_date_is_excluded():
+    from app.evals.select import _exclusion
+
+    def judged(date):
+        return CochraneEligibility(eligible=True, reason="", question="q", primary_outcome="o", search_date=date,
+                                   review_type="slr", rct_count=3, grade_reported=True)
+
+    for bad in ("2023-02-30", "2023-13-45", "2999-01-01"):
+        assert _exclusion(judged(bad)) == "no search date"
+    assert _exclusion(judged("2023-02-28")) == ""

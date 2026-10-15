@@ -73,7 +73,7 @@ async def run_all(deps, manifest: Manifest, *, run_id: str, repeats: int, max_us
                     marker = models.inflight_path(pv, run_id, entry.id)
                     models.write_json_atomic(marker, {"cap": need})
                 rec = await replay(deps, fixture, options=entry_options(entry), repeat=repeat, run_id=run_id,
-                                   git_sha=git_sha, primary_outcome=entry.primary_outcome)
+                                   git_sha=git_sha, primary_outcome=entry.primary_outcome, title=entry.title)
             models.write_json_atomic(path, rec)
             if marker is not None:  # only now: until the record exists the marker is the only trace of the spend
                 with contextlib.suppress(OSError):  # a marker left behind only over-counts

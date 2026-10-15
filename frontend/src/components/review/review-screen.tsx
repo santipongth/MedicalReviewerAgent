@@ -34,9 +34,11 @@ export function ReviewScreen({ id }: { id: string }) {
     && isPersonalRefusal(run.code ?? review?.refusal_code, run.message ?? review?.error);
   const topicShown = !personalRefusal && (phase === "report" || phase === "terminal" || !!run.guardPassed);
   useEffect(() => {
+    // Plan 31: while a finished review loads, the server-rendered title stays (no flash of the fallback)
+    if (phase === "loading") return;
     if (topicShown && knownTopic) document.title = knownTopic;
     else document.title = FALLBACK_TITLE;
-  }, [knownTopic, topicShown]);
+  }, [knownTopic, topicShown, phase]);
   const queuePosition = polledPosition === undefined ? review?.queue_position : polledPosition;
 
   if (phase === "loading") {

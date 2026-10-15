@@ -24,6 +24,20 @@ describe("ModelsHistory", () => {
     expect(within(v3).getByRole("link", { name: /YAML/ })).toHaveAttribute("href", "/api/v1/admin/llm-config/versions/3/yaml");
   });
 
+  it("names each restore button by its version, so the rows' buttons can be told apart", async () => {
+    mockAdminFetch((m, p) => (p.startsWith("/llm-config/versions") ? [200, VERSIONS] : undefined));
+    await renderAdmin(<ModelsHistory base={3} onChanged={() => {}} />);
+    await screen.findByRole("listitem", { name: /เวอร์ชัน 3/ });
+    const rows = screen.getAllByRole("listitem").filter((li) => /^เวอร์ชัน \d+$/.test(li.getAttribute("aria-label") ?? ""));
+    expect(rows.length).toBeGreaterThan(1);
+    for (const row of rows) {
+      const id = row.getAttribute("aria-label")!.replace("เวอร์ชัน ", "");
+      const restore = within(row).queryByRole("button", { name: /ย้อนกลับ/ });
+      if (id === "3") expect(restore).toBeNull(); // the version in use is not offered
+      else expect(restore).toHaveAccessibleName(`ย้อนกลับไปเวอร์ชัน ${id}`);
+    }
+  });
+
   it("says plainly that a version with no changes has none, instead of an empty list", async () => {
     mockAdminFetch((m, p) => (p.startsWith("/llm-config/versions") ? [200, VERSIONS] : undefined));
     await renderAdmin(<ModelsHistory base={3} onChanged={() => {}} />);
@@ -42,7 +56,7 @@ describe("ModelsHistory", () => {
     });
     await renderAdmin(<ModelsHistory base={3} onChanged={onChanged} />);
     const v2 = await screen.findByRole("listitem", { name: /เวอร์ชัน 2/ });
-    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }));
+    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 2" }));
     fireEvent.click(within(v2).getByRole("button", { name: "ยืนยันย้อนกลับ" }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     const post = fetch.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST")!;
@@ -70,7 +84,7 @@ describe("ModelsHistory", () => {
     });
     await renderAdmin(<ModelsHistory base={3} onChanged={onChanged} />);
     const v2 = await screen.findByRole("listitem", { name: /เวอร์ชัน 2/ });
-    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }));
+    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 2" }));
     fireEvent.click(within(v2).getByRole("button", { name: "ยืนยันย้อนกลับ" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("version 5 is in use now");
     expect(onChanged).toHaveBeenCalledTimes(1);
@@ -142,7 +156,7 @@ describe("ModelsHistory", () => {
     });
     await renderAdmin(<ModelsHistory base={3} onChanged={() => {}} />);
     const v2 = await screen.findByRole("listitem", { name: /เวอร์ชัน 2/ });
-    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }));
+    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 2" }));
     fireEvent.click(within(v2).getByRole("button", { name: "ยืนยันย้อนกลับ" }));
     const note = await screen.findByText(/แจ้ง worker ไม่สำเร็จ/);
     expect(note).toHaveTextContent("บันทึกแล้ว แต่แจ้ง worker ไม่สำเร็จ: worker จะใช้เวอร์ชันนี้ภายใน 30 วินาที");

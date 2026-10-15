@@ -195,3 +195,19 @@ async def test_an_eval_run_reads_the_ring_unless_given_a_config_file(session_fac
     assert await eval_keys(SETTINGS, str(tmp_path / "llm.yaml"), lambda: session_factory) is None
     loaded = await eval_keys(SETTINGS, None, lambda: session_factory)
     assert isinstance(loaded, KeyRing) and loaded.revision is None
+
+
+async def test_a_redirect_from_a_non_openrouter_provider_is_not_followed(fake_openai):
+    fake_openai.replies.append(
+        (307, {}, {"location": f"http://127.0.0.1:{fake_openai.port}/elsewhere/chat/completions"}))
+    llm = OpenAICompatibleStructuredLLM(TopicVerdict, model="m", api_key=KEY, base_url=fake_openai.url,
+                                        max_tokens=64, max_retries=0, follow_redirects=False)
+    with pytest.raises(LLMError):
+        await llm.ainvoke("s", "u")
+    assert fake_openai.elsewhere == []
+
+
+def test_only_openrouter_follows_redirects():
+    free = build_role_llm(guard(config("ollama", "http://localhost:11434/v1")), SETTINGS, None)
+    assert free.follow_redirects is False
+    assert build_role_llm(guard(copy.deepcopy(MINIMAL)), SETTINGS, None).follow_redirects is True

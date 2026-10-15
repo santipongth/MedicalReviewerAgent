@@ -37,8 +37,26 @@ def default_terms() -> list[GlossaryTerm]:
     return parse_glossary(GLOSSARY["th"])
 
 
+def _forms(alias: str) -> list[str]:
+    """The alias and its plural or singular (last word only): `trial`/`trials`, `study`/`studies`, `events`/`event`."""
+    low = alias.lower()
+    forms = [alias, alias + "s", alias + "es"]
+    if low.endswith("y"):
+        forms.append(alias[:-1] + "ies")
+    if low.endswith("ies"):
+        forms.append(alias[:-3] + "y")
+    if low.endswith("es"):
+        forms.append(alias[:-2])
+    if low.endswith("s"):
+        forms.append(alias[:-1])
+    return list(dict.fromkeys(forms))
+
+
 def _mentions(source: str, alias: str) -> bool:
-    return re.search(rf"(?<![A-Za-z]){re.escape(alias)}(?![A-Za-z])", source, re.IGNORECASE) is not None
+    """Plural-aware (Plan 31); the bare word `sensitivity` does not match inside `sensitivity analysis`."""
+    alternatives = "|".join(re.escape(f) for f in sorted(_forms(alias), key=len, reverse=True))
+    tail = r"(?!\s+analys[ie]s)" if alias.lower() == "sensitivity" else ""
+    return re.search(rf"(?<![A-Za-z])(?:{alternatives})(?![A-Za-z]){tail}", source, re.IGNORECASE) is not None
 
 
 def check_pair(source_en: str, text_th: str, terms: list[GlossaryTerm]) -> list[tuple[str, bool]]:

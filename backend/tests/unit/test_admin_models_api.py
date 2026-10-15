@@ -167,7 +167,8 @@ async def test_test_call_resolves_the_draft_rate_limits_and_audits(client, sessi
 
     async def fake_probe(role, settings, catalog=None, keys=None):
         seen.append((role.role, role.spec.model))
-        return {"ok": True, "latency_ms": 5, "cost_usd": 0.0001, "model": role.spec.model, "error": None}
+        return {"ok": True, "latency_ms": 5, "cost_usd": 0.0001, "priced": True, "model": role.spec.model,
+                "error": None}
 
     monkeypatch.setattr("app.api.admin_models.probe", fake_probe)
     draft = with_model(MINIMAL, "better", "synthesizer", "vendor/new")
@@ -220,7 +221,8 @@ def probe_calls(monkeypatch):
 
     async def fake_probe(role, settings, catalog=None, keys=None):
         calls.append((role.role, role.spec.model))
-        return {"ok": True, "latency_ms": 5, "cost_usd": 0.0001, "model": role.spec.model, "error": None}
+        return {"ok": True, "latency_ms": 5, "cost_usd": 0.0001, "priced": True, "model": role.spec.model,
+                "error": None}
 
     monkeypatch.setattr("app.api.admin_models.probe", fake_probe)
     return calls
@@ -735,3 +737,25 @@ async def test_state_with_a_broken_llm_yaml_and_no_version_answers_with_the_erro
     assert r.status_code == 200
     assert (r.json()["source"], r.json()["version"], r.json()["config"]) == ("file", None, {})
     assert "invalid YAML" in r.json()["error"]
+
+
+def _unpriced_extractor() -> dict:
+    raw = copy.deepcopy(MINIMAL)
+    raw["providers"]["deepseek"] = {"kind": "openai_compatible", "base_url": "https://api.deepseek.com/v1"}
+    raw["presets"]["cheap"]["extractor"] = {"model": "deepseek-chat", "provider": "deepseek"}
+    return raw
+
+
+async def test_validate_and_save_name_the_unpriced_roles(client, session_factory):
+    h = await admin_headers(client, session_factory)
+    want = [{"preset": "cheap", "role": "extractor", "kind": "price"}]
+    report = (await client.post(f"{BASE}/llm-config/validate", json={"config": _unpriced_extractor()},
+                                headers=h)).json()
+    assert report["ok"] is False and report["role_errors"] == want
+    saved = await client.post(f"{BASE}/llm-config", json={"config": _unpriced_extractor(), "base_version": None},
+                              headers=h)
+    assert saved.status_code == 422 and saved.json()["role_errors"] == want and "price_in" in saved.json()["detail"]
+    fine = (await client.post(f"{BASE}/llm-config/validate", json={"config": MINIMAL}, headers=h)).json()
+    assert fine["ok"] is True and fine["role_errors"] == []
+    broken = (await client.post(f"{BASE}/llm-config/validate", json={"yaml": "active_preset: x"}, headers=h)).json()
+    assert broken["role_errors"] == []

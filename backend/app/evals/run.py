@@ -28,9 +28,9 @@ MATCH_SYSTEM = ("You match outcome names. Given a target outcome from a Cochrane
                 "(same construct; wording and abbreviations may differ), or null when none does.")
 
 
-def eval_state(fixture: Fixture, options: dict[str, Any], language: str = "th") -> dict[str, Any]:
+def eval_state(fixture: Fixture, options: dict[str, Any], language: str = "th", title: str = "") -> dict[str, Any]:
     state = dict(initial_state(f"eval-{fixture.id}", fixture.topic, language, options))
-    candidates, _ = drop_target(fixture.candidates, fixture.id, fixture.pmid)  # belt and braces for old fixtures
+    candidates, _ = drop_target(fixture.candidates, fixture.id, fixture.pmid, title or fixture.title)  # belt and braces for old fixtures
     state.update(english_topic=fixture.english_topic, question=fixture.question, plan=fixture.plan,
                  candidates=candidates, search_stats=fixture.search_stats, eval_year_to=fixture.year_to)
     return state
@@ -59,7 +59,7 @@ async def match_primary(deps, result: dict[str, Any], primary_outcome: str) -> t
 
 
 async def replay(deps, fixture: Fixture, *, options: dict[str, Any], repeat: int, run_id: str, git_sha: str,
-                 language: str = "th", primary_outcome: str = "") -> RunRecord:
+                 language: str = "th", primary_outcome: str = "", title: str = "") -> RunRecord:
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
     t0 = time.monotonic()
     tally = CitationTally()
@@ -74,7 +74,7 @@ async def replay(deps, fixture: Fixture, *, options: dict[str, Any], repeat: int
     try:
         with use_budget(budget), use_tally(tally):
             graph = build_eval_graph(deps)
-            values = await graph.ainvoke(eval_state(fixture, options, language),
+            values = await graph.ainvoke(eval_state(fixture, options, language, title),
                                          {"configurable": {"thread_id": f"{fixture.id}-{repeat}"}})
             result = values.get("result") or {}
             if not result:  # a graph that ends without a report is a failed review, never a "done" one

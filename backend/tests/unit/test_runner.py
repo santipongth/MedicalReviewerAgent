@@ -10,6 +10,7 @@ from app.db.repositories import EventRepository, ReviewRepository
 from app.graph.graph import GraphDeps, build_graph
 from app.graph.state import ReviewState
 from app.services.events import EventSink
+from app.services.llm import NOT_CONFIGURED_ERROR, MissingKeyLLM
 from app.worker.runner import ReviewRunner
 
 
@@ -202,3 +203,28 @@ async def test_an_errored_review_still_counts_what_it_spent(session_factory, red
     assert round(await capacity.usd_today(), 4) == 0.07
     async with session_factory() as s:
         assert float((await ReviewRepository(s).get(review.id)).cost_usd) == 0.07
+
+
+def _graph_raising(make_call):
+    async def boom(state: ReviewState) -> dict:
+        await make_call()
+
+    b = StateGraph(ReviewState)
+    b.add_node("boom", boom)
+    b.add_edge(START, "boom")
+    b.add_edge("boom", END)
+    return b.compile(checkpointer=InMemorySaver())
+
+
+async def test_a_missing_key_never_reaches_the_public_error(session_factory, redis):
+    review = await _queued_review(session_factory)
+    sink = EventSink(session_factory, redis, 60)
+    reason = "no key for provider deepseek (the stored key belongs to https://llm.internal.example; enter one)"
+    graph = _graph_raising(lambda: MissingKeyLLM("deepseek-chat", reason=reason).ainvoke("s", "u"))
+    assert await ReviewRunner(session_factory, sink, graph).run(review.id) == "error"
+    async with session_factory() as s:
+        got = await ReviewRepository(s).get(review.id)
+        events = await EventRepository(s).list_since(review.id, 0)
+    assert got.error == NOT_CONFIGURED_ERROR
+    assert events[-1].payload["message"] == NOT_CONFIGURED_ERROR
+    assert all("internal.example" not in str(e.payload) and "deepseek" not in str(e.payload) for e in events)

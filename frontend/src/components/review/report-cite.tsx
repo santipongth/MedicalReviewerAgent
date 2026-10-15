@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { exportUrl } from "@/lib/api";
-import { howToCite } from "@/lib/citation";
+import { howToCite, howToCiteParts } from "@/lib/citation";
 import type { Lang } from "@/lib/i18n";
 import { fieldLang, RC } from "@/lib/i18n-report";
 import type { ReviewTypeOrLegacy } from "@/lib/review-type";
@@ -62,12 +62,16 @@ export function DownloadsAndCite({ review, result, type, lang, offline }: {
   const url = offline || !origin ? null : `${origin}/r/${encodeURIComponent(review.id)}`;
   const cite = howToCite({ question: citedQuestion(review, result, lang), type, id: review.id,
     date: review.finished_at ?? review.created_at, url, lang });
+  const citeParts = howToCiteParts({ question: citedQuestion(review, result, lang), type, id: review.id,
+    date: review.finished_at ?? review.created_at, url, lang });
   const citeTitle = Lw(lang, C.title);
   const R = RC.refs;
   const citeBlock = (
     <div className="grid gap-2">
       <p data-how-to-cite className="max-w-[75ch] rounded-sm border border-rule bg-ground px-3 py-2.5 text-[0.95rem] leading-[1.7] break-words"
-        lang={fieldLang(cite, lang)}>{cite}</p>
+        lang={fieldLang(cite, lang)}>
+        {citeParts.map((s, i) => (s.isolate ? <bdi key={i}>{s.text}</bdi> : s.text))}
+      </p>
       <CopyTextButton text={cite} label={L(lang, R.copy)}
         name={L(lang, C.name)} copied={L(lang, R.copied)}
         failed={L(lang, R.copyFailed)}

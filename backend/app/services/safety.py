@@ -100,9 +100,11 @@ MEDICAL_PATTERNS_TH = (r"กินยา.{0,12}[\d๐-๙]+เม็ด", r"ก�
 # refused. The topic guard (an LLM, `personal_medical`, first node of the review job; its refusal also lists 1669) is
 # the backstop for every emergency this pass lets through. A topic with a research word (RESEARCH_EN/TH) is never
 # flagged, except by the self-harm "always" phrases. Otherwise a medical red flag counts when:
-# - it has an explicit personal anchor: English I / I'm / me / my / our (so "my|our <kin>" is covered) / someone /
-#   right now; Thai first-person pronouns, or a kin word at the very start of the topic (not followed by ที่ / ของ,
-#   which make a population title: "แม่ที่มีภาวะ…") or right before a pronoun (แม่ฉัน). Standalone help / now / urgent / kin words are NOT anchors. Compounds in NONPERSONAL_TH neutralise only
+# - it has an explicit personal anchor: English I / I'm / me / my / our (so "my|our <kin>" is covered) / right now /
+#   "someone" or "somebody" only as the opening subject or right after a plea ("help someone …"), and then not beside
+#   a strong framer (STRONG_FRAMERS_EN), not before a colon subtitle unless the message is urgent; Thai
+#   first-person pronouns, or a kin word at the very start of the topic (not followed by ที่ / ของ / และ,
+#   which make a population title: "แม่ที่มีภาวะ…", "พ่อและแม่…") or right before a pronoun (แม่ฉัน). Standalone help / now / urgent / kin words are NOT anchors. Compounds in NONPERSONAL_TH neutralise only
 #   the marker they contain; or
 # - Thai, no anchor (Thai drops pronouns): the topic is short (at most 40 characters without spaces) and has no framer
 #   (FRAMERS_TH, including connectors such as จาก / และ / ลด / แก้ / ต้าน / ขณะ, or a leading ยา "drug"):
@@ -113,11 +115,23 @@ MEDICAL_PATTERNS_TH = (r"กินยา.{0,12}[\d๐-๙]+เม็ด", r"ก�
 #   framers): "baby not breathing" and "mom collapsed please help" count; a
 #   noun-phrase title such as "heart attack aspirin" or "slurred speech thrombectomy" has no cue and does not.
 #   Noun-like flags (NOANCHOR_EXCLUDED_EN: overdose, anaphylaxis ...) always need an anchor.
+# Plan 31 (D1-D3): the text is folded first (`fold_typos`: runs of three or more identical letters, and a fixed table of
+# red-flag misspellings); on the English no-anchor path an "and" next to a red flag joins two flags and is no framer;
+# "someone" is an anchor only as the opening subject or after a plea, and not beside a strong framer
+# (STRONG_FRAMERS_EN); "if/when/whenever/should/can/could + someone/somebody/a person" is a generic frame unless
+# the message is urgent; "to help" is
+# neither cue nor urgency word (nor "help seeking"); a Thai kin word followed by และ is a population. The and-joiner
+# joins only when the other side is another flag or a person's state (STATE_WORDS_EN: "chest pain and sweating", not
+# "choking and baby led weaning"; "has" is both joiner and cue, so it is no state word); a colon subtitle blocks the
+# "someone" anchor unless the message is urgent. A capitalised PLS / PLZ in a topic that is not all capitals is an
+# abbreviation (PLS-SEM, PLZ zinc finger), blanked before any check; lower case or an all-caps message stays a plea.
+# Blind sets (research refused of 70, traps refused of 15, emergencies caught of 30):
+# set A master 9 / 4 / 11, first Plan 31 pass 0 / 0 / 27, final 0 / 0 / 25;
+# set B master not measured, first Plan 31 pass 8 / 1 / 28, final 0 / 0 / 27.
 # Known misses handed to the guard: an English message with no anchor and no cue ("took a whole bottle of sleeping
 # pills" passes only because "took" is a cue; "swallowed a battery" alone does not), a longer or framed English
 # description, a long Thai description, any framed Thai sentence with no anchor.
-PERSONAL_EN = ("i", "i'm", "im", "i've", "i am", "me", "my", "our", "myself", "someone", "somebody", "right now",
-               "just now")
+PERSONAL_EN = ("i", "i'm", "im", "i've", "i am", "me", "my", "our", "myself", "right now", "just now")
 PERSONAL_TH = ("ฉัน", "ดิฉัน", "ผม", "หนู", "เรา", "กู")  # pronouns; เรา not before ะ (หัวเราะ), กู not กู้ (resuscitation)
 KINSHIP_TH = ("แม่", "พ่อ", "ลูก", "สามี", "ภรรยา", "แฟน", "เพื่อน", "ยาย", "ปู่", "ย่า", "น้อง", "พี่")  # no "ตา" (eye)
 # Compounds where a pronoun or kin word is part of another word.
@@ -141,14 +155,25 @@ CUES_EN = ("help", "now", "please", "urgent", "asap", "quick", "quickly", "hurry
            "what should i do", "he", "she", "they", "him", "her", "his", "has", "just", "keeps",
            "took", "mom", "mum", "mother", "dad", "father", "baby", "son", "daughter", "husband", "wife", "child",
            "kid", "brother", "sister", "friend", "grandma", "grandpa", "granny", "grandmother", "grandfather",
-           "boyfriend", "girlfriend", "partner", "cant", "wont")
+           "boyfriend", "girlfriend", "partner", "cant", "wont", "pls", "plz")
 FRAMERS_EN = ("in", "of", "for", "among", "with", "without", "vs", "versus", "compared", "effect", "effects", "risk",
               "risks", "therapy", "prevention", "policy", "deaths", "death", "mortality", "causes", "cause",
               "factors", "factor", "guidelines", "and", "or", "by", "on", "from", "after", "during", "between",
-              "about", "symptoms", "signs", "syndrome", "recovery", "care", "know", "lung", "after", "than",
-              "as", "at", "among", "rate", "rates", "epidemiology", "overview", "history", "definition",
+              "about", "symptoms", "signs", "syndrome", "recovery", "care", "know", "lung", "than",
+              "as", "at", "rate", "rates", "epidemiology", "overview", "history", "definition",
               "lines", "leading", "protests", "pollution", "why", "how", "what is", "first aid", "when to", "always",
               "sign")
+# Plan 31 (D3): "someone" is no general anchor. These research-noun and question framers of FRAMERS_EN also stop the
+# opening "someone ..." / "help someone ..." anchor; prepositions (in, after, at) do not.
+STRONG_FRAMERS_EN = ("effect", "effects", "risk", "risks", "therapy", "prevention", "policy", "deaths", "death",
+                     "mortality", "causes", "cause", "factors", "factor", "guidelines", "symptoms", "signs", "sign",
+                     "syndrome", "recovery", "care", "epidemiology", "overview", "history", "definition", "rate",
+                     "rates", "versus", "vs", "compared", "why", "how", "what is", "first aid", "when to")
+# Plan 31: an "and" next to a red flag joins two flags only when the other side is a person's state, not a topic.
+STATE_WORDS_EN = ("is", "was", "are", "had", "cant", "cannot", "wont", "not", "no", "turning", "getting",
+                  "going", "sweating", "shaking", "vomiting", "fell", "fainted", "lost", "losing", "unable", "still",
+                  "keeps", "started", "stopped")
+URGENT_EN = ("help", "now", "please", "pls", "plz", "urgent", "asap", "quick", "quickly", "hurry")
 NOANCHOR_EXCLUDED_EN = ("anaphylaxis", "anaphylactic", "severe allergic reaction", "overdose", "overdosed")
 # Research framing: the topic asks about evidence for a population, so a red flag in it is a research subject.
 RESEARCH_EN = ("study", "studies", "trial", "research", "evidence", "review", "systematic", "meta-analys",
@@ -159,6 +184,45 @@ RESEARCH_TH = ("งานวิจัย", "วิจัย", "การศึ�
                "อุบัติการณ์", "ความชุก", "ผู้ป่วย", "อยากรู้เรื่อง", "อยากทราบ", "แนวทาง")
 
 _ROMAN_I = r"(?<!type )(?<!phase )(?<!class )(?<!grade )(?<!stage )"
+# Plan 31 (D1): misspellings of red-flag words only (each has no research reading), applied whole-word to the
+# normalized text before any list is matched.
+TYPOS_EN: tuple[tuple[str, str], ...] = (
+    (r"(?<![a-z])(?:cn+t|cannt)(?= (?:breath|breth|brethe|breate|breathe|talk|speak|move|wake|stand|walk|see|feel"
+     + r"|swallow|stop)(?![a-z]))", "cant"),  # not the abbreviation CNT
+    (r"(?<![a-z])(cant|cannot|can not|unable to|struggling to) (?:breath|breth|brethe|breate)(?![a-z])",
+     r"\1 breathe"),
+    (r"(?<![a-z])(?:breating|brething)(?![a-z])", "breathing"),
+    (r"(?<![a-z])(?:chest pian|chest pane|chest pai|chset pain|chets pain|chset pian)(?![a-z])", "chest pain"),
+    (r"(?<![a-z])(?:unconcious|unconsious|unconscous)(?![a-z])", "unconscious"),
+    (r"(?<![a-z])(?:siezures?|seizur|sezure|seisure)(?![a-z])", "seizure"),
+    (r"(?<![a-z])(?:chocking|chokeing)(?![a-z])", "choking"),
+    (r"(?<![a-z])(?:bleding|bledding|bleedin)(?![a-z])", "bleeding"),
+    (r"(?<![a-z])overdoze(?![a-z])", "overdose"),
+    (r"(?<![a-z])overdozed(?![a-z])", "overdosed"),
+    (r"(?<![a-z])(?:poisend|posioned)(?![a-z])", "poisoned"),
+    (r"(?<![a-z])(?:colapsed|collasped)(?![a-z])", "collapsed"),
+    (r"(?<![a-z])(?:heart|hart) (?:atack|attak|attac)(?![a-z])", "heart attack"),
+    (r"(?<![a-z])hart attack(?![a-z])", "heart attack"),
+    (r"(?<![a-z])alot(?![a-z])", "a lot"),
+)
+TYPOS_TH: tuple[tuple[str, str], ...] = (("เจบ", "เจ็บ"),)  # only before หน้าอก / อก
+_TYPOS_EN = tuple((re.compile(p), r) for p, r in TYPOS_EN)
+_LETTER_RUN = re.compile(r"([^\W\d_])\1{2,}")
+_LETTERS = re.compile(r"[^\W\d_]+")
+_ROMAN_WORD = re.compile(r"[ivxlcdm]+")  # "iii" in "NYHA III" is a numeral, never folded into the pronoun "i"
+
+
+def fold_typos(text: str) -> str:
+    """Fold an already normalized text: runs of three or more identical letters become one ("helppp", "อยากตายยย"),
+    then the fixed table of red-flag misspellings (TYPOS_EN, TYPOS_TH)."""
+    text = _LETTERS.sub(lambda m: m[0] if _ROMAN_WORD.fullmatch(m[0]) else _LETTER_RUN.sub(r"\1", m[0]), text)
+    for pattern, repl in _TYPOS_EN:
+        text = pattern.sub(repl, text)
+    for wrong, right in TYPOS_TH:
+        text = re.sub(re.escape(wrong) + r"(?=\s*(?:หน้าอก|อก))", right, text)
+    return text
+
+
 _ZERO_WIDTH = dict.fromkeys([*range(0x200B, 0x200E), 0x2060, 0xFEFF])
 _APOSTROPHES = dict.fromkeys(map(ord, "'’‘`´"))
 
@@ -192,8 +256,6 @@ def _english(phrases: tuple[str, ...], *, prefix: bool = False, patterns: tuple[
             parts.append(_ROMAN_I + r"i(?!\.[a-z])")  # not "i.v." or "i.e."
         elif p == "kms":
             parts.append(r"(?<!\d)(?<!\d )kms")  # not kilometres: "10 kms", "20kms"
-        elif p in ("someone", "somebody"):
-            parts.append(p + r"(?! with| who)")
         else:
             parts.append(re.escape(p))
     parts += list(patterns)
@@ -210,6 +272,15 @@ _PERSONAL_EN, _RESEARCH_EN = _english(PERSONAL_EN), _english(RESEARCH_EN, prefix
 _FRAMERS_EN, _CUES_EN = _english(FRAMERS_EN), _english(CUES_EN)
 _MEDICAL_EN_NOANCHOR = _english(tuple(p for p in MEDICAL_EN if p not in NOANCHOR_EXCLUDED_EN),
                                 patterns=MEDICAL_PATTERNS_EN)
+_STRONG_FRAMERS_EN, _URGENT_EN = _english(STRONG_FRAMERS_EN), _english(URGENT_EN)
+_SOMEONE_ANCHOR = re.compile(r"^(?:(?:please|pls|plz) )?(?:help )?(?:someone|somebody)(?! with| who)(?![a-z])")
+# a generic question about "someone" (not this person now): a framer unless the message is urgent
+_GENERIC_FRAME = re.compile(r"(?<![a-z])(?:if|when|whenever|should|can|could) (?:someone|somebody|a person)(?![a-z])")
+_TO_HELP = re.compile(r"(?<![a-z])(?:to help|help seeking)(?![a-z])")
+_COLON_SUBTITLE = re.compile(r"(?<!\d):(?!\d)\s*\w")  # not a clock time
+_FLAG_MARK = "\x00F"
+_AND = re.compile(r"\band\b")
+_MARK_OR_WORD = re.compile(_FLAG_MARK + r"|\w+")
 _ALWAYS_TH, _SELF_HARM_TH = _thai(SELF_HARM_ALWAYS_TH), _thai(SELF_HARM_TH)
 _MEDICAL_TH = _thai(MEDICAL_TH, MEDICAL_PATTERNS_TH)
 _RESEARCH_TH, _NONPERSONAL_TH = _thai(RESEARCH_TH), _thai(NONPERSONAL_TH)
@@ -218,7 +289,7 @@ _PRONOUN = "|".join(re.escape(p) for p in _norm_th(PERSONAL_TH) if p not in ("�
 _KIN = "|".join(re.escape(k) for k in _norm_th(KINSHIP_TH))
 # a pronoun, or a kin word at the very start (not a population title: แม่ที่… / ลูกของ…) or right before a pronoun;
 # applied after _NONPERSONAL_TH spans are blanked
-_ANCHOR_TH = re.compile(rf"(?:{_PRONOUN})|^(?:{_KIN})(?!ที่|ของ)|(?:{_KIN})(?:ของ)?(?:{_PRONOUN})")
+_ANCHOR_TH = re.compile(rf"(?:{_PRONOUN})|^(?:{_KIN})(?!ที่|ของ|และ)|(?:{_KIN})(?:ของ)?(?:{_PRONOUN})")
 
 
 @dataclass(frozen=True)
@@ -237,23 +308,56 @@ def _lang(language: str) -> str:
     return "th" if language == "th" else "en"
 
 
+def _join_flags(marked: str) -> str:
+    """Drop each "and" that joins a red flag (marked) to a person's state or to another flag."""
+    out, last = [], 0
+    for m in _AND.finditer(marked):
+        left = _MARK_OR_WORD.findall(marked[:m.start()])[-2:]
+        right = _MARK_OR_WORD.findall(marked[m.end():])[:2]
+        flag_left, flag_right = _FLAG_MARK in left, _FLAG_MARK in right
+        if (flag_left and flag_right or flag_left and right[:1] and right[0] in STATE_WORDS_EN
+                or flag_right and left[-1:] and left[-1] in STATE_WORDS_EN):
+            out += [marked[last:m.start()], " "]
+            last = m.end()
+    return "".join(out) + marked[last:]
+
+
+_PLEA_ABBREV = re.compile(r"(?<![A-Za-z])PL[SZ](?![A-Za-z])")
+
+
+def _blank_plea_abbrev(topic: str) -> str:
+    """A capitalised PLS / PLZ in a topic that is not all capitals is an abbreviation (partial least squares, ALS-like
+    acronyms, zinc finger), not a plea: blank it. A shouting all-caps message keeps its plea."""
+    return topic if topic.isupper() else _PLEA_ABBREV.sub(" ", topic)
+
+
 def red_flag(topic: str) -> Emergency | None:
     """The emergency a topic reads as, or None. Deterministic; see the module docstring for the rule."""
-    text = normalize(topic)
+    topic = _blank_plea_abbrev(topic or "")
+    text = fold_typos(normalize(topic))
     th = _nospace(text)  # Thai lists are matched without spaces
+    th_len = len(_nospace(normalize(topic)))  # the message length counts before repeated letters are folded
     if _ALWAYS_EN.search(text) or _ALWAYS_TH.search(th):
         return Emergency("self_harm")
     if _RESEARCH_EN.search(text) or _RESEARCH_TH.search(th):
         return None
     anchored_th = bool(_ANCHOR_TH.search(_NONPERSONAL_TH.sub("\0", th)))
-    personal = anchored_th or bool(_PERSONAL_EN.search(text))
+    # "someone" anchors only as the opening subject or after a plea, and not in a research-noun or question frame
+    spoken = _TO_HELP.sub(" ", text)
+    # a colon subtitle ("someone collapsed: bystander survey") makes it a title unless the message is urgent
+    someone = (bool(_SOMEONE_ANCHOR.search(text)) and not _STRONG_FRAMERS_EN.search(_MEDICAL_EN.sub(" ", text))
+               and not (_COLON_SUBTITLE.search(text) and not _URGENT_EN.search(spoken)))
+    personal = anchored_th or someone or bool(_PERSONAL_EN.search(text))
     # Thai drops pronouns: a short, unframed Thai topic counts without an anchor
-    pro_drop = len(th) <= PRO_DROP_MAX_CHARS and not _FRAMERS_TH.search(th)
+    pro_drop = th_len <= PRO_DROP_MAX_CHARS and not _FRAMERS_TH.search(th)
     if _SELF_HARM_EN.search(text) and personal or _SELF_HARM_TH.search(th) and (anchored_th or pro_drop):
         return Emergency("self_harm")
     # English with no anchor: short, a red flag, no framing word outside it, and a conversational cue
+    # (an "and" next to a red flag joins two flags, so it is no framer; "to help" is neither cue nor urgency word)
+    rest = _join_flags(_MEDICAL_EN_NOANCHOR.sub(_FLAG_MARK, text)).replace(_FLAG_MARK, " ")
+    generic = bool(_GENERIC_FRAME.search(text)) and not _URGENT_EN.search(spoken)
     short_en = (len(text.split()) <= SHORT_EN_MAX_WORDS and bool(_MEDICAL_EN_NOANCHOR.search(text))
-                and not _FRAMERS_EN.search(_MEDICAL_EN_NOANCHOR.sub(" ", text)) and bool(_CUES_EN.search(text)))
+                and not _FRAMERS_EN.search(rest) and not generic and bool(_CUES_EN.search(spoken)))
     if (personal and _MEDICAL_EN.search(text) or short_en
             or _MEDICAL_TH.search(th) and (anchored_th or pro_drop)):
         return Emergency("medical")

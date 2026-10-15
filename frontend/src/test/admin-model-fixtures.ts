@@ -27,5 +27,5 @@ export const REPORT_OK: ValidateReport = {
   ok: true, errors: [], warnings: ["better: vendor/better not found on OpenRouter"],
   cost: { cheap: { total_usd: 0.0123, per_role: {}, unknown_models: [] },
           better: { total_usd: 0, per_role: {}, unknown_models: ["guard: openrouter:vendor/better"] } },
-  config: CONFIG, yaml: "active_preset: cheap\n",
+  config: CONFIG, yaml: "active_preset: cheap\n", role_errors: [],
 };

@@ -13,7 +13,7 @@ from app.db.models import AdminUser
 from app.runtime import AppDeps
 from app.schemas.review import hash_ip
 from app.services.admin_auth import AdminPrincipal
-from app.services.admin_sessions import AdminSessions
+from app.services.admin_sessions import AdminSessions, fingerprint
 from app.services.api_keys import resolve_key
 from app.services.review_service import Identity
 
@@ -96,6 +96,9 @@ async def admin_from_cookie(request: Request, deps: AppDeps) -> AdminPrincipal:
     async with deps.session_factory() as session:
         user = await session.get(AdminUser, uuid.UUID(data["user_id"]))
     if user is None or user.disabled_at is not None:
+        await sessions.end(token)
+        raise unauthorized
+    if data.get("pw") != fingerprint(user.password_hash):  # the password changed (or a pre-Plan 31 session): ends it
         await sessions.end(token)
         raise unauthorized
     return AdminPrincipal(kind="user", id=user.id, label=user.username)

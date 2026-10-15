@@ -39,3 +39,11 @@ def test_eval_state_drops_target_again():
                  candidates=[{"doi": "10.1002/14651858.CD000001.pub3"}, {"pmid": "42"}, {"doi": "10.1/ok"}],
                  search_stats={}, status="ok")
     assert eval_state(fx, {})["candidates"] == [{"doi": "10.1/ok"}]
+
+
+def test_a_titled_copy_without_doi_or_pmid_is_dropped():
+    cands = [{"title": "Statins for X: a Cochrane review", "doi": "", "pmid": ""},
+             {"title": "Statins for X", "doi": "", "pmid": ""}, {"title": "Another title", "doi": "", "pmid": ""}]
+    kept, n = drop_target(cands, "CD000001", "", title="Statins for X")
+    assert n == 1 and [c["title"] for c in kept] == ["Statins for X: a Cochrane review", "Another title"]
+    assert drop_target(cands, "CD000001", "")[1] == 0  # no title given: as before

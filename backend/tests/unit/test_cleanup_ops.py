@@ -94,3 +94,34 @@ def test_an_empty_gold_file_is_no_gold_record(tmp_path, monkeypatch):
     (tmp_path / "gold" / "CD000001.yaml").write_text("", encoding="utf-8")
     assert models.load_gold("CD000001") is None
     assert models.load_gold("CD000002") is None  # no file
+
+
+async def test_a_heartbeat_that_lands_during_the_prune_is_kept(redis, monkeypatch):
+    old = {"version": "2", "preset": "cheap", "error": None,
+           "loaded_at": (datetime.now(UTC) - LOADED_MAX_AGE - timedelta(seconds=1)).isoformat()}
+    await redis.hset(LOADED_KEY, "w:1", json.dumps(old))
+    real_hgetall = redis.hgetall
+
+    async def hgetall_then_heartbeat(key):
+        seen = await real_hgetall(key)
+        await report_loaded(redis, "w:1", "3", "cheap")  # the worker reports between the read and the delete
+        return seen
+
+    monkeypatch.setattr(redis, "hgetall", hgetall_then_heartbeat)
+    assert await loaded_workers(redis) == []
+    monkeypatch.setattr(redis, "hgetall", real_hgetall)
+    assert [r["worker"] for r in await loaded_workers(redis)] == ["w:1"]  # the fresh report survived
+
+
+def test_a_failed_write_leaves_no_temporary_file(tmp_path, monkeypatch):
+    def broken(self, *args, **kwargs):
+        self.open("w").close()  # the file exists, then the write fails
+        raise OSError("disk full")
+
+    monkeypatch.setattr(models.Path, "write_text", broken)
+    target = tmp_path / "runs" / "x.json"
+    with pytest.raises(OSError):
+        models.write_json_atomic(target, {"a": 1})
+    with pytest.raises(OSError):
+        models.save_manifest(models.Manifest(seed=1), tmp_path / "manifest.yaml")
+    assert list(target.parent.iterdir()) == [] and not (tmp_path / "manifest.yaml.tmp").exists()

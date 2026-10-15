@@ -3,6 +3,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LlmConfigDoc } from "@/lib/admin-types";
 import { CONFIG } from "@/test/admin-model-fixtures";
+import { UNPRICED_COST } from "./models-providers";
 import { ModelsPresets } from "./models-presets";
 
 const test = vi.hoisted(() => ({ run: vi.fn() }));
@@ -34,7 +35,7 @@ function typeInto(input: HTMLElement, text: string) {
   for (let i = 1; i <= text.length; i += 1) fireEvent.change(input, { target: { value: text.slice(0, i) } });
 }
 
-const OK = { ok: true, latency_ms: 812, cost_usd: 0.0002, model: "vendor/cheap", error: null };
+const OK = { ok: true, latency_ms: 812, cost_usd: 0.0002, priced: true, model: "vendor/cheap", error: null };
 
 describe("ModelsPresets", () => {
   it("edits a role's model and settings in the draft", () => {
@@ -256,5 +257,22 @@ describe("ModelsPresets fallback field", () => {
     expect(field().value).toBe("x/y, z/w");
     fireEvent.change(screen.getByLabelText("preset ที่กำลังแก้"), { target: { value: "better" } });
     expect(field().value).toBe("");
+  });
+});
+
+describe("ModelsPresets, Plan 31", () => {
+  it("shows an unpriced test as an unknown cost, never $0.0000", async () => {
+    test.run.mockResolvedValue({ ...OK, priced: false, cost_usd: null });
+    render(<Harness onChange={vi.fn()} />);
+    fireEvent.click(within(screen.getByRole("row", { name: /extractor/ })).getByRole("button", { name: "ทดสอบ" }));
+    expect(await screen.findByText(UNPRICED_COST, { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.0000/)).not.toBeInTheDocument();
+  });
+
+  it("puts a role_errors price hint on that row only, though the client check passes", () => {
+    render(<ModelsPresets draft={CONFIG} setDraft={vi.fn()} fail={(e) => String(e)} roleErrors={[{ preset: "cheap", role: "extractor", kind: "price" }]} />);
+    const hint = "ต้องใส่ราคา input และ output (USD ต่อ 1M token)";
+    expect(within(screen.getByRole("row", { name: /extractor/ })).getByText(hint)).toBeInTheDocument();
+    expect(screen.getAllByText(hint)).toHaveLength(1);
   });
 });

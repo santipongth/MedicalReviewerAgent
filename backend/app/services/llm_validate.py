@@ -14,7 +14,9 @@ from app.services.llm_config import (
     CONFIG_ERRORS,
     FALLBACK_ROLES,
     LLMConfig,
+    LLMConfigError,
     ResolvedLLMConfig,
+    ResolvedRole,
     config_error_text,
     ensure_storable,
     is_local_origin,
@@ -43,27 +45,33 @@ def validate_document(raw: Any, settings: Settings, catalog: dict[str, ModelInfo
         return _validate(raw, settings, catalog, keys)
     except CONFIG_ERRORS as exc:  # a bad document is a result to show, never a server error
         return {"ok": False, "errors": [config_error_text(exc)], "warnings": [], "cost": {}, "config": None,
-                "yaml": None}
+                "yaml": None, "role_errors": []}
+
+
+def role_unpriced(role: ResolvedRole, catalog: dict[str, ModelInfo] | None) -> bool:
+    """True when the review cost cap cannot count this role's calls (Plan 23c, carried from the 23b review): a role off
+    OpenRouter without a price of its own (Plan 23e: an openai_compatible role, or a direct Anthropic model missing from
+    PRICES_PER_MTOK), or an OpenRouter model the catalog does not list and no role price covers (counted only when
+    OpenRouter reports the call's cost). Without a catalog the OpenRouter check is skipped (validate already says so).
+    Plan 31: a server on this machine costs nothing, so it is never unpriced."""
+    return role.spec.price_in is None and (
+        (role.kind == "openai_compatible"
+         and not is_local_origin(provider_origin(role.provider, role.provider_spec)))
+        or (role.kind == "anthropic" and role.spec.model not in PRICES_PER_MTOK)
+        or (role.kind == "openrouter" and catalog is not None and role.spec.model not in catalog))
 
 
 def unpriced_roles(resolved: ResolvedLLMConfig, catalog: dict[str, ModelInfo] | None) -> list[str]:
-    """Roles whose calls the review cost cap cannot count (Plan 23c, carried from the 23b review): a role off OpenRouter
-    without a price of its own (Plan 23e: an openai_compatible role, or a direct Anthropic model missing from
-    PRICES_PER_MTOK), or an OpenRouter model the catalog does not list and no role price covers (counted only when
-    OpenRouter reports the call's cost). Without a catalog the OpenRouter check is skipped (validate already says so)."""
-    return [name for name, role in resolved.roles.items()
-            if role.spec.price_in is None and (
-                role.kind == "openai_compatible"
-                or (role.kind == "anthropic" and role.spec.model not in PRICES_PER_MTOK)
-                or (role.kind == "openrouter" and catalog is not None and role.spec.model not in catalog))]
+    """The names of the roles role_unpriced flags."""
+    return [name for name, role in resolved.roles.items() if role_unpriced(role, catalog)]
 
 
-def price_errors(config: LLMConfig) -> list[str]:
-    """Every role of every preset (overrides applied) whose calls the review cost cap could not count: off OpenRouter
-    no catalog prices a call, so the role must carry price_in and price_out (an Anthropic model in PRICES_PER_MTOK is
-    priced already; 0 is a valid price for a local server). A role that only copies another (FALLBACK_ROLES) is not
-    listed again when the role it copies is listed: pricing that one prices both."""
-    out: list[str] = []
+def _price_findings(config: LLMConfig) -> list[tuple[str, str, str]]:
+    """(preset, role, message) for every role of every preset (overrides applied) whose calls the review cost cap could
+    not count: off OpenRouter no catalog prices a call, so the role must carry price_in and price_out (an Anthropic
+    model in PRICES_PER_MTOK is priced already; 0 is a valid price for a local server). A role that only copies another
+    (FALLBACK_ROLES) is not listed again when the role it copies is listed: pricing that one prices both."""
+    out: list[tuple[str, str, str]] = []
     for preset in config.presets:
         resolved = resolve_llm_config(config, preset, where="config")
         unpriced = [name for name, role in resolved.roles.items() if role.spec.price_in is None and (
@@ -73,10 +81,19 @@ def price_errors(config: LLMConfig) -> list[str]:
             if copied and FALLBACK_ROLES.get(name) in unpriced:
                 continue
             role = resolved.roles[name]
-            out.append(f"presets.{preset}.{name}: price_in and price_out (USD per 1M tokens) are required for "
-                       f"provider '{role.provider}' ({role.kind}); the review cost cap cannot count its calls "
-                       "otherwise")
+            text = (f"presets.{preset}.{name}: price_in and price_out (USD per 1M tokens) are required for "
+                    f"provider '{role.provider}' ({role.kind}); the review cost cap cannot count its calls otherwise")
+            out.append((preset, name, text))
     return out
+
+
+def price_errors(config: LLMConfig) -> list[str]:
+    return [text for _, _, text in _price_findings(config)]
+
+
+def price_role_errors(config: LLMConfig) -> list[dict[str, str]]:
+    """The same roles as price_errors, structured so the console can point at the field (Plan 31)."""
+    return [{"preset": preset, "role": name, "kind": "price"} for preset, name, _ in _price_findings(config)]
 
 
 def document_errors(config: LLMConfig) -> list[str]:
@@ -86,6 +103,14 @@ def document_errors(config: LLMConfig) -> list[str]:
     if config.default_provider not in config.providers:
         out.append(f"default_provider '{config.default_provider}' is not configured in providers")
     return out + price_errors(config)
+
+
+class DocumentErrors(LLMConfigError):
+    """document_errors refused a save: the text for `detail`, and which roles are unpriced for the console."""
+
+    def __init__(self, message: str, role_errors: list[dict[str, str]]) -> None:
+        super().__init__(message)
+        self.role_errors = role_errors
 
 
 def save_error_text(errors: list[str]) -> str:
@@ -117,7 +142,8 @@ def _validate(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None
     normalized = config.model_dump(mode="json", exclude_unset=True)
     ensure_storable(normalized)  # what save would refuse is not "ok" here either
     if errors := document_errors(config):
-        return {"ok": False, "errors": errors, "warnings": [], "cost": {}, "config": None, "yaml": None}
+        return {"ok": False, "errors": errors, "warnings": [], "cost": {}, "config": None, "yaml": None,
+                "role_errors": price_role_errors(config)}
     warnings: list[str] = []
     cost: dict[str, Any] = {}
     if catalog is None:
@@ -149,4 +175,4 @@ def _validate(raw: Any, settings: Settings, catalog: dict[str, ModelInfo] | None
         elif choice.problem is None:
             warnings.append(f"{key_env(name)} is not set: the {name} roles cannot run")
     return {"ok": True, "errors": [], "warnings": warnings, "cost": cost, "config": normalized,
-            "yaml": to_yaml(normalized)}
+            "yaml": to_yaml(normalized), "role_errors": []}

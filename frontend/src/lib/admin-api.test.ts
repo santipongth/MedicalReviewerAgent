@@ -85,11 +85,27 @@ describe("adminApi", () => {
     expect(await adminApi.startHarness(body).catch((e: unknown) => e)).toMatchObject({ status: 503, reasons: ["no_worker"], errors: null });
     stub(422, { detail: [{ loc: ["body", "values"], msg: "Field required", type: "missing" }] });
     expect(await adminApi.saveSettings({ values: {}, base_version: null }).catch((e: unknown) => e))
-      .toMatchObject({ structuredDetail: true, errors: null, reasons: null });
+      .toMatchObject({ structuredDetail: true, errors: [{ field: "values", message: "Field required" }], reasons: null });
     stub(422, { detail: "x", errors: [{ field: 3, message: "x" }], reasons: ["no_worker", 1] });
     expect(await adminApi.saveSettings({ values: {}, base_version: null }).catch((e: unknown) => e))
       .toMatchObject({ errors: null, reasons: null });
     expect(new AdminApiError(500, "x")).toMatchObject({ body: null, errors: null, reasons: null });
+  });
+
+  it("reads a FastAPI detail[] list as field errors, and lets a body's errors win (Plan 31)", () => {
+    const detail = [
+      { type: "greater_than", loc: ["body", "max_usd"], msg: "Input should be greater than 0" },
+      { type: "extra_forbidden", loc: ["body", "<extra>"], msg: "Extra inputs are not permitted" },
+      { type: "x", loc: ["query", "q"], msg: "bad" },
+    ];
+    expect(new AdminApiError(422, "x", null, true, { detail }).errors).toEqual([
+      { field: "max_usd", message: "Input should be greater than 0" },
+      { field: null, message: "Extra inputs are not permitted" },
+      { field: null, message: "bad" },
+    ]);
+    expect(new AdminApiError(422, "x", null, true, { detail, errors: [{ field: "a", message: "m" }] }).errors)
+      .toEqual([{ field: "a", message: "m" }]);
+    expect(new AdminApiError(422, "x", null, true, { detail: [{ loc: "body", msg: "x" }] }).errors).toBeNull();
   });
 
   it("maps failures to AdminApiError with the detail and Retry-After", async () => {

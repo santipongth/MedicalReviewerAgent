@@ -29,6 +29,15 @@ from app.services.audit import record
 from app.services.budget import review_cost_cap
 from app.services.review_service import Conflict, NotFound, ServiceError, Unprocessable
 
+
+class FieldUnprocessable(Unprocessable):
+    """A 422 that names the start-form field it is about (None: the whole request), for the console to show there."""
+
+    def __init__(self, detail: str, field: str | None) -> None:
+        super().__init__(detail)
+        self.field = field
+
+
 WORKER_KEY = "mra:harness:worker"
 WORKER_TTL_SECONDS = 90
 ACTIVE = ("queued", "running")
@@ -140,17 +149,17 @@ async def start_run(session_factory, redis, settings: Settings, actor: AdminPrin
         raise HarnessUnavailable(state["reasons"])
     manifest = load_manifest()
     if set(body.strata) - {s["name"] for s in state["strata"]}:
-        raise Unprocessable("unknown strata: pick from the list")
+        raise FieldUnprocessable("unknown strata: pick from the list", "strata")
     entries = selection(manifest, body.strata, body.max_reviews)
     if not entries:
-        raise Unprocessable("nothing to run: no checked review in the chosen strata has a frozen pool")
+        raise FieldUnprocessable("nothing to run: no checked review in the chosen strata has a frozen pool", None)
     cap, ceiling = per_review_cap(settings, entries), settings.harness_max_usd
     if body.max_usd > ceiling:
-        raise Unprocessable(f"the cap is above the ceiling of ${ceiling:.2f} (HARNESS_MAX_USD)")
+        raise FieldUnprocessable(f"the cap is above the ceiling of ${ceiling:.2f} (HARNESS_MAX_USD)", "max_usd")
     if body.max_usd < cap:
-        raise Unprocessable(f"the cap must cover at least one review's own cap (${cap:.4f})")
+        raise FieldUnprocessable(f"the cap must cover at least one review's own cap (${cap:.4f})", "max_usd")
     if body.compare_run and body.compare_run not in {r["label"] for r in list_results()}:
-        raise Unprocessable("the comparison run has no run files")
+        raise FieldUnprocessable("the comparison run has no run files", "compare_run")
     now = datetime.now(UTC)
     run_id = f"console-{now:%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"  # the suffix keeps two starts in one second apart
     row = HarnessRun(run_id=run_id, prompt_version=settings.prompt_version, status="queued", active=1,
