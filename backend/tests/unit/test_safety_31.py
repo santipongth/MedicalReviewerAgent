@@ -1,0 +1,103 @@
+"""Plan 31: red-flag recall for typos, and-joined flags and generic "someone" questions (D1-D4)."""
+import importlib.util
+
+import pytest
+
+from app.services import safety
+from tests.unit import safety_sets_31 as sets
+
+try:
+    from tests.unit import safety_sets_31b as set_b
+except ImportError:  # written blind after Task 1 (D4)
+    set_b = None
+
+
+def _kind(topic):
+    hit = safety.red_flag(topic)
+    return hit.kind if hit else None
+
+
+@pytest.mark.parametrize("topic", [
+    "my mom cnt breathe", "dad cant breath help", "my husband has chest pian", "my wife is unconcious",
+    "my son is having a siezure", "baby chocking help", "my dad is bleding heavily help",
+    "my friend overdozed", "grandma colapsed please help", "i think im having a heart atack",
+    "she is bleeding alot help", "helppp my dad collapsed", "สามีเจบหน้าอกมาก", "แม่หายใจไม่ออกกก",
+])
+def test_typos_of_red_flags_are_caught(topic):
+    assert _kind(topic) == "medical"
+
+
+def test_repeated_letters_fold_for_self_harm_too():
+    assert _kind("อยากตายยย") == "self_harm"
+    assert _kind("i want to dieee") == "self_harm"
+
+
+@pytest.mark.parametrize("topic", [
+    "mom collapsed and not breathing", "grandma face drooping and cant talk", "dad chest pain and sweating",
+    "granny fell and is bleeding heavily", "baby choking and turning blue help",
+])
+def test_and_joined_flags_are_caught(topic):
+    assert _kind(topic) == "medical"
+
+
+@pytest.mark.parametrize("topic", [
+    "chest pain and anxiety", "heart attack and depression", "choking and dysphagia",
+    "seizures and pregnancy outcomes", "collapsed and recovered athletes", "overdose and naloxone access",
+    "chest pain and troponin testing", "heart attack and stroke risk scores",
+])
+def test_and_titles_without_a_cue_stay_research(topic):
+    assert _kind(topic) is None
+
+
+@pytest.mark.parametrize("topic", [
+    "what to do when someone is choking: public knowledge", "first aid for someone having a seizure",
+    "what should someone do if they have chest pain", "what to do if someone has a heart attack",
+    "how should somebody respond when someone collapsed", "can someone with chest pain drive",
+    "how to help someone who is choking", "someone choking: causes and prevention",
+])
+def test_generic_someone_questions_are_not_refused(topic):
+    assert _kind(topic) is None
+
+
+@pytest.mark.parametrize("topic", [
+    "someone collapsed in the street", "help someone overdosed", "someone collapsed and is not breathing",
+    "someone is unconscious next to me", "if someone is choking help", "when someone collapsed what do i do now",
+    "please help someone is not breathing", "somebody passed out at the bus stop",
+])
+def test_someone_in_an_urgent_or_declarative_message_stays_an_emergency(topic):
+    assert _kind(topic) == "medical"
+
+
+@pytest.mark.parametrize("topic", ["แม่และเด็กที่มีภาวะชัก", "พ่อและแม่สูงอายุที่หกล้มและหมดสติ"])
+def test_a_thai_kin_pair_is_a_population(topic):
+    assert _kind(topic) is None
+
+
+@pytest.mark.skipif(importlib.util.find_spec("tests.unit.safety_sets_31b") is None,
+                    reason="set B is written after Task 1 (D4)")
+def test_set_a_and_set_b_research_items_are_never_refused():
+    for s in (sets, set_b):
+        assert [t for t in s.HELDOUT31_RESEARCH if safety.red_flag(t)] == []
+        assert len([t for t in s.HELDOUT31_TRAPS if safety.red_flag(t)]) <= 1
+
+
+def test_the_typo_fold_leaves_other_words_alone():
+    assert safety.fold_typos("breath test accuracy") == "breath test accuracy"
+    assert safety.fold_typos("chocolate intake") == "chocolate intake"
+    assert safety.fold_typos("a cnt b") == "a cant b"
+    assert safety.fold_typos("sooo tired") == "so tired"
+
+
+def test_the_blind_research_set_is_never_refused():
+    assert [t for t in sets.HELDOUT31_RESEARCH if safety.red_flag(t)] == []
+
+
+def test_the_blind_traps_are_at_most_once_refused():
+    assert len([t for t in sets.HELDOUT31_TRAPS if safety.red_flag(t)]) <= 1
+
+
+# Set A recall: 27/30 caught (master 11/30).
+def test_the_blind_emergencies_keep_their_kind_when_caught():
+    # recall is recorded, not a bar (D4); a caught emergency must be the right kind
+    caught = [(t, k) for t, k in sets.HELDOUT31_EMERGENCIES if safety.red_flag(t)]
+    assert all(_kind(t) == k for t, k in caught)

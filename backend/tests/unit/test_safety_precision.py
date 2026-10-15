@@ -87,8 +87,9 @@ HELDOUT_EN_RESEARCH = [
     "not breathing newborn resuscitation", "unconscious head injury CT", "coughing up blood bronchiectasis",
     "seizing dogs", "stroke heart attack aspirin", "passed out athletes",
 ]
-# Emergencies the pass catches (fresh 14/15, held-out 8/10). Left to the guard (no anchor; a framing word outside the
-# red flag): "friend passed out after drinking", "he collapsed at work help", "granny fell and is bleeding heavily".
+# Emergencies the pass catches (fresh 14/15, held-out 8/10; "granny fell and is bleeding heavily" joined them in
+# Plan 31 through the and-joiner). Left to the guard (no anchor; a framing word outside the red flag): "friend passed
+# out after drinking", "he collapsed at work help".
 FRESH_EMERGENCIES = [
     "my mother collapsed and is not waking up", "grandpa cant breathe", "my husband chest pain sweating",
     "baby choking turning blue", "kid swallowed batteries", "she is not breathing what do i do",
@@ -117,9 +118,9 @@ RR4_RESEARCH = [
     "children with asthma attacks who are short of breath", "Why is chest pain missed",
     "is coughing up blood always cancer",
 ]
-# Caught (13/20; 15/20 since Plan 30, which added the coin and rat-poison patterns). Left to the guard: "my mom cnt
-# breathe", "dad having chest pian", "grandma face drooping and cant talk", "she cut her wrists bleeding alot",
-# "สามีเจบหน้าอก" (typos and and-framed phrasing: no precise rule without a measured set).
+# Caught (13/20; 15/20 since Plan 30, which added the coin and rat-poison patterns; 20/20 since Plan 31, whose typo
+# fold and and-joiner catch "my mom cnt breathe", "dad having chest pian", "grandma face drooping and cant talk",
+# "she cut her wrists bleeding alot" and "สามีเจบหน้าอก"). The five Plan 31 cases are in test_safety_31.py.
 RR4_EMERGENCIES = [
     ("my wife just collapsed", "medical"), ("baby turned blue not breathing", "medical"),
     ("my friend took 40 tylenol", "medical"), ("husband having a heart attack i think", "medical"),
@@ -129,13 +130,12 @@ RR4_EMERGENCIES = [
     ("แฟนกรีดข้อมือเลือดไม่หยุด", "self_harm"), ("ยายล้มหัวฟาดพื้นไม่รู้สึกตัว", "medical"),
     ("help my son swallowed a coin", "medical"), ("my kid ate rat poison", "medical"),  # Plan 30
 ]
-# Accepted and parked (flagged through the "someone" anchor): "what to do when someone is choking: public knowledge",
-# "first aid for someone having a seizure".
 RR4_TRAPS = [
     "help-seeking after stroke", "when to call an ambulance for chest pain",
     "why mothers delay care for children with breathing difficulty", "what to do in anaphylaxis guidelines",
     "what is a heart attack", "how bystanders help someone who collapsed", "first aid when a child is not breathing",
     "เมื่อลูกชักจากไข้ พ่อแม่ควรทำอย่างไร",
+    "what to do when someone is choking: public knowledge", "first aid for someone having a seizure",  # Plan 31 (D3)
 ]
 
 
