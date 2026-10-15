@@ -1,15 +1,9 @@
 """Plan 31: red-flag recall for typos, and-joined flags and generic "someone" questions (D1-D4)."""
-import importlib.util
-
 import pytest
 
 from app.services import safety
 from tests.unit import safety_sets_31 as sets
-
-try:
-    from tests.unit import safety_sets_31b as set_b
-except ImportError:  # written blind after Task 1 (D4)
-    set_b = None
+from tests.unit import safety_sets_31b as set_b
 
 
 def _kind(topic):
@@ -73,31 +67,45 @@ def test_a_thai_kin_pair_is_a_population(topic):
     assert _kind(topic) is None
 
 
-@pytest.mark.skipif(importlib.util.find_spec("tests.unit.safety_sets_31b") is None,
-                    reason="set B is written after Task 1 (D4)")
-def test_set_a_and_set_b_research_items_are_never_refused():
-    for s in (sets, set_b):
-        assert [t for t in s.HELDOUT31_RESEARCH if safety.red_flag(t)] == []
-        assert len([t for t in s.HELDOUT31_TRAPS if safety.red_flag(t)]) <= 1
+@pytest.mark.parametrize("s", [sets, set_b], ids=["set-a", "set-b"])
+def test_blind_research_items_are_never_refused_and_traps_at_most_once(s):
+    assert [t for t in s.HELDOUT31_RESEARCH if safety.red_flag(t)] == []
+    assert len([t for t in s.HELDOUT31_TRAPS if safety.red_flag(t)]) <= 1
 
 
 def test_the_typo_fold_leaves_other_words_alone():
     assert safety.fold_typos("breath test accuracy") == "breath test accuracy"
     assert safety.fold_typos("chocolate intake") == "chocolate intake"
-    assert safety.fold_typos("a cnt b") == "a cant b"
+    assert safety.fold_typos("a cnt b") == "a cnt b"  # CNT is an abbreviation unless a can't-verb follows
+    assert safety.fold_typos("mom cnt breathe") == "mom cant breathe"
     assert safety.fold_typos("sooo tired") == "so tired"
 
 
-def test_the_blind_research_set_is_never_refused():
-    assert [t for t in sets.HELDOUT31_RESEARCH if safety.red_flag(t)] == []
+@pytest.mark.parametrize("topic", [
+    "NYHA III heart failure with chest pain", "Killip III heart attack", "GOLD III COPD difficulty breathing",
+    "Mallampati III choking", "level iii trauma centres and unconscious head injury", "nyha iii chest pain",
+    "cnt exposure difficulty breathing", "now and then chest pain", "chest pain and now what",
+    "help-seeking after chest pain in women", "baby choking and baby led weaning",
+])
+def test_numerals_abbreviations_idioms_and_titles_stay_research(topic):
+    assert _kind(topic) is None
 
 
-def test_the_blind_traps_are_at_most_once_refused():
-    assert len([t for t in sets.HELDOUT31_TRAPS if safety.red_flag(t)]) <= 1
+def test_a_roman_numeral_is_not_folded_into_the_pronoun():
+    assert safety.fold_typos("nyha iii chest pain") == "nyha iii chest pain"
+
+
+@pytest.mark.parametrize("topic", [
+    "someone collapsed at 10:30 not breathing",  # a clock time is no colon subtitle
+    "someone collapsed: help", "my mom cnt breathe",
+])
+def test_colon_urgency_clock_and_cnt_cases_stay_emergencies(topic):
+    assert _kind(topic) == "medical"
 
 
 # Recall (D4, no bar): set A 25/30 caught (master 11/30), set B 27/30.
-def test_the_blind_emergencies_keep_their_kind_when_caught():
+@pytest.mark.parametrize("s", [sets, set_b], ids=["set-a", "set-b"])
+def test_the_blind_emergencies_keep_their_kind_when_caught(s):
     # recall is recorded, not a bar (D4); a caught emergency must be the right kind
-    caught = [(t, k) for t, k in sets.HELDOUT31_EMERGENCIES if safety.red_flag(t)]
+    caught = [(t, k) for t, k in s.HELDOUT31_EMERGENCIES if safety.red_flag(t)]
     assert all(_kind(t) == k for t, k in caught)
