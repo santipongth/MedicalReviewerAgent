@@ -131,7 +131,7 @@ describe("ModelsView tabs", () => {
     await renderAdmin(<ModelsView />);
     fireEvent.click(await screen.findByRole("button", { name: "ประวัติ" }));
     const v2 = await screen.findByRole("listitem", { name: /เวอร์ชัน 2/ });
-    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }));
+    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 2" }));
     fireEvent.click(within(v2).getByRole("button", { name: "ยืนยันย้อนกลับ" }));
     expect(await screen.findByText(/ใช้เวอร์ชัน 4 จาก DB/)).toBeInTheDocument();
     expect(await screen.findByRole("listitem", { name: /เวอร์ชัน 4/ })).toHaveTextContent("ใช้งานอยู่");
@@ -185,7 +185,7 @@ async function restoreElsewhere(server: ReturnType<typeof liveServer>, after: Ll
   };
   fireEvent.click(screen.getByRole("button", { name: "ประวัติ" }));
   const v2 = await screen.findByRole("listitem", { name: /เวอร์ชัน 2/ });
-  fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }));
+  fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 2" }));
   fireEvent.click(within(v2).getByRole("button", { name: "ยืนยันย้อนกลับ" }));
   expect(await screen.findByText(new RegExp(`ใช้เวอร์ชัน ${after.version} จาก DB`))).toBeInTheDocument();
   expect(screen.queryByText(/ร่างนี้แก้จากเวอร์ชัน/)).not.toBeInTheDocument(); // the note belongs to the save bar
@@ -1071,7 +1071,7 @@ describe("ModelsView re-reads while a worker is catching up", () => {
     await renderAdmin(<ModelsView />);
     fireEvent.click(await screen.findByRole("button", { name: "ประวัติ" }));
     const v2 = await screen.findByRole("listitem", { name: /เวอร์ชัน 2/ });
-    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }));
+    fireEvent.click(within(v2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 2" }));
     fireEvent.click(within(v2).getByRole("button", { name: "ยืนยันย้อนกลับ" }));
     await screen.findByText(/ใช้เวอร์ชัน 4 จาก DB/);
     await advance(0);

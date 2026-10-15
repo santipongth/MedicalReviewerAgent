@@ -9,7 +9,7 @@ import type { SettingSpec, SettingValue, SettingsReport, SettingsState } from "@
 import { useAdmin } from "./admin-gate";
 import { ConfirmButton } from "./confirm-button";
 import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT, TABLE_REGION, TD, TH } from "./ui";
-import { VersionHistory } from "./version-history";
+import { VersionHistory, runtimeSource } from "./version-history";
 import { DraftStatus, type VersionedSpec, useVersionedPage } from "./versioned-page";
 import { WorkerVersions } from "./worker-versions";
 
@@ -24,6 +24,9 @@ function draftOf(state: SettingsState): SettingsDraft {
 }
 
 const settingsName = (v: number | null) => (v === null ? "env" : String(v));
+
+const SETTINGS_HISTORY = runtimeSource("settings", { resetLabel: "กลับไปใช้ค่า env",
+  emptyText: "ยังไม่มีเวอร์ชันที่บันทึก ใช้ค่าจาก env อยู่", resetHint: "เวอร์ชันใหม่จะไม่มีค่าที่ตั้งเอง ทุกค่ากลับไปใช้ env ทันที" });
 
 export const SETTINGS_PAGE: VersionedSpec<SettingsState, SettingsDraft> = {
   read: () => adminApi.settings(),
@@ -198,8 +201,7 @@ export function SettingsView() {
         <button type="button" aria-pressed={tab === "history"} className={BUTTON_GHOST} onClick={() => setTab("history")}>ประวัติ</button>
       </div>
       {tab === "history" ? (
-        <VersionHistory kind="settings" base={current.version} resetLabel="กลับไปใช้ค่า env" emptyText="ยังไม่มีเวอร์ชันที่บันทึก ใช้ค่าจาก env อยู่"
-          resetHint="เวอร์ชันใหม่จะไม่มีค่าที่ตั้งเอง ทุกค่ากลับไปใช้ env ทันที" onChanged={page.reload} writes={page.track} />
+        <VersionHistory source={SETTINGS_HISTORY} base={current.version} onChanged={page.reload} writes={page.track} />
       ) : (
         <>
           {SETTING_GROUP_ORDER.map((group) => {

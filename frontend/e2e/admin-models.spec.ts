@@ -300,7 +300,7 @@ test("edit a role, check it, save it as version 4, then restore version 3 from t
   await expect(version(page, 3)).not.toContainText("ใช้งานอยู่");
 
   // restore version 3 through the in-page confirm: a new version 5 with the content of version 3
-  await version(page, 3).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }).click();
+  await version(page, 3).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 3" }).click();
   await page.getByRole("button", { name: "ยืนยันย้อนกลับ" }).click();
   await expect(page.getByText("สร้างเวอร์ชัน 5 จากเวอร์ชัน 3 แล้ว")).toBeVisible();
   expect(admin.calls.restores).toHaveLength(1);
@@ -442,7 +442,7 @@ for (const scheme of ["light", "dark"] as const) {
       await openTab(page, "ประวัติ");
       await expect(version(page, 3)).toBeVisible();
       await audit(page, at("History · versions"));
-      await version(page, 2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชันนี้" }).click();
+      await version(page, 2).getByRole("button", { name: "ย้อนกลับไปเวอร์ชัน 2" }).click();
       await expect(page.getByRole("button", { name: "ยืนยันย้อนกลับ" })).toBeVisible();
       await page.getByRole("button", { name: "สร้างเวอร์ชันใหม่จาก llm.yaml" }).click();
       await expect(page.getByText(/เวอร์ชันใหม่จาก llm.yaml จะถูกใช้ทันที/)).toBeVisible();

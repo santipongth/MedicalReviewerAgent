@@ -9,16 +9,18 @@ import type { WriteTracker } from "./models-save-bar";
 import { BUTTON_GHOST } from "./ui";
 import { useWorkerFollowUp } from "./use-worker-follow-up";
 
-/** The rules of the models page (ModelsView, Plan 23b) for the other versioned documents of the console, the runtime
- * settings and the glossary (Plan 23c). A draft keeps the version it was loaded from (`base`), and its save is built
+/** The rules of the versioned documents of the console: the models page (Plan 23b, on this hook since Plan 31), the
+ * runtime settings and the glossary (Plan 23c) and the search sources (Plan 23d). A draft keeps the version it was loaded from (`base`), and its save is built
  * on that version, so a save on top of a newer one is the server's 409, never a silent overwrite. A read replaces a
  * draft without edits and keeps one with edits; the page then says the server moved on and offers to discard the edits
  * or to build on the latest version. While a worker lags behind the page's version, the page re-reads every 10 s. */
 export interface VersionedState { version: number | null; loaded: LoadedWorker[] }
 
 /** `doc` is what the admin edits; `origin` the document it was loaded from ("dirty" means it differs from that); `base`
- * the version its save is built on. */
-export interface VersionedDraft<D> { doc: D; origin: D; base: number | null }
+ * the version its save is built on. `refused` is the text of this very document as the check of a refused save made it
+ * (the models page's YAML tab starts from it). It belongs to the document: every new draft (an edit, a discard, the
+ * server's copy) comes without it. */
+export interface VersionedDraft<D> { doc: D; origin: D; base: number | null; refused?: string }
 
 /** A page's document kind. Pass a module-level constant: the page's effects depend on it. */
 export interface VersionedSpec<S extends VersionedState, D> {
@@ -34,7 +36,7 @@ export interface VersionedSpec<S extends VersionedState, D> {
   versionName: (version: number | null) => string;
 }
 
-/** ModelsView's reconcile without the llm.yaml specifics. `saved` and `savedId` are set only on the re-read that
+/** What a read does to the draft (ModelsView's rule, Plan 23b). `saved` and `savedId` are set only on the re-read that
  * follows the admin's own save: the document saved and the version it became.
  * - The draft is still that document: the server's copy replaces it.
  * - It was edited since, and the server is on the version just saved: the edits stay, on top of it, still unsaved.
@@ -53,8 +55,22 @@ export function reconcileDraft<D>(same: (a: D, b: D) => boolean, draft: Versione
   return same(draft.doc, doc) ? { doc: draft.doc, origin: draft.doc, base: version } : fresh;
 }
 
-export function useVersionedPage<S extends VersionedState, D>(spec: VersionedSpec<S, D>) {
+/** What a page adds to the shared rules (the models page, Plan 31). Unlike the spec, these may change every render. */
+export interface VersionedOptions<S> {
+  /** Why the state read cannot be edited (models: a configuration that no longer passes the checks). Such a read
+   * replaces the state but leaves the draft as it was; the hook exposes the reason as `stateError`. */
+  error?: (state: S) => string | null | undefined;
+  /** Reasons that block saving besides the page's own (models: YAML text not applied yet); the first one is `blocked`. */
+  blockers?: (string | null | undefined)[];
+  /** Runs after "discard" has replaced the draft (models: the YAML text goes too). */
+  onDiscard?: () => void;
+}
+
+export function useVersionedPage<S extends VersionedState, D>(spec: VersionedSpec<S, D>, options: VersionedOptions<S> = {}) {
   const { fail } = useAdmin();
+  /** The options of the latest render, for the answer of a read already in flight. */
+  const latest = useRef(options);
+  useEffect(() => { latest.current = options; });
   const [state, setState] = useState<S | null>(null);
   const [readAt, setReadAt] = useState(0);
   const [draft, setDraft] = useState<VersionedDraft<D> | null>(null);
@@ -83,6 +99,7 @@ export function useVersionedPage<S extends VersionedState, D>(spec: VersionedSpe
         setState(s);
         setReadAt(Date.now());
         setError(null);
+        if (latest.current.error?.(s)) return; // nothing to edit: the draft stays as it was
         setDraft((d) => reconcileDraft(spec.same, d, spec.docOf(s), s.version, saved, savedId));
       })
       .catch((e: unknown) => {
@@ -111,7 +128,12 @@ export function useVersionedPage<S extends VersionedState, D>(spec: VersionedSpe
   const reload = useCallback(() => { void load(); }, [load]);
   const edit = useCallback((change: (doc: D) => D) => {
     setDraftNote(null);
-    setDraft((d) => (d ? { ...d, doc: change(d.doc) } : d));
+    setDraft((d) => (d ? { doc: change(d.doc), origin: d.origin, base: d.base } : d));
+  }, []);
+  /** Sets or drops the refused text of the draft as it is (dropping keeps the object when there is none). */
+  const setRefused = useCallback((text?: string) => {
+    setDraft((d) => (!d || d.refused === text ? d : text === undefined ? { doc: d.doc, origin: d.origin, base: d.base }
+      : { ...d, refused: text }));
   }, []);
 
   function discard() {
@@ -119,6 +141,7 @@ export function useVersionedPage<S extends VersionedState, D>(spec: VersionedSpe
     const doc = spec.docOf(state);
     setDraft({ doc, origin: doc, base: state.version });
     setDraftNote({ text: `ทิ้งการแก้ไขแล้ว: ร่างตรงกับเวอร์ชัน ${spec.versionName(state.version)}`, base: state.version });
+    options.onDiscard?.();
   }
   function rebase() {
     if (!state) return;
@@ -129,16 +152,21 @@ export function useVersionedPage<S extends VersionedState, D>(spec: VersionedSpe
 
   const dirty = draft !== null && !spec.same(draft.doc, draft.origin);
   const moved = state !== null && draft !== null && dirty && draft.base !== state.version;
-  return { state, readAt, draft, error, settling, track, load, reload, edit, discard, rebase, dirty, moved,
+  return { state, readAt, draft, error, settling, track, load, reload, edit, setRefused, discard, rebase, dirty, moved,
+    stateError: (state && options.error?.(state)) || null, blocked: options.blockers?.find((b) => b) ?? null,
     draftNote: draftNote && draft && draftNote.base === draft.base ? draftNote.text : null };
 }
+
+const DISCARD_HINT = "การแก้ไขที่ยังไม่ได้บันทึกจะหายไป และร่างจะตรงกับเวอร์ชันที่ใช้อยู่";
 
 /** The "server moved on" note and the answer to its buttons (ModelsView's, Plan 23b). `note` appears only after
  * "discard" or "build on the latest", whose buttons are then gone, so focus moves to it. Only a note that appears
  * while this is mounted takes focus: one already shown when it mounts (the admin came back to the tab) does not. */
-export function DraftStatus({ moved, base, current, note, onDiscard, onRebase, versionName }: {
+export function DraftStatus({ moved, base, current, note, onDiscard, onRebase, versionName, hint = DISCARD_HINT }: {
   moved: boolean; base: number | null; current: number | null; note: string | null;
   onDiscard: () => void; onRebase: () => void; versionName: (version: number | null) => string;
+  /** What "discard" loses, said while it asks (models: the YAML text too). */
+  hint?: string;
 }) {
   const noteRef = useRef<HTMLParagraphElement>(null);
   /** The note last seen, starting with the one shown at mount. */
@@ -154,7 +182,7 @@ export function DraftStatus({ moved, base, current, note, onDiscard, onRebase, v
           <p>{`ร่างนี้แก้จากเวอร์ชัน ${versionName(base)} แต่ตอนนี้ใช้เวอร์ชัน ${versionName(current)} อยู่`}</p>
           <div className="flex flex-wrap gap-2">
             <ConfirmButton label="ทิ้งการแก้ไข" confirmLabel="ยืนยันทิ้งการแก้ไข" onConfirm={onDiscard}
-              hint="การแก้ไขที่ยังไม่ได้บันทึกจะหายไป และร่างจะตรงกับเวอร์ชันที่ใช้อยู่" />
+              hint={hint} />
             <button type="button" className={BUTTON_GHOST} onClick={onRebase}>ใช้ร่างนี้ต่อจากเวอร์ชันล่าสุด</button>
           </div>
           <p className="text-sm">ถ้าใช้ร่างนี้ต่อ การบันทึกครั้งต่อไปจะทับการเปลี่ยนแปลงที่เกิดขึ้นในเวอร์ชันล่าสุด</p>

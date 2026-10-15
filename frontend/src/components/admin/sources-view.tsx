@@ -8,7 +8,7 @@ import { useAdmin } from "./admin-gate";
 import { ConfirmButton } from "./confirm-button";
 import { STALE_TEXT } from "./settings-view";
 import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT } from "./ui";
-import { VersionHistory } from "./version-history";
+import { VersionHistory, runtimeSource } from "./version-history";
 import { DraftStatus, type VersionedSpec, useVersionedPage } from "./versioned-page";
 import { WorkerVersions } from "./worker-versions";
 
@@ -35,6 +35,10 @@ const GROUPS: { kind: SourceRow["kind"]; title: string }[] = [
 ];
 
 const sourcesName = (v: number | null) => (v === null ? "env" : String(v));
+
+const SOURCES_HISTORY = runtimeSource("sources", { resetLabel: "กลับไปใช้ค่า env",
+  emptyText: "ยังไม่มีเวอร์ชันที่บันทึก ใช้ค่าจาก env อยู่",
+  resetHint: "เวอร์ชันใหม่จะไม่มีแหล่งที่ตั้งเอง ทุกแหล่งกลับไปตามค่าใน env ทันที" });
 
 export const SOURCES_PAGE: VersionedSpec<SourcesState, SourcesDraft> = {
   read: () => adminApi.sources(),
@@ -185,8 +189,7 @@ export function SourcesView() {
         <button type="button" aria-pressed={tab === "history"} className={BUTTON_GHOST} onClick={() => setTab("history")}>ประวัติ</button>
       </div>
       {tab === "history" ? (
-        <VersionHistory kind="sources" base={current.version} resetLabel="กลับไปใช้ค่า env" emptyText="ยังไม่มีเวอร์ชันที่บันทึก ใช้ค่าจาก env อยู่"
-          resetHint="เวอร์ชันใหม่จะไม่มีแหล่งที่ตั้งเอง ทุกแหล่งกลับไปตามค่าใน env ทันที" onChanged={page.reload} writes={page.track} />
+        <VersionHistory source={SOURCES_HISTORY} base={current.version} onChanged={page.reload} writes={page.track} />
       ) : (
         <>
           {GROUPS.map(({ kind, title }) => (
