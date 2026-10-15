@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LlmConfigDoc, LlmKeysState } from "@/lib/admin-types";
@@ -204,5 +205,29 @@ describe("ModelsProviders, Plan 31", () => {
     expect(setDraft.mock.calls[0][0].providers.groq).toBeUndefined();
     expect(within(await item("deepseek")).getByRole("button", { name: "เอา deepseek ออกจากร่าง" })).toBeDisabled();
     expect(within(await item("openrouter")).queryByRole("button", { name: /ออกจากร่าง/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps focus on the providers list after a removal, and ties the in-use hint to its disabled button", async () => {
+    const groq = row({ name: "groq", used_by: [], origin: "https://api.groq.com" });
+    const start = { ...KEYS_CONFIG, providers: { ...KEYS_CONFIG.providers,
+      groq: { kind: "openai_compatible", base_url: "https://api.groq.com/openai/v1" },
+      mistral: { kind: "openai_compatible", base_url: "https://api.mistral.ai/v1" } } };
+    mockAdminFetch((method, path) => (method === "GET" && path === "/llm-keys" ? [200, { ...KEYS_STATE, providers: [OPENROUTER_ROW, DEEPSEEK_ROW, groq] }] : undefined));
+    function Stateful() {
+      const [draft, setDraft] = useState<LlmConfigDoc>(start);
+      return <ModelsProviders draft={draft} setDraft={setDraft} fail={String} />;
+    }
+    render(<Stateful />);
+    expect(within(await item("deepseek")).getByRole("button", { name: "เอา deepseek ออกจากร่าง" }))
+      .toHaveAccessibleDescription("มี role ใช้อยู่ เปลี่ยน role ก่อน");
+    const list = screen.getByRole("list", { name: "ผู้ให้บริการ" });
+    fireEvent.click(within(await item("groq")).getByRole("button", { name: "เอา groq ออกจากร่าง" })); // saved row
+    await waitFor(() => expect(screen.queryByRole("button", { name: "เอา groq ออกจากร่าง" })).not.toBeInTheDocument());
+    expect(list).toHaveFocus();
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.click(await screen.findByRole("button", { name: "เอา mistral ออกจากร่าง" })); // draft-only row
+    await waitFor(() => expect(screen.queryByRole("button", { name: "เอา mistral ออกจากร่าง" })).not.toBeInTheDocument());
+    expect(list).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
   });
 });

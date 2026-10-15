@@ -149,7 +149,8 @@ function ProviderRow({ row, draftSpec, writable, onWrite, fail, onRemove }: {
                 onClick={() => setOpen(true)}>{keyLabel}</button>
             )}
             {onRemove && (
-              <button type="button" className={BUTTON_GHOST} disabled={onRemove.inUse} onClick={onRemove.run}>{`เอา ${row.name} ออกจากร่าง`}</button>
+              <button type="button" className={BUTTON_GHOST} disabled={onRemove.inUse} aria-describedby={onRemove.inUse ? `${keyId}-inuse` : undefined}
+                onClick={onRemove.run}>{`เอา ${row.name} ออกจากร่าง`}</button>
             )}
             {stored && (
               <ConfirmButton label="ลบคีย์" confirmLabel="ยืนยันลบคีย์" name={`ลบคีย์ของ ${row.name}`} onConfirm={remove}
@@ -158,7 +159,7 @@ function ProviderRow({ row, draftSpec, writable, onWrite, fail, onRemove }: {
           </div>
         )}
         {!row.key_allowed && <p className="text-sm text-muted">{KEY_NOT_ALLOWED}</p>}
-        {onRemove?.inUse && <p className="text-sm text-muted">มี role ใช้อยู่ เปลี่ยน role ก่อน</p>}
+        {onRemove?.inUse && <p id={`${keyId}-inuse`} className="text-sm text-muted">มี role ใช้อยู่ เปลี่ยน role ก่อน</p>}
         <div className="grid gap-1">
           {row.used_by.length === 0 && (
             <>
@@ -284,6 +285,20 @@ export function ModelsProviders({ draft, setDraft, fail, version }: {
     setNote(s.workers_notified ? "บันทึกแล้ว: worker ใช้คีย์ชุดนี้ตั้งแต่งานถัดไป (ภายใน 30 วินาที) รีวิวที่กำลังทำอยู่ใช้คีย์เดิมจนจบ" : WORKERS_NOT_NOTIFIED);
   }, [followUp]);
 
+  // A removed provider takes its button with it: focus goes to the list, not to <body>.
+  const listRef = useRef<HTMLUListElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (refocus.current) {
+      refocus.current = false;
+      listRef.current?.focus();
+    }
+  }, [draft]);
+  function drop(name: string) {
+    refocus.current = true;
+    setDraft(removeProvider(draft, name));
+  }
+
   if (!state) {
     return error ? <p role="alert" className="mt-6 rounded-sm bg-err-bg px-4 py-3">{error}</p>
       : <p role="status" className="mt-6 text-muted">กำลังโหลด…</p>;
@@ -307,12 +322,12 @@ export function ModelsProviders({ draft, setDraft, fail, version }: {
         คีย์ที่ใส่จากหน้านี้เก็บแบบเข้ารหัสและใช้แทนคีย์ใน .env ระบบไม่แสดงคีย์กลับมาอีก (เห็นได้แค่ 4 ตัวท้าย)
         คีย์ผูกกับ origin ของผู้ให้บริการ ถ้าเปลี่ยน base_url ไป origin อื่นต้องใส่คีย์ใหม่
       </p>
-      <ul aria-label="ผู้ให้บริการ" className="mt-3 border-t border-rule">
+      <ul aria-label="ผู้ให้บริการ" ref={listRef} tabIndex={-1} className="mt-3 border-t border-rule outline-none">
         {state.providers.map((row) => (
           <ProviderRow key={row.name} row={row} draftSpec={draft.providers[row.name]} writable={state.writable}
             onWrite={wrote} fail={fail}
             onRemove={LEGACY.has(row.name) || !draft.providers[row.name] ? undefined
-              : { inUse: inUse.has(row.name), run: () => setDraft(removeProvider(draft, row.name)) }} />
+              : { inUse: inUse.has(row.name), run: () => drop(row.name) }} />
         ))}
         {draftOnly.map((name) => (
           <li key={name} className="grid gap-2 border-b border-rule py-4">
@@ -321,8 +336,9 @@ export function ModelsProviders({ draft, setDraft, fail, version }: {
             {!LEGACY.has(name) && (
               <div>
                 <button type="button" className={BUTTON_GHOST} disabled={inUse.has(name)}
-                  onClick={() => setDraft(removeProvider(draft, name))}>{`เอา ${name} ออกจากร่าง`}</button>
-                {inUse.has(name) && <span className="ml-2 text-sm text-muted">มี role ใช้อยู่ เปลี่ยน role ก่อน</span>}
+                  aria-describedby={inUse.has(name) ? `inuse-${name}` : undefined}
+                  onClick={() => drop(name)}>{`เอา ${name} ออกจากร่าง`}</button>
+                {inUse.has(name) && <span id={`inuse-${name}`} className="ml-2 text-sm text-muted">มี role ใช้อยู่ เปลี่ยน role ก่อน</span>}
               </div>
             )}
           </li>
