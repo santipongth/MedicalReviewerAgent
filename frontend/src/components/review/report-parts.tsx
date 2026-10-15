@@ -288,7 +288,7 @@ export function ComparisonMatrix({ rows, refs: allRefs, lang, onSelect, selected
                 <th key={r} scope="col" className="px-2 py-2 text-center label">
                   <abbr title={paper?.title} className="no-underline">
                     <span className="block">{r}</span>{" "}
-                    {byline && <span className="block text-[0.68rem] font-normal normal-case text-muted">{byline}</span>}
+                    {byline && <span className="block text-[0.68rem] font-normal normal-case text-muted"><bdi>{byline}</bdi></span>}
                   </abbr>
                   {pooledRefs?.has(r) && (
                     <span className="mt-0.5 block text-[0.68rem] font-semibold">

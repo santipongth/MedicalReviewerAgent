@@ -108,7 +108,7 @@ function Facts({ paper, card, cardEn, lang, riskOfBias }: { paper: Paper; card: 
         {n != null ? <>n = <VerifiedNumber value={asReported(n, cardEn?.sample_size_quote ?? card.sample_size_quote)} /></>
           : isBlankedSampleSize(paper) ? <Hole lang={lang} /> : <span className="text-muted">{L(lang, R.notReported)}</span>}
       </dd>
-      <dt className="text-muted">{L(lang, R.population)}</dt><dd className="break-words" lang={fieldLang(card.population, lang)}>{card.population}</dd>
+      <dt className="text-muted">{L(lang, R.population)}</dt><dd className="break-words" lang={fieldLang(card.population, lang)}><bdi>{card.population}</bdi></dd>
       {riskOfBias && <><dt className="text-muted"><Term k="riskOfBias" lang={lang}>{L(lang, R.rob)}</Term></dt><dd>{ROB_LABEL[lang][card.risk_of_bias] ?? card.risk_of_bias}</dd></>}
       <dt className="text-muted">{L(lang, R.textReadLabel)}</dt>
       <dd>{paper.fulltext_source ? (R.textRead[paper.fulltext_source] ? L(lang, R.textRead[paper.fulltext_source]) : "–") : L(lang, R.abstract)}</dd>
@@ -263,8 +263,8 @@ export function SourceRail({ paper, outcome, lang, onClose, headingId, visible =
               <DesignMismatchFlag lang={lang} />
             </p>
           )}
-          <p className="font-display text-base font-semibold leading-snug break-words" lang={fieldLang(paper.title, lang)}>{paper.title}</p>
-          {paper.journal && <p className="-mt-3 text-sm text-muted">{paper.journal}</p>}
+          <p className="font-display text-base font-semibold leading-snug break-words" lang={fieldLang(paper.title, lang)}><bdi>{paper.title}</bdi></p>
+          {paper.journal && <p className="-mt-3 text-sm text-muted"><bdi>{paper.journal}</bdi></p>}
           <RelatedNote paper={paper} lang={lang} onSelect={onSelect} />
           <WhyCited paper={paper} support={support} claim={claim} lang={lang} />
           {card ? (

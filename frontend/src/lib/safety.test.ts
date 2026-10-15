@@ -115,3 +115,26 @@ describe("dosing advice: a notice, never a rewrite", () => {
     expect(needsDosingNotice(null)).toBe(false);
   });
 });
+
+describe("Plan 31 D19: the dosing scan reads every model-written text", () => {
+  const ADVICE = "Adults should take 500 mg twice daily.";
+  const base = { ...slr, summary: "", synthesis: { ...slr.synthesis!, answer: "", executive_summary: "", key_findings: [],
+    consensus: [], conflicts: [], evidence_rationale: "", research_gaps: [] } };
+  const cluster = { statement: "s", refs: ["P1"], explanation: "e" };
+  const cases: [string, (t: string) => Partial<NonNullable<ReviewResult["synthesis"]>>][] = [
+    ["consensus statement", (t) => ({ consensus: [{ ...cluster, statement: t }] })],
+    ["conflict explanation", (t) => ({ conflicts: [{ ...cluster, explanation: t }] })],
+    ["conflict likely reason", (t) => ({ conflicts: [{ ...cluster, likely_reasons: [t] }] })],
+    ["evidence rationale", (t) => ({ evidence_rationale: t })],
+    ["research gap", (t) => ({ research_gaps: [t] })],
+  ];
+  for (const [name, make] of cases) {
+    for (const key of ["synthesis", "synthesis_en"] as const) {
+      it(`${name} in ${key}`, () => {
+        const withText = (t: string): ReviewResult => ({ ...base, [key]: { ...base.synthesis, ...make(t) } });
+        expect(needsDosingNotice(withText(ADVICE))).toBe(true);
+        expect(needsDosingNotice(withText("More trials are needed."))).toBe(false);
+      });
+    }
+  }
+});

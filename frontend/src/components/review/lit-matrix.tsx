@@ -153,7 +153,7 @@ function StudyCell({ row, onSelect, lang, citedBy, flag }: { row: LitRow; onSele
       <button type="button" onClick={() => onSelect(row.ref)} title={row.title} aria-label={`${row.ref} ${row.title}`}
         className="inline-flex min-h-11 min-w-11 flex-col items-start justify-center text-left text-primary underline underline-offset-2">
         <span className="font-display font-semibold">{row.ref}</span>
-        {row.byline && <span className="text-[0.75rem] font-normal text-muted no-underline">{row.byline}</span>}
+        {row.byline && <span className="text-[0.75rem] font-normal text-muted no-underline"><bdi>{row.byline}</bdi></span>}
       </button>
       {citedBy && (
         <span className="text-[0.75rem] text-muted" data-cited-by>{L(lang, T.citedBy)}<CitedBy row={row} lang={lang} /></span>

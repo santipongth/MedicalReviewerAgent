@@ -90,7 +90,12 @@ export function hasDosingAdvice(text: string | null | undefined): boolean {
 
 function synthesisTexts(s: Synthesis | null | undefined): string[] {
   if (!s) return [];
-  return [s.answer ?? "", s.executive_summary ?? "", ...(s.key_findings ?? []).map((k) => k.statement ?? "")];
+  const clusters = [...(s.consensus ?? []), ...(s.conflicts ?? [])];
+  return [
+    s.answer ?? "", s.executive_summary ?? "", ...(s.key_findings ?? []).map((k) => k.statement ?? ""),
+    ...clusters.flatMap((c) => [c.statement ?? "", c.explanation ?? "", ...(c.likely_reasons ?? [])]),
+    s.evidence_rationale ?? "", ...(s.research_gaps ?? []),
+  ];
 }
 
 /** True when any model-written text of the report (shown or English) reads as dosing advice: the notice is shown. */

@@ -48,6 +48,13 @@ describe("Plan 30: the tab title waits for the topic check", () => {
     expect(document.title).toBe(FALLBACK_TITLE);
   });
 
+  it("Plan 31 D20: keeps the server title while a finished review loads", () => {
+    document.title = "server title";
+    useReview.mockReturnValue({ review: null, run: initialRun(), scene: initialScene(), phase: "loading", connection: "open", retry: vi.fn() });
+    render(<ReviewScreen id="x" />);
+    expect(document.title).toBe("server title");
+  });
+
   it("names the tab after the topic once the check has passed", () => {
     useReview.mockReturnValue(live(runOf("queued", "started", "checking_topic", "refining")));
     render(<ReviewScreen id="x" />);

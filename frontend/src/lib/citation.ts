@@ -133,18 +133,22 @@ export function authorNames(authors: readonly string[] | null | undefined): stri
 export const pubmedHref = (pmid: string): string => `https://pubmed.ncbi.nlm.nih.gov/${clean(pmid)}/`;
 export const pmcHref = (pmcid: string): string => `https://pmc.ncbi.nlm.nih.gov/articles/${normalizePmcid(pmcid)}/`;
 
+/** A piece of running text; `isolate` marks paper- or user-supplied text that is wrapped in `<bdi>` where it is shown. */
+export interface TextSegment { text: string; isolate: boolean }
+
 /** The reference's text parts (authors, title, journal, year), each ending in its own punctuation, and its identifiers. */
-export function citationParts(p: CitationInput): { text: string[]; ids: CitationId[] } {
-  const text: string[] = [];
+export function citationParts(p: CitationInput): { text: string[]; ids: CitationId[]; segments: TextSegment[] } {
+  const segments: TextSegment[] = [];
+  const text = { push: (t: string, isolate = false) => void segments.push({ text: t, isolate }) };
   const authors = authorNames(p.authors);
   if (authors.length) {
     const shown = authors.length > MAX_AUTHORS ? [...authors.slice(0, MAX_AUTHORS), "et al"] : authors;
-    text.push(`${shown.join(", ")}.`);
+    text.push(`${shown.join(", ")}.`, true);
   }
   const title = squash(p.title).replace(/[\s.]+$/, "");
-  if (title) text.push(/[?!]$/.test(title) ? title : `${title}.`);
+  if (title) text.push(/[?!]$/.test(title) ? title : `${title}.`, true);
   const journal = clean(p.journal);
-  if (journal) text.push(`${journal}.`);
+  if (journal) text.push(`${journal}.`, true);
   const volume = clean(p.bib?.volume);
   const issue = clean(p.bib?.issue);
   const pages = clean(p.bib?.pages);
@@ -162,7 +166,7 @@ export function citationParts(p: CitationInput): { text: string[]; ids: Citation
   if (pmcid) ids.push({ label: "PMCID", value: pmcid, href: pmcHref(pmcid) });
   const thaijo = thaijoHref(p.thaijo_url);
   if (thaijo) ids.push({ label: "ThaiJO", value: thaijo, href: thaijo });
-  return { text, ids };
+  return { text: segments.map((s) => s.text), ids, segments };
 }
 
 /** `Authors. Title. Journal. Year. doi: … PMID: … PMCID: …` as plain text (what "copy citation" copies). */
@@ -195,9 +199,16 @@ function isoDate(iso: string | null | undefined): string | null {
  * `date` is when the review finished (or was created), never the viewing time; `url` null (the offline file) leaves it
  * out. Results stored before abstract-only reading (legacy) are not called abstract-only.
  */
-export function howToCite({ question, type, id, date, url, lang }: {
+export function howToCite(args: HowToCiteArgs): string {
+  return howToCiteParts(args).map((s) => s.text).join("");
+}
+
+interface HowToCiteArgs {
   question: string; type: ReviewTypeOrLegacy; id: string; date: string | null | undefined; url: string | null; lang: Lang;
-}): string {
+}
+
+/** The same sentence as `howToCite` in pieces: only the question (user-supplied) is marked `isolate`. */
+export function howToCiteParts({ question, type, id, date, url, lang }: HowToCiteArgs): TextSegment[] {
   const q = squash(question).replace(/[\s.]+$/, "");
   const day = isoDate(date);
   const name = TYPE_NAME[type][lang];
@@ -205,11 +216,12 @@ export function howToCite({ question, type, id, date, url, lang }: {
   const what = lang === "th"
     ? `${name}อัตโนมัติ${abstractOnly ? " (อ่านเฉพาะบทคัดย่อ)" : ""}${day ? `, สร้างเมื่อ ${day}` : ""}.`
     : `Automated ${name}${abstractOnly ? " (abstract-only)" : ""}${day ? `, generated ${day}` : ""}.`;
-  return [
-    "Medical Reviewer Agent.",
-    q ? (/[?!]$/.test(q) ? q : `${q}.`) : null,
-    what,
-    lang === "th" ? `รหัสรีวิว ${id}.` : `Review ID ${id}.`,
-    url ? `${url}.` : null,
-  ].filter(Boolean).join(" ");
+  const pieces: (TextSegment | null)[] = [
+    { text: "Medical Reviewer Agent.", isolate: false },
+    q ? { text: /[?!]$/.test(q) ? q : `${q}.`, isolate: true } : null,
+    { text: what, isolate: false },
+    { text: lang === "th" ? `รหัสรีวิว ${id}.` : `Review ID ${id}.`, isolate: false },
+    url ? { text: `${url}.`, isolate: false } : null,
+  ];
+  return pieces.filter((s): s is TextSegment => !!s).flatMap((s, i) => (i ? [{ text: " ", isolate: false }, s] : [s]));
 }
