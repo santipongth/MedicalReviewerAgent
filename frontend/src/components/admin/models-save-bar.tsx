@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { AdminApiError, adminApi } from "@/lib/admin-api";
 import { WORKERS_NOT_NOTIFIED } from "@/lib/admin-copy";
 import { sameConfig } from "@/lib/admin-models";
-import type { CostEstimate, LlmConfigDoc, ValidateReport } from "@/lib/admin-types";
+import type { CostEstimate, LlmConfigDoc, RoleError, ValidateReport } from "@/lib/admin-types";
 import { useAdmin } from "./admin-gate";
 import { BUTTON_GHOST, BUTTON_PRIMARY, INPUT } from "./ui";
 
@@ -28,7 +28,9 @@ function costLine(preset: string, c: CostEstimate): string {
  * stays while the draft is the saved document or that one, and goes once the draft is edited again. `blockedReason`
  * is why the draft cannot be saved right now (the page knows something the draft does not hold yet): the save button is
  * disabled and the reason is shown next to it; a check still works. */
-export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, writes, onSaved, onConflict }: {
+export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, writes, onSaved, onConflict, onRoleErrors }: {
+  /** Told the roles missing a price whenever the shown check changes (empty once the draft is edited). */
+  onRoleErrors?: (errors: RoleError[]) => void;
   base: number | null; draft: LlmConfigDoc; serverConfig?: LlmConfigDoc; blockedReason?: string | null; writes?: WriteTracker;
   onSaved: (saved: LlmConfigDoc, id: number) => void | Promise<void>; onConflict: (draftYaml: string) => void;
 }) {
@@ -53,6 +55,9 @@ export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, writes
   const savedShown = saved !== null && (sameConfig(saved.draft, draft) || (serverConfig !== undefined && sameConfig(serverConfig, draft)));
 
   useEffect(() => { latest.current = draft; }, [draft]);
+
+  const roleErrors = current?.role_errors;
+  useEffect(() => { onRoleErrors?.(roleErrors ?? []); }, [roleErrors, onRoleErrors]);
 
   useEffect(() => {
     if (saved && focusSaved.current) {
@@ -99,6 +104,11 @@ export function ModelsSaveBar({ base, draft, serverConfig, blockedReason, writes
         onConflict(r?.yaml ?? "");
         setError("มีผู้ดูแลอื่นบันทึกเวอร์ชันใหม่ก่อน: ร่างของคุณอยู่ในแท็บ YAML ขั้นสูง ตรวจเวอร์ชันล่าสุดแล้วบันทึกใหม่");
       } else {
+        const refused = e instanceof AdminApiError && e.status === 422 && Array.isArray((e.body as { role_errors?: unknown } | null)?.role_errors)
+          ? (e.body as { role_errors: RoleError[] }).role_errors : null;
+        if (refused && refused.length > 0) {
+          setChecked({ draft: sent, report: { ok: false, errors: [], warnings: [], cost: {}, config: null, yaml: null, role_errors: refused } });
+        }
         setError(fail(e));
       }
     } finally {

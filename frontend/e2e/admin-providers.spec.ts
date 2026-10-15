@@ -17,7 +17,7 @@ interface Calls { puts: { name: string; body: unknown; csrf: string | undefined 
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const LEGACY_KEYS: Record<string, string> = { openrouter: "OPENROUTER_API_KEY", anthropic: "ANTHROPIC_API_KEY", openai_compatible: "OPENAI_COMPATIBLE_API_KEY" };
-const ok = (config: LlmConfigDoc): ValidateReport => ({ ok: true, errors: [], warnings: [], cost: {}, config, yaml: `${JSON.stringify(config)}\n` });
+const ok = (config: LlmConfigDoc): ValidateReport => ({ ok: true, errors: [], warnings: [], cost: {}, config, yaml: `${JSON.stringify(config)}\n`, role_errors: [] });
 
 function originOf(name: string, spec: Record<string, unknown>): string {
   const base = typeof spec.base_url === "string" ? spec.base_url : name === "anthropic" ? "https://api.anthropic.com" : "https://openrouter.ai";
@@ -38,7 +38,7 @@ async function mockProviders(page: Page, { writable = true } = {}) {
       .filter(([, r]) => (r.provider ?? config().default_provider ?? "openrouter") === name).map(([role]) => role);
     const env = LEGACY_KEYS[name] ?? `LLM_KEY_${name.toUpperCase()}`;
     return {
-      name, kind, origin, used_by: used, keyless: false,
+      name, kind, origin, used_by: used, keyless: false, key_allowed: true,
       key: stored
         ? { source: "console", problem: null, last4: stored.last4, bound_origin: stored.origin, updated_at: stored.at, updated_by: "owner" }
         : { source: name === "openrouter" ? "env" : "none", problem: null, last4: null, bound_origin: null, updated_at: null, updated_by: null },

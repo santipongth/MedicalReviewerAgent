@@ -54,7 +54,7 @@ function summarize(old: LlmConfigDoc, next: LlmConfigDoc): Record<string, unknow
 
 function check(config: LlmConfigDoc): ValidateReport {
   if (!config.presets[config.active_preset]) {
-    return { ok: false, errors: [`active_preset: ${config.active_preset} is not a preset`], warnings: [], cost: {}, config: null, yaml: null };
+    return { ok: false, errors: [`active_preset: ${config.active_preset} is not a preset`], warnings: [], cost: {}, config: null, yaml: null, role_errors: [] };
   }
   const warnings: string[] = [];
   const cost: ValidateReport["cost"] = {};
@@ -74,7 +74,7 @@ function check(config: LlmConfigDoc): ValidateReport {
     const total = Object.values(perRole).reduce((a, b) => a + b, 0);
     cost[preset] = { total_usd: Math.round(total * 1e6) / 1e6, per_role: perRole, unknown_models: unknown };
   }
-  return { ok: true, errors: [], warnings, cost, config, yaml: asYaml(config) };
+  return { ok: true, errors: [], warnings, cost, config, yaml: asYaml(config), role_errors: [] };
 }
 
 interface Stored extends LlmVersion { config: LlmConfigDoc }
@@ -177,7 +177,7 @@ async function mockModels(page: Page, { signedIn = true, alerts = false } = {}) 
     if (path === "/llm-models/test" && method === "POST") {
       const body = req.postDataJSON() as { config: LlmConfigDoc; preset: string; role: string };
       calls.tests.push({ body, status: 200, headers });
-      const result: ProbeResult = { ok: true, latency_ms: 812, cost_usd: 0.0004, model: body.config.presets[body.preset][body.role].model, error: null };
+      const result: ProbeResult = { ok: true, latency_ms: 812, cost_usd: 0.0004, priced: true, model: body.config.presets[body.preset][body.role].model, error: null };
       return reply(200, result);
     }
     calls.unmocked.push(`${method} ${path}`);

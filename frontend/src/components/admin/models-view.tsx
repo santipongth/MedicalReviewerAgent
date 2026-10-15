@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import { formatWhen } from "@/lib/admin-copy";
 import { type MissingKey, missingKeys, sameConfig } from "@/lib/admin-models";
-import type { LlmConfigDoc, LlmConfigState } from "@/lib/admin-types";
+import type { LlmConfigDoc, LlmConfigState, RoleError } from "@/lib/admin-types";
 import { isStale } from "@/lib/admin-workers";
 import { useAdmin } from "./admin-gate";
 import { ConfirmButton } from "./confirm-button";
@@ -136,6 +136,7 @@ export function ModelsView() {
   const [state, setState] = useState<LlmConfigState | null>(null);
   const [readAt, setReadAt] = useState(0);
   const [edit, setEdit] = useState<Draft | null>(null);
+  const [roleErrors, setRoleErrors] = useState<RoleError[]>([]);
   const [tab, setTab] = useState<ModelsTab>("presets");
   const [error, setError] = useState<string | null>(null);
   /** The YAML box holds text that is not the draft. That text lives in the YAML tab, which stays mounted (hidden) while
@@ -260,7 +261,7 @@ export function ModelsView() {
             ))}
           </div>
           {tab === "history" && <ModelsHistory base={state.version} onChanged={reload} writes={track} />}
-          {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} knownPrices={state.known_prices} />}
+          {tab === "presets" && <ModelsPresets draft={edit.doc} setDraft={setDraft} fail={fail} knownPrices={state.known_prices} roleErrors={roleErrors} />}
           {tab === "providers" && <ModelsProviders draft={edit.doc} setDraft={setDraft} fail={fail} version={state.version} />}
           {(tab === "yaml" || yamlPending) && (
             <div hidden={tab !== "yaml"}>
@@ -285,7 +286,7 @@ export function ModelsView() {
               {draftNote && draftNote.base === edit.base && (
                 <p ref={draftNoteRef} tabIndex={-1} role="status" className="mt-6 rounded-sm bg-info-bg px-4 py-2">{draftNote.text}</p>
               )}
-              <ModelsSaveBar base={edit.base} draft={edit.doc} serverConfig={state.config} blockedReason={yamlPending ? YAML_NOT_APPLIED : null}
+              <ModelsSaveBar onRoleErrors={setRoleErrors} base={edit.base} draft={edit.doc} serverConfig={state.config} blockedReason={yamlPending ? YAML_NOT_APPLIED : null}
                 writes={track} onSaved={(saved, id) => { dropRefused(); return load(saved, id); }}
                 onConflict={(text) => { setEdit((e) => (e ? { ...e, refused: text } : e)); setTab("yaml"); reload(); }} />
             </>

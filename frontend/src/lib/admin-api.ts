@@ -11,7 +11,9 @@ export const ADMIN_BASE = "/api/v1/admin";
 
 /** The body's `errors` when it is a list of {field, message} (a settings or glossary document refused, Plan 23c). */
 function fieldErrorsOf(body: unknown): FieldError[] | null {
-  const errors = typeof body === "object" && body !== null ? (body as { errors?: unknown }).errors : undefined;
+  const obj = typeof body === "object" && body !== null ? (body as { errors?: unknown; detail?: unknown }) : {};
+  const errors = obj.errors;
+  if (errors === undefined && Array.isArray(obj.detail)) return fastapiErrorsOf(obj.detail);
   if (!Array.isArray(errors)) return null;
   const out: FieldError[] = [];
   for (const e of errors) {
@@ -19,6 +21,19 @@ function fieldErrorsOf(body: unknown): FieldError[] | null {
     const { field, message } = e as { field?: unknown; message?: unknown };
     if (typeof message !== "string" || (field !== undefined && field !== null && typeof field !== "string")) return null;
     out.push({ field: typeof field === "string" ? field : null, message });
+  }
+  return out;
+}
+
+/** FastAPI's `detail[]` of a schema failure: `loc` ["body", ...] names a field, anything else (a query, "<extra>") none. */
+function fastapiErrorsOf(detail: unknown[]): FieldError[] | null {
+  const out: FieldError[] = [];
+  for (const d of detail) {
+    if (typeof d !== "object" || d === null) return null;
+    const { loc, msg } = d as { loc?: unknown; msg?: unknown };
+    if (!Array.isArray(loc) || typeof msg !== "string") return null;
+    const named = loc[0] === "body" && loc.length > 1 && loc[loc.length - 1] !== "<extra>";
+    out.push({ field: named ? loc.slice(1).join(".") : null, message: msg });
   }
   return out;
 }

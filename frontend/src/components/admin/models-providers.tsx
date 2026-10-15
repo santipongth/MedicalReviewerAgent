@@ -30,15 +30,23 @@ export function keyStatusText(row: ProviderKeyRow): string {
   return row.keyless ? "ไม่ต้องใช้คีย์" : "ยังไม่มีคีย์";
 }
 
-function ProbeLine({ result }: { result: ProbeResult }) {
+export const PROBE_NOTE = "ทดสอบเรียกโมเดลจริง 1 ครั้ง (ตอบไม่เกิน 512 token) จึงอาจมีค่าใช้จ่ายเล็กน้อย";
+export const UNPRICED_COST = "ไม่ทราบค่าใช้จ่าย (ยังไม่ได้ใส่ราคา)";
+const KEY_NOT_ALLOWED = "ใส่คีย์ได้เฉพาะ https หรือเครื่องนี้";
+
+/** A test call's outcome; an unpriced role shows "unknown cost", never $0. */
+export function ProbeLine({ result }: { result: ProbeResult }) {
+  const cost = result.priced && result.cost_usd !== null ? `$${result.cost_usd.toFixed(4)}` : UNPRICED_COST;
   return result.ok
-    ? <span className="text-sm">{`ใช้ได้ · ${result.latency_ms} ms · $${result.cost_usd.toFixed(4)}`}</span>
+    ? <span className="text-sm">{`ใช้ได้ · ${result.latency_ms} ms · ${cost}`}</span>
     : <span className="text-sm text-err">{`ใช้ไม่ได้: ${result.error ?? "ไม่ทราบสาเหตุ"}`}</span>;
 }
 
 /** One configured provider: its key status and the key and test actions. */
-function ProviderRow({ row, draftSpec, writable, onWrite, fail }: {
+function ProviderRow({ row, draftSpec, writable, onWrite, fail, onRemove }: {
   row: ProviderKeyRow; draftSpec: Record<string, unknown> | undefined; writable: boolean;
+  /** Present when the draft may drop this provider: `inUse` disables it. */
+  onRemove?: { inUse: boolean; run: () => void };
   onWrite: (state: LlmKeysWrite) => void; fail: (e: unknown) => string;
 }) {
   const [open, setOpen] = useState(false);
@@ -54,6 +62,7 @@ function ProviderRow({ row, draftSpec, writable, onWrite, fail }: {
   const giveBack = useRef(false); // the form was open: put focus back on the button that opened it
   const stored = row.key.updated_at !== null;
   const moved = stored && draftSpec !== undefined && providerOrigin(row.name, draftSpec) !== row.origin;
+  const keyLabel = stored ? "เปลี่ยนคีย์" : row.keyless ? "ใส่คีย์ (ไม่บังคับ)" : "ใส่คีย์";
   const problem = row.key.problem !== null || (row.key.source === "none" && !row.keyless);
 
   useEffect(() => {
@@ -135,9 +144,12 @@ function ProviderRow({ row, draftSpec, writable, onWrite, fail }: {
           </form>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {writable && !row.keyless && (
-              <button type="button" ref={openRef} className={BUTTON_GHOST} aria-label={`${stored ? "เปลี่ยนคีย์" : "ใส่คีย์"}ของ ${row.name}`}
-                onClick={() => setOpen(true)}>{stored ? "เปลี่ยนคีย์" : "ใส่คีย์"}</button>
+            {writable && row.key_allowed && (
+              <button type="button" ref={openRef} className={BUTTON_GHOST} aria-label={`${keyLabel}ของ ${row.name}`}
+                onClick={() => setOpen(true)}>{keyLabel}</button>
+            )}
+            {onRemove && (
+              <button type="button" className={BUTTON_GHOST} disabled={onRemove.inUse} onClick={onRemove.run}>{`เอา ${row.name} ออกจากร่าง`}</button>
             )}
             {stored && (
               <ConfirmButton label="ลบคีย์" confirmLabel="ยืนยันลบคีย์" name={`ลบคีย์ของ ${row.name}`} onConfirm={remove}
@@ -145,6 +157,8 @@ function ProviderRow({ row, draftSpec, writable, onWrite, fail }: {
             )}
           </div>
         )}
+        {!row.key_allowed && <p className="text-sm text-muted">{KEY_NOT_ALLOWED}</p>}
+        {onRemove?.inUse && <p className="text-sm text-muted">มี role ใช้อยู่ เปลี่ยน role ก่อน</p>}
         <div className="grid gap-1">
           {row.used_by.length === 0 && (
             <>
@@ -155,7 +169,7 @@ function ProviderRow({ row, draftSpec, writable, onWrite, fail }: {
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className={BUTTON_GHOST} aria-label={`ทดสอบ ${row.name}`}
               disabled={probe === "running" || (row.used_by.length === 0 && model.trim() === "")} onClick={test}>ทดสอบ</button>
-            <span className="text-sm text-muted">ทดสอบใช้เงินจริงไม่เกิน $0.05</span>
+            <span className="text-sm text-muted">{PROBE_NOTE}</span>
           </div>
           {probe === "running" && <span role="status" className="text-sm text-muted">กำลังทดสอบ…</span>}
           {probe && probe !== "running" && <span role="status"><ProbeLine result={probe} /></span>}
@@ -296,7 +310,9 @@ export function ModelsProviders({ draft, setDraft, fail, version }: {
       <ul aria-label="ผู้ให้บริการ" className="mt-3 border-t border-rule">
         {state.providers.map((row) => (
           <ProviderRow key={row.name} row={row} draftSpec={draft.providers[row.name]} writable={state.writable}
-            onWrite={wrote} fail={fail} />
+            onWrite={wrote} fail={fail}
+            onRemove={LEGACY.has(row.name) || !draft.providers[row.name] ? undefined
+              : { inUse: inUse.has(row.name), run: () => setDraft(removeProvider(draft, row.name)) }} />
         ))}
         {draftOnly.map((name) => (
           <li key={name} className="grid gap-2 border-b border-rule py-4">

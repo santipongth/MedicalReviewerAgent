@@ -40,6 +40,19 @@ describe("ModelsSaveBar", () => {
     expect(screen.queryByText(/better: ~\$/)).not.toBeInTheDocument();
   });
 
+  it("reports the roles a check lists as unpriced, and none once the draft changes (Plan 31)", async () => {
+    mockAdminFetch((m, p) => (p === "/llm-config/validate" ? [200, {
+      ...REPORT_OK, ok: false, errors: ["cheap.extractor: price missing"], config: null, yaml: null,
+      role_errors: [{ preset: "cheap", role: "extractor", kind: "price" }],
+    }] : undefined));
+    const seen = vi.fn();
+    const { rerender } = await renderAdmin(<ModelsSaveBar base={3} draft={CONFIG} onRoleErrors={seen} onSaved={() => {}} onConflict={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "ตรวจ" }));
+    await waitFor(() => expect(seen).toHaveBeenLastCalledWith([{ preset: "cheap", role: "extractor", kind: "price" }]));
+    rerender(<AdminGate><ModelsSaveBar base={3} draft={{ ...CONFIG, active_preset: "better" }} onRoleErrors={seen} onSaved={() => {}} onConflict={() => {}} /></AdminGate>);
+    await waitFor(() => expect(seen).toHaveBeenLastCalledWith([]));
+  });
+
   it("hides the errors of the last check once the draft has changed", async () => {
     mockAdminFetch((m, p) => (p === "/llm-config/validate"
       ? [200, { ...REPORT_OK, ok: false, errors: ["config: Unknown preset 'x'"], config: null, yaml: null }] : undefined));
