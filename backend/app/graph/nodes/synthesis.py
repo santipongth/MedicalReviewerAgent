@@ -76,7 +76,7 @@ from app.harness.support import markers as support_markers
 from app.harness.trials import related_reports
 from app.harness.verify import check_citations, strip_unknown_citations
 from app.schemas.review import NON_QUANTITATIVE_TYPES, SLR_LIKE, ReviewOptions, is_quick
-from app.services.llm import LLMError
+from app.services.llm import LLMError, public_reason
 
 log = logging.getLogger(__name__)
 
@@ -1127,7 +1127,7 @@ def make_write_synthesis(deps):
         if isinstance(res, BaseException):
             if not isinstance(res, LLMError):
                 raise res
-            errors.append(f"synthesis failed: {type(res).__name__}: {res}")
+            errors.append(f"synthesis failed: {public_reason(res)}")
         else:
             cost += res.cost
             entry |= {"repaired": res.repaired, "escalated": res.escalated}
