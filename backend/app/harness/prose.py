@@ -365,13 +365,22 @@ _LEADING_CITES = re.compile(r"^(?:\s*\[\s*P\d+[^\]]*\])+")
 _CITES_AFTER_STOP = re.compile(r"^(?P<body>.*?)(?P<stop>[.!?])\s*(?P<cites>(?:\s*\[\s*P\d+[^\]]*\])+)\s*$", re.DOTALL)
 
 
+_STUDY_NOUN = (r"(?:trials?|stud(?:y|ies)|cohorts?|(?:meta-)?analys[ie]s|reviews?|RCTs?|authors|investigators"
+               r"|researchers|registry|registries|survey)")
+# A sentence that opens by naming a cited study ("[P2] The trial found ...", "[P2] Smith et al. reported ...") owns the
+# group in front of it (Plan 31): the group is its subject, not a citation written after the previous stop.
+_STUDY_SUBJECT = re.compile(rf"^(?:(?:The|This|That|These|Those|Its|Their)\s+(?:[\w-]+\s+){{0,2}}?{_STUDY_NOUN}\b"
+                            r"|[A-Z][\w'-]+(?:\s+and\s+[A-Z][\w'-]+)?\s+et\s+al\.?(?=\s|$))")
+
+
 def lead_belongs_to_previous(previous: str, rest: str) -> bool:
     """A citation group that opens a piece ("... risk. [P1] Next sentence.") belongs to the sentence before it only when
     that sentence cites nothing itself and the rest of the piece is empty or punctuation only, or starts a new sentence
-    (an uppercase letter). Otherwise ("Risk fell [P1]. [P2] showed harm.") the group is the next sentence's own."""
+    (an uppercase letter) that does not name a study as its subject (Plan 31: "[P2] The trial found ..." keeps its
+    group). Otherwise ("Risk fell [P1]. [P2] showed harm.") the group is the next sentence's own."""
     if not re.search(r"\w", rest):
         return True
-    return not _REF.search(previous) and rest[:1].isupper()
+    return not _REF.search(previous) and rest[:1].isupper() and not _STUDY_SUBJECT.match(rest)
 
 
 def _sentences(text: str) -> list[str]:

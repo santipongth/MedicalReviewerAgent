@@ -2,7 +2,8 @@
 sentence never gives a person advice."""
 import pytest
 
-from app.graph.nodes.quick import closing_line
+from app.graph.nodes.quick import _is_advice, closing_line
+from app.graph.nodes.quick import _sentences as quick_sentences
 from app.graph.nodes.synthesis import ANSWER_CERTAINTY
 from app.harness.prose import _sentences, fix_prose, fix_statement, prose_problems
 from tests.unit.test_comparison_and_prose import META_PAPERS, ctx
@@ -92,4 +93,57 @@ def test_more_advice_is_dropped(advice):
     "Never users served as controls.", "Trials did not report what your risk would be.",
 ])
 def test_ordinary_limitations_are_kept(limits):
+    assert closing_line(limits, quick_ctx(), "low") == f"{ANSWER_CERTAINTY['low']} {limits}"
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Risk was lower (HR 0.55). [P2] The trial found less harm.",
+     ["Risk was lower (HR 0.55).", "[P2] The trial found less harm."]),
+    ("Results were mixed. [P2] This cohort reported no effect.",
+     ["Results were mixed.", "[P2] This cohort reported no effect."]),
+    ("Results were mixed. [P2] Smith et al. reported no effect.",
+     ["Results were mixed.", "[P2] Smith et al. reported no effect."]),
+    ("Results were mixed. [P2] Their large registry showed less harm.",
+     ["Results were mixed.", "[P2] Their large registry showed less harm."]),
+])
+def test_a_group_naming_its_study_as_subject_stays_with_it(text, expected):
+    assert _sentences(text) == expected
+
+
+def test_the_plan_30_lifts_still_hold():
+    assert _sentences("Results were mixed. [P2] Another trial found less.") == [
+        "Results were mixed [P2].", "Another trial found less."]
+    assert _sentences("Risk fell. [P1] The. [P2]") == ["Risk fell [P1].", "The [P2]."]  # "The." names no study
+
+
+def test_the_quick_path_uses_the_same_rule():
+    assert quick_sentences(["Risk was lower (HR 0.55). [P2] The trial found less harm [P3]."]) == [
+        "Risk was lower (HR 0.55).", "[P2] The trial found less harm [P3]."]
+    assert quick_sentences(["Risk fell. [P1] Cohorts agree. [P2]"]) == ["Risk fell [P1].", "Cohorts agree [P2]."]
+
+
+@pytest.mark.parametrize("advice", [
+    "Patients may want to discuss this with a doctor.", "It is advisable to consult a doctor.",
+    "It is best to avoid alcohol.", "It is recommended that patients stop the drug.",
+    "Patients are advised to stop the drug.", "Those taking warfarin should avoid it.",
+    "Women who are pregnant should not take it.", "One should avoid it.", "Individuals should consult a doctor.",
+    "We recommend avoiding it.", "Check with a pharmacist.", "Contact a doctor if symptoms worsen.",
+    "Get tested before starting.", "Call your doctor.", "If you take it, stop.", "You can ask your pharmacist.",
+    "It is important to stop the drug before surgery.",
+])
+def test_more_advice_shapes_are_dropped(advice):
+    assert _is_advice(advice)
+    assert closing_line(advice, quick_ctx(), "low") == ANSWER_CERTAINTY["low"]
+
+
+@pytest.mark.parametrize("limits", [
+    "See Table 2 for details.", "Consult the full review for the excluded studies.",
+    "Do not over-interpret these results.", "Try to interpret the pooled estimate with caution.",
+    "Use caution when interpreting the subgroup results.", "Trials did not assess what you would experience.",
+    "Trials in women should use longer follow-up.", "Future studies in older adults should consider frailty.",
+    "It is important to note that the trials were small.", "Call rates were not reported.",
+    "Checklists were incomplete in two trials.",
+])
+def test_research_wording_that_looked_like_advice_is_kept(limits):
+    assert not _is_advice(limits)
     assert closing_line(limits, quick_ctx(), "low") == f"{ANSWER_CERTAINTY['low']} {limits}"
