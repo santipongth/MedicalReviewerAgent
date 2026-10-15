@@ -1,15 +1,16 @@
 import asyncio
 import uuid
 
-from app.services.admin_sessions import AdminSessions, LoginThrottle
+from app.services.admin_sessions import AdminSessions, LoginThrottle, fingerprint
 
 
 async def test_session_round_trip_stores_only_the_digest(redis):
     sessions = AdminSessions(redis, ttl_seconds=600)
     uid = uuid.uuid4()
-    token = await sessions.create(uid, "owner")
+    token = await sessions.create(uid, "owner", "hash-1")
     data = await sessions.load(token)
     assert data["user_id"] == str(uid) and data["username"] == "owner" and data["created_at"]
+    assert data["pw"] == fingerprint("hash-1") and len(data["pw"]) == 16 and "hash-1" not in data["pw"]
     keys = await redis.keys("mra:admin:session:*")
     assert len(keys) == 1 and token not in keys[0]
     assert 590 <= await redis.ttl(keys[0]) <= 600
@@ -22,7 +23,7 @@ async def test_session_round_trip_stores_only_the_digest(redis):
 async def test_end_all_ends_every_session_of_one_user_only(redis):
     sessions = AdminSessions(redis)
     a, b = uuid.uuid4(), uuid.uuid4()
-    t1, t2, t3 = await sessions.create(a, "a"), await sessions.create(a, "a"), await sessions.create(b, "b")
+    t1, t2, t3 = await sessions.create(a, "a", "h"), await sessions.create(a, "a", "h"), await sessions.create(b, "b", "h")
     assert await sessions.end_all(a) == 2
     assert await sessions.load(t1) is None and await sessions.load(t2) is None
     assert await sessions.load(t3) is not None

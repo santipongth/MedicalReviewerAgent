@@ -27,6 +27,7 @@ from app.evals.results import (
 from app.logging import get_logger
 from app.runtime import AppDeps
 from app.services.harness_runs import (
+    FieldUnprocessable,
     HarnessUnavailable,
     StartBody,
     cancel_run,
@@ -73,6 +74,9 @@ async def start(body: StartBody, deps: AppDeps = Depends(get_deps), identity: Id
                               ip_hash=ip_hash_of(identity, deps))
     except HarnessUnavailable as exc:
         return JSONResponse(status_code=503, content={"detail": exc.detail, "reasons": exc.reasons})
+    except FieldUnprocessable as exc:
+        return JSONResponse(status_code=exc.status_code, content={
+            "detail": exc.detail, "errors": [{"field": exc.field, "message": exc.detail}]})
     except ServiceError as exc:
         return service_error_response(exc)
     try:

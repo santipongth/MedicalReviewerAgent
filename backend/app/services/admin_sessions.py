@@ -1,5 +1,6 @@
 """Admin sign-in state in Redis (Plan 23a), shared by every API process: opaque session tokens and the
-failed-sign-in lockout. Redis holds only the SHA-256 of a token, so a Redis dump cannot be replayed as a cookie."""
+failed-sign-in lockout. A session also holds a fingerprint of the password hash it was made under (Plan 31), so a
+password change ends it at its next request, before the CLI's end_all runs. Redis holds only the SHA-256 of a token, so a Redis dump cannot be replayed as a cookie."""
 from __future__ import annotations
 
 import hashlib
@@ -14,6 +15,12 @@ FAIL_USER_KEY = "mra:admin:fail:u:{}"
 FAIL_IP_KEY = "mra:admin:fail:ip:{}"
 
 
+def fingerprint(password_hash: str) -> str:
+    """Which password a session was made under: the first 16 hex chars of the SHA-256 of the password hash (the hash
+    itself never goes to Redis). A changed password gives another fingerprint, which ends the session."""
+    return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
+
+
 def _digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -23,10 +30,10 @@ class AdminSessions:
         self.redis = redis
         self.ttl = ttl_seconds
 
-    async def create(self, user_id: uuid.UUID, username: str) -> str:
+    async def create(self, user_id: uuid.UUID, username: str, password_hash: str) -> str:
         token = secrets.token_urlsafe(32)
         digest = _digest(token)
-        data = json.dumps({"user_id": str(user_id), "username": username,
+        data = json.dumps({"user_id": str(user_id), "username": username, "pw": fingerprint(password_hash),
                            "created_at": datetime.now(UTC).isoformat()})
         await self.redis.set(SESSION_KEY.format(digest), data, ex=self.ttl)  # absolute TTL, never extended
         members = USER_SESSIONS_KEY.format(user_id)

@@ -55,13 +55,16 @@ async def test_create_refuses_mismatch_short_and_duplicate(session_factory, redi
 async def test_passwd_and_disable_end_sessions(session_factory, redis, capsys):
     await admin_cli(["create", "--username", "owner", "--password-stdin"], session_factory, redis, stdin=stdin(PW))
     async with session_factory() as s:
-        uid = (await find_user(s, "owner")).id
+        found = await find_user(s, "owner")
+        uid, pw_hash = found.id, found.password_hash
     sessions = AdminSessions(redis)
-    token = await sessions.create(uid, "owner")
+    token = await sessions.create(uid, "owner", pw_hash)
     assert await admin_cli(["passwd", "owner", "--password-stdin"], session_factory, redis,
                            stdin=stdin("a brand new password")) == 0
     assert await sessions.load(token) is None
-    token = await sessions.create(uid, "owner")
+    async with session_factory() as s:
+        new_hash = (await find_user(s, "owner")).password_hash
+    token = await sessions.create(uid, "owner", new_hash)
     assert await admin_cli(["disable", "owner"], session_factory, redis) == 0
     assert await sessions.load(token) is None
     assert await admin_cli(["enable", "owner"], session_factory, redis) == 0
