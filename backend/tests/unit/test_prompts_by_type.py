@@ -45,6 +45,8 @@ SYSTEM_HASHES = {
     # answer's own prompt and schema (pinned in test_quick_prompts_are_pinned); no prompt above changed. 2026-10-14.1
     # (Plan 30) changes no prompt or schema: the bump only retires cached results made before the prose check scoped
     # after-period citations.
+    # 2026-10-15.1 (Plan 31) changes no prompt or schema: the bump retires stored summaries and quick answers made
+    # before the sentence-opening citation rule (D5) and the quick limits-sentence advice filter (D6).
     "narrative_system": (prompts.narrative_system, "16278465ee36d386eede4011a039ce7adf15588592669958c92883bcc06b3b7d"),
 }
 

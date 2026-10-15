@@ -11,7 +11,7 @@ frontend/.next/
 .env
 *.db
 infra/searxng/limiter.toml
-infra/searxng/settings.yml.new
+infra/searxng/*.new
 # agent scratch
 .superpowers/
 # os
