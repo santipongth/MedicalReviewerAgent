@@ -117,8 +117,12 @@ MEDICAL_PATTERNS_TH = (r"กินยา.{0,12}[\d๐-๙]+เม็ด", r"ก�
 # red-flag misspellings); on the English no-anchor path an "and" next to a red flag joins two flags and is no framer;
 # "someone" is an anchor only as the opening subject or after a plea, and not beside a strong framer
 # (STRONG_FRAMERS_EN); "if/when/should/can someone" is a generic frame unless the message is urgent; "to help" is
-# neither cue nor urgency word; a Thai kin word followed by และ is a population. Blind set A (70 research titles, 15
-# traps, 30 emergencies): master refused 9 and 4 and caught 11; now 0 and 0, and 27 caught.
+# neither cue nor urgency word (nor "help seeking"); a Thai kin word followed by และ is a population. The and-joiner
+# joins only when the other side is another flag or a person's state (STATE_WORDS_EN: "chest pain and sweating", not
+# "choking and baby led weaning"); a colon subtitle blocks the "someone" anchor unless the message is urgent.
+# Blind sets (research refused of 70, traps refused of 15, emergencies caught of 30):
+# set A master 9 / 4 / 11, first Plan 31 pass 0 / 0 / 27, final 0 / 0 / 25;
+# set B master not measured, first Plan 31 pass 8 / 1 / 28, final 0 / 0 / 27.
 # Known misses handed to the guard: an English message with no anchor and no cue ("took a whole bottle of sleeping
 # pills" passes only because "took" is a cue; "swallowed a battery" alone does not), a longer or framed English
 # description, a long Thai description, any framed Thai sentence with no anchor.
@@ -142,7 +146,7 @@ PRO_DROP_MAX_CHARS = 40
 SHORT_EN_MAX_WORDS = 8
 # "not" is no cue ("not breathing newborn resuscitation" is a title); "baby not breathing" is caught through "baby".
 # Neither are is / are / was: titles use them ("is coughing up blood always cancer").
-CUES_EN = ("help", "now", "please", "urgent", "asap", "quick", "quickly", "what to do", "what do i do",
+CUES_EN = ("help", "now", "please", "urgent", "asap", "quick", "quickly", "hurry", "what to do", "what do i do",
            "what should i do", "he", "she", "they", "him", "her", "his", "has", "just", "keeps",
            "took", "mom", "mum", "mother", "dad", "father", "baby", "son", "daughter", "husband", "wife", "child",
            "kid", "brother", "sister", "friend", "grandma", "grandpa", "granny", "grandmother", "grandfather",
@@ -160,6 +164,10 @@ STRONG_FRAMERS_EN = ("effect", "effects", "risk", "risks", "therapy", "preventio
                      "mortality", "causes", "cause", "factors", "factor", "guidelines", "symptoms", "signs", "sign",
                      "syndrome", "recovery", "care", "epidemiology", "overview", "history", "definition", "rate",
                      "rates", "versus", "vs", "compared", "why", "how", "what is", "first aid", "when to")
+# Plan 31: an "and" next to a red flag joins two flags only when the other side is a person's state, not a topic.
+STATE_WORDS_EN = ("is", "was", "are", "has", "had", "cant", "cannot", "wont", "not", "no", "now", "turning", "getting",
+                  "going", "sweating", "shaking", "vomiting", "fell", "fainted", "lost", "losing", "unable", "still",
+                  "keeps", "started", "stopped")
 URGENT_EN = ("help", "now", "please", "pls", "plz", "urgent", "asap", "quick", "quickly", "hurry")
 NOANCHOR_EXCLUDED_EN = ("anaphylaxis", "anaphylactic", "severe allergic reaction", "overdose", "overdosed")
 # Research framing: the topic asks about evidence for a population, so a red flag in it is a research subject.
@@ -260,9 +268,11 @@ _STRONG_FRAMERS_EN, _URGENT_EN = _english(STRONG_FRAMERS_EN), _english(URGENT_EN
 _SOMEONE_ANCHOR = re.compile(r"^(?:(?:please|pls|plz) )?(?:help )?(?:someone|somebody)(?! with| who)(?![a-z])")
 # a generic question about "someone" (not this person now): a framer unless the message is urgent
 _GENERIC_FRAME = re.compile(r"(?<![a-z])(?:if|when|whenever|should|can|could) (?:someone|somebody|a person)(?![a-z])")
-_TO_HELP = re.compile(r"(?<![a-z])to help(?![a-z])")
+_TO_HELP = re.compile(r"(?<![a-z])(?:to help|help seeking)(?![a-z])")
+_COLON_SUBTITLE = re.compile(r":\s*\w")
 _FLAG_MARK = "\x00F"
-_AND_JOIN = re.compile(_FLAG_MARK + r"(?: \w+)? and\b|\band(?: \w+)? " + _FLAG_MARK)
+_AND = re.compile(r"\band\b")
+_MARK_OR_WORD = re.compile(_FLAG_MARK + r"|\w+")
 _ALWAYS_TH, _SELF_HARM_TH = _thai(SELF_HARM_ALWAYS_TH), _thai(SELF_HARM_TH)
 _MEDICAL_TH = _thai(MEDICAL_TH, MEDICAL_PATTERNS_TH)
 _RESEARCH_TH, _NONPERSONAL_TH = _thai(RESEARCH_TH), _thai(NONPERSONAL_TH)
@@ -290,6 +300,20 @@ def _lang(language: str) -> str:
     return "th" if language == "th" else "en"
 
 
+def _join_flags(marked: str) -> str:
+    """Drop each "and" that joins a red flag (marked) to a person's state or to another flag."""
+    out, last = [], 0
+    for m in _AND.finditer(marked):
+        left = _MARK_OR_WORD.findall(marked[:m.start()])[-2:]
+        right = _MARK_OR_WORD.findall(marked[m.end():])[:2]
+        flag_left, flag_right = _FLAG_MARK in left, _FLAG_MARK in right
+        if (flag_left and flag_right or flag_left and right[:1] and right[0] in STATE_WORDS_EN
+                or flag_right and left[-1:] and left[-1] in STATE_WORDS_EN):
+            out += [marked[last:m.start()], " "]
+            last = m.end()
+    return "".join(out) + marked[last:]
+
+
 def red_flag(topic: str) -> Emergency | None:
     """The emergency a topic reads as, or None. Deterministic; see the module docstring for the rule."""
     text = fold_typos(normalize(topic))
@@ -301,7 +325,10 @@ def red_flag(topic: str) -> Emergency | None:
         return None
     anchored_th = bool(_ANCHOR_TH.search(_NONPERSONAL_TH.sub("\0", th)))
     # "someone" anchors only as the opening subject or after a plea, and not in a research-noun or question frame
-    someone = bool(_SOMEONE_ANCHOR.search(text)) and not _STRONG_FRAMERS_EN.search(_MEDICAL_EN.sub(" ", text))
+    spoken = _TO_HELP.sub(" ", text)
+    # a colon subtitle ("someone collapsed: bystander survey") makes it a title unless the message is urgent
+    someone = (bool(_SOMEONE_ANCHOR.search(text)) and not _STRONG_FRAMERS_EN.search(_MEDICAL_EN.sub(" ", text))
+               and not (_COLON_SUBTITLE.search(text) and not _URGENT_EN.search(spoken)))
     personal = anchored_th or someone or bool(_PERSONAL_EN.search(text))
     # Thai drops pronouns: a short, unframed Thai topic counts without an anchor
     pro_drop = th_len <= PRO_DROP_MAX_CHARS and not _FRAMERS_TH.search(th)
@@ -309,8 +336,7 @@ def red_flag(topic: str) -> Emergency | None:
         return Emergency("self_harm")
     # English with no anchor: short, a red flag, no framing word outside it, and a conversational cue
     # (an "and" next to a red flag joins two flags, so it is no framer; "to help" is neither cue nor urgency word)
-    spoken = _TO_HELP.sub(" ", text)
-    rest = _AND_JOIN.sub(" ", _MEDICAL_EN_NOANCHOR.sub(_FLAG_MARK, text)).replace(_FLAG_MARK, " ")
+    rest = _join_flags(_MEDICAL_EN_NOANCHOR.sub(_FLAG_MARK, text)).replace(_FLAG_MARK, " ")
     generic = bool(_GENERIC_FRAME.search(text)) and not _URGENT_EN.search(spoken)
     short_en = (len(text.split()) <= SHORT_EN_MAX_WORDS and bool(_MEDICAL_EN_NOANCHOR.search(text))
                 and not _FRAMERS_EN.search(rest) and not generic and bool(_CUES_EN.search(spoken)))

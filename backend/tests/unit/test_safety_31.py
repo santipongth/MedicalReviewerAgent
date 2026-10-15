@@ -96,7 +96,7 @@ def test_the_blind_traps_are_at_most_once_refused():
     assert len([t for t in sets.HELDOUT31_TRAPS if safety.red_flag(t)]) <= 1
 
 
-# Set A recall: 27/30 caught (master 11/30).
+# Recall (D4, no bar): set A 25/30 caught (master 11/30), set B 27/30.
 def test_the_blind_emergencies_keep_their_kind_when_caught():
     # recall is recorded, not a bar (D4); a caught emergency must be the right kind
     caught = [(t, k) for t, k in sets.HELDOUT31_EMERGENCIES if safety.red_flag(t)]
