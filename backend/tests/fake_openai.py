@@ -36,17 +36,24 @@ class FakeOpenAIServer:
     def __init__(self) -> None:
         self.requests: list[dict[str, Any]] = []
         self.headers: list[dict[str, str]] = []
-        self.replies: list[dict[str, Any] | tuple[int, dict[str, Any]]] = []
+        self.replies: list[dict[str, Any] | tuple[int, dict[str, Any]] | tuple[int, dict[str, Any], dict[str, str]]] = []
+        self.elsewhere: list[dict[str, Any]] = []  # hits on /elsewhere/chat/completions (a redirect target)
 
         async def completions(request: Request) -> JSONResponse:
             self.headers.append(dict(request.headers))
             self.requests.append(await request.json())
             reply = self.replies.pop(0)
             if isinstance(reply, tuple):
-                return JSONResponse(reply[1], status_code=reply[0])
+                headers = reply[2] if len(reply) > 2 else None
+                return JSONResponse(reply[1], status_code=reply[0], headers=headers)
             return JSONResponse(reply)
 
-        app = Starlette(routes=[Route("/api/v1/chat/completions", completions, methods=["POST"])])
+        async def elsewhere(request: Request) -> JSONResponse:
+            self.elsewhere.append(await request.json())
+            return JSONResponse(completion_body("{}"))
+
+        app = Starlette(routes=[Route("/api/v1/chat/completions", completions, methods=["POST"]),
+                                Route("/elsewhere/chat/completions", elsewhere, methods=["POST"])])
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         self.port = sock.getsockname()[1]

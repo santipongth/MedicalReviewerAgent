@@ -19,7 +19,6 @@ from app.services.admin_auth import AdminPrincipal
 from app.services.audit import record
 from app.services.llm_config import (
     LLMConfig,
-    LLMConfigError,
     ResolvedLLMConfig,
     ensure_storable,
     parse_llm_config,
@@ -27,7 +26,12 @@ from app.services.llm_config import (
     resolve_llm_config,
 )
 from app.services.llm_keys import keys_revision
-from app.services.llm_validate import document_errors, save_error_text
+from app.services.llm_validate import (
+    DocumentErrors,
+    document_errors,
+    price_role_errors,
+    save_error_text,
+)
 from app.services.review_service import Conflict, NotFound
 
 log = get_logger(__name__)
@@ -130,7 +134,7 @@ async def save_version(session: AsyncSession, actor: AdminPrincipal, raw: Any, *
     config = parse_llm_config(raw, where="config")
     resolve_llm_config(config, None, where="config")
     if errors := document_errors(config):
-        raise LLMConfigError(f"config: {save_error_text(errors)}")
+        raise DocumentErrors(f"config: {save_error_text(errors)}", price_role_errors(config))
     stored = config.model_dump(mode="json", exclude_unset=True)
     ensure_storable(stored)
     if session.get_bind().dialect.name == "postgresql":  # READ COMMITTED would let two saves pass the same check

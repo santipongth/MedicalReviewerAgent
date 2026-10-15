@@ -254,6 +254,16 @@ def test_a_role_price_is_what_the_estimate_and_the_cap_count():
     assert unpriced_roles(unpriced, {CHEAP.id: CHEAP}) == ["guard"]
 
 
+def test_a_local_server_without_a_price_is_not_unpriced_but_a_remote_legacy_one_is():
+    raw = copy.deepcopy(MINIMAL)
+    raw["providers"]["ollama"] = {"kind": "openai_compatible", "base_url": "http://localhost:11434/v1"}
+    raw["providers"]["openai_compatible"] = {"base_url": "http://10.0.0.5:11434/v1"}
+    raw["presets"]["cheap"]["extractor"] = {"model": "llama3", "provider": "ollama"}
+    raw["presets"]["cheap"]["screener"] = {"model": "llama3", "provider": "openai_compatible"}
+    resolved = resolve_llm_config(parse_llm_config(raw))
+    assert unpriced_roles(resolved, None) == ["screener"]
+
+
 def test_validate_warns_that_fallback_models_stay_on_openrouter():
     raw = with_provider("deepseek")
     raw["presets"]["cheap"]["guard"]["fallback_models"] = ["deepseek-reasoner"]

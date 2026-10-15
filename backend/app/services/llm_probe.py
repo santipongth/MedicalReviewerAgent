@@ -15,6 +15,7 @@ from app.services.budget import ReviewBudget, use_budget
 from app.services.llm import LimitedLLM, build_role_llm, redact
 from app.services.llm_config import ResolvedRole
 from app.services.llm_keys import KeyRing, resolve_key
+from app.services.llm_validate import role_unpriced
 
 PROBE_MAX_TOKENS = 512  # reasoning models need some room before they answer
 PROBE_TIMEOUT_SECONDS = 60.0
@@ -40,6 +41,11 @@ async def probe(role: ResolvedRole, settings: Settings, catalog=None, *, build=b
                             extra_body={k: v for k, v in role.spec.extra_body.items()
                                         if k not in UNCAPPED_EXTRA_BODY_KEYS})
     budget = ReviewBudget(cap_usd=PROBE_BUDGET_USD)
+    priced = not role_unpriced(role, catalog)  # an unpriced role is charged 0: its cost is unknown, not zero
+
+    def cost(value: float) -> float | None:
+        return round(value, 6) if priced else None
+
     started = time.monotonic()
 
     def elapsed() -> int:
@@ -60,8 +66,8 @@ async def probe(role: ResolvedRole, settings: Settings, catalog=None, *, build=b
     except Exception as exc:  # noqa: BLE001 - the console shows the reason; nothing else depends on it
         error = (f"timed out after {PROBE_TIMEOUT_SECONDS:g} s" if deadline.expired()
                  else redact(f"{type(exc).__name__}: {exc}", used)[:300])
-        return {"ok": False, "latency_ms": elapsed(), "cost_usd": round(budget.spent, 6), "model": role.spec.model,
-                "error": error}
+        return {"ok": False, "latency_ms": elapsed(), "cost_usd": cost(budget.spent), "priced": priced,
+                "model": role.spec.model, "error": error}
     ok = isinstance(res.value, ProbeAnswer) and res.value.ok
-    return {"ok": ok, "latency_ms": elapsed(), "cost_usd": round(res.cost_usd, 6), "model": res.model or role.spec.model,
-            "error": None if ok else "the model did not confirm"}
+    return {"ok": ok, "latency_ms": elapsed(), "cost_usd": cost(res.cost_usd), "priced": priced,
+            "model": res.model or role.spec.model, "error": None if ok else "the model did not confirm"}

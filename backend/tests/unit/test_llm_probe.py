@@ -152,3 +152,27 @@ async def test_the_budget_is_a_gate_before_the_call_and_the_call_itself_is_bound
 async def test_the_probes_budget_does_not_leak_into_the_caller():
     await probe(role(), SETTINGS, None, build=lambda *a, **k: FakeLLM(ProbeAnswer(ok=True)))
     assert current_budget() is None
+
+
+def unpriced_role():
+    raw = copy.deepcopy(MINIMAL)
+    raw["providers"]["deepseek"] = {"kind": "openai_compatible", "base_url": "https://api.deepseek.com/v1"}
+    raw["presets"]["cheap"]["synthesizer"] = {"model": "deepseek-chat", "provider": "deepseek"}
+    return resolve_llm_config(parse_llm_config(raw)).roles["synthesizer"]
+
+
+async def test_an_unpriced_role_reports_an_unknown_cost_not_zero():
+    ok = await probe(unpriced_role(), SETTINGS, None,
+                     build=lambda *a, **k: FakeLLM(ProbeAnswer(ok=True), cost=0.0))
+    assert ok["ok"] is True and ok["priced"] is False and ok["cost_usd"] is None
+    failed = await probe(unpriced_role(), SETTINGS, None,
+                         build=lambda *a, **k: FakeLLM(ProbeAnswer(ok=True), error=RuntimeError("down")))
+    assert failed["ok"] is False and failed["priced"] is False and failed["cost_usd"] is None
+
+
+async def test_a_priced_role_reports_its_cost_on_success_and_failure():
+    ok = await probe(role(), SETTINGS, None, build=lambda *a, **k: FakeLLM(ProbeAnswer(ok=True)))
+    assert ok["priced"] is True and ok["cost_usd"] == 0.0001
+    failed = await probe(role(), SETTINGS, None,
+                         build=lambda *a, **k: FakeLLM(ProbeAnswer(ok=True), error=RuntimeError("down")))
+    assert failed["priced"] is True and failed["cost_usd"] == 0

@@ -44,7 +44,7 @@ from app.harness.prose import (
 )
 from app.harness.runner import HarnessRunner
 from app.harness.verify import check_citations, strip_unknown_citations
-from app.services.llm import LLMError
+from app.services.llm import LLMError, public_reason
 
 log = logging.getLogger(__name__)
 
@@ -255,7 +255,7 @@ def make_write_quick_answer(deps):
             cost, draft = res.cost, res.value
             entry["repaired"] = res.repaired
         except LLMError as exc:
-            errors.append(f"quick answer failed: {type(exc).__name__}: {exc}")
+            errors.append(f"quick answer failed: {public_reason(exc)}")
             draft = None
         if draft is None:
             entry["fallback"] = True
